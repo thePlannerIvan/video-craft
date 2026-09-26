@@ -298,9 +298,9 @@ looking for a rule that used to be here, it is in the right-hand column.
 （`check_overlay` 的 16 条要真起 ffmpeg 造文件）、**`PYTHONPATH` 里的 `..` 指到 Skill 根**。
 
 ```bash
-cd /Users/ivan/Library/CloudStorage/OneDrive-个人/文档/CodexProject/02-skills-library/03-design-delivery/video-craft/tests
+cd "<your video-craft checkout>/tests"
 PYTHONPATH=..:../helpers PATH=/opt/homebrew/bin:$PATH \
-  /Users/ivan/Library/CloudStorage/OneDrive-个人/文档/CodexProject/02-skills-library/.venv/bin/python \
+  "${CATEGORY_PY:?set CATEGORY_PY to the shared category python (see install.md)}" \
   -m unittest discover -s . -p "test_*.py"
 ```
 

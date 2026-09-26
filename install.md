@@ -36,10 +36,14 @@ And one thing must be true about the current agent:
 
 ```bash
 # video-craft is a local, decoupled skill — it is not cloned from an upstream.
-# The canonical source lives in the skills library; sync it to the agent directories.
-CRAFT_SRC="$HOME/Library/CloudStorage/OneDrive-个人/文档/CodexProject/02-skills-library/03-design-delivery/video-craft"
+# The canonical source lives wherever *you* keep the skills library; nothing here
+# assumes a particular machine layout. Override either variable if yours differ.
+CRAFT_SRC="${CRAFT_SRC:-$HOME/skills/02-skills-library/03-design-delivery/video-craft}"
 # The interpreter this whole category shares (see step 2).
-CATEGORY_PY="/Users/ivan/Library/CloudStorage/OneDrive-个人/文档/CodexProject/02-skills-library/.venv/bin/python"
+CATEGORY_PY="${CATEGORY_PY:-$HOME/skills/02-skills-library/.venv/bin/python}"
+# Fail with the exact fix rather than continuing on a path that is not there.
+[ -d "$CRAFT_SRC" ] || { echo "CRAFT_SRC not found: $CRAFT_SRC" >&2; echo "  fix: CRAFT_SRC=<your video-craft checkout>" >&2; exit 1; }
+[ -x "$CATEGORY_PY" ] || { echo "CATEGORY_PY not executable: $CATEGORY_PY" >&2; echo "  fix: CATEGORY_PY=<path to the shared category python>" >&2; exit 1; }
 cd "$CRAFT_SRC"
 ```
 

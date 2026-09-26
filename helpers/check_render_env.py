@@ -4,7 +4,7 @@
 One failure this exists for, measured: in a restricted sandbox (or anywhere the
 home directory is read-only) `hyperframes render` dies partway through with
 
-    EPERM: operation not permitted, mkdir '/Users/ivan/.cache/hyperframes/fonts/noto-serif-sc'
+    EPERM: operation not permitted, mkdir '<home>/.cache/hyperframes/fonts/noto-serif-sc'
     Try --docker for containerized rendering
 
 `--docker` is the only thing the error suggests and it needs Docker; the way out

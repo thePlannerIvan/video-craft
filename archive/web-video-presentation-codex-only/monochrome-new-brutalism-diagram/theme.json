@@ -1,0 +1,15 @@
+{
+  "id": "monochrome-new-brutalism-diagram",
+  "name": "Monochrome New Brutalism Diagram",
+  "nameZh": "单色新粗野主义·架构图解",
+  "description": "Paper-white diagram canvas, near-black ink, hard offset shadows, oversized arrows, and diagram-first hierarchy. Built for knowledge architecture, workflows, and systems explanations.",
+  "descriptionZh": "纸白画布、近黑墨色、硬偏移阴影、大尺度箭头和模型优先的信息层级，适合知识架构、工作流与系统关系解释。",
+  "mood": ["light", "monochrome", "new-brutalist", "diagram-first", "architectural", "editorial", "decisive"],
+  "bestFor": ["知识架构", "方法论解释", "工作流与 Pipeline", "系统关系", "资料型视频"],
+  "preview": {
+    "shell": "#ededeb",
+    "surface": "#f7f7f3",
+    "text": "#111111",
+    "accent": "#111111"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "name": "video-craft",
+  "version": "0.1.0",
+  "category": "Web Video / Presentation",
+  "description": "Edit video by conversation, end to end: cut footage from the transcript, grade it, build the visual layer (full-frame 画面 or alpha 花字 riding on the footage), produce semantic captions, and deliver a verified mp4 from one time spine.",
+  "compat": [
+    "claude-code",
+    "codex-cli"
+  ],
+  "lineage": {
+    "merged_from": [
+      {
+        "name": "video-use",
+        "upstream": "https://github.com/browser-use/video-use",
+        "absorbed_through": "9575612 (2026-08-30)",
+        "role": "time spine, compositor, caption chain, delivery verification"
+      },
+      {
+        "name": "web-video-presentation",
+        "upstream": "https://github.com/ConardLi/garden-skills",
+        "note": "upstream never had a 2.x; the local 2.4.0 was a self-authored rewrite and is the real asset. Upstream stopped at 1.2.2 (2026-05-23) and describes a different skill.",
+        "role": "visual layer authoring (HyperFrames compositions, themes, alpha encoding), visual review loop"
+      }
+    ],
+    "status": "decoupled from both upstreams — see upstream-diff.md"
+  }
+}

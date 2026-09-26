@@ -1,0 +1,203 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1120" viewBox="0 0 1600 1120" role="img" aria-labelledby="title desc">
+  <title id="title">web-video-presentation Skill design map</title>
+  <desc id="desc">A Chinese diagram explaining the skill's design intent, workflow control, and file structure.</desc>
+  <defs>
+    <style>
+      .bg { fill: #f7f4ec; }
+      .ink { fill: #171717; }
+      .muted { fill: #5c5c56; }
+      .hair { stroke: #171717; stroke-width: 2; fill: none; }
+      .soft { stroke: #b9b0a3; stroke-width: 1.5; fill: none; }
+      .arrow { stroke: #171717; stroke-width: 2.4; fill: none; marker-end: url(#arrowhead); }
+      .arrowSoft { stroke: #7f786e; stroke-width: 2; fill: none; marker-end: url(#arrowheadSoft); }
+      .panel { fill: #fffdf7; stroke: #171717; stroke-width: 2; rx: 18; }
+      .card { fill: #fffaf0; stroke: #171717; stroke-width: 1.8; rx: 14; }
+      .dark { fill: #171717; }
+      .blue { fill: #e4efff; }
+      .green { fill: #e8f4df; }
+      .orange { fill: #ffe5c4; }
+      .pink { fill: #ffe5e8; }
+      .violet { fill: #eee8ff; }
+      .yellow { fill: #fff1a8; }
+      .small { font: 24px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .xs { font: 20px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .tiny { font: 17px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .label { font: 700 24px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .h1 { font: 800 48px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; letter-spacing: 0; }
+      .h2 { font: 800 31px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .h3 { font: 800 25px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .mono { font: 22px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .monoSmall { font: 18px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      .white { fill: #fffdf7; }
+    </style>
+    <marker id="arrowhead" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#171717"/>
+    </marker>
+    <marker id="arrowheadSoft" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#7f786e"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1600" height="1120"/>
+  <rect x="36" y="34" width="1528" height="1052" rx="28" fill="#fffdf7" stroke="#171717" stroke-width="3"/>
+
+  <text class="h1 ink" x="78" y="100">web-video-presentation Skill 设计拆解</text>
+  <text class="small muted" x="80" y="140">把文章 / 口播稿变成可录屏的 16:9 点击驱动网页视频：方法论、协作硬节点、可运行工程骨架三层合一。</text>
+
+  <g transform="translate(80 180)">
+    <rect class="panel" x="0" y="0" width="1440" height="220"/>
+    <text class="h2 ink" x="28" y="48">1. 设计思路：不是“页面模板”，而是“视频生产协议”</text>
+
+    <g transform="translate(28 76)">
+      <rect class="card yellow" x="0" y="0" width="330" height="110"/>
+      <text class="h3 ink" x="22" y="35">内容先行</text>
+      <text class="xs muted" x="22" y="67">script 定口播节拍</text>
+      <text class="xs muted" x="22" y="94">article 提供画面密度</text>
+    </g>
+    <g transform="translate(384 76)">
+      <rect class="card blue" x="0" y="0" width="330" height="110"/>
+      <text class="h3 ink" x="22" y="35">动画后置</text>
+      <text class="xs muted" x="22" y="67">outline 不写具体动效</text>
+      <text class="xs muted" x="22" y="94">章节按内容关系即时设计</text>
+    </g>
+    <g transform="translate(740 76)">
+      <rect class="card green" x="0" y="0" width="330" height="110"/>
+      <text class="h3 ink" x="22" y="35">真相源收束</text>
+      <text class="xs muted" x="22" y="67">narrations.ts 决定 step 数</text>
+      <text class="xs muted" x="22" y="94">音频、自动播放、章节同步</text>
+    </g>
+    <g transform="translate(1096 76)">
+      <rect class="card pink" x="0" y="0" width="316" height="110"/>
+      <text class="h3 ink" x="22" y="35">主题兜底</text>
+      <text class="xs muted" x="22" y="67">token 统一颜色 / 字体</text>
+      <text class="xs muted" x="22" y="94">章节保留创作自由</text>
+    </g>
+  </g>
+
+  <g transform="translate(80 435)">
+    <rect class="panel" x="0" y="0" width="1440" height="315"/>
+    <text class="h2 ink" x="28" y="48">2. 流程管控：Phase + Checkpoint，把模糊创作压成可验收节点</text>
+
+    <g transform="translate(26 82)">
+      <rect class="card violet" x="0" y="0" width="175" height="92"/>
+      <text class="label ink" x="20" y="34">Phase 0</text>
+      <text class="tiny muted" x="20" y="64">SRT-First</text>
+      <text class="tiny muted" x="20" y="84">时间码预处理</text>
+    </g>
+    <path class="arrowSoft" d="M207 128 L263 128"/>
+    <g transform="translate(270 82)">
+      <rect class="card yellow" x="0" y="0" width="175" height="92"/>
+      <text class="label ink" x="20" y="34">Phase 1</text>
+      <text class="tiny muted" x="20" y="64">script.md</text>
+      <text class="tiny muted" x="20" y="84">outline.md</text>
+    </g>
+    <path class="arrowSoft" d="M451 128 L507 128"/>
+    <g transform="translate(514 70)">
+      <rect class="dark" x="0" y="0" width="198" height="116" rx="14"/>
+      <text class="label white" x="18" y="34">Checkpoint</text>
+      <text class="tiny white" x="18" y="65">一次对齐 5 件事</text>
+      <text class="tiny white" x="18" y="88">稿 / 计划 / 主题</text>
+      <text class="tiny white" x="18" y="108">素材 / 开发模式</text>
+    </g>
+    <path class="arrow" d="M718 128 L774 128"/>
+    <g transform="translate(780 82)">
+      <rect class="card green" x="0" y="0" width="175" height="92"/>
+      <text class="label ink" x="20" y="34">Phase 2</text>
+      <text class="tiny muted" x="20" y="64">网页开发</text>
+      <text class="tiny muted" x="20" y="84">第 1 章强验收</text>
+    </g>
+    <path class="arrowSoft" d="M961 128 L1017 128"/>
+    <g transform="translate(1024 70)">
+      <rect class="dark" x="0" y="0" width="176" height="116" rx="14"/>
+      <text class="label white" x="18" y="34">Review</text>
+      <text class="tiny white" x="18" y="65">字幕面板</text>
+      <text class="tiny white" x="18" y="88">反馈 API</text>
+      <text class="tiny white" x="18" y="108">自动播放审核</text>
+    </g>
+    <path class="arrowSoft" d="M1206 128 L1262 128"/>
+    <g transform="translate(1268 82)">
+      <rect class="card orange" x="0" y="0" width="145" height="92"/>
+      <text class="label ink" x="18" y="34">Audio</text>
+      <text class="tiny muted" x="18" y="64">可选 TTS</text>
+      <text class="tiny muted" x="18" y="84">再录屏</text>
+    </g>
+
+    <g transform="translate(28 225)">
+      <rect x="0" y="0" width="420" height="54" rx="12" fill="#fff7d2" stroke="#171717" stroke-width="1.6"/>
+      <text class="xs ink" x="18" y="34">硬性自检：script / outline / 单章完成后都必须修复 fail 项</text>
+    </g>
+    <g transform="translate(510 225)">
+      <rect x="0" y="0" width="405" height="54" rx="12" fill="#e9f2ff" stroke="#171717" stroke-width="1.6"/>
+      <text class="xs ink" x="18" y="34">第 1 章 = 风格锚点：主线程完整做完，再继续</text>
+    </g>
+    <g transform="translate(977 225)">
+      <rect x="0" y="0" width="435" height="54" rx="12" fill="#eaf6e3" stroke="#171717" stroke-width="1.6"/>
+      <text class="xs ink" x="18" y="34">2~N 章支持 A 逐章 / B 顺序 / C 并行，可中途切换</text>
+    </g>
+  </g>
+
+  <g transform="translate(80 785)">
+    <rect class="panel" x="0" y="0" width="1440" height="265"/>
+    <text class="h2 ink" x="28" y="48">3. 文件结构设计：规则、资产、脚手架、主题分层，降低长任务失控</text>
+
+    <g transform="translate(28 74)">
+      <rect class="card" x="0" y="0" width="265" height="150"/>
+      <text class="h3 ink" x="18" y="34">SKILL.md</text>
+      <text class="tiny muted" x="18" y="63">总入口 / 阶段路由</text>
+      <text class="tiny muted" x="18" y="86">硬节点 / 执行协议</text>
+      <text class="monoSmall ink" x="18" y="121">Phase 0 → 4</text>
+    </g>
+
+    <path class="arrowSoft" d="M303 149 L353 149"/>
+
+    <g transform="translate(365 74)">
+      <rect class="card blue" x="0" y="0" width="275" height="150"/>
+      <text class="h3 ink" x="18" y="34">references/</text>
+      <text class="tiny muted" x="18" y="62">按阶段拆原则</text>
+      <text class="tiny muted" x="18" y="84">SCRIPT / OUTLINE</text>
+      <text class="tiny muted" x="18" y="106">CHAPTER / AUDIO</text>
+      <text class="tiny muted" x="18" y="128">SRT / THEMES / RECORDING</text>
+    </g>
+
+    <path class="arrowSoft" d="M650 149 L700 149"/>
+
+    <g transform="translate(712 74)">
+      <rect class="card green" x="0" y="0" width="290" height="150"/>
+      <text class="h3 ink" x="18" y="34">templates/</text>
+      <text class="tiny muted" x="18" y="62">Vite + React + TS 骨架</text>
+      <text class="tiny muted" x="18" y="84">Stage / Stepper / Registry</text>
+      <text class="tiny muted" x="18" y="106">SubtitlePanel / PlayButton</text>
+      <text class="tiny muted" x="18" y="128">TTS provider 契约</text>
+    </g>
+
+    <path class="arrowSoft" d="M1012 149 L1062 149"/>
+
+    <g transform="translate(1074 74)">
+      <rect class="card orange" x="0" y="0" width="150" height="150"/>
+      <text class="h3 ink" x="18" y="34">scripts/</text>
+      <text class="tiny muted" x="18" y="62">scaffold.sh</text>
+      <text class="tiny muted" x="18" y="84">parse-srt.py</text>
+      <text class="tiny muted" x="18" y="106">抽取 narrations</text>
+      <text class="tiny muted" x="18" y="128">合成音频</text>
+    </g>
+
+    <path class="arrowSoft" d="M1234 149 L1284 149"/>
+
+    <g transform="translate(1296 74)">
+      <rect class="card violet" x="0" y="0" width="116" height="150"/>
+      <text class="h3 ink" x="18" y="34">themes/</text>
+      <text class="tiny muted" x="18" y="62">23 套</text>
+      <text class="tiny muted" x="18" y="84">theme.json</text>
+      <text class="tiny muted" x="18" y="106">tokens.css</text>
+      <text class="tiny muted" x="18" y="128">可替换</text>
+    </g>
+  </g>
+
+  <g transform="translate(950 176)">
+    <path class="soft" d="M420 20 C470 0 505 15 526 46 C554 88 523 130 475 122 C438 116 421 90 431 62" opacity="0.35"/>
+  </g>
+
+  <g transform="translate(80 1058)">
+    <text class="xs muted" x="0" y="0">关键判断：这个 Skill 的强点是把“创意工作”拆成可检验的真相源、强制停顿点和最小可运行工程，而不是追求一次性自动生成整片。</text>
+  </g>
+</svg>

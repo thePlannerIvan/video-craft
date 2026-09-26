@@ -1,0 +1,15 @@
+{
+  "name": "web-video-presentation",
+  "version": "2.4.0",
+  "category": "Web Video / Presentation",
+  "description": "Turn edited audio, SRT timelines, assets, and one-blueprint-per-speech-beat Video Story plans into frame-accurate videos: align each blueprint to its beat → design visuals and animation timing inside that range → review storyboard → build HyperFrames composition → deterministic render.",
+  "homepage": "https://github.com/ConardLi/garden-skills/tree/main/skills/web-video-presentation",
+  "compat": [
+    "claude-code",
+    "claude-ai",
+    "cursor",
+    "codex-cli",
+    "gemini-cli",
+    "opencode"
+  ]
+}

@@ -1,0 +1,20 @@
+[
+  {
+    "id": "video-story-knowledge-handoff",
+    "prompt": "这是录好的音频、句子级 SRT、最终口播和 Video Story System 的 visual-plan.json。蓝图只写了画面必须呈现的信息，请完成动画视频。",
+    "must_do": [
+      "先把 script.md 的 Speech Beat 对齐 SRT 并输出 visual-plan-alignment.json",
+      "人工处理 low 或 unmatched Beat",
+      "根据 information_to_show 自主设计画面模型、Visual Step、动画状态和精确时间",
+      "在 grouping、timeline 和 storyboard 中为每个 Step 保留单一 sourceBlueprintId",
+      "在 Checkpoint Plan 审阅实际画面方案与动画时序"
+    ],
+    "must_not_do": [
+      "向 Video Story System 索要构图、State、动画方式或时间码",
+      "把 information_to_show 直接改成逐句字幕卡",
+      "静默接受低置信 Beat 对齐",
+      "把多个上游蓝图合并成跨 Beat 的总模型",
+      "让一个 Visual Step 同时服务多个上游蓝图"
+    ]
+  }
+]

@@ -1,0 +1,43 @@
+Video Craft
+Copyright (C) 2026 阿祖不看 TVC
+
+Author: 阿祖不看 TVC
+Xiaohongshu: 阿祖不看 TVC
+Email: Lawyif@163.com
+Website: https://demyth.info
+
+Canonical project name: Video Craft
+Skill identifier: video-craft
+
+This project is an open-source, review-gated video production Skill. It covers
+audio and visual planning, edit decision lists, a measured timeline, semantic
+captions, overlay and animation authoring, compositing, self-check, and verified
+delivery.
+
+## Provenance
+
+This Skill is a merge of two upstream projects and was decoupled from both on
+2026-09-15. `upstream-diff.md` records what was absorbed and what deliberately
+diverges. Both upstream copies are preserved read-only under `archive/`.
+
+- `browser-use/video-use` — MIT License, Copyright (c) 2026 Browser Use.
+  Contributed the time spine, the compositor, the caption chain, and delivery
+  verification. Its MIT license text is preserved verbatim at
+  `archive/video-use/LICENSE`.
+- `web-video-presentation` (from `github.com/ConardLi/garden-skills`) —
+  contributed the visual-layer authoring surface, alpha encoding, and the visual
+  review loop.
+
+Credential handling note: the Doubao App ID and access token that upstream
+inlined as string literals in `helpers/doubao_asr_file.js` have been redacted to
+`DOUBAO_APP_ID` / `DOUBAO_ACCESS_TOKEN` from the environment (falling back to
+`<repo>/.env`), in both the live helper and the frozen `archive/video-use/` copy.
+See `upstream-diff.md` for why.
+
+The review faces (visual review and EDL cut preview) are served by the shared
+review seam (`planners-review-core`) and are meant to run locally only.
+
+Attribution and source identification may appear in repository documents,
+process HTML pages, review server pages, validation pages, and developer
+workflow surfaces. The Skill should not add project branding to final client
+deliverables by default unless the user explicitly requests it.

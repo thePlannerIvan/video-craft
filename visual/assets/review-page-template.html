@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Web Video Presentation · Review</title>
+  <script type="module" src="https://cdn.jsdelivr.net/npm/@hyperframes/player"></script>
+  <!--
+    审阅桥的注入点＝下面单独一行那个双花括号标记。**这里不放桥的副本**：宿主 serve 时把这个
+    标记**原地**换成桥本身（有插件时内联源码；无插件时给 base + 一个外链脚本）。
+
+    ⚠️ 标记必须**裸着独占一行**，全页**只许出现一次**。放进 `src=""` 里、或塞进 `<script>`
+    标签里都会炸 —— 宿主的替换是"整段文本换标记"，标签会被撑破：
+      · 放进 `src=""`：整段塞进属性里 → 标签坏掉，桥根本不加载；
+      · 塞进 `<script>`：变成嵌套 `<script>` → 同样加载不了。
+    校验器用 `bridge_placeholder_not_bare` 与 `bridge_placeholder_multiple` 拦这两种。
+
+    下面 `connect()` 里**仍然自己给 base**：无插件宿主注入的 base 到不了页面时（它落在前一个
+    结束标签之前，会被当成脚本文本吃掉），页面不给就按桥的默认 `./`（＝页面自己那一层）解析，
+    而这里的 rel 一律相对项目根，两者差一级。
+  -->
+{{REVIEW_BRIDGE}}
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, "PingFang SC", sans-serif; background: #101014; color: #e8e8ea; padding: 24px; }
+    h1 { font-size: 18px; }
+    .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; }
+    .reload { flex: 0 0 auto; font-size: 12px; line-height: 1; color: #9a9ab0; text-decoration: none;
+              border: 1px solid #2a2a32; border-radius: 5px; padding: 6px 10px; }
+    .reload:hover { color: #e8e8ea; border-color: #3a3af0; }
+    .layout { display: flex; gap: 24px; align-items: flex-start; }
+    .left { flex: 1 1 58%; max-width: 1100px; display: flex; flex-direction: column; gap: 12px; }
+    .player-box { background: #000; border: 1px solid #2a2a32; }
+    hyperframes-player { display: block; width: 100%; aspect-ratio: 16 / 9; }
+    .player-box .hint { padding: 8px 12px; font-size: 12px; color: #888; }
+    .side { flex: 1 1 42%; max-width: 560px; }
+    .steps { background: #17171d; border: 1px solid #2a2a32; max-height: calc(100vh - 170px); overflow-y: auto; }
+    .step { padding: 10px 14px; border-bottom: 1px solid #23232b; cursor: pointer; }
+    .step:hover { background: #1e1e26; }
+    .step.active { background: #23233a; }
+    .step-id { font-family: ui-monospace, monospace; font-size: 11px; color: #9a9ab0; }
+    .step-caption { font-size: 13px; margin-top: 4px; line-height: 1.5; }
+    .step-meta { font-size: 11px; color: #7a7a90; margin-top: 4px; }
+    .feedback { background: #17171d; border: 1px solid #2a2a32; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+    .feedback h2 { font-size: 13px; color: #aaa; }
+    /* 两条路：整片意见 / 当前屏。默认落在「整片意见」，所以"不选屏就说一句"不需要先点任何东西。 */
+    .mode { display: flex; gap: 6px; }
+    .mode-tab { background: #101014; color: #9a9ab0; border: 1px solid #2a2a32; padding: 6px 10px; font-size: 12px; }
+    .mode-tab.active { background: #3a3af0; color: #fff; border-color: #3a3af0; }
+    .mode-note { font-size: 11px; line-height: 1.5; color: #7a7a90; }
+    #fb-type { width: 100%; padding: 6px; background: #101014; color: #e8e8ea; border: 1px solid #2a2a32; }
+    #fb-text { width: 100%; min-height: 64px; padding: 8px; background: #101014; color: #e8e8ea; border: 1px solid #2a2a32; resize: vertical; }
+    button { padding: 8px 16px; background: #3a3af0; color: #fff; border: none; cursor: pointer; font-size: 13px; }
+    button:disabled { background: #2a2a32; color: #7a7a90; cursor: not-allowed; }
+    /* 保存状态常驻可见（GOTCHAS #18）：状态条跟着输入框走，不放角落 */
+    .save-bar { position: sticky; bottom: 0; display: flex; gap: 10px; align-items: center; background: #17171d; border-top: 1px solid #2a2a32; padding-top: 8px; }
+    #save-state { flex: 1 1 auto; font-size: 12px; line-height: 1.4; color: #7a7a90; }
+    #save-state.ok { color: #5ad18a; }
+    #save-state.dirty { color: #e0c060; }
+    #save-state.error { color: #ff7a7a; }
+    #save-state.warn { color: #e0c060; }
+    /* 时间轴变了（宿主戳过、页面自己 diff 出来的）：说清楚，但不挡住提交 */
+    #stale-note { font-size: 12px; line-height: 1.5; color: #ffd9a8; background: #4a2f12; border-radius: 6px; padding: 8px 10px; }
+    #stale-note[hidden] { display: none; }
+    /* 提示里让人做的动作，控件就在同一块橙色里 —— 出现的那一刻就够得着 */
+    #stale-note button { margin-top: 6px; padding: 4px 10px; font-size: 12px; background: #ffd9a8; color: #3a2410; border: 1px solid #d9a86a; border-radius: 5px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <h1>逐画面审阅 · <span id="project-name">project</span></h1>
+    <!--
+      **页面必须能刷新自己，而且入口不许藏在告警里**（模组规则 R11）。
+
+      "页面变了"与"数据变了"是两件事。之前刷新入口只做在橙色告警里（时间轴变了才出现）——
+      于是"我改了页面、让他重载拿新版"这个场景**恰好没有出口**：数据没变 → 不出现告警 →
+      没有按钮，而那个按钮本来就在他要拿的新版里。先有鸡先有蛋。
+
+      所以这个入口**无条件存在**。而且它是个**纯 HTML 链接**（空 `href` ＝重新加载当前地址）：
+      连"页面自己的脚本坏了/是旧的"这一档也能用 —— 那正是最需要它的时候。
+      （宿主对页面发的是 `cache-control: no-store`，所以刷新拿到的确实是磁盘上那一版。）
+    -->
+    <a class="reload" id="page-reload" href="" title="重新加载这一页（拿到最新版本的页面本身）">⟳ 刷新</a>
+  </header>
+  <div class="layout">
+    <div class="left">
+      <div class="player-box">
+        <!--
+          播放器必须指向 HyperFrames preview 服务器的运行时注入端点（见 REVIEW-UI.md）。
+          原因：clip 可见性切换和音频由运行时管理，原始静态文件没有运行时——所有画面会
+          叠在一起只剩最后一屏。
+          启动：cd composition && npx hyperframes preview --port <port>
+          src 格式：http://localhost:<port>/api/projects/<meta.json 的 name>/preview?__hf_shader_capture_scale=1&__hf_shader_loading=player
+
+          注意：这条 src 是**绝对跨源 URL**，不走审阅桥（桥只送 dir 里的文件）。它是这个面上
+          唯一绕过缝的资产，也是唯一还没在插件宿主下实测过的部分。
+        -->
+        <hyperframes-player id="player" src="http://localhost:5176/api/projects/composition/preview?__hf_shader_capture_scale=1&amp;__hf_shader_loading=player" controls autoplay></hyperframes-player>
+        <div class="hint">暂停在出问题的画面 → 在<strong>右侧列表</strong>里选中对应的一屏 → 填反馈 → 点「保存反馈」。
+          只想说整片的就不用选屏（左边那个「整片意见」）。这一条先落进
+          review/review-submissions.json（状态条显示写到哪），模型收件后追加进
+          feedback/&lt;chapterId&gt;.jsonl。保存失败时文字留在输入框里，不丢。</div>
+      </div>
+      <div class="feedback">
+        <!-- 两条路都摆在明面上：**不选任何屏也能说一句整片意见**。
+             以前逐屏是唯一入口（保存时先查 state.step），"看完了想说一句整体"这件事在页面上
+             没法表达 —— 人只能挑一屏、把整片的话塞进那一屏，或者干脆不说。
+             规则（模组 design-and-porting-rules 的 R10）：页面不许把逐单位当成唯一入口。
+             自检问法：「我不想针对任何一个单位，只想说一句整体意见 —— 页面允许吗？」 -->
+        <div class="mode" id="fb-mode">
+          <button type="button" class="mode-tab" data-mode="overall" id="mode-overall">整片意见</button>
+          <button type="button" class="mode-tab" data-mode="step" id="mode-step">当前屏 · <span id="fb-step">未选中</span></button>
+        </div>
+        <p class="mode-note" id="mode-note"></p>
+        <select id="fb-type">
+          <option value="visual">visual</option>
+          <option value="timing">timing</option>
+          <option value="asset">asset</option>
+          <option value="copy">copy</option>
+          <option value="animation">animation</option>
+        </select>
+        <textarea id="fb-text" placeholder="整片看完总想说的一点…（不针对某一屏）"></textarea>
+        <div id="stale-note" hidden></div>
+        <div class="save-bar">
+          <button id="fb-save" disabled>保存反馈</button>
+          <div id="save-state">正在连接审阅宿主…</div>
+        </div>
+      </div>
+    </div>
+    <div class="side">
+      <div class="steps" id="steps"></div>
+    </div>
+  </div>
+
+  <script>
+    /* 逐画面审阅页（video-craft 的审阅面入口，review-surface/2.0.0）。
+
+       同一份代码两种宿主：有插件 → DSH 侧栏 iframe + postMessage；没插件 → serve-review.mjs + fetch。
+       差异全在桥里，这里不分支。页面**不带桥的副本**，只留一个注入点（见上面那个 script 标签）。
+
+       rel 一律相对 surface 的 `dir`（＝项目根）：`timeline/timeline.json`、`review/...`。
+       桥在没插件时的默认 base 是页面自己那一层（`./` → `/review/`），两者差一级，所以
+       connect() 显式给 `base: '../'`。同一个 rel 在两种宿主下都落到项目根。 */
+    const REVIEW_SURFACE_REL = "review/review-surface.json";
+    const SUBMISSIONS_FALLBACK_REL = "review/review-submissions.json";
+    const TIMELINE_REL = "timeline/timeline.json";
+
+    const state = { chapter: null, step: null, stepIndex: null, durationMs: 0 };
+    // 两条路：'overall'（不针对任何一屏）与 'step'（当前屏）。
+    // **默认 overall** —— 页面刚打开时什么都没选，那就该能直接说一句整片意见；
+    // 点右边某一屏会自动切到 'step'（那是人的手势）。逐屏那条的行为一个字没变。
+    let fbMode = "overall";
+    const draftKey = "visual-review-draft:" + location.pathname;
+    let draftTimer = null;
+    let review = null;
+    let submissionsRel = SUBMISSIONS_FALLBACK_REL;
+    let timelineFingerprint = null;
+    let loadedTimelineId = null;        // 页面**手上这一版**的 id：记录里用它说"对着哪一版说的"
+    let staleNoted = false;
+
+    function pad(n) { return String(n).padStart(2, "0"); }
+    function fmt(ms) {
+      const s = Math.round(ms / 1000);
+      return `${pad(Math.floor(s / 60))}:${pad(s % 60)}`;
+    }
+
+    // 保存状态常驻可见（GOTCHAS #18）：未保存 / 保存中 / 已保存 HH:MM:SS + 目标文件。
+    // 「草稿在本机」和「已进文件」必须说成两件不同的事——否则作者会以为丢了。
+    function label(message, kind = "") {
+      const el = document.getElementById("save-state");
+      el.textContent = message;
+      el.className = kind;
+    }
+
+    /* 草稿用 localStorage —— 但**不透明源 iframe 里读它会直接抛 SecurityError**
+       （审阅桥的 docstring 专门交代过这件事）。有插件时页面就在那种帧里，
+       所以这里一律 try/catch：拿不到本地草稿是降级，不是故障，不许因此让整页崩掉。 */
+    function draftStore() {
+      try { return window.localStorage; } catch { return null; }
+    }
+    function saveDraft() {
+      const store = draftStore();
+      if (!store) return;
+      try {
+        store.setItem(draftKey, JSON.stringify({
+          text: document.getElementById("fb-text").value,
+          type: document.getElementById("fb-type").value,
+        }));
+      } catch { /* 满或不可写：草稿只是便利，不是承诺 */ }
+    }
+    function restoreDraft() {
+      const store = draftStore();
+      if (!store) return;
+      let draft = null;
+      try { draft = JSON.parse(store.getItem(draftKey) || "null"); } catch { return; }
+      if (!draft) return;
+      if (draft.text) {
+        document.getElementById("fb-text").value = draft.text;
+        label("未保存到文件 · 已恢复本机草稿", "dirty");
+      }
+      if (draft.type) document.getElementById("fb-type").value = draft.type;
+    }
+    const MODE_NOTES = {
+      overall: "这一条不针对任何一屏：整片看完总想说的一点。收件后进 feedback/overall.jsonl。",
+      step: "这一条只针对下面这一屏；记录里会带上它的 caption 与时长，不针对别人。",
+      "step-none": "「当前屏」这一路要先在右边点一屏。只想说整片，就切回「整片意见」——那条不需要选屏。",
+    };
+    function setMode(mode) {
+      fbMode = mode;
+      document.getElementById("mode-overall").classList.toggle("active", mode === "overall");
+      document.getElementById("mode-step").classList.toggle("active", mode === "step");
+      const text = document.getElementById("fb-text");
+      text.placeholder = mode === "overall"
+        ? "整片看完总想说的一点…（不针对某一屏）"
+        : (state.step ? "这一屏…" : "先点右边一屏；或切回「整片意见」");
+      document.getElementById("mode-note").textContent =
+        mode === "overall" ? MODE_NOTES.overall : (state.step ? MODE_NOTES.step : MODE_NOTES["step-none"]);
+    }
+
+    function clearDraft() {
+      const store = draftStore();
+      if (!store) return;
+      try { store.removeItem(draftKey); } catch { /* 清不掉就当没有 */ }
+    }
+
+    // 提交文件由 surface 声明（相对 surface 文件），页面自己读回来 ——
+    // 不从页面里再抄一份路径，少一个会漂移的地方。读不到就退回默认并**说出来**。
+    async function resolveSubmissionsRel() {
+      try {
+        const doc = JSON.parse(await review.readText(REVIEW_SURFACE_REL));
+        if (doc && doc.feedback) {
+          const dir = REVIEW_SURFACE_REL.replace(/[^/]+$/, "");
+          return dir + String(doc.feedback).replace(/^\.\//, "");
+        }
+      } catch { /* 读不到就退回下面那个 */ }
+      noteStaleFree("读不到 review-surface.json：提交文件按默认路径写（可能与 surface 声明的不一致）。要查就回对话说一声。");
+      return SUBMISSIONS_FALLBACK_REL;
+    }
+
+    /* 提示语里要求人做的动作，**必须在页面上做得到**。
+       做不到就别写那句话 —— 要么补控件（`withReload`），要么改成"回对话说一声"。
+       这条是被用户报出来的：旧提示让人"重新加载这一页"，而页面上根本没有那个按钮。 */
+    function noteStaleFree(text, { withReload = false } = {}) {
+      const box = document.getElementById("stale-note");
+      box.textContent = "";                                  // 不用 innerHTML：文本里有变量
+      box.append(document.createTextNode(withReload ? text + " " : text));
+      if (withReload) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.id = "stale-reload";
+        button.textContent = "重新加载";
+        button.addEventListener("click", () => location.reload());
+        box.append(button);
+      }
+      box.hidden = false;
+    }
+
+    // 时间轴指纹：只用来判断「页面手上的时间轴还是不是现在这一份」。
+    // 不发明版本号（review-ui.md 把 codeVersion 记为已知缺口），只 diff 页面真正渲染出来的东西。
+    /* 时间轴版本的短 id：同一版 → 同一个 id（FNV-1a 32 位，8 位十六进制）。
+       不用 crypto.subtle：它要安全上下文、还是异步的，而这东西要在提交那一刻同步算出来。 */
+    function shortId(text) {
+      let hash = 0x811c9dc5;
+      for (let i = 0; i < text.length; i += 1) {
+        hash ^= text.charCodeAt(i);
+        hash = Math.imul(hash, 0x01000193);
+      }
+      return (hash >>> 0).toString(16).padStart(8, "0");
+    }
+
+    function fingerprint(data) {
+      // 指纹 = **记录会抄走的那几个字段** ＋ **页面摆给人看的那几个字段**。
+      //
+      // 以前只比结构（章数/步数/id），于是**只改一句 caption** 时它认为"没变" —— 而那正是
+      // 记录抄走的东西：人对着旧文字提的意见，会挂着一条已经不存在的话，且没有任何提示。
+      // 实测触发过一次（改 caption 验戳），所以这里按"抄走什么就比什么"来定。
+      const parts = [data.totalChapters, data.totalSteps, data.totalDurationMs];
+      for (const ch of data.chapters || []) {
+        parts.push(['ch', ch.id, ch.title || ''].join('\u0001'));
+        for (const st of ch.steps || []) {
+          parts.push(['st', st.id, st.step, st.durationMs, st.caption || '', st.screenIntent || ''].join('\u0001'));
+        }
+      }
+      return parts.join('\u0002');
+    }
+
+    // 时间轴上"这一段对应哪几条 cue"的字段**改过名**：现在的产出方
+    // （`helpers/timeline_derive.py`）写 `cueRange`，老项目里叫 `srtRange`
+    // （本仓库的 `visual/scripts/align-visual-plan.py:175` 就在做这个改名）。
+    // 认两种：老项目不该因为一个字段名的年代差就让整页空白。
+    function cueRangeOf(st) {
+      const r = Array.isArray(st.cueRange) ? st.cueRange
+        : (Array.isArray(st.srtRange) ? st.srtRange : null);
+      return (r && r.length >= 2) ? r : null;
+    }
+
+    async function loadTimeline() {
+      let data;
+      try {
+        // 一律走桥：有插件时读字节，没插件时是相对 dir 的地址。桥不检查 response.ok，
+        // 所以文件不在会拿到 404 的正文而不是异常 —— 解析失败同样落进 catch。
+        data = JSON.parse(await review.readText(TIMELINE_REL));
+      } catch (error) {
+        document.getElementById("project-name").textContent = "读不到 timeline.json";
+        label(`读不到时间轴（${error.message}）——不是当前项目的审阅页，或宿主没起好。把这一行发回对话让模型看一眼`, "error");
+        return null;
+      }
+      timelineFingerprint = fingerprint(data);
+      loadedTimelineId = shortId(timelineFingerprint);
+      document.getElementById("project-name").textContent = data.totalChapters + " 章 · " + data.totalSteps + " 步 · " + fmt(data.totalDurationMs);
+      const box = document.getElementById("steps");
+      box.replaceChildren();
+      let drawn = 0, failed = 0;
+      for (const ch of data.chapters) {
+        const h = document.createElement("div");
+        h.className = "step";
+        h.innerHTML = `<div class="step-id">chapter ${ch.id}</div><div class="step-meta">${ch.title}</div>`;
+        box.appendChild(h);
+        for (const st of ch.steps) {
+          const el = document.createElement("div");
+          el.className = "step";
+          try {
+            const cue = cueRangeOf(st);
+            el.innerHTML = `
+              <div class="step-id">${st.id} · ${fmt(st.durationMs)}${cue ? ` · cue ${cue[0] + 1}-${cue[1] + 1}` : ""}</div>
+              <div class="step-caption">${st.caption || ""}</div>
+              <div class="step-meta">${st.screenIntent || ""}</div>`;
+          } catch (error) {
+            /* **一屏画不出来，不许把整张清单带走。** 以前这里没有 try：一个字段变了
+               （老项目的时间轴没有 cueRange、只有 srtRange）就抛在循环里，页头仍然写着
+               "6 章 · 23 步"，下面却一屏都没有 —— 看起来像"这个项目没问题"。 */
+            failed += 1;
+            el.innerHTML = `<div class="step-id">${st.id || "?"} · 画不出来：${error.message}</div>
+              <div class="step-caption">这一屏的数据与页面期望的不一致，先在时间轴上核对再提意见。</div>`;
+          }
+          el.addEventListener("click", () => {
+            document.querySelectorAll(".step").forEach((e) => e.classList.remove("active"));
+            el.classList.add("active");
+            state.chapter = ch.id;
+            state.step = st.id;
+            state.stepIndex = st.step;
+            state.durationMs = st.durationMs;
+            document.getElementById("fb-step").textContent = st.id;
+            setMode("step");                       // 点屏 = 想对这一屏说点什么（人的手势）
+            // jump the player timeline to this step (click is a user gesture,
+            // so audio playback is allowed)
+            const player = document.getElementById("player");
+            if (player && typeof player.seek === "function") {
+              player.seek(st.startMs / 1000);
+              player.play();
+            }
+          });
+          box.appendChild(el);
+          drawn += 1;
+        }
+      }
+      if (failed) {
+        noteStaleFree(`${failed} 屏没能画出来（其余 ${drawn - failed} 屏可用）：时间轴的字段与这一版页面期望的不一致。`
+          + `这不是这一页能修的 —— 把那句话发回对话让模型处理；在那之前，别对着半张清单提意见。`);
+      }
+      return data;
+    }
+
+    /* 宿主戳了一下（surface 的 watch：timeline/timeline.json 的 mtime/size 变了）。
+       页面自己重读、自己 diff —— **不整页重载**，不动选中状态、不动正在输入的文字。
+       时间轴换了意味着 step 边界与 caption 都可能换过：这一条反馈会挂到旧 step 上，
+       所以要当场说出来。但**不硬拦**提交：读不到可能只是暂时的，把人锁在外面更糟；
+       权威在产出方那一侧（收件时还会再判一次）。 */
+    async function onHostChanged() {
+      let data;
+      try { data = JSON.parse(await review.readText(TIMELINE_REL)); } catch { return; }
+      if (timelineFingerprint === null) { timelineFingerprint = fingerprint(data); return; }
+      if (fingerprint(data) === timelineFingerprint) return;   // 戳到了，但时间轴没变（别的一动它就响）
+      staleNoted = true;
+      noteStaleFree("时间轴已经变了（宿主戳过、页面自己读出来对不上）：页面上的 step 边界与 caption 是上一版。"
+        + "先点「重新加载」看这一版、再提交；现在提交也能存，但这一条会挂在旧的 step 上。",
+        { withReload: true });
+    }
+
+    /* 提交：**先读回旧的、合并、再整体写**（宿主只做覆盖写，不做追加）。
+       这样作者连写几条、模型还没收件时，前几条也不会被后一条盖掉。 */
+    async function collectRecords() {
+      try {
+        const doc = JSON.parse(await review.readText(submissionsRel));
+        if (doc && Array.isArray(doc.records)) return doc.records;
+      } catch { /* 第一次保存：文件还不存在，这是正常的 */ }
+      return [];
+    }
+
+    // 两种记录形状。**整片那条不许编一个假 stepId**（那正是"改形状"）：
+    // 它本来就带 `phase`，收件侧按 phase 认，进 feedback/overall.jsonl。
+    function buildRecord(text) {
+      const common = {
+        type: document.getElementById("fb-type").value,
+        text,
+        status: "open",
+        batchId: "review-" + new Date().toISOString().slice(0, 10) + "-1",
+        createdAt: new Date().toISOString(),
+      };
+      // **只给人看的告警 = 机器看不见的告警**：橙条挂了就得进记录，否则收进来那条
+      // 干干净净，模型不知道它是"对着旧文字说的"。没有橙条时**不带这个字段**（不是常态字段）。
+      const stale = staleNoted ? { stale: true, stale_timeline: loadedTimelineId } : {};
+      if (fbMode === "overall") return { phase: "overall", ...stale, ...common };
+      const active = document.querySelector(".step.active");
+      return {
+        chapterId: state.chapter,
+        stepId: state.step,
+        stepIndex: state.stepIndex,
+        caption: active?.querySelector(".step-caption")?.textContent || "",
+        durationMs: state.durationMs,
+        ...stale,
+        ...common,
+      };
+    }
+
+    // 防重入：保存是「读回旧的 → 合并 → 整体写」，两次并发会**丢掉一条**（后写的把先写的盖掉）。
+    // 按钮在保存期间是 disabled，所以鼠标点不进来；但 **Cmd-S 也会调 save()**，它不看按钮状态。
+    // 这是"意见不能丢"那一类，值得一行守卫。
+    let saving = false;
+    async function save() {
+      if (saving) return;
+      const text = document.getElementById("fb-text").value.trim();
+      if (!text) { label("反馈内容为空", "error"); return; }
+      if (fbMode === "step" && !state.step) {
+        label("「当前屏」这一路要先在右边点一屏；只想说整片就切回「整片意见」（那条不用选屏）", "error");
+        return;
+      }
+      const rec = buildRecord(text);
+      const landsIn = fbMode === "overall" ? "feedback/overall.jsonl" : `feedback/${rec.chapterId}.jsonl`;
+      const button = document.getElementById("fb-save");
+      saving = true;
+      button.disabled = true;
+      label("正在保存…");
+      try {
+        const records = await collectRecords();
+        records.push(rec);
+        await review.write({
+          contract_version: "video-craft-review-submissions/1.0.0",
+          surface: "video-craft/visual",
+          updated_at: new Date().toISOString(),
+          records,
+        });
+        clearDraft();
+        document.getElementById("fb-text").value = "";
+        const at = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+        // 唤醒结果分档：宿主**接受了**不等于 agent **看到了**。没有插件时 serve-review.mjs
+        // 没有人可唤，它不回 verified —— 那就必须说出来，不能和核过的那档同一句话。
+        let wakeNote = "；模型未核对通知，若迟迟没反应请回对话说一声";
+        try {
+          // 整片那条用**整句覆盖**：surface 的模板是"某一条画面反馈"的口气，
+          // 直接套会说成"整片 有一条画面反馈"。
+          const result = await review.wake(fbMode === "overall"
+            ? { unit: "整片", text: "整片看完有一条整体反馈；读 feedback/overall.jsonl。" }
+            : { unit: rec.stepId });
+          if (result && result.verified) wakeNote = "；宿主已在会话日志里核对进入队列";
+        } catch (error) {
+          wakeNote = `；**通知没送出去**（${error.message}），请回对话说一声`;
+        }
+        label(`已写入 ${submissionsRel}（本批 ${records.length} 条）${at} · 收件后进 ${landsIn}${wakeNote}`, "ok");
+        if (staleNoted) noteStaleFree("这一条是在时间轴已变的提示下提交的（见上）。", { withReload: true });
+      } catch (error) {
+        // 保存失败不清空输入框：这条意见还没进文件，人不能白写
+        label(`保存失败：${error.message}——文字仍在输入框，未丢失。再点一次「保存反馈」；还不行就把这一行发回对话`, "error");
+      } finally {
+        saving = false;
+        button.disabled = false;
+      }
+    }
+
+    // 两条路的切换：**不点任何屏也能用「整片意见」**（它是默认那一路）
+    document.getElementById("fb-mode").addEventListener("click", (event) => {
+      const tab = event.target.closest(".mode-tab");
+      if (tab) setMode(tab.dataset.mode);
+    });
+    document.getElementById("fb-save").addEventListener("click", save);
+    document.getElementById("fb-text").addEventListener("input", () => {
+      label("未保存到文件 · 文字暂存本机", "dirty");
+      clearTimeout(draftTimer);
+      draftTimer = setTimeout(saveDraft, 350);
+    });
+    document.getElementById("fb-type").addEventListener("change", () => {
+      label("未保存到文件 · 文字暂存本机", "dirty");
+      saveDraft();
+    });
+    document.addEventListener("keydown", (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { e.preventDefault(); save(); }
+    });
+
+    (async () => {
+      if (!window.ReviewBridge) {
+        label("没有加载到审阅桥：这个页面必须由审阅宿主打开（DSH 侧栏，或 planners-review-core 的 serve-review.mjs）。把这一行发回对话", "error");
+        return;
+      }
+      try {
+        // **不给 base**：页面里的 rel 一律相对 `dir`（项目根），而桥在无插件时的默认 base 是
+        // 页面自己那一层（`./` → `/review/`）—— 两者差一级，本该由宿主告诉页面。宿主确实
+        // 会注 `window.__REVIEW_BASE__`，但那只在标记**裸着独占一行**时才装得上（以前它落在
+        // 前一个脚本结束标签之前，被当成脚本文本吃掉了，所以这里曾经硬写 base）。
+        //
+        // ⚠️ 这一段是**内联脚本**：连注释里都不许出现脚本结束标签的字面量 —— HTML 解析器
+        // 在那里就把脚本切断了，整页会静默白掉（实测踩到过：页头还在、下面什么都没有）。
+        // 标记写法定死之后就不再需要页面自带 host 端知识了。
+        review = await ReviewBridge.connect();
+      } catch (error) {
+        label(`连不上审阅宿主（${error.message}）——反馈存不进文件。把这一行发回对话`, "error");
+        return;
+      }
+      submissionsRel = await resolveSubmissionsRel();
+      setMode("overall");          // 默认那一路：刚打开、什么都没选，也该能说一句整片意见
+      document.getElementById("fb-save").disabled = false;
+      label(`已连接审阅宿主（${review.transport}）· 每条反馈先落 ${submissionsRel}`, "ok");
+      review.on("changed", () => { onHostChanged(); });
+      // 本机草稿**先放回输入框**：它跟时间轴没有关系（`restoreDraft` 只读 localStorage），
+      // 以前挂在 `if (data)` 上 —— 于是"时间轴读不到"这个**最想找回自己那段字**的场景里，
+      // 草稿恰恰不显示，人一重打就被 `saveDraft` 覆盖掉。也是同一条规则：出口/内容的存在，
+      // 不许取决于"恰恰会失败的那件事"。顺序放在 `loadTimeline` 之前，好让它的报错不被
+      // "已恢复本机草稿"那句盖掉。
+      restoreDraft();
+      await loadTimeline();
+    })();
+  </script>
+</body>
+</html>

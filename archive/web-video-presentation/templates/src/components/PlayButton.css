@@ -1,0 +1,50 @@
+/* ═════════════════════════════════════════════════════════════════════
+ * PlayButton · Swiss IKB minimal play/pause control
+ *
+ * Positioned top-right corner. Starts / pauses SRT-timed playback.
+ * ═════════════════════════════════════════════════════════════════════ */
+
+.play-btn {
+  position: fixed;
+  top: 52px;
+  right: 20px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border: 1px solid var(--rule);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  border-radius: var(--r-card);
+  transition: border-color var(--dur-quick) linear, background var(--dur-quick) linear;
+  user-select: none;
+}
+
+.play-btn:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.play-btn-icon {
+  display: flex;
+  align-items: center;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.play-btn-label {
+  color: var(--text-2);
+}
+
+.play-btn-time {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-mute);
+  letter-spacing: 0;
+}

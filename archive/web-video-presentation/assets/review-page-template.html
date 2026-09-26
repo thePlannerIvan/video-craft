@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Web Video Presentation · Review</title>
+  <script type="module" src="https://cdn.jsdelivr.net/npm/@hyperframes/player"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, "PingFang SC", sans-serif; background: #101014; color: #e8e8ea; padding: 24px; }
+    h1 { font-size: 18px; margin-bottom: 16px; }
+    .layout { display: flex; gap: 24px; align-items: flex-start; }
+    .left { flex: 1 1 58%; max-width: 1100px; display: flex; flex-direction: column; gap: 12px; }
+    .player-box { background: #000; border: 1px solid #2a2a32; }
+    hyperframes-player { display: block; width: 100%; aspect-ratio: 16 / 9; }
+    .player-box .hint { padding: 8px 12px; font-size: 12px; color: #888; }
+    .side { flex: 1 1 42%; max-width: 560px; }
+    .steps { background: #17171d; border: 1px solid #2a2a32; max-height: calc(100vh - 170px); overflow-y: auto; }
+    .step { padding: 10px 14px; border-bottom: 1px solid #23232b; cursor: pointer; }
+    .step:hover { background: #1e1e26; }
+    .step.active { background: #23233a; }
+    .step-id { font-family: ui-monospace, monospace; font-size: 11px; color: #9a9ab0; }
+    .step-caption { font-size: 13px; margin-top: 4px; line-height: 1.5; }
+    .step-meta { font-size: 11px; color: #7a7a90; margin-top: 4px; }
+    .feedback { background: #17171d; border: 1px solid #2a2a32; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+    .feedback h2 { font-size: 13px; color: #aaa; }
+    #fb-type { width: 100%; padding: 6px; background: #101014; color: #e8e8ea; border: 1px solid #2a2a32; }
+    #fb-text { width: 100%; min-height: 64px; padding: 8px; background: #101014; color: #e8e8ea; border: 1px solid #2a2a32; resize: vertical; }
+    button { padding: 8px 16px; background: #3a3af0; color: #fff; border: none; cursor: pointer; font-size: 13px; }
+    #log { font-size: 12px; color: #7a7a90; }
+  </style>
+</head>
+<body>
+  <h1>逐画面审阅 · <span id="project-name">project</span></h1>
+  <div class="layout">
+    <div class="left">
+      <div class="player-box">
+        <!--
+          播放器必须指向 HyperFrames preview 服务器的运行时注入端点（见 REVIEW-UI.md）。
+          原因：clip 可见性切换和音频由运行时管理，原始静态文件没有运行时——所有画面会
+          叠在一起只剩最后一屏。
+          启动：cd composition && npx hyperframes preview --port <port>
+          src 格式：http://localhost:<port>/api/projects/<meta.json 的 name>/preview?__hf_shader_capture_scale=1&__hf_shader_loading=player
+        -->
+        <hyperframes-player id="player" src="http://localhost:5176/api/projects/composition/preview?__hf_shader_capture_scale=1&amp;__hf_shader_loading=player" controls autoplay></hyperframes-player>
+        <div class="hint">暂停在出问题的画面 → 选中左侧对应 step → 填反馈。反馈不会自动上传——点"生成反馈行"后复制 JSONL 行，交给 agent 或追加进 feedback/&lt;chapter&gt;.jsonl。</div>
+      </div>
+      <div class="feedback">
+        <h2>反馈 · <span id="fb-step">未选中 step</span></h2>
+        <select id="fb-type">
+          <option value="visual">visual</option>
+          <option value="timing">timing</option>
+          <option value="asset">asset</option>
+          <option value="copy">copy</option>
+          <option value="animation">animation</option>
+        </select>
+        <textarea id="fb-text" placeholder="这一屏…"></textarea>
+        <button id="fb-save">生成反馈行</button>
+        <div id="log"></div>
+      </div>
+    </div>
+    <div class="side">
+      <div class="steps" id="steps"></div>
+    </div>
+  </div>
+
+  <script>
+    const state = { chapter: null, step: null, stepIndex: null };
+
+    function pad(n) { return String(n).padStart(2, "0"); }
+    function fmt(ms) {
+      const s = Math.round(ms / 1000);
+      return `${pad(Math.floor(s / 60))}:${pad(s % 60)}`;
+    }
+
+    async function load() {
+      const res = await fetch("../timeline/timeline.json");
+      const data = await res.json();
+      document.getElementById("project-name").textContent = data.totalChapters + " 章 · " + data.totalSteps + " 步 · " + fmt(data.totalDurationMs);
+      const box = document.getElementById("steps");
+      for (const ch of data.chapters) {
+        const h = document.createElement("div");
+        h.className = "step";
+        h.innerHTML = `<div class="step-id">chapter ${ch.id}</div><div class="step-meta">${ch.title}</div>`;
+        box.appendChild(h);
+        ch.steps.forEach((st) => {
+          const el = document.createElement("div");
+          el.className = "step";
+          el.innerHTML = `
+            <div class="step-id">${st.id} · ${fmt(st.durationMs)} · SRT ${st.srtRange[0] + 1}-${st.srtRange[1] + 1}</div>
+            <div class="step-caption">${st.caption}</div>
+            <div class="step-meta">${st.screenIntent || ""}</div>`;
+          el.addEventListener("click", () => {
+            document.querySelectorAll(".step").forEach((e) => e.classList.remove("active"));
+            el.classList.add("active");
+            state.chapter = ch.id;
+            state.step = st.id;
+            state.stepIndex = st.step;
+            document.getElementById("fb-step").textContent = st.id;
+            // jump the player timeline to this step (click is a user gesture,
+            // so audio playback is allowed)
+            const player = document.getElementById("player");
+            if (player && typeof player.seek === "function") {
+              player.seek(st.startMs / 1000);
+              player.play();
+            }
+          });
+          box.appendChild(el);
+        });
+      }
+    }
+
+    document.getElementById("fb-save").addEventListener("click", () => {
+      const text = document.getElementById("fb-text").value.trim();
+      if (!state.step) { document.getElementById("log").textContent = "先选中一个 step"; return; }
+      if (!text) { document.getElementById("log").textContent = "反馈内容为空"; return; }
+      const rec = {
+        chapterId: state.chapter,
+        stepId: state.step,
+        stepIndex: state.stepIndex,
+        caption: document.querySelector(".step.active .step-caption")?.textContent || "",
+        durationMs: Math.round(parseFloat(document.querySelector(".step.active .step-meta").textContent.split("·")[0]) * 1000) || 0,
+        type: document.getElementById("fb-type").value,
+        text,
+        status: "open",
+        batchId: "review-" + new Date().toISOString().slice(0, 10) + "-1",
+        createdAt: new Date().toISOString(),
+      };
+      navigator.clipboard.writeText(JSON.stringify(rec)).catch(() => {});
+      document.getElementById("log").textContent = "已复制 JSONL 行（剪贴板）：" + JSON.stringify(rec).slice(0, 80) + "…";
+      document.getElementById("fb-text").value = "";
+    });
+
+    load();
+  </script>
+</body>
+</html>

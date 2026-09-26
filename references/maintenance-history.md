@@ -1,0 +1,172 @@
+# 维护记录（升级，不是 CHANGELOG）
+
+## 2026-09-26 · 剪接预演面接缝（第四条形状：在板子上挑），自带服务器退役
+
+**起因**：接缝已经接了三家（ppt-hell 逐单位+版本 / video-craft 视觉面追加式 / bypage 逐页+事实例外），
+但剪接线一直是**本 Skill 自己的服务器**（`edl_preview_serve.py`：固定端口 8737、严格包含的静态根、
+`/api/save` 整份替换 `selections.json`）。第四家的形状与前三家都不同，所以结论不能照抄。
+
+**这一面逼出来的缝修正（唯一一处）**：宿主静态分支**认 `Range`**。前三家都不放**大媒体**，
+所以这条潜伏缺口在它们身上看不见 —— 而这一面要在 SOURCE 时间轴上拖 `<video>`，真项目素材
+**0.5–2.04 GB**（四个真项目量过），且宿主发 `no-store`（素材是原地改写的，缓存会骗人）。
+没有 Range 就只有两个坏选择：每次把整个素材拉完，或者让页面硬写另一个 origin（违反 R4）。
+一并补了 MIME 的 `.mov`/`.m4v`（原来会给 `application/octet-stream`，`<video>` 放不出来）。
+边界情况都钉了测试：无 Range 的 `200` **仍带** `Accept-Ranges`、不可满足 `416` + `bytes */<total>`、
+单区间 `Content-Length` ＝**实发**字节数、**多区间故意不支持**（回整份；写错 multipart 会静默截断）。
+
+**判断（两件，都不是照抄）**：
+- **`dir` ＝ 素材与剪辑目录的公共根**，不是剪辑目录。页面里那些 `/<素材>.mp4` 从写出来那天起
+  就假定 serve root 是公共根 —— 取公共根，页面与 `selections.json` 里的 `dir` **一个字符都不用改**
+  （真项目历史值就是 `/edit`，四个全一致）。"宿主严格单目录"不是缺口，是**配置**。
+- **该声明 `feedback`（＝`selections.json`），`wake` 只当门铃**。工件不许穿过人类语言通道：
+  几十上百条浮点区间塞进一句 prompt 再变回 JSON 就是丢信息。**整体意见另走一条**：只 `wake`、
+  **不写文件**（写进去会被 `apply_selection.py` 静默忽略 → 死字段）。这一条改了公共规则里
+  "第 4 类形状"的写法（拆成"结果就是那句话"与"结果是下一步要执行的工件"两半）——**第四家第一次
+  改到规则本身**。
+
+**改了**：`edl_preview_build.py`（裸注入点、桥接线**排在整页渲染之后**、保存走 `review.write`、
+R11 永久刷新出口、R10 整体入口、保存后敲一下门铃）；新增 `helpers/edl_review_surface.py`；
+删 `helpers/edl_preview_serve.py`；模组 `serve-review.mjs` 加 Range 与 MIME。
+
+**没改**：`selections.json` 的形状（含照旧写回去的 `dir`）、`apply_selection.py`、页面的交互
+（拖选/双击改字/时间轴/播放器）、页面位置。
+
+**基线是"无覆盖"**：接缝之前这一条线**没有任何测试**（`apply_selection` 只在注释里出现过一次）。
+新增 `tests/test_edl_review.py` 15 条 —— 接缝顺带给它第一张回归网，含真项目端到端（挑四个真项目里
+素材最大的那个，硬链接成副本跑，真项目只读）。
+
+**已知代价**：旧 `/api/save` 每次保存留一份 `selections.backup-<时间戳>.json`，缝的 `write` 是
+纯覆盖 → **这份时间戳备份没有了**。影响面：丢一次挑选（EDL 自己那层有 `edl.previous.json`，
+不受影响），人可以从页面重挑。已报备，未擅自加缝能力。
+
+**同轮修掉的**：`Cmd-S` 绕过 `disabled` → 并发保存 → 读-改-写**真的丢了一条**（加 `saving` 守卫，
+GOTCHAS #34）；陈旧提示**只给人看**（`stale`/`stale_timeline` 进记录，R5b）。
+
+这里装**已决定的升级**：做了什么、为什么、**影响了哪些 module**、删了什么。
+候选与状态在 `GOTCHAS.md`；模块边界与缝在 `references/architecture.md`。
+新的一次记在最上面。发版记录不在这里。
+
+## 2026-09-26 · 宿主生命周期搬进公共模组（只留一份）
+
+来源：`planners-review-core` 侧的整合（上一轮接入时发现：缝集中了**宿主**，没集中**宿主的生命周期**，
+两个家各一份 `review_surface.py`，已经漂移过——僵尸判据、SIGKILL 升级）。测试基线 **238 → 238 全绿**
+（一条没丢、一条没多；改的是调用点，不是断言）。
+
+| 做了什么 | 为什么 | 影响了哪些 module | 删了什么 |
+|---|---|---|---|
+| 生命周期（写/校验 surface、`host_state`、`host_alive`、`start_host`、`stop_host`、`_pid_alive`、`_startup_report`、`_port_of`、`open_review`）搬进 `planners-review-core/scripts/lib/review_host.py` | 两份副本会各自长 bug：僵尸判据、SIGKILL 升级、身份比对都只在一家修过 | `helpers/review_surface.py`（只剩 `surface_document` 与薄壳）、`helpers/lib/planners_modules.py`（只剩"找模组"）、`tests/test_visual_review_feedback.py`（生命周期调用改指模组、传 surface 路径） | 本 Skill 里那 7 个函数的实现；适配器里的 `node_binary()`（node 的查找也归模组，覆盖变量统一成 `REVIEW_CORE_NODE`） |
+
+**边界**：模组**不认识任何业务**（不解释审的是什么、也不需要在替谁干活），入参是一个 surface 路径；
+`surface_document(root)` 留在本 Skill（文档内容是业务）。`write_surface`/`validate_surface`/`open_review`
+在本 Skill 里只剩 1–4 行薄壳（建文档 → 交给模组 / 传路径 / 缺件前置）。
+
+## 2026-09-26 · 视觉审阅面挂到公共缝（planners-review-core）
+
+来源：B8 分解的「第二家」接入（第一家是 ppt-hell）。测试基线 **199 → 238 全绿**
+（新增 39，删除 0；被删的是本 Skill 自己那台 HTTP 服务器的专有测试，行为断言全部迁移到新入口）。
+另有一条 env-gated 的真浏览器冒烟（`VIDEO_CRAFT_BROWSER_TESTS=1`，默认 skip）。
+
+**只动视觉审阅面。** EDL 剪接预演那条线（`edl_preview_build/serve`、`selections.json`）一个字没动。
+
+| 做了什么 | 为什么 | 影响了哪些 module | 删了什么 |
+|---|---|---|---|
+| 审阅页改用**审阅桥**：`{{REVIEW_BRIDGE}}` 注入点、`review.readText` 读时间轴与 surface、`review.write` 提交、`review.wake` 唤醒；不再 `fetch("/api/feedback")` | 同一份页面要能在两种宿主下跑（有插件 → DSH 侧栏 iframe；没有 → 公共件起的本地宿主）。服务归缝，本 Skill 不再自己写 | `visual/assets/review-page-template.html` | 页面里对 `/api/health`、`/api/feedback` 的两处 fetch；剪贴板那条早已不在 |
+| 新增 `review-surface.py`：写/校验 `review/review-surface.json`、起 `serve-review.mjs`（`--port 0`）、判断宿主死活与**身份** | surface 是缝唯一认识的接口；宿主生命周期不再由本 Skill 自己实现 | `helpers/review_surface.py`（新）、`helpers/lib/planners_modules.py`（新，找公共模组的适配器） | 本 Skill 自己的 HTTP 服务器（`visual_review_serve.py` 的 `create_server` / `make_handler` / `self_check` / `main`） |
+| 新增收件层：surface 声明的**一份**提交文件 → `feedback/<chapterId>.jsonl` **追加**（按记录内容哈希去重） | 缝的落盘是**覆盖写一份文件**，本 Skill 的形状是**每章一份、只追加**。形状对不上时在收件处翻译，**不为了适配缝去改自己的反馈形状** | `helpers/review_inbox.py`（新） | — |
+| 「不端出旧项目」的判据从**端口**换成**内容**：pid + 注入过的页面 + `watch` 文件逐字节等于磁盘 | 新宿主 `--port 0`，端口不再有判断力；而页面是几个 Skill 共用的模板，本来也分不出项目 —— 项目专属的 `timeline/timeline.json` 才分得出 | `helpers/review_surface.py`（`host_alive` / `_serves_this_project`）、`tests/test_visual_review_feedback.py`（`HostIdentityCase`） | 「把注入点还原成宿主会注入的字符串再逐字节比页面」这条判据 —— 它把宿主的注入格式写死在自己这边，宿主改一次格式它就**静默**永远为假（实测踩到） |
+| 过期审阅页的守卫换成**注入点**判据，并分开报出两种过期副本 | 旧判据认 `fetch("/api/feedback"`；页面不再自己 POST 之后它就失效了 | `helpers/visual_review_feedback.py`（`PAGE_BRIDGE_MARKER` / `check_project`） | `PAGE_SAVE_MARKER` 那条判据 |
+| 新增真浏览器冒烟（`VIDEO_CRAFT_BROWSER_TESTS=1`）：页面加载 → 桥注入 → 时间轴渲染成 step 清单 → 一次提交落文件 + wake 被调用 → 收件成 JSONL 追加 → 重复收件是空操作 | 这一段是「意见不能丢」的端到端；只用单元测试证明不了桥真的把时间轴送到了页面 | `tests/test_review_browser.py`（新） | — |
+| 上屏文字闸门认得出新的审阅页 | 判据原来是「页面会不会把反馈回传服务器」，新页面通过桥说话 | `helpers/check_screen_text.py`（`FEEDBACK_ENDPOINTS` 增加 `{{REVIEW_BRIDGE}}` 与 `/__review/`） | — |
+
+| 单屏渲染各自 try/catch；`cueRange`/`srtRange` 两种字段名都认 | 拿真项目（`05-VideoProject/PPTSkillV2`，7 月的时间轴）跑时，页头写"6 章 · 23 步"、**下面一屏都没有**且无报错：渲染循环里 `st.cueRange[0]` 抛在 `for` 里，一个字段名的年代差带走了整张清单 | `visual/assets/review-page-template.html`（`cueRangeOf` + 逐屏失败出声） | 循环里裸取 `cueRange[0]` |
+| `stop_host` 认句柄并升级 SIGKILL | `os.kill(pid, 0)` 对**僵尸**也返回成功（子进程退出但父进程没 `wait()`），于是宿主明明关了却报"没停掉"；SIGTERM 也可能因 keep-alive 连接一直不返回 | `helpers/review_surface.py`（`_HOST_HANDLES` / `_pid_alive` / `stop_host`） | 只用 `kill(pid, 0)` 判死活、只发 SIGTERM |
+
+**真项目实跑（`05-VideoProject/PPTSkillV2`）**：旧页（剪贴板时代，7 月 31 日，6558 B）
+sha256 `796ff3f2…` → 按文档那一步用新模板重生成（`15418868…` → 修 `cueRangeOf` 后 `74a8e939…`
+→ 标记改裸写、撤掉 `base` 后定稿 `192c5f9a…`，21397 B）。
+无插件宿主下真浏览器跑通：注入点被换掉、时间轴经桥渲染 23 屏、一次提交落
+`review/review-submissions.json` 且 wake 被调用、收件追加进 `feedback/cta.jsonl`（3 → 4 行，纯追加）。
+**6 章历史反馈逐字节未变**（收件只追加一行，随后用收件自己留的 `.previous/` 备份还原）。
+证据留在 `.scratch/planner-skill-decomposition/b8.5-pptskillv2-evidence/`。
+
+**页面不再自带 `base`**：标记改成裸写之后，宿主注入的 `window.__REVIEW_BASE__` 真的到得了页面
+（以前它落在前一个脚本结束标签之前，被当成脚本文本吃掉），所以 `connect({base:'../'})` 那个
+补洞用的参数撤掉了 —— 实测撤掉后浏览器冒烟仍然通过。
+
+**接入时逼出来的三条缝的修正（已由缝自己改完）**：`watch` 的基准统一成**相对 surface 文件**；
+无插件宿主注入 `window.__REVIEW_BASE__`；宿主按 `watch` 只盯声明的那几个文件。
+注入点的唯一写法也定死了：**裸着独占一行、只出现一次**（校验器 `bridge_placeholder_not_bare` /
+`bridge_placeholder_multiple`）。详见 `GOTCHAS.md` #32 与接入报告。
+
+## 2026-09-26 · 报告 P-24…P-30 与 §11.4 的七条修复
+
+来源：`05-VideoProject/06-测试-Vans-20260926/_测试报告.md`（作者实跑剪辑 + 动画整条链后的复跑）。
+测试基线 162 → **199 全绿**（新增 37，删除 0）。
+
+| 做了什么 | 为什么 | 影响了哪些 module | 删了什么 |
+|---|---|---|---|
+| 抽段**无条件读回**（可读 / 音视频互差 ≤ 1 帧 / 与请求差 ≤ 1 帧）；坏段重抽一次；仍坏则硬失败并点名段号与路径；`CalledProcessError` 一并接住 | 真跑出现过 48 字节的坏段：`render` 退 0、成片少 10 秒、`segment_durations.json` 把 80.0 记成实测，而 `check_edl` / `verify_av` 全绿 | `helpers/render.py`（新增 `SegmentError` / `check_segment`）、`tests/test_segment_integrity.py`（新） | 缓存命中之外那条「不校验」的路径 |
+| `segment_durations.json` **落盘前**断言 `\|总长 − 标称\| ≤ 1 帧 × 段数` | 记录与标称差 4 秒却没有任何断言 | `helpers/render.py`（新增 `check_total_duration`） | — |
+| 交付闸门**按 `edl_sha256` 选渲染记录**；历史键保留但不参与判定 | 键按输出名累积（`poc`/`draft`/`mix-base`/`final`），两个闸门读到 `poc` 的 12 秒，把 84 秒的正确成片判成「可能被截断或替换过」——最后一道关给假 FAIL | `helpers/_edl.py`（新增 `select_render_record` / `render_record`）、`helpers/check_edl.py`、`helpers/verify_delivery.py`、`tests/test_render_record.py`（新） | 「按迭代顺序取第一条记录」这条隐式规则 |
+| 画面页的 **href 边界**改为页目录的父目录（父目录叫 `_internal` 时再上一层）；项目根 / 页目录 / 包根 / `input/` / `input/scenes/` 都解析到同一对路径；越界报错改成指向正确调用，不再建议违约改法 | docstring 里那个字符串（`--pages <项目>/_internal/02_svg_source`）必然失败，而报错的两条建议分别违反逐字保真与上游契约 | `visual/scripts/import_svg_page.py`（新增 `href_boundary`，重写 `resolve_pages` 与报错） | 两条违约建议；「显式给了页目录就用它当边界」这条规则 |
+| 组成品 `--verify` 增加**父级穿越闸门**：任何 `href`/`src="../…"` 即失败 | 手写内联的页面没经过导入器的改写，`hyperframes check` 以 `invalid_parent_traversal_in_asset_path` 拦下；而 `--prove` 对同一批页面报 8/8 byte-identical | `visual/scripts/generate-composition.py`、`tests/test_svg_page_import.py`（`CompositionGuardTests`） | 「验证只看时间与尺寸」这条边界 |
+| `--audit` 增加**跨页 id 碰撞**报告（退非零，修法指向画面侧）；**id 一个字不改** | 各屏内联进同一个 DOM，四个 clip 各有一个 `#caption-1`，`hyperframes check` 的对比度警告对不上时刻；「按 id 指名」在这种情况下会静默错绑 | `visual/scripts/import_svg_page.py`（新增 `audit_pages`）、`composition/pages/manifest.json` 的 `ids` 字段 | — |
+| 对比度判据：`--text`/`--text-2`/`--text-mute` 进 `failures`（4.5:1）；`--text-faint` **去掉阈值**、只报实测 | `--text-faint` 的阈值写在判据表里却永远不可能命中：23/23 判 ok，而 18 套的 faint 在 1.86–2.98:1。文档说它「要可读」——「一个都没过」被显示成「0 failing」 | `visual/scripts/check_themes.py`、`visual/themes/*/tokens.css`（6 套 `--text-mute` 改色）、`references/themes.md`、`tests/test_themes.py` | `NOTE_CONTRAST` 这个常量；`themes.md` 里「`--text-faint` 仍然要可读」那句 |
+| 渲染前预检 `helpers/check_render_env.py`：**真的往字体缓存目录写一个探针文件**，不可写就退非零并给出 `HYPERFRAMES_FONT_CACHE_DIR`；Node < 22 与缺 composition 各一条 | 受限沙箱下 `hyperframes render` 中途 `EPERM`，报错只给 `--docker`（本机无 docker），而 `doctor` 的九项不含这一项 | `helpers/check_render_env.py`（新）、`tests/test_render_env.py`（新）、`install.md`、`references/visual-rendering.md`、`SKILL.md` | 「`hyperframes doctor` 覆盖环境自检」这个假设 |
+| `hyperframes` 的调用前提写明：**必须在 `composition/` 里跑**，`init` 会覆盖生成物、不是解法 | 从项目根跑会报「没有 composition，去跑 `hyperframes init`」——照做就覆盖掉 `generate-composition.py` 的产出 | `SKILL.md`、`references/visual-rendering.md`、`install.md` | `visual-rendering.md` 里 `src="../input/audio.mp3"` 那个自相矛盾的例子（它本身就是会被 `check` 拒的父级穿越） |
+| 出版**合成事实的字段契约**（`composite`/`personWindow`/`captionSafe`） | 这三个键只有本 Skill 实现，`planners-ppt-hell` 只能转述、不能引用一份清单；作者裁定由此处出版 | `references/composition-facts-contract.md`（新）、`references/composition-craft.md`（改为指向它） | composition-craft 里那张重复列出字段语义的表 |
+| 写 `references/architecture.md`；`GOTCHAS.md` 每条加 `module` + 状态并补「不收什么」；本文件对齐规范 | 作者要求把架构讨论落到 Skill 里，让下一个改它的人知道每个 module 的作用与牵连 | `references/architecture.md`（新）、`GOTCHAS.md`、本文件、`SKILL.md`（迭代落点） | — |
+
+**已升级的条目**（`GOTCHAS.md` #25–#31）：#25 抽完的段没读回 · #26 交付闸门按位置选记录 ·
+#27 页面的 href 边界 · #28 手写内联绕过改写 · #29 跨页 id 重复 · #30 一个永远不可能不合格的判据 ·
+#31 `doctor` 不查字体缓存。其中 **#28 与 `--prove` 那件事并入 #6**（一个绿灯不等于另一个性质成立），
+**「坏段静默」与「未捕获崩溃」合成一条 #25**（同一根因：抽完没读回）。
+
+## 2026-09-26 · 流程与验证写清（报告 §7.3 / §7.5 那一轮的 Skill 侧残值）
+
+| 做了什么 | 为什么 | 影响了哪些 module | 删了什么 |
+|---|---|---|---|
+| `SKILL.md` 开门给 11 步全景表 + 每步可判断的**完成标准**；Routing 收成单表、触发词前置 | §7.3 逐条对账：11 步里该做而没做的有 5 条（环境自检、`edit/project.md`、`production-plan.md`、无声音时的代表切片、`previs/`）——流程看不出长什么样，也没有「做完了吗」的判据 | `SKILL.md` | 路由里重复的同义分支；「全局方法与流程｜本文件」那一行 |
+| 「怎么验证」一节：解释器、`PYTHONPATH`、`ffmpeg` 在 `PATH`；下限改成**实测 3.9.6** | P-16/P-17：按文档默认读法会红；而 3.10 那条下限没有代码依据（核过：无 `match`、联合注解全在 `from __future__` 之后、无运行期 `list[...]`） | `SKILL.md`、`README.md`、`pyproject.toml`、`references/review-ui.md` | `uv sync`、`<repo>/.venv`、`uv run` 这三套跑不了的口径 |
+| 画面页导入器（`import_svg_page.py`）与内联；组成品生成器接 `sourcePageKey` | 票 19 的判决：页面 `viewBox` 就是视频像素、文字没转路径、节点是活的——缺的是元素身份；`../` href 会被 HyperFrames 拒 | `visual/scripts/import_svg_page.py`（新）、`visual/scripts/generate-composition.py`、`helpers/timeline_derive.py`、`references/composition-craft.md` | 手工内联那套做法 |
+| 主题库校验 `check_themes.py`：**`theme.json` 真的当 JSON 解析**、`var()` 链解析、对比度、圆角刻度一致 | `theme.json` 从来没被解析过；23 套的 `--r-card: var(--r-xs)` 指向一个只存在于归档 v1 `base.css` 的刻度（CSS 静默丢声明，卡片全变直角）；`--dur-*` 零消费者 | `visual/scripts/check_themes.py`（新）、23 套 `tokens.css`、`references/themes.md` | 全部 `--dur-*` / `--ease-*` token；themes.md 里「有 base 默认值」那个虚构前提 |
+| `check_script_hash.py` + 承接那一节 | `visual-plan.json` 声明了 `script_hash`，但只有上游交接那一刻算过一次；**做画面那一步核的是同一件事但时机不同**（录制前，来得及），本 Skill 在录制后核（只能事后发现，所以要停下来问作者） | `helpers/check_script_hash.py`（新）、`references/content-to-production.md`、`references/architecture.md`、`tests/test_script_hash.py`（新） | — |
+| `review-ui.md` 写明另一套审阅页的目录与交棒条件；`evals.json` 清掉 `information_to_show` | 两套审阅面不互操作是接力的必然接缝（作者裁定不合并）；`information_to_show` 是 v5 起被禁的旧框架字段，任何代码里都不存在 | `references/review-ui.md`、`evals/evals.json` | `information_to_show` 两处引用 |
+
+## 2026-09-15 · P3 一条时间脊柱、P4 渲染者合一、P5 减法审计
+
+- ✅ **P3 一条时间脊柱** —— `helpers/timeline_derive.py` 从 EDL 派生 `timeline.json`，
+  `visual/scripts/parse-srt.py` 退役进 `archive/`。验收是在真实项目上**逐字节相同**的
+  组成品骨架（同 grouping in，`cmp` 无输出的 `composition/index.html` out）。
+  影响：`helpers/timeline_derive.py`、`visual/scripts/generate-composition.py`、`archive/`。
+- ✅ **P4 渲染者合一** —— `render.py` 成为唯一决定最终像素的地方：底片没有画面时它合成
+  `canvas` 尺寸的黑底承载口播（帧率取 EDL 的 `fps` 声明），满屏不透明覆盖层走 `-c:v copy`
+  （比特级证明：视频流 MD5 与源相同），其余情况才真的合成。补上的是「画面 + 口播」原本
+  走不通、只能整条走 wvp 自带渲染器的缺口。影响：`helpers/render.py`、`edit/edl.json` 的形状。
+- ✅ **P5 减法审计** —— `video-use-handoff.py`、`parse-srt.py`、v1 React `templates/`
+  退役进 `archive/`；`master.srt` 的生成路径（`--build-subtitles` + `build_master_srt`
+  + 三个读取它的候选清单）整套删除；三套 EDL 备份收敛为 `edl.previous.json`；
+  `clean_edit_dir.py` 的沉积清单同步更新。影响：`helpers/srt_export.py`、`helpers/clean_edit_dir.py`、
+  `archive/`。
+
+## 未决（不是升级，等一次重构）
+
+**审阅页合一。** 现在剪辑审阅（`edl_preview_*`，端口 8737）和视觉审阅
+（`visual/assets/review-page-template.html` + `helpers/visual_review_serve.py`，端口 5176 + 8899）
+是两套基建、两套反馈格式。原计划里「去掉手工复制 JSONL」那一半**已完成**
+（2026-09-25，视觉反馈直接 POST 到 `/api/feedback`，落 `feedback/<chapterId>.jsonl`，见 `review-ui.md`）；
+剩下的是两个页面和两套反馈格式本身。
+
+侦察发现两件改变判断的事：
+
+1. 剪辑审阅页**没有任何「模式」接缝**（无 `location.search` / `URLSearchParams`），
+   视觉模式是往一个 1201 行的生成器里加新概念，不是接线。
+2. 视觉播放器**必须**依赖 HyperFrames 的运行时注入服务器（`npx hyperframes preview`）——
+   静态服务器加载组成品会「所有 clip 同时可见、音频不播」。所以**一个页面 ≠ 一个进程**，
+   P2 之前那种「端口被残留进程占住端出旧项目」的坑**消不掉**，只能减半。
+
+能拿到的：一个页面、一套反馈格式（去掉手工复制 JSONL 已单独做完）。
+拿不到的：少一个进程、少一类端口 bug。
+
+**另外登记两处没量过的**（见 `references/architecture.md` 末尾）：`edit/timeline/` 与
+`<视觉层项目根>/timeline/` 的落点没有统一口径；审阅那一块的 depth 没做过删除测试。

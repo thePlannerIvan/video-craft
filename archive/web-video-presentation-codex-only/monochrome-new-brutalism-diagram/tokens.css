@@ -1,0 +1,54 @@
+/* ─────────────────────────────────────────────────────────────────────
+ * Theme · monochrome-new-brutalism-diagram
+ *   Diagram-first new brutalism for knowledge architecture and systems
+ *   explanations. Paper-white field, near-black ink, cool gray input
+ *   surfaces, zero-radius geometry, thick borders, and hard offset shadows.
+ *   No chromatic accent: semantic emphasis comes from black / white / gray,
+ *   scale, line style, and connection direction.
+ *
+ *   The layout and model grammar live in
+ *   references/style-profiles/monochrome-new-brutalism-diagram.md.
+ *   This file owns only reusable theme tokens.
+ * ───────────────────────────────────────────────────────────────────── */
+:root {
+  /* ─── palette ─── */
+  --shell:        #ededeb;
+  --surface:      #f7f7f3;
+  --surface-2:    #ffffff;
+  --surface-3:    #dededb;
+  --text:         #111111;
+  --text-2:       #333333;
+  --text-mute:    #686868;
+  --text-faint:   #a7a7a2;
+  --rule:         #bdbdb8;
+  --accent:       #111111;
+  --accent-soft:  rgba(17, 17, 17, 0.08);
+  --accent-glow:  rgba(17, 17, 17, 0.20);
+
+  /* ─── fonts ─── */
+  --font-display-cn: "Noto Sans SC", "Source Han Sans SC", sans-serif;
+  --font-display-en: "Inter", "Helvetica Neue", Arial, sans-serif;
+  --font-body:       "Noto Sans SC", "Source Han Sans SC", sans-serif;
+  --font-mono:       "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+  --font-features:   "ss01", "tnum", "lnum", "kern";
+
+  /* ─── motion: decisive, seek-safe ─── */
+  --dur-base:       520ms;
+  --dur-slow:       880ms;
+  --dur-cinematic:  1200ms;
+
+  /* ─── design identity: hard diagram geometry ─── */
+  --r-card:         0;
+  --r-stage:        0;
+  --rule-w:         3px;
+  --rule-style:     solid;
+  --hero-num-font:  var(--font-display-en);
+  --hero-num-style: normal;
+  --hero-num-weight: 800;
+  --hero-num-track:  -0.04em;
+  --stage-pad-x:    84px;
+  --stage-pad-y:    62px;
+  --card-shadow:    12px 12px 0 var(--text);
+  --shadow-stage:   0 0 0 1px rgba(0, 0, 0, 0.04);
+  /* SIGNATURE: paper-white field + black offsets + diagram-first hierarchy. */
+}

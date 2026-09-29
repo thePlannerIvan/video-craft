@@ -124,7 +124,7 @@ looking for a rule that used to be here, it is in the right-hand column.
 
 ## Process
 
-每一步末尾的**完成标准**就是「做完了吗」的判据；做不到就还在这一步。
+**本 Skill 没有 `stages/` 目录：逐步完成标准就住在这一节** —— 下面每步末尾的**完成标准**就是「做完了吗」的判据，做不到就还在这一步。各 `references/` 只写判断方法、命令与责任划分，**不另立第二份完成标准**（`references/content-to-production.md` 的「承接阶段四件产物」受这一条约束，见其开头）。
 
 1. **承接与版本核对。** 读取内容包、当前批准状态和作者反馈；本轮目标优先于旧 `edit/project.md`。
    新版本使用独立工作目录或明确保留旧版，不覆写旧批准稿与旧 EDL。见[内容到制作](references/content-to-production.md)，
@@ -139,8 +139,9 @@ looking for a rule that used to be here, it is in the right-hand column.
    根据内容安排全片的口播、演示、纯画面、声音与转场，提出画面语言、规格和暂定时长。作者已定动作直接纳入，
    Agent 设计进入审阅。对素材清点、设计规划直接推进；具体剪法、声音获取和设计方案在已有授权范围确认后执行。
    **完成标准**：`production-plan.md` 存在，且逐 Beat 写明**声音来源、画面过程、必要动作、素材与缺口、
-   预计时长及估计依据、转场关系**六项。没有音频时，同一步还要交出独立代表切片（`previs/`，标 planned）
-   和**分段录制稿 + 需要留出的动作/演示空间**。
+   预计时长及估计依据、转场关系**六项。**没有音频时**，第 1–4 步照常推进到有可审的样片（这是承接阶段的
+   共同要求，不是某一步的额外动作）：独立代表切片 `previs/`（标 planned，第 4 步产出）
+   加上**分段录制稿 + 需要留出的动作/演示空间**。
 3. **准备声音与素材。** `ffprobe` 检查源文件与音轨；有录制就转写并通读内容，找重来、口误和可用 Take。
    多音轨显式选轨，录屏先查 VFR 空洞、必要时转 CFR。无录音时明确使用作者后续录制、已授权 TTS 或无口播；
    同时继续能独立完成的画面准备。临时声音只用于预演，不能冒充作者或最终配音。
@@ -263,7 +264,7 @@ looking for a rule that used to be here, it is in the right-hand column.
 | 要接 Idea 或 Story 的契约、作者画面决定、把 Beat 对齐到实测 cue | [上游内容交接](references/video-story-handoff.md) |
 | 要写中文语义字幕、定断句 | [语义字幕规格](references/caption-article-first.md) |
 | 要把视觉层挂到实测时间轴、设计分组 | [时间脊柱](references/visual-timeline.md) |
-| 画面来自 `planners-ppt-hell` 的 SVG 页 / 要按口播强调某一屏里的某个元素 / 要定整片合成方式与字幕安全区 | [合成工作方式](references/composition-craft.md) 的「画面页来自 planners-ppt-hell 时的动画交接」 |
+| 画面来自 `planners-ppt-hell` 的 SVG 页 / 要按口播强调某一屏里的某个元素 / 页面预埋了 `data-step` + `data-anim` 子元素动效 / 要定整片合成方式与字幕安全区 | [合成工作方式](references/composition-craft.md) 的「画面页来自 planners-ppt-hell 时的动画交接」+ [SVG 预埋动效契约](references/svg-animation-contract.md) |
 | 要选主题或换主题 / 想知道这套 token 还有谁在读 | [主题系统](references/themes.md) + `visual/themes/<id>/` |
 | 做画面那一侧要写整片合成方式与字幕安全区，或者你要知道那三个键叫什么 | [合成事实的字段契约](references/composition-facts-contract.md) |
 | 要分清真实证据、复刻、示意与创作 | [素材优先](references/media-first.md) |

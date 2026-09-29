@@ -53,7 +53,7 @@
 
 | module | 拥有什么 | 接口 | 不做什么 |
 |---|---|---|---|
-| `references/content-to-production.md` | **第 1–4 步的完整完成标准**：承接的四件产物、`script_hash` 的核对口径、没有音频也要做完、「预演时间 vs 制作时间」两态 | 第 1–2 步读；第 3–4 步的产出判据由它给 | 不写具体剪法（`visual-direction.md`）、不定义契约字段（上游契约管） |
+| `references/content-to-production.md` | 承接阶段的产物与顺序（四件产物）、`script_hash` 两处核对口径、没有音频也要做完、「预演时间 vs 制作时间」两态。**完成标准的家是 `SKILL.md` 的 Process 步 1–4，这一份不另立判据** | 第 1–2 步读；第 3–4 步读它的顺序与产物表 | 不写具体剪法（`visual-direction.md`）、不定义契约字段（上游契约管） |
 | `references/video-story-handoff.md` | 上游内容包的接收口径：契约 5.0 的 `screens`／4.0 的 `blueprints`、Beat 对齐、`sourceBlueprintId` | 第 1、8 步读 | 不定义上游字段语义；不复述上游契约 |
 | `references/creative-direction.md` | 接住意图、主动设计视听表达的主线 | 第 2 步读 | 不写画面语言细节（`visual-direction.md`） |
 | `references/capability-map.md` | 视听能力导航（按表达目的选，不按工具选） | 发想期与第 2、4 步读；Idea 也读它 | 不承诺运行依赖已安装 |
@@ -61,7 +61,8 @@
 | `references/preferences.md` | 作者偏好的最小记录与区分（本片要求 vs 可复用偏好） | 第 1 步起读 | 不把整份会话灌进上下文 |
 | `references/media-first.md` | 真实证据 / 复刻 / 示意 / 创作的身份区分 | 选素材时读 | 不允许把修辞包装成实测证明 |
 | `references/visual-timeline.md` | **时间脊柱的派生**：`timeline.json` 的输入、Step 分组规则、Checkpoint 只确认版面与节奏 | 第 8 步读；`timeline_derive.py` 是它的可执行形态 | 不重新解析 SRT；不重选主题 |
-| `references/composition-craft.md` | 视觉层怎么落地：`composition/index.html` 的硬规则、字体度量、**画面页来自 planners-ppt-hell 时的动画交接** | 第 9 步读 | 字段语义不在它这里（`composition-facts-contract.md`） |
+| `references/composition-craft.md` | 视觉层怎么落地：`composition/index.html` 的硬规则、字体度量、**画面页来自 planners-ppt-hell 时的动画交接** | 第 9 步读 | 字段语义不在它这里（`composition-facts-contract.md`）；预埋子元素动效配方在 `svg-animation-contract.md` |
+| `references/svg-animation-contract.md` | **`planners-ppt-hell` → `video-craft` 的声明式 SVG 预埋动效契约**：5 条 SVG 分组与几何硬性规则、8 种复合子元素分阶段动效原语（`data-anim` + `.anim-*` 子选择器）、GSAP/WAAPI 双模式接线规范 | 做画面预埋动效与第 9 步绑实测时间轴时共读；`visual/assets/svg-anim-engine.js` 是它的可执行形态 | 不写口播实测毫秒数（制作前不知道时长，只预埋相对 `data-step` 顺序与微时序差） |
 | `references/composition-facts-contract.md` | **`composite`／`personWindow`／`captionSafe` 三个键的字段契约**（键名、取值域、默认、谁填谁读、缺了怎样） | 做画面那一步与第 9 步都按它写/读 | 只写已实现的键；不设计新字段 |
 | `references/themes.md` | **风格库的契约**：谁读它、必填 token、圆角刻度、可选性格覆盖与装饰层、创作新主题的步骤 | 选/换主题时读；`check_themes.py` 是它的可执行形态 | 不写章节 CSS（那是章节自由）；不复制 token 到别处 |
 | `references/review-ui.md` | 视觉审阅页的约定、反馈 schema、三条硬约定、**与另一套审阅面的交棒条件** | 第 6、10 步读 | 不合并两套审阅面 |
@@ -126,6 +127,7 @@
 | `helpers/lib/planners_modules.py` | **找**公共模组（发布后按名字找兄弟目录）—— 只管解析路径，生命周期不在这里 | 被 `review_surface.py` 用来定位 `planners-review-core` | 不实现任何审阅或宿主逻辑 |
 | `helpers/review_inbox.py` | **收件**：把 surface 声明的那一份提交文件翻译成 `feedback/<chapterId>.jsonl` 的追加（按内容哈希去重） | `review_inbox.py <project> [--dry-run]` | 不改本 Skill 的反馈形状去迁就宿主 |
 | `visual/assets/review-page-template.html` | 审阅页模板的 DOM／样式／播放器接线 | 拷成 `<project>/review/index.html` | 不含项目内容 |
+| `visual/assets/svg-anim-engine.js` | **声明式 SVG 预埋动效的复合子元素驱动器**（UMD：同时支持浏览器预演 `setStep()` WAAPI 与 HyperFrames 确定性 `registerGsapTimeline()`） | `VideoCraftAnimEngine.registerGsapTimeline(tl, svgRoot, stepOffsets)` ／ `VideoCraftAnimEngine.setStep(svgRoot, step, prevStep)` | 不改 SVG DOM 结构；不猜测未声明 `data-anim` 的元素 |
 
 ### 视觉层（`visual/`）
 

@@ -1,0 +1,73 @@
+/* ─────────────────────────────────────────────────────────────────────
+ * Theme · editorial-archive (社论档案全能风)
+ *   Unified visual spine across 4 functional domains:
+ *     1. text-focus    (Solo >=78% whitespace / Multi micro-diagram glyphs)
+ *     2. model-build   (40x40 engineering grid, numbered node cards, orthogonal paths)
+ *     3. editorial-mix (giant italic serif + frameless columns + tilted Polaroid + hand-drawn red callout)
+ *     4. image-archive (Solo spotlight in ARKETYPE () brackets / Desk multi-photo z-stack + perforated strip)
+ *
+ *   Hard guardrails:
+ *     • Never use full-bleed #e43d1e red backgrounds; cap --accent at <= 8% screen area.
+ *     • Use --bg-ink (#181715) warm charcoal for dark Solo chapter accent screens.
+ * ───────────────────────────────────────────────────────────────────── */
+:root {
+  /* ─── standard theme contract palette ─── */
+  --shell:        #e5dfd3;
+  --surface:      #f2efe9;
+  --surface-2:    #faf8f4;
+  --surface-3:    #e6e1d6;
+  --text:         #181715;
+  --text-2:       #4a4742;
+  --text-mute:    #6e6a63;
+  --text-faint:   #8c857b;
+  --rule:         #d6d1c7;
+  --accent:       #c8553d;
+  --accent-soft:  rgba(200, 85, 61, 0.12);
+  --accent-glow:  rgba(200, 85, 61, 0.26);
+
+  /* ─── editorial-archive semantic aliases (used in SVG pages) ─── */
+  --bg-paper:       #f2efe9;
+  --bg-card:        #faf8f4;
+  --bg-ink:         #181715;
+  --ink-primary:    #181715;
+  --ink-secondary:  #4a4742;
+  --ink-muted:      #6e6a63;
+  --line-grid:      #d6d1c7;
+  --accent-red:     #c8553d;
+  --accent-yellow:  #e9c46a;
+  --accent-blue:    #2b547e;
+
+  /* ─── 4-tier typography stack ─── */
+  --font-display-cn: "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", sans-serif;
+  --font-display-en: "Instrument Serif", "Playfair Display", Georgia, serif;
+  --font-body:       "Inter", "Noto Sans SC", "PingFang SC", sans-serif;
+  --font-mono:       "JetBrains Mono", "SF Mono", Consolas, monospace;
+  --font-sans:       var(--font-body);
+  --font-serif:      var(--font-display-en);
+  --font-hand:       "Caveat", "Kaiti SC", cursive;
+  --font-features:   "tnum", "ss01";
+
+  /* ─── shared radius scale ─── */
+  --r-flat:  0;
+  --r-xs:    4px;
+  --r-sm:    8px;
+  --r-md:    16px;
+  --r-lg:    20px;
+  --r-xl:    32px;
+
+  /* ─── character knobs ─── */
+  --r-card:          var(--r-xs);
+  --r-stage:         0;
+  --rule-w:          1px;
+  --rule-style:      solid;
+  --hero-num-font:   var(--font-display-en);
+  --hero-num-style:  italic;
+  --hero-num-weight: 700;
+  --hero-num-track:  -0.02em;
+  --stage-pad-x:     100px;
+  --stage-pad-y:     80px;
+  --card-shadow:
+    12px 16px 0 rgba(20, 20, 19, 0.14);
+  --shadow-stage:
+    0 40px 120px rgba(20, 20, 19, 0.22);
+}

@@ -51,12 +51,12 @@ npx skills add https://github.com/thePlannerIvan/video-craft --skill video-craft
 
 ## 公共模组（缺了会自动装）
 
-本 Skill 依赖若干**公共模组**（独立发布的条目，不是本仓库的一部分）：
+同族**公共模组**（独立发布的条目，不是本仓库的一部分）。**本 Skill 只解析 `planners-review-core`**（见 `helpers/lib/planners_modules.py --check`），其余三个是同一族的邻居、本 Skill 不需要：
 
-- [`planners-review-core`](https://github.com/thePlannerIvan/planners-review-core) —— 审阅面契约、桥与本地宿主
-- [`planners-source-index`](https://github.com/thePlannerIvan/planners-source-index) —— 来源索引契约与唯一校验器
-- [`planners-fact-check`](https://github.com/thePlannerIvan/planners-fact-check) —— 事实核查契约与校验器
-- [`planners-report-kit`](https://github.com/thePlannerIvan/planners-report-kit) —— 报告装配与校验（仅带报告出口的 Skill 需要）
+- [`planners-review-core`](https://github.com/thePlannerIvan/planners-review-core) —— 审阅面契约、桥与本地宿主 ← **本 Skill 用到**
+- [`planners-source-index`](https://github.com/thePlannerIvan/planners-source-index) —— 来源索引契约与唯一校验器（本 Skill 不消费）
+- [`planners-fact-check`](https://github.com/thePlannerIvan/planners-fact-check) —— 事实核查契约与校验器（本 Skill 不消费）
+- [`planners-report-kit`](https://github.com/thePlannerIvan/planners-report-kit) —— 报告装配与校验（仅带报告出口的 Skill 需要；本 Skill 无报告出口）
 
 某个模组不在本地时，本 Skill 的适配器会**自动从 GitHub 装它**，不需要手动准备。适配器找的地方按顺序：
 

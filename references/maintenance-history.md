@@ -1,5 +1,14 @@
 # 维护记录（升级，不是 CHANGELOG）
 
+## 2026-09-29 · 新增 `editorial-archive` 瑞士编辑档案主题与声明式 SVG 预埋动效契约
+
+**起因**：`planners-ppt-hell` 视频路线与 `video-craft` 是前后脚关系——如果静态 SVG 在生成时只画视觉表面、不按子元素动作分层与预埋属性，下游 `video-craft` 就只能对整块 `<g>` 做生硬的 `opacity + translateY` 浮现，或者被迫重画 SVG。基于 34 个 Pinterest 参考样本（含 9 个动态视频/GIF 逐帧拆解）与真实项目 `/prototype` 三轮压测，两边确立了统一的 `editorial-archive` 视觉主题与复合子元素预埋动效契约。
+
+| 做了什么 | 为什么 | 影响了哪些 module | 删了什么 |
+|---|---|---|---|
+| 新增 `visual/themes/editorial-archive/`（`theme.json` + `tokens.css`），24 套主题全部通过 `check_themes.py` | 提供暖色生纸（`#F2EFE9`）+ 炭墨黑 + 低饱和朱砂砖红（`#C8553D`）+ 氧化黄高光 + 四域×独奏/群像节奏矩阵的瑞士编辑档案风格，并修正初版刺眼满屏红为深炭墨主底 + 12% 砖红印章克制点缀 | `visual/themes/editorial-archive/*`、`references/themes.md` | — |
+| 新增 `references/svg-animation-contract.md` 与 `visual/assets/svg-anim-engine.js` | 把 8 种复合子元素分阶段动效（`bar-wipe` / `draw-stroke` / `pop-card` / `z-stack-drop` / `stamp-in` / `slot-expand` / `paper-unroll` / `highlight-sweep`）与 5 条 SVG 结构硬规则（`pathLength="1"`、`<g>` 坐标烘死防 `transform` 抹零、语义子选择器 `.anim-*`）固化为单一契约；`svg-anim-engine.js` 同时提供浏览器预演 WAAPI 模式与 HyperFrames 确定性 GSAP 时间轴注册 | `references/svg-animation-contract.md`（新）、`visual/assets/svg-anim-engine.js`（新）、`references/composition-craft.md`、`SKILL.md`、`references/architecture.md` | — |
+
 ## 2026-09-26 · 剪接预演面接缝（第四条形状：在板子上挑），自带服务器退役
 
 **起因**：接缝已经接了三家（ppt-hell 逐单位+版本 / video-craft 视觉面追加式 / bypage 逐页+事实例外），

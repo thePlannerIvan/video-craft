@@ -76,7 +76,7 @@ v2 管线里主题的消费方式不变，落地位置变了：
 
 ## 内置主题
 
-23 套主题，每个都有**独立的设计 DNA** —— 不是简单的换色版。挑一个
+24 套主题，每个都有**独立的设计 DNA** —— 不是简单的换色版。挑一个
 匹配你主题情绪的，或者作为你自己主题的起点。
 
 ### 深色主题
@@ -111,6 +111,7 @@ v2 管线里主题的消费方式不变，落地位置变了：
 | `kraft-paper`        | 牛皮纸 —— **深棕当墨** + 牛皮米。Fraunces + Source Serif + 紫铜 accent。老笔记本 / 老信封感。**粗暖纸纹**是签名。慢速 tactile。                                                                       |
 | `dune`               | 沙丘 —— **炭褐当墨** + 沙底 + 几乎无 accent（muted clay）。Inter display + Source Serif 正文。**无装饰 + 极宽 padding（140×100）**是签名。建筑手册 / 画廊感。最慢节奏。                                |
 | `swiss-ikb`          | 瑞士国际主义。**极细 200 weight Inter / Helvetica** + 净暖白底 + IKB 克莱因蓝 + **1px 发丝网格 (64px)**。`r-card: 0` 直角。Massimo Vignelli / Helvetica Forever 能量。punchy + linear。           |
+| `editorial-archive`  | 瑞士编辑档案系统。暖色生纸（`#F2EFE9`）+ 炭墨黑 + 低饱和朱砂砖红（`#C8553D`）+ 氧化黄高光。Playfair Display 斜体衬线 + Noto Serif SC + Space Grotesk + JetBrains Mono。**1px 工程发丝线 + 0px 档案直角 + 四域×独奏/群像节奏矩阵**，配套预埋子元素动效契约（[`svg-animation-contract.md`](svg-animation-contract.md)）。 |
 
 
 随时列出可用主题：
@@ -192,7 +193,7 @@ python3 visual/scripts/generate-composition.py <project> --theme=newsroom
 | `--font-body`       | 正文 / 段落家族                            |
 | `--font-mono`       | 等宽家族（终端、mono caps、badge）          |
 
-#### 圆角刻度（6 个，23 套共用同一组值）
+#### 圆角刻度（6 个，24 套共用同一组值）
 
 `--r-card` 指向这套刻度，所以刻度必须在主题里、并且各套一致
 （`check_themes.py` 逐套比对）：
@@ -208,7 +209,7 @@ python3 visual/scripts/generate-composition.py <project> --theme=newsroom
 
 ### 可选的性格覆盖（主题应该定义来表达自己的性格）
 
-主题写哪几项，章节就有哪几个性格维度可用。**"常见值"是 23 套现有的取值，
+主题写哪几项，章节就有哪几个性格维度可用。**"常见值"是 24 套现有的取值，
 供你对照自己的意图，不是 base 默认值**——主题不写某一项，用到它的那条 CSS
 声明就没有值（整条丢掉），所以想要这个维度就得给值。
 
@@ -282,6 +283,7 @@ CSS"领域 —— 在那里解决，别扩主题契约。
 | 文学 / 怀旧 / 书评 / 手工艺             | `kraft-paper`         |
 | 建筑 / 艺术展览 / 高端画廊              | `dune`                |
 | 瑞士国际主义 / Helvetica / 信息驱动设计 | `swiss-ikb`           |
+| 瑞士档案 / 深度调研 / 编辑拼贴 / 预埋 SVG 动效 | `editorial-archive` |
 
 ```bash
 cd visual/themes
@@ -370,6 +372,8 @@ python3 visual/scripts/check_themes.py
 ### 5. 加到文档里
 
 在本文件顶部"内置主题"表里追加一行。
+
+> **如果是从一整块参考画板（如 Pinterest 画板 / 视频参考集）逆向提取完整的视频视觉风格与预埋动效模板**（不止配一套颜色 token，还要提炼四域构图矩阵、独奏/群像呼吸阀、预埋 SVG 子元素动效并用 `/prototype` 实测），完整流程与避坑指南见 `planners-ppt-hell/references/workflow/08_video_style_extraction_sop.md`。
 
 ---
 

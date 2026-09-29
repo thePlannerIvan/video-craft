@@ -37,6 +37,7 @@ LIBRARY_DIR_NAME = '02-skills-library'
 
 #: 每个公共模组的「装完怎么算装好了」锚点。contracts/ + scripts/ 里的文件是该模组
 #: **声明过**的契约与校验器，缺一个就是这个模组装歪了。
+#: **这是分发契约，不是本 Skill 的依赖清单**（本 Skill 只解析 planners-review-core）。
 MODULE_SPECS = {
     'planners-review-core': (
         'SKILL.md',

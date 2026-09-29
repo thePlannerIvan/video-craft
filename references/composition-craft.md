@@ -163,6 +163,7 @@ design_direction.md 的 json 代码块（整片默认）  ┐
    转换器输出逐字节相同（两边 md5 一致）。
 2. 图片 href 保持 `../00_project/...` 原样——那条路径是页面给自己 PPT 出口用的，改前缀的是导入器。
 3. 整片的合成方式、人物窗口、字幕安全区写进 `_internal/01_content/design_direction.md` 的 json 代码块。
+4. **若使用预埋子元素动效契约**（如 `editorial-archive` 四域风格，在 `<g>` 上预埋了 `data-step`、`data-anim`、`pathLength="1"` 与语义子选择器 `.anim-bar` / `.anim-mask` / `.anim-bg` / `.anim-title` / `.anim-photo` 等）：直接按 [`svg-animation-contract.md`](svg-animation-contract.md) 与 [`visual/assets/svg-anim-engine.js`](../visual/assets/svg-anim-engine.js) 的 `VideoCraftAnimEngine.registerGsapTimeline(tl, clipEl, stepOffsets)` 驱动复合子元素时序，**无需重新拆解或重画 SVG**。
 
 ## Assets
 

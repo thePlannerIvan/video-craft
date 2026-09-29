@@ -1,0 +1,26 @@
+{
+  "id": "editorial-archive",
+  "name": "Editorial Archive",
+  "nameZh": "社论档案全能风",
+  "description": "Warm archival paper with ink-black structure, vermilion <=8% spot accents, 4 screen archetypes (text-focus, model-build, editorial-mix, image-archive) and Solo/Multi density pacing.",
+  "descriptionZh": "暖调档案纸底 + 墨黑工程网格 + 朱砂红 <=8% 点睛 + 荧光黄胶带。覆盖文字凸显、模型构建、图文混排、图片为主四域与 Solo/Multi 疏密呼吸节奏。",
+  "mood": [
+    "light",
+    "editorial",
+    "archival",
+    "swiss-grid",
+    "tactile"
+  ],
+  "bestFor": [
+    "深度调研与案例拆解",
+    "商业与品牌史叙事",
+    "方法论与工作流演示",
+    "一手档案与多模态证据展示"
+  ],
+  "preview": {
+    "shell": "#e5dfd3",
+    "surface": "#f2efe9",
+    "text": "#181715",
+    "accent": "#c8553d"
+  }
+}

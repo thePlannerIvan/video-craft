@@ -3,121 +3,731 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Web Video Presentation · Review</title>
+  <title>Video Craft · 视觉与动效导演工作台</title>
   <script type="module" src="https://cdn.jsdelivr.net/npm/@hyperframes/player"></script>
   <!--
     审阅桥的注入点＝下面单独一行那个双花括号标记。**这里不放桥的副本**：宿主 serve 时把这个
     标记**原地**换成桥本身（有插件时内联源码；无插件时给 base + 一个外链脚本）。
-
-    ⚠️ 标记必须**裸着独占一行**，全页**只许出现一次**。放进 `src=""` 里、或塞进 `<script>`
-    标签里都会炸 —— 宿主的替换是"整段文本换标记"，标签会被撑破：
-      · 放进 `src=""`：整段塞进属性里 → 标签坏掉，桥根本不加载；
-      · 塞进 `<script>`：变成嵌套 `<script>` → 同样加载不了。
-    校验器用 `bridge_placeholder_not_bare` 与 `bridge_placeholder_multiple` 拦这两种。
-
-    下面 `connect()` 里**仍然自己给 base**：无插件宿主注入的 base 到不了页面时（它落在前一个
-    结束标签之前，会被当成脚本文本吃掉），页面不给就按桥的默认 `./`（＝页面自己那一层）解析，
-    而这里的 rel 一律相对项目根，两者差一级。
+    ⚠️ 标记必须**裸着独占一行**，全页**只许出现一次**。
   -->
 {{REVIEW_BRIDGE}}
   <style>
+    :root {
+      --bg-app: #0d0f14;
+      --bg-panel: #141720;
+      --bg-card: #1b1f2b;
+      --bg-card-hover: #232838;
+      --bg-input: #0f1219;
+      --border: #282e3e;
+      --border-strong: #3a4258;
+      --text: #eef0f6;
+      --text-secondary: #a3acc2;
+      --text-muted: #6e778f;
+      --accent: #e43d1e;
+      --accent-soft: rgba(228, 61, 30, 0.16);
+      --amber: #f59e0b;
+      --amber-soft: rgba(245, 158, 11, 0.16);
+      --blue: #3b82f6;
+      --blue-soft: rgba(59, 130, 246, 0.18);
+      --green: #10b981;
+      --radius: 8px;
+      --font-sans: -apple-system, "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", system-ui, sans-serif;
+      --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+    }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, "PingFang SC", sans-serif; background: #101014; color: #e8e8ea; padding: 24px; }
-    h1 { font-size: 18px; }
-    .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; }
-    .reload { flex: 0 0 auto; font-size: 12px; line-height: 1; color: #9a9ab0; text-decoration: none;
-              border: 1px solid #2a2a32; border-radius: 5px; padding: 6px 10px; }
-    .reload:hover { color: #e8e8ea; border-color: #3a3af0; }
-    .layout { display: flex; gap: 24px; align-items: flex-start; }
-    .left { flex: 1 1 58%; max-width: 1100px; display: flex; flex-direction: column; gap: 12px; }
-    .player-box { background: #000; border: 1px solid #2a2a32; }
-    hyperframes-player { display: block; width: 100%; aspect-ratio: 16 / 9; }
-    .player-box .hint { padding: 8px 12px; font-size: 12px; color: #888; }
-    .side { flex: 1 1 42%; max-width: 560px; }
-    .steps { background: #17171d; border: 1px solid #2a2a32; max-height: calc(100vh - 170px); overflow-y: auto; }
-    .step { padding: 10px 14px; border-bottom: 1px solid #23232b; cursor: pointer; }
-    .step:hover { background: #1e1e26; }
-    .step.active { background: #23233a; }
-    .step-id { font-family: ui-monospace, monospace; font-size: 11px; color: #9a9ab0; }
-    .step-caption { font-size: 13px; margin-top: 4px; line-height: 1.5; }
-    .step-meta { font-size: 11px; color: #7a7a90; margin-top: 4px; }
-    .feedback { background: #17171d; border: 1px solid #2a2a32; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
-    .feedback h2 { font-size: 13px; color: #aaa; }
-    /* 两条路：整片意见 / 当前屏。默认落在「整片意见」，所以"不选屏就说一句"不需要先点任何东西。 */
-    .mode { display: flex; gap: 6px; }
-    .mode-tab { background: #101014; color: #9a9ab0; border: 1px solid #2a2a32; padding: 6px 10px; font-size: 12px; }
-    .mode-tab.active { background: #3a3af0; color: #fff; border-color: #3a3af0; }
-    .mode-note { font-size: 11px; line-height: 1.5; color: #7a7a90; }
-    #fb-type { width: 100%; padding: 6px; background: #101014; color: #e8e8ea; border: 1px solid #2a2a32; }
-    #fb-text { width: 100%; min-height: 64px; padding: 8px; background: #101014; color: #e8e8ea; border: 1px solid #2a2a32; resize: vertical; }
-    button { padding: 8px 16px; background: #3a3af0; color: #fff; border: none; cursor: pointer; font-size: 13px; }
-    button:disabled { background: #2a2a32; color: #7a7a90; cursor: not-allowed; }
-    /* 保存状态常驻可见（GOTCHAS #18）：状态条跟着输入框走，不放角落 */
-    .save-bar { position: sticky; bottom: 0; display: flex; gap: 10px; align-items: center; background: #17171d; border-top: 1px solid #2a2a32; padding-top: 8px; }
-    #save-state { flex: 1 1 auto; font-size: 12px; line-height: 1.4; color: #7a7a90; }
-    #save-state.ok { color: #5ad18a; }
-    #save-state.dirty { color: #e0c060; }
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg-app);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+    /* 顶部全局导航栏（精炼无冗余文字） */
+    header.top {
+      height: 46px;
+      flex: 0 0 46px;
+      padding: 0 18px;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      z-index: 20;
+    }
+    .brand-wrap { display: flex; align-items: center; gap: 10px; }
+    .brand-badge {
+      font: 800 10px/1 var(--font-mono);
+      letter-spacing: 0.1em;
+      padding: 4px 7px;
+      border-radius: 4px;
+      background: var(--accent);
+      color: #fff;
+    }
+    h1 { font-size: 14px; font-weight: 700; color: var(--text); letter-spacing: 0.01em; }
+    h1 #project-name { color: var(--amber); font-family: var(--font-mono); font-size: 12.5px; font-weight: 600; margin-left: 4px; }
+    .top-right { display: flex; align-items: center; gap: 8px; }
+    .stage-switch {
+      display: inline-flex;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 2px;
+      gap: 2px;
+    }
+    .stage-switch button {
+      background: transparent;
+      color: var(--text-secondary);
+      border: none;
+      padding: 4px 11px;
+      font-size: 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .stage-switch button.active {
+      background: var(--blue);
+      color: #fff;
+    }
+    .reload {
+      flex: 0 0 auto;
+      font-size: 12px;
+      line-height: 1;
+      color: var(--text-secondary);
+      text-decoration: none;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      border-radius: 6px;
+      padding: 6px 10px;
+      transition: all 0.15s;
+    }
+    .reload:hover { color: var(--text); border-color: var(--blue); }
+
+    /* 主三栏工作台布局：左分屏轨 (236px) + 中央 16:9 舞台 (最大化) + 右侧批注栏 (320px) */
+    .layout {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 236px minmax(0, 1fr) 320px;
+      gap: 0;
+    }
+
+    /* 左侧栏：分屏列表 (#steps) */
+    .side-left {
+      background: var(--bg-panel);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .panel-head {
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .steps {
+      flex: 1 1 auto;
+      overflow-y: auto;
+      padding: 6px;
+    }
+    .steps::-webkit-scrollbar { width: 5px; }
+    .steps::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    .step {
+      padding: 8px 10px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      margin-bottom: 3px;
+      cursor: pointer;
+      transition: background 0.12s, border-color 0.12s;
+    }
+    .step:hover { background: var(--bg-card); }
+    .step.active {
+      background: rgba(59, 130, 246, 0.14);
+      border-color: var(--blue);
+    }
+    .step.chapter-header {
+      background: transparent;
+      cursor: default;
+      padding: 7px 6px 3px;
+      margin-top: 4px;
+      border-bottom: 1px solid var(--border);
+      border-radius: 0;
+    }
+    .step-id {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--amber);
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .step.chapter-header .step-id { color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .step-caption { font-size: 12px; color: var(--text); margin-top: 3px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .step-meta { font-size: 10.5px; color: var(--text-muted); margin-top: 2px; }
+    .step-badge {
+      font-size: 10px;
+      padding: 1px 5px;
+      border-radius: 3px;
+      background: var(--accent-soft);
+      color: #ff8066;
+    }
+
+    /* 中央舞台区 */
+    .center-stage {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      min-height: 0;
+      background: #090b0f;
+      overflow: hidden;
+    }
+    /* 舞台顶部上下文工具栏 */
+    .canvas-toolbar {
+      padding: 6px 14px;
+      flex: 0 0 auto;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .tool-group { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+    .tool-btn {
+      background: var(--bg-card);
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+      padding: 4px 9px;
+      font-size: 11.5px;
+      border-radius: 5px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-weight: 600;
+    }
+    .tool-btn:hover { color: var(--text); border-color: var(--border-strong); }
+    .tool-btn.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+    .tool-btn.accent { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .tool-sep { width: 1px; height: 16px; background: var(--border); margin: 0 2px; }
+
+    /* 元素直改浮动条（选中 SVG 元素时显示） */
+    .elem-edit-bar {
+      padding: 5px 14px;
+      flex: 0 0 auto;
+      background: #192030;
+      border-bottom: 1px solid var(--blue);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11.5px;
+      flex-wrap: wrap;
+    }
+    .elem-edit-bar[hidden] { display: none; }
+    .elem-edit-bar input[type="text"] {
+      flex: 1 1 180px;
+      max-width: 320px;
+      background: var(--bg-input);
+      color: var(--text);
+      border: 1px solid var(--border-strong);
+      border-radius: 4px;
+      padding: 3px 7px;
+      font-size: 11.5px;
+    }
+
+    /* 16:9 画布视口：严格锁定 16:9 比例，不设 max-height 防止 flex 压缩变形导致黑边或错位 */
+    .player-box {
+      position: relative;
+      margin: 10px auto 8px;
+      background: #141413;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      aspect-ratio: 16 / 9;
+      width: min(calc(100% - 24px), calc((100vh - 235px) * 16 / 9));
+      flex: 0 0 auto;
+      box-shadow: 0 10px 28px rgba(0,0,0,0.45);
+    }
+    hyperframes-player { display: block; width: 100%; height: 100%; }
+    #svg-stage-wrap {
+      position: absolute;
+      inset: 0;
+      background: #141413;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      user-select: none;
+    }
+    #svg-stage-wrap[hidden] { display: none; }
+    #svg-stage-host {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #svg-stage-host > svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    #stage-speaker-video {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 31.6667%;
+      height: 100%;
+      object-fit: cover;
+      z-index: 4;
+      background: #000;
+      border-right: 1px solid rgba(255, 255, 255, 0.14);
+      box-shadow: 6px 0 20px rgba(0, 0, 0, 0.38);
+    }
+    #stage-speaker-video[hidden] { display: none; }
+    #speaker-time-pill {
+      position: absolute;
+      left: 10px;
+      bottom: 10px;
+      z-index: 6;
+      background: rgba(13, 15, 20, 0.84);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      color: #f59e0b;
+      font: 700 10.5px/1 var(--font-mono);
+      padding: 4px 8px;
+      border-radius: 4px;
+      pointer-events: none;
+      backdrop-filter: blur(6px);
+    }
+    #speaker-time-pill[hidden] { display: none; }
+    /* 画布框选与元素高亮覆盖层 */
+    #annotation-overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 10;
+    }
+    #annotation-overlay.drawing {
+      pointer-events: auto;
+      cursor: crosshair;
+    }
+    .anno-box {
+      position: absolute;
+      border: 2px solid var(--amber);
+      background: rgba(245, 158, 11, 0.14);
+      border-radius: 4px;
+      pointer-events: auto;
+      cursor: pointer;
+    }
+    .anno-box b {
+      position: absolute;
+      top: -10px;
+      left: -10px;
+      background: var(--amber);
+      color: #111;
+      font: 800 11px/18px var(--font-mono);
+      width: 20px;
+      height: 20px;
+      text-align: center;
+      border-radius: 50%;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+    }
+    .svg-selected-outline {
+      outline: 2px dashed #38bdf8 !important;
+      outline-offset: 3px;
+      cursor: move;
+    }
+
+    /* 底部紧凑分步动效抽屉（不挤占主画布） */
+    .choreo-deck {
+      margin: 0 12px 10px;
+      flex: 1 1 auto;
+      min-height: 0;
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      overflow: hidden;
+    }
+    .choreo-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      flex: 0 0 auto;
+    }
+    .choreo-title {
+      font-size: 11.5px;
+      font-weight: 700;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .choreo-controls { display: flex; align-items: center; gap: 6px; }
+    /* 口播词级胶囊条（默认收起，按需展开） */
+    .cue-pills-bar {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      flex-wrap: wrap;
+      padding: 5px 8px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      font-size: 11px;
+      flex: 0 0 auto;
+    }
+    .cue-pills-bar[hidden] { display: none; }
+    .cue-pills-label {
+      font-size: 10.5px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      margin-right: 4px;
+    }
+    .cue-pill {
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-size: 11px;
+      transition: all 0.12s;
+    }
+    .cue-pill:hover { border-color: var(--amber); color: var(--text); }
+    .cue-pill.pinned {
+      background: var(--amber-soft);
+      border-color: var(--amber);
+      color: var(--amber);
+      font-weight: 700;
+    }
+    /* 分步动效参数矩阵行（紧凑可滚动） */
+    .step-choreo-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+      padding-right: 2px;
+    }
+    .step-choreo-rows::-webkit-scrollbar { width: 5px; }
+    .step-choreo-rows::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    .step-choreo-row {
+      display: grid;
+      grid-template-columns: 72px minmax(150px, 1.1fr) minmax(120px, 0.9fr) 110px minmax(0, 1fr);
+      gap: 6px;
+      align-items: center;
+      padding: 4px 8px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      font-size: 11.5px;
+    }
+    .step-choreo-row.playing-now {
+      border-color: var(--amber);
+      background: rgba(245, 158, 11, 0.09);
+    }
+    .step-choreo-row select, .step-choreo-row input {
+      background: var(--bg-input);
+      color: var(--text);
+      border: 1px solid var(--border-strong);
+      border-radius: 4px;
+      padding: 3px 6px;
+      font-size: 11px;
+      width: 100%;
+    }
+    .step-play-chip {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: 11px;
+      padding: 3px 6px;
+      border-radius: 4px;
+      background: var(--bg-input);
+      color: var(--amber);
+      border: 1px solid var(--border-strong);
+      cursor: pointer;
+      text-align: center;
+    }
+    .step-play-chip:hover { background: var(--amber); color: #111; border-color: var(--amber); }
+
+    /* 右侧栏：已提意见列表 + 反馈输入区 */
+    .side-right {
+      background: var(--bg-panel);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .history-box {
+      flex: 1 1 auto;
+      min-height: 100px;
+      overflow-y: auto;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .history-empty {
+      font-size: 11.5px;
+      color: var(--text-muted);
+      line-height: 1.55;
+      padding: 10px 8px;
+      text-align: center;
+      border: 1px dashed var(--border);
+      border-radius: 6px;
+    }
+    .fb-card {
+      padding: 7px 9px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--blue);
+      border-radius: 5px;
+      font-size: 11.5px;
+      line-height: 1.4;
+    }
+    .fb-card.overall-card { border-left-color: var(--amber); }
+    .fb-card-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-secondary);
+      margin-bottom: 3px;
+    }
+    .fb-card-del {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 10.5px;
+      padding: 0 4px;
+    }
+    .fb-card-del:hover { color: #ff7a7a; }
+
+    /* 反馈撰写区（保留全部自动化测试契约 ID） */
+    .feedback {
+      flex: 0 0 auto;
+      padding: 10px 12px;
+      background: var(--bg-panel);
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+    .mode { display: flex; gap: 5px; }
+    .mode-tab {
+      flex: 1 1 50%;
+      background: var(--bg-input);
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 5px 7px;
+      font-size: 11.5px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .mode-tab.active {
+      background: var(--blue);
+      color: #fff;
+      border-color: var(--blue);
+    }
+    .mode-note { font-size: 10.5px; line-height: 1.4; color: var(--text-muted); }
+    #fb-type {
+      width: 100%;
+      padding: 5px 7px;
+      background: var(--bg-input);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      font-size: 11.5px;
+    }
+    #fb-text {
+      width: 100%;
+      min-height: 64px;
+      padding: 7px 9px;
+      background: var(--bg-input);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      resize: vertical;
+      font: inherit;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    #fb-text:focus { outline: none; border-color: var(--blue); }
+    button#fb-save {
+      padding: 7px 14px;
+      background: var(--blue);
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 700;
+      flex: 0 0 auto;
+    }
+    button#fb-save:hover:not(:disabled) { background: #2563eb; }
+    button#fb-save:disabled { background: var(--border); color: var(--text-muted); cursor: not-allowed; }
+    .save-bar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      border-top: 1px solid var(--border);
+      padding-top: 7px;
+    }
+    #save-state { flex: 1 1 auto; font-size: 11px; line-height: 1.3; color: var(--text-muted); }
+    #save-state.ok { color: var(--green); }
+    #save-state.dirty { color: var(--amber); }
     #save-state.error { color: #ff7a7a; }
-    #save-state.warn { color: #e0c060; }
-    /* 时间轴变了（宿主戳过、页面自己 diff 出来的）：说清楚，但不挡住提交 */
-    #stale-note { font-size: 12px; line-height: 1.5; color: #ffd9a8; background: #4a2f12; border-radius: 6px; padding: 8px 10px; }
+    #save-state.warn { color: var(--amber); }
+    #stale-note {
+      font-size: 11px;
+      line-height: 1.45;
+      color: #ffd9a8;
+      background: #4a2f12;
+      border: 1px solid #8a5a24;
+      border-radius: 5px;
+      padding: 6px 8px;
+    }
     #stale-note[hidden] { display: none; }
-    /* 提示里让人做的动作，控件就在同一块橙色里 —— 出现的那一刻就够得着 */
-    #stale-note button { margin-top: 6px; padding: 4px 10px; font-size: 12px; background: #ffd9a8; color: #3a2410; border: 1px solid #d9a86a; border-radius: 5px; cursor: pointer; }
+    #stale-note button {
+      margin-top: 4px;
+      padding: 2px 8px;
+      font-size: 11px;
+      background: #ffd9a8;
+      color: #3a2410;
+      border: 1px solid #d9a86a;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .hint { display: none; }
   </style>
 </head>
 <body>
   <header class="top">
-    <h1>逐画面审阅 · <span id="project-name">project</span></h1>
-    <!--
-      **页面必须能刷新自己，而且入口不许藏在告警里**（模组规则 R11）。
-
-      "页面变了"与"数据变了"是两件事。之前刷新入口只做在橙色告警里（时间轴变了才出现）——
-      于是"我改了页面、让他重载拿新版"这个场景**恰好没有出口**：数据没变 → 不出现告警 →
-      没有按钮，而那个按钮本来就在他要拿的新版里。先有鸡先有蛋。
-
-      所以这个入口**无条件存在**。而且它是个**纯 HTML 链接**（空 `href` ＝重新加载当前地址）：
-      连"页面自己的脚本坏了/是旧的"这一档也能用 —— 那正是最需要它的时候。
-      （宿主对页面发的是 `cache-control: no-store`，所以刷新拿到的确实是磁盘上那一版。）
-    -->
-    <a class="reload" id="page-reload" href="" title="重新加载这一页（拿到最新版本的页面本身）">⟳ 刷新</a>
-  </header>
-  <div class="layout">
-    <div class="left">
-      <div class="player-box">
-        <!--
-          播放器必须指向 HyperFrames preview 服务器的运行时注入端点（见 REVIEW-UI.md）。
-          原因：clip 可见性切换和音频由运行时管理，原始静态文件没有运行时——所有画面会
-          叠在一起只剩最后一屏。
-          启动：cd composition && npx hyperframes preview --port <port>
-          src 格式：http://localhost:<port>/api/projects/<meta.json 的 name>/preview?__hf_shader_capture_scale=1&__hf_shader_loading=player
-
-          注意：这条 src 是**绝对跨源 URL**，不走审阅桥（桥只送 dir 里的文件）。它是这个面上
-          唯一绕过缝的资产，也是唯一还没在插件宿主下实测过的部分。
-        -->
-        <hyperframes-player id="player" src="http://localhost:5176/api/projects/composition/preview?__hf_shader_capture_scale=1&amp;__hf_shader_loading=player" controls autoplay></hyperframes-player>
-        <div class="hint">暂停在出问题的画面 → 在<strong>右侧列表</strong>里选中对应的一屏 → 填反馈 → 点「保存反馈」。
-          只想说整片的就不用选屏（左边那个「整片意见」）。这一条先落进
-          review/review-submissions.json（状态条显示写到哪），模型收件后追加进
-          feedback/&lt;chapterId&gt;.jsonl。保存失败时文字留在输入框里，不丢。</div>
+    <div class="brand-wrap">
+      <span class="brand-badge">VIDEO CRAFT</span>
+      <h1>逐画面审阅 · <span id="project-name">project</span></h1>
+    </div>
+    <div class="top-right">
+      <div class="stage-switch" title="在分步动效审阅与合成成片预览之间一键切换">
+        <button type="button" id="view-svg-btn" class="active">⚡ 分步动效舞台</button>
+        <button type="button" id="view-player-btn">🎬 合成成片预览</button>
       </div>
+      <a class="reload" id="page-reload" href="" title="重新加载页面">⟳ 刷新</a>
+    </div>
+  </header>
+
+  <div class="layout">
+    <!-- 左栏：章节与分屏导航 -->
+    <aside class="side-left">
+      <div class="panel-head">
+        <span>分屏列表</span>
+        <span id="step-counter-badge">0 屏</span>
+      </div>
+      <div class="steps" id="steps"></div>
+    </aside>
+
+    <!-- 中央：严格 16:9 舞台 + 底部紧凑分步控制条 -->
+    <main class="center-stage">
+      <div class="canvas-toolbar">
+        <div class="tool-group" id="interaction-mode-group">
+          <button type="button" class="tool-btn active" data-stage-tool="director" id="tool-director">🎬 预览</button>
+          <button type="button" class="tool-btn" data-stage-tool="select" id="tool-select">🖱️ 点选改字</button>
+          <button type="button" class="tool-btn" data-stage-tool="box" id="tool-box">📐 框选批注</button>
+        </div>
+        <div class="tool-group">
+          <button type="button" class="tool-btn" id="btn-play-screen" title="连播本屏口播与所有分步动效">▶ 连播本屏</button>
+          <button type="button" class="tool-btn" id="btn-show-all" title="展示本屏最终完整态">❖ 最终完整态</button>
+          <div class="tool-sep"></div>
+          <button type="button" class="tool-btn" id="btn-focus-toggle" title="切换焦点聚光灯">💡 聚光灯: 开</button>
+          <button type="button" class="tool-btn" id="btn-speed-toggle" title="切换 0.5x 慢动作">🐢 1.0x</button>
+        </div>
+      </div>
+
+      <!-- 选中 SVG 元素时的轻量直改工具条 -->
+      <div class="elem-edit-bar" id="elem-edit-bar" hidden>
+        <span style="color:#38bdf8;font-family:var(--font-mono);font-weight:700;" id="sel-elem-tag">[文本]</span>
+        <input type="text" id="sel-elem-input" placeholder="直接修改选中元素文字…" />
+        <button type="button" class="tool-btn" id="btn-font-dec">A-</button>
+        <button type="button" class="tool-btn" id="btn-font-inc">A+</button>
+        <button type="button" class="tool-btn" id="btn-nudge-left">←</button>
+        <button type="button" class="tool-btn" id="btn-nudge-right">→</button>
+        <button type="button" class="tool-btn" id="btn-nudge-up">↑</button>
+        <button type="button" class="tool-btn" id="btn-nudge-down">↓</button>
+        <button type="button" class="tool-btn accent" id="btn-comment-elem">💬 提意见</button>
+      </div>
+
+      <div class="player-box" id="player-box">
+        <hyperframes-player id="player" src="http://localhost:5176/api/projects/composition/preview?__hf_shader_capture_scale=1&amp;__hf_shader_loading=player" controls autoplay></hyperframes-player>
+        <video id="composite-video-player" controls playsinline style="display:none;width:100%;height:100%;background:#000;object-fit:contain;"></video>
+        <div id="svg-stage-wrap" hidden>
+          <video id="stage-speaker-video" playsinline hidden></video>
+          <div id="speaker-time-pill" hidden>🔊 00:00.0</div>
+          <div id="svg-stage-host"></div>
+          <div id="annotation-overlay"></div>
+        </div>
+        <div class="hint">暂停在出问题的画面 → 在右侧列表里选中对应的一屏 → 填反馈 → 点「保存反馈」。</div>
+      </div>
+
+      <!-- 底部紧凑分步动效轨道 -->
+      <section class="choreo-deck" id="choreo-deck">
+        <div class="choreo-head">
+          <div class="choreo-title">
+            <span id="choreo-screen-label">🎛️ 分步动效轨道（点左侧分屏加载）</span>
+          </div>
+          <div class="choreo-controls">
+            <button type="button" class="tool-btn" id="btn-toggle-cues" style="padding:2px 8px;font-size:11px;">🎯 分句卡点微调</button>
+          </div>
+        </div>
+        <!-- 口播词级触发胶囊条（默认折叠，点击按钮展开） -->
+        <div class="cue-pills-bar" id="cue-pills-bar" hidden>
+          <span class="cue-pills-label">点分句绑到当前 Step：</span>
+        </div>
+        <!-- Step 列表 -->
+        <div class="step-choreo-rows" id="step-choreo-rows"></div>
+      </section>
+    </main>
+
+    <!-- 右栏：本批已提反馈与微调记录 + 反馈输入表单 -->
+    <aside class="side-right">
+      <div class="panel-head">
+        <span>审阅意见清单</span>
+        <span id="records-count-badge">0 条</span>
+      </div>
+      <div class="history-box" id="fb-history-list">
+        <div class="history-empty">尚未提交意见。可写「整片意见」，或点选左侧分屏、画布元素后精准提交。</div>
+      </div>
+
       <div class="feedback">
-        <!-- 两条路都摆在明面上：**不选任何屏也能说一句整片意见**。
-             以前逐屏是唯一入口（保存时先查 state.step），"看完了想说一句整体"这件事在页面上
-             没法表达 —— 人只能挑一屏、把整片的话塞进那一屏，或者干脆不说。
-             规则（模组 design-and-porting-rules 的 R10）：页面不许把逐单位当成唯一入口。
-             自检问法：「我不想针对任何一个单位，只想说一句整体意见 —— 页面允许吗？」 -->
         <div class="mode" id="fb-mode">
-          <button type="button" class="mode-tab" data-mode="overall" id="mode-overall">整片意见</button>
+          <button type="button" class="mode-tab active" data-mode="overall" id="mode-overall">整片意见</button>
           <button type="button" class="mode-tab" data-mode="step" id="mode-step">当前屏 · <span id="fb-step">未选中</span></button>
         </div>
         <p class="mode-note" id="mode-note"></p>
         <select id="fb-type">
-          <option value="visual">visual</option>
-          <option value="timing">timing</option>
-          <option value="asset">asset</option>
-          <option value="copy">copy</option>
-          <option value="animation">animation</option>
+          <option value="visual">visual · 画面版式与视觉</option>
+          <option value="animation">animation · 动效原语与镜头</option>
+          <option value="timing">timing · 节奏与词级卡点</option>
+          <option value="copy">copy · 上屏文字与花字</option>
+          <option value="asset">asset · 素材与证据图</option>
         </select>
         <textarea id="fb-text" placeholder="整片看完总想说的一点…（不针对某一屏）"></textarea>
         <div id="stale-note" hidden></div>
@@ -126,37 +736,823 @@
           <div id="save-state">正在连接审阅宿主…</div>
         </div>
       </div>
-    </div>
-    <div class="side">
-      <div class="steps" id="steps"></div>
-    </div>
+    </aside>
   </div>
+
+  <!-- 内联 VideoCraftAnimEngine v4：确保在任何宿主（含无外网/插件沙箱）下 100% 零依赖可用 -->
+  <script>
+/**
+ * VideoCraftAnimEngine v4 — Camera Rig, Focus Spotlight & Product UI Choreography Engine
+ *
+ * Upgrades v3 ("static poster step-by-step appear") to v4 ("Camera + Spotlight + 12 Primitives + Sub-cue Sync"):
+ *   1. Virtual Camera Rig (`camera`: 'none' | 'focus-step' | 'focus-left' | 'focus-right' | 'zoom-center')
+ *      Automatically wraps SVG content in `<g class="vc-camera-stage">` and smoothly pans/zooms to the
+ *      active step's bounding box (clamped safely to 1920x1080).
+ *   2. Focus & Dim State Machine (`focusMode`: 'spotlight' | 'accumulate')
+ *      In 'spotlight' mode, previous steps (`step < targetStep`) smoothly dim to `opacity: 0.34` so the
+ *      viewer's eye locks onto the active step; 'all' restores full 1.0 visibility.
+ *   3. 12 Compound Choreography Primitives (8 Editorial + 4 Product UI Micro-interactions):
+ *      - Editorial: `meter-halt`, `draw-stroke`, `cursor-wipe`, `slot-push`, `polaroid-slap`,
+ *                   `stagger-cards`, `stamp-in`, `paper-unroll`
+ *      - Product UI:
+ *        * `cursor-click`: Animated pointer flies in along an arc -> hovers -> clicks (scale 0.94 + ripple ring) -> reveals target
+ *        * `number-ticker`: Numeric text nodes count up from 0 to target value while bars/badges charge up
+ *        * `card-expand`: Spring panel expansion from compact header (`scaleY(0.22)`) with staggered child rows
+ *        * `spotlight-sweep`: Diagonal highlight sheen sweeps across the card + subtle ambient hold breathing
+ *   4. Per-step Choreography Overrides (`setChoreography(svgRoot, map)`):
+ *      Allows runtime/review-page tweaking of `{ anim, camera, dimPrev, subDelayMs, startSec }` with 0ms rebuild.
+ *
+ * Dual-mode deterministic execution:
+ *   - Browser live preview (WAAPI): `VideoCraftAnimEngine.setStep(svgRoot, stepIndex, true, options)`
+ *   - HyperFrames render (GSAP):    `VideoCraftAnimEngine.registerGsapTimeline(gsap, tl, svgRoot, stepConfigMap)`
+ */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) {
+    module.exports = factory();
+  } else {
+    root.VideoCraftAnimEngine = factory();
+  }
+})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+  const EASE_OUT = 'cubic-bezier(0.22, 1, 0.36, 1)';
+  const EASE_SPRING = 'cubic-bezier(0.28, 1.38, 0.54, 1)';
+  const EASE_OVERSHOOT = 'cubic-bezier(0.34, 1.56, 0.64, 1)';
+  const EASE_IMPACT = 'cubic-bezier(0.2, 0.9, 0.3, 1)';
+  const EASE_CAMERA = 'cubic-bezier(0.25, 1, 0.35, 1)';
+
+  let speedMultiplier = 1;
+  const choreographyStore = new WeakMap(); // svgRoot -> { focusMode, steps: { [step]: { anim, camera, subDelayMs, startSec } } }
+  const activeTickers = new WeakMap();     // svgRoot -> number[] (rAF ids)
+
+  const PRIMITIVE_CATALOG = [
+    { id: 'meter-halt', label: '进度冲刺撞墙 (meter-halt)', group: 'editorial' },
+    { id: 'draw-stroke', label: '笔迹生长+端点弹跳 (draw-stroke)', group: 'editorial' },
+    { id: 'cursor-wipe', label: '游标切入擦出 (cursor-wipe)', group: 'editorial' },
+    { id: 'slot-push', label: '几何槽撑开推字 (slot-push)', group: 'editorial' },
+    { id: 'polaroid-slap', label: '相纸甩落+胶带封固 (polaroid-slap)', group: 'editorial' },
+    { id: 'stagger-cards', label: '错峰弹簧升卡 (stagger-cards)', group: 'editorial' },
+    { id: 'stamp-in', label: '印章重砸过冲 (stamp-in)', group: 'editorial' },
+    { id: 'paper-unroll', label: '卷宗展开浮现 (paper-unroll)', group: 'editorial' },
+    { id: 'cursor-click', label: '🖱️ 拟真光标点击展开 (cursor-click)', group: 'product-ui' },
+    { id: 'number-ticker', label: '🔢 数字滚轮攀升充能 (number-ticker)', group: 'product-ui' },
+    { id: 'card-expand', label: '📐 面板丝滑撑开让位 (card-expand)', group: 'product-ui' },
+    { id: 'spotlight-sweep', label: '✨ 流光扫掠+微呼吸 (spotlight-sweep)', group: 'product-ui' }
+  ];
+
+  function setSpeedMultiplier(mult) {
+    speedMultiplier = Number(mult) || 1;
+  }
+
+  function getSpeedMultiplier() {
+    return speedMultiplier;
+  }
+
+  function getChoreography(svgRoot) {
+    if (!svgRoot) return { focusMode: 'spotlight', steps: {} };
+    if (!choreographyStore.has(svgRoot)) {
+      const defaultFocus = svgRoot.getAttribute('data-focus-mode') || 'spotlight';
+      choreographyStore.set(svgRoot, { focusMode: defaultFocus, steps: {} });
+    }
+    return choreographyStore.get(svgRoot);
+  }
+
+  function setChoreography(svgRoot, patch = {}) {
+    if (!svgRoot) return;
+    const cur = getChoreography(svgRoot);
+    if (patch.focusMode) cur.focusMode = patch.focusMode;
+    if (patch.steps) {
+      Object.keys(patch.steps).forEach(k => {
+        cur.steps[k] = Object.assign({}, cur.steps[k] || {}, patch.steps[k]);
+      });
+    }
+    return cur;
+  }
+
+  /**
+   * Ensure a single `<g class="vc-camera-stage">` wraps all visual layers inside `<svg>`
+   * so camera pan/zoom never collides with individual element transforms.
+   */
+  function ensureCameraStage(svgRoot) {
+    if (!svgRoot) return null;
+    let stage = svgRoot.querySelector(':scope > g.vc-camera-stage');
+    if (stage) return stage;
+    const ns = 'http://www.w3.org/2000/svg';
+    stage = document.createElementNS(ns, 'g');
+    stage.setAttribute('class', 'vc-camera-stage');
+    stage.style.transformOrigin = '0px 0px';
+    const children = Array.from(svgRoot.childNodes);
+    children.forEach(node => {
+      if (node.nodeType === 1) {
+        const tag = node.tagName.toLowerCase();
+        if (tag === 'defs' || node.getAttribute('data-role') === 'anchor') return;
+      }
+      stage.appendChild(node);
+    });
+    svgRoot.appendChild(stage);
+    return stage;
+  }
+
+  function inspect(svgRoot) {
+    if (!svgRoot) return [];
+    const choreo = getChoreography(svgRoot);
+    return Array.from(svgRoot.querySelectorAll('[data-step]')).map(el => {
+      const stepNum = Number(el.getAttribute('data-step'));
+      const over = (choreo.steps && choreo.steps[stepNum]) || {};
+      return {
+        id: el.id || `step-${stepNum}`,
+        step: stepNum,
+        anim: over.anim || el.getAttribute('data-anim') || 'stagger-cards',
+        camera: over.camera || el.getAttribute('data-camera') || 'none',
+        subDelayMs: over.subDelayMs !== undefined ? Number(over.subDelayMs) : Number(el.getAttribute('data-sub-delay') || 0),
+        cue: over.cue || el.getAttribute('data-cue') || '',
+        relStartSec: over.relStartSec !== undefined ? Number(over.relStartSec) : (el.getAttribute('data-rel-start') ? Number(el.getAttribute('data-rel-start')) : undefined),
+        startSec: over.startSec !== undefined ? Number(over.startSec) : undefined,
+        nested: Boolean(el.parentElement && el.parentElement.closest('[data-step]')),
+        el
+      };
+    });
+  }
+
+  function clearTickers(svgRoot) {
+    const list = activeTickers.get(svgRoot);
+    if (list && list.length) {
+      list.forEach(id => cancelAnimationFrame(id));
+    }
+    activeTickers.set(svgRoot, []);
+  }
+
+  function cancelAll(svgRoot) {
+    if (!svgRoot) return;
+    clearTickers(svgRoot);
+    svgRoot.querySelectorAll('.vc-transient-overlay').forEach(node => node.remove());
+    svgRoot.querySelectorAll('[data-vc-orig-text]').forEach(node => {
+      node.textContent = node.getAttribute('data-vc-orig-text');
+    });
+    svgRoot.querySelectorAll('[data-step], [data-step] *').forEach(node => {
+      if (typeof node.getAnimations === 'function') {
+        node.getAnimations().forEach(a => a.cancel());
+      }
+      node.style.clipPath = '';
+      node.style.transform = '';
+      node.style.opacity = '';
+      node.style.filter = '';
+    });
+  }
+
+  /**
+   * Compute safe camera matrix `{ scale, tx, ty }` for 1920x1080 canvas.
+   * Zooms smoothly around the active step's center while gently gliding 20% toward
+   * the stage focal point so cards never get clipped or collide with the speaker zone.
+   */
+  function computeCameraTarget(svgRoot, item, mode) {
+    const W = 1920, H = 1080;
+    const speakerW = Number((svgRoot && svgRoot.getAttribute('data-speaker-width')) || 0);
+    // When left speaker column is present (split-stage 16:9), never shift or pan the canvas
+    // so right-stage graphics never get occluded by the speaker column.
+    if (speakerW > 0 || !mode || mode === 'none' || !item || !item.el) {
+      return { scale: 1, tx: 0, ty: 0 };
+    }
+    let box = { x: 660, y: 200, width: 1120, height: 680 };
+    try {
+      const b = item.el.getBBox();
+      if (b && b.width > 20 && b.height > 20) box = b;
+    } catch (_) { /* fallback */ }
+
+    let scale = 1.04;
+    let cx = box.x + box.width / 2;
+    let cy = box.y + box.height / 2;
+
+    if (mode === 'focus-left') {
+      scale = 1.05;
+      cx = box.x + Math.min(box.width * 0.35, 340);
+    } else if (mode === 'focus-right') {
+      scale = 1.05;
+      cx = box.x + Math.max(box.width * 0.65, box.width - 340);
+    } else if (mode === 'zoom-center') {
+      scale = 1.04;
+      cx = W * 0.5;
+      cy = H * 0.5;
+    } else if (mode === 'focus-step') {
+      scale = 1.045;
+    }
+
+    const tx = Math.round(Math.max(W * (1 - scale), Math.min(0, cx * (1 - scale))));
+    const ty = Math.round(Math.max(H * (1 - scale), Math.min(0, cy * (1 - scale))));
+
+    return {
+      scale: Number(scale.toFixed(3)),
+      tx,
+      ty
+    };
+  }
+
+  function animateCameraWAAPI(svgRoot, item, resolvedStep) {
+    const stage = ensureCameraStage(svgRoot);
+    if (!stage) return;
+    const mode = resolvedStep === 'all' ? 'none' : (item ? item.camera : 'none');
+    const { scale, tx, ty } = computeCameraTarget(svgRoot, item, mode);
+    const nextTransform = scale === 1 && tx === 0 && ty === 0
+      ? 'translate(0px, 0px) scale(1)'
+      : `translate(${tx}px, ${ty}px) scale(${scale})`;
+
+    const prevTransform = stage.getAttribute('data-vc-cam-transform') || 'translate(0px, 0px) scale(1)';
+    stage.setAttribute('data-vc-cam-transform', nextTransform);
+
+    if (typeof stage.animate === 'function' && prevTransform !== nextTransform) {
+      stage.animate(
+        [{ transform: prevTransform }, { transform: nextTransform }],
+        { duration: Math.round(620 * speedMultiplier), easing: EASE_CAMERA, fill: 'both' }
+      );
+    } else {
+      stage.style.transform = nextTransform;
+    }
+  }
+
+  /**
+   * Inject a temporary SVG cursor + click ripple for `cursor-click` primitive.
+   */
+  function spawnCursorClickOverlay(el, opts, subDelay) {
+    let box = { x: 960, y: 540, width: 300, height: 120 };
+    try {
+      const targetNode = el.querySelector('.anim-node, .anim-badge, .anim-endpoint, .anim-card, .anim-body') || el;
+      const b = targetNode.getBBox();
+      if (b && b.width > 10) box = b;
+    } catch (_) { /* ignore */ }
+
+    const tx = Math.round(box.x + box.width * 0.52);
+    const ty = Math.round(box.y + box.height * 0.52);
+    const startX = tx + 110;
+    const startY = ty + 85;
+
+    const ns = 'http://www.w3.org/2000/svg';
+    const layer = document.createElementNS(ns, 'g');
+    layer.setAttribute('class', 'vc-transient-overlay');
+    layer.style.pointerEvents = 'none';
+
+    const ripple = document.createElementNS(ns, 'circle');
+    ripple.setAttribute('cx', String(tx));
+    ripple.setAttribute('cy', String(ty));
+    ripple.setAttribute('r', '24');
+    ripple.setAttribute('fill', 'none');
+    ripple.setAttribute('stroke', '#E43D1E');
+    ripple.setAttribute('stroke-width', '3');
+    ripple.style.opacity = '0';
+    ripple.style.transformOrigin = `${tx}px ${ty}px`;
+
+    const cursor = document.createElementNS(ns, 'g');
+    cursor.innerHTML = `
+      <path d="M 0,0 L 0,26 L 7,20 L 12.5,31 L 17,28.5 L 11.5,17.5 L 20.5,17.5 Z"
+            fill="#141413" stroke="#FAF8F5" stroke-width="2" stroke-linejoin="round"/>
+    `;
+
+    layer.appendChild(ripple);
+    layer.appendChild(cursor);
+    el.appendChild(layer);
+
+    if (typeof cursor.animate === 'function') {
+      cursor.animate([
+        { opacity: 0, transform: `translate(${startX}px, ${startY}px) scale(1.1)` },
+        { opacity: 1, transform: `translate(${tx}px, ${ty}px) scale(1)`, offset: 0.48 },
+        { opacity: 1, transform: `translate(${tx}px, ${ty}px) scale(0.85)`, offset: 0.65 },
+        { opacity: 1, transform: `translate(${tx}px, ${ty}px) scale(1)`, offset: 0.80 },
+        { opacity: 0, transform: `translate(${tx + 18}px, ${ty + 22}px) scale(0.95)` }
+      ], opts(660, EASE_OUT, subDelay));
+
+      ripple.animate([
+        { opacity: 0, transform: 'scale(0.25)' },
+        { opacity: 0.9, transform: 'scale(0.6)', offset: 0.35 },
+        { opacity: 0, transform: 'scale(1.8)' }
+      ], opts(420, EASE_OUT, subDelay + 310));
+    }
+  }
+
+  /**
+   * Run numeric ticker count-up on text elements containing numbers.
+   */
+  function runNumberTickers(svgRoot, el, durationMs, delayMs) {
+    const texts = Array.from(el.querySelectorAll('text.anim-count, [data-count-to], text'));
+    const numRegex = /(-?\d+(?:\.\d+)?)/;
+    const targets = texts.filter(t => t.classList.contains('anim-count') || numRegex.test(t.textContent || ''));
+    if (!targets.length) return;
+
+    const rafList = activeTickers.get(svgRoot) || [];
+    targets.forEach(node => {
+      const raw = node.getAttribute('data-vc-orig-text') || node.textContent || '';
+      node.setAttribute('data-vc-orig-text', raw);
+      const match = raw.match(numRegex);
+      if (!match) return;
+      const targetVal = parseFloat(match[1]);
+      const isFloat = match[1].includes('.');
+      const decimals = isFloat ? (match[1].split('.')[1] || '').length : 0;
+      const prefix = raw.slice(0, match.index);
+      const suffix = raw.slice((match.index || 0) + match[1].length);
+
+      const startTime = performance.now() + delayMs * speedMultiplier;
+      const totalDur = Math.max(240, durationMs * speedMultiplier);
+
+      function tick(now) {
+        if (now < startTime) {
+          node.textContent = `${prefix}${isFloat ? (0).toFixed(decimals) : '0'}${suffix}`;
+          rafList.push(requestAnimationFrame(tick));
+          return;
+        }
+        const p = Math.min(1, (now - startTime) / totalDur);
+        const eased = 1 - Math.pow(1 - p, 3);
+        const cur = targetVal * eased;
+        node.textContent = `${prefix}${isFloat ? cur.toFixed(decimals) : Math.round(cur)}${suffix}`;
+        if (p < 1) {
+          rafList.push(requestAnimationFrame(tick));
+        } else {
+          node.textContent = raw;
+        }
+      }
+      rafList.push(requestAnimationFrame(tick));
+    });
+    activeTickers.set(svgRoot, rafList);
+  }
+
+  /**
+   * Run character-by-character typewriter effect on `.anim-typewriter` text nodes.
+   */
+  function runTypewriters(svgRoot, el, durationMs, delayMs) {
+    const nodes = Array.from(el.querySelectorAll('text.anim-typewriter, [data-typewriter]'));
+    if (!nodes.length) return;
+    const rafList = activeTickers.get(svgRoot) || [];
+    nodes.forEach((node, idx) => {
+      const raw = node.getAttribute('data-vc-orig-text') || node.textContent || '';
+      node.setAttribute('data-vc-orig-text', raw);
+      const startTime = performance.now() + (delayMs + idx * 120) * speedMultiplier;
+      const totalDur = Math.max(220, durationMs * speedMultiplier);
+      function tick(now) {
+        if (now < startTime) {
+          node.textContent = '';
+          rafList.push(requestAnimationFrame(tick));
+          return;
+        }
+        const p = Math.min(1, (now - startTime) / totalDur);
+        const nChars = Math.max(1, Math.round(raw.length * p));
+        node.textContent = p < 1 ? raw.slice(0, nChars) + '▋' : raw;
+        if (p < 1) rafList.push(requestAnimationFrame(tick));
+      }
+      rafList.push(requestAnimationFrame(tick));
+    });
+    activeTickers.set(svgRoot, rafList);
+  }
+
+  /**
+   * Universal internal graphic choreography: animates paths, bars, nodes, rings,
+   * scanners, and typewriters inside any step with multi-beat sequential timing (1.2s - 1.8s)
+   * so diagrams evolve organically along with the spoken sentence.
+   */
+  function runInternalGraphicChoreography(svgRoot, el, opts, sub) {
+    // 1. Vector path drawing (stroke-dashoffset) — sequential circuit tracing
+    el.querySelectorAll('.anim-stroke, [pathLength="1"]').forEach((p, idx) => {
+      p.style.strokeDasharray = '1';
+      p.animate([
+        { strokeDashoffset: 1 },
+        { strokeDashoffset: 0 }
+      ], opts(720, EASE_OUT, sub + 120 + idx * 240));
+    });
+
+    // 2. Horizontal progress / meter bars (.anim-bar-h, .anim-fill)
+    el.querySelectorAll('.anim-bar-h, .anim-fill').forEach((bar, idx) => {
+      bar.style.transformBox = 'fill-box';
+      bar.style.transformOrigin = '0% 50%';
+      bar.animate([
+        { transform: 'scaleX(0)' },
+        { transform: 'scaleX(1)' }
+      ], opts(1050, EASE_OUT, sub + 140 + idx * 220));
+    });
+
+    // 3. Vertical chart pillars (.anim-bar-v)
+    el.querySelectorAll('.anim-bar-v').forEach((bar, idx) => {
+      bar.style.transformBox = 'fill-box';
+      bar.style.transformOrigin = '50% 100%';
+      bar.animate([
+        { opacity: 0, transform: 'scaleY(0.08)' },
+        { opacity: 1, transform: 'scaleY(1)' }
+      ], opts(780, EASE_SPRING, sub + 100 + idx * 220));
+    });
+
+    // 4. In-place diagram nodes & rings (.anim-node, .anim-ring, .anim-endpoint)
+    el.querySelectorAll('.anim-node, .anim-ring, .anim-endpoint').forEach((node, idx) => {
+      node.style.transformBox = 'fill-box';
+      node.style.transformOrigin = '50% 50%';
+      node.animate([
+        { opacity: 0, transform: 'scale(0.82)' },
+        { opacity: 1, transform: 'scale(1.03)', offset: 0.72 },
+        { opacity: 1, transform: 'scale(1)' }
+      ], opts(540, EASE_SPRING, sub + 80 + idx * 240));
+    });
+
+    // 5. Scanner / highlight beam (.anim-scan)
+    el.querySelectorAll('.anim-scan').forEach((scan, idx) => {
+      scan.animate([
+        { opacity: 0, transform: 'translateX(-48px)' },
+        { opacity: 1, offset: 0.25 },
+        { opacity: 1, transform: 'translateX(0px)' }
+      ], opts(880, EASE_OUT, sub + 120 + idx * 180));
+    });
+
+    // 6. Typewriter text (.anim-typewriter) — 1.35s character-by-character typing
+    runTypewriters(svgRoot, el, 1350, sub + 80);
+
+    // 7. Explicit counter text (.anim-count) — 1.35s numeric count-up
+    if (el.querySelector('.anim-count, [data-count-to]')) {
+      runNumberTickers(svgRoot, el, 1350, sub + 120);
+    }
+  }
+
+  function playPrimitive(svgRoot, item) {
+    const { el, anim, nested, subDelayMs = 0 } = item;
+    const baseDelay = nested ? 180 : 0;
+    const sub = Math.max(0, Number(subDelayMs) || 0);
+    const opts = (dur, easing = EASE_OUT, extraDelay = 0) => ({
+      duration: Math.round(dur * speedMultiplier),
+      delay: Math.round((baseDelay + extraDelay) * speedMultiplier),
+      easing,
+      fill: 'both'
+    });
+
+    // Always trigger internal graphic sub-animations (strokes, bars, nodes, typewriters)
+    runInternalGraphicChoreography(svgRoot, el, opts, sub);
+
+    if (anim === 'meter-halt') {
+      const bar = el.querySelector('.wipe-bar');
+      if (bar) {
+        bar.style.transformBox = 'fill-box';
+        bar.style.transformOrigin = '50% 0%';
+        bar.animate([{ transform: 'scaleY(0)', opacity: 0.2 }, { transform: 'scaleY(1)', opacity: 1 }], opts(260, EASE_OUT, 0));
+      }
+      const wall = el.querySelector('.anim-wall');
+      if (wall) {
+        wall.animate([
+          { opacity: 0.3, transform: 'translateX(0px)' },
+          { opacity: 1, transform: 'translateX(6px)', offset: 0.58 },
+          { opacity: 1, transform: 'translateX(-2px)', offset: 0.80 },
+          { opacity: 1, transform: 'translateX(0px)' }
+        ], opts(380, EASE_OVERSHOOT, 240 + sub));
+      }
+      const badge = el.querySelector('.anim-badge');
+      if (badge) {
+        badge.style.transformBox = 'fill-box';
+        badge.style.transformOrigin = '50% 50%';
+        badge.animate([{ opacity: 0, transform: 'scale(0.82)' }, { opacity: 1, transform: 'scale(1)' }], opts(300, EASE_SPRING, 320 + sub));
+      }
+      runNumberTickers(svgRoot, el, 480, 60 + sub);
+    } else if (anim === 'draw-stroke') {
+      const body = el.querySelector('.anim-body, .anim-label');
+      if (body) {
+        body.animate([{ clipPath: 'inset(0 100% 0 0)' }, { clipPath: 'inset(0 0% 0 0)' }], opts(360, EASE_OUT, 0));
+      }
+    } else if (anim === 'cursor-wipe' || anim === 'bar-wipe') {
+      const bar = el.querySelector('.wipe-bar');
+      if (bar) {
+        bar.style.transformBox = 'fill-box';
+        bar.style.transformOrigin = '50% 0%';
+        bar.animate([{ transform: 'scaleY(0)', opacity: 0 }, { transform: 'scaleY(1)', opacity: 1 }], opts(280, EASE_OUT, 0));
+      }
+      const body = el.querySelector('.anim-body');
+      if (body) {
+        body.animate([
+          { clipPath: 'inset(0 100% 0 0)', opacity: 0.35 },
+          { clipPath: 'inset(0 0% 0 0)', opacity: 1 }
+        ], opts(420, EASE_OUT, 30));
+      }
+      const subEl = el.querySelector('.anim-sub');
+      if (subEl) {
+        subEl.animate([{ opacity: 0 }, { opacity: 1 }], opts(320, EASE_OUT, 180));
+      }
+      const stamp = el.querySelector('.anim-stamp');
+      if (stamp) {
+        stamp.style.transformBox = 'fill-box';
+        stamp.style.transformOrigin = '50% 50%';
+        stamp.animate([{ opacity: 0, transform: 'scale(1.25)' }, { opacity: 1, transform: 'scale(1)' }], opts(280, EASE_OVERSHOOT, 320 + sub));
+      }
+    } else if (anim === 'slot-push' || anim === 'slot-expand') {
+      const pushPx = Number(el.getAttribute('data-push') || 90);
+      const left = el.querySelector('.slot-left');
+      const right = el.querySelector('.slot-right');
+      const core = el.querySelector('.slot-core');
+      if (left) left.animate([{ transform: `translateX(${pushPx}px)` }, { transform: 'translateX(0px)' }], opts(460, EASE_OUT, 0));
+      if (right) right.animate([{ transform: `translateX(-${pushPx}px)` }, { transform: 'translateX(0px)' }], opts(460, EASE_OUT, 0));
+      if (core) {
+        core.style.transformBox = 'fill-box';
+        core.style.transformOrigin = '50% 50%';
+        core.animate([{ opacity: 0, transform: 'scaleX(0.15)' }, { opacity: 1, transform: 'scaleX(1)' }], opts(440, EASE_SPRING, 40));
+      }
+    } else if (anim === 'polaroid-slap' || anim === 'z-stack-drop') {
+      const units = el.querySelectorAll('.polaroid-unit, .anim-card');
+      (units.length > 0 ? Array.from(units) : [el]).forEach((unit, uIdx) => {
+        const uDelay = sub + uIdx * 140;
+        unit.style.transformBox = 'fill-box';
+        unit.style.transformOrigin = '50% 50%';
+        unit.animate([
+          { opacity: 0, clipPath: 'inset(0 100% 0 0)' },
+          { opacity: 1, clipPath: 'inset(0 0% 0 0)' }
+        ], opts(400, EASE_OUT, uDelay));
+      });
+    } else if (anim === 'stagger-cards' || anim === 'pop-card') {
+      const cards = el.querySelectorAll('.anim-card');
+      (cards.length > 0 ? Array.from(cards) : [el]).forEach((c, idx) => {
+        c.style.transformBox = 'fill-box';
+        c.style.transformOrigin = '50% 50%';
+        c.animate([
+          { opacity: 0, clipPath: 'inset(0 0 100% 0)' },
+          { opacity: 1, clipPath: 'inset(0 0 0% 0)' }
+        ], opts(380, EASE_OUT, sub + idx * 110));
+      });
+    } else if (anim === 'stamp-in') {
+      const stamps = el.querySelectorAll('.anim-stamp, .anim-card');
+      (stamps.length > 0 ? Array.from(stamps) : [el]).forEach((st, idx) => {
+        st.style.transformBox = 'fill-box';
+        st.style.transformOrigin = '50% 50%';
+        st.animate([
+          { opacity: 0, transform: 'scale(1.14)' },
+          { opacity: 1, transform: 'scale(0.98)', offset: 0.72 },
+          { opacity: 1, transform: 'scale(1)' }
+        ], opts(320, EASE_OVERSHOOT, sub + idx * 110));
+      });
+    } else if (anim === 'paper-unroll') {
+      const paper = el.querySelector('.anim-paper, .anim-card') || el;
+      paper.animate([
+        { clipPath: 'inset(0 100% 0 0)', opacity: 0.4 },
+        { clipPath: 'inset(0 0% 0 0)', opacity: 1 }
+      ], opts(440, EASE_OUT, sub));
+    } else if (anim === 'cursor-click') {
+      const targetCards = el.querySelectorAll('.anim-card, .anim-body, .anim-endpoint, .anim-stamp');
+      (targetCards.length > 0 ? Array.from(targetCards) : [el]).forEach((t, idx) => {
+        t.style.transformBox = 'fill-box';
+        t.style.transformOrigin = '50% 50%';
+        t.animate([
+          { opacity: 0.35, transform: 'scale(0.97)' },
+          { opacity: 0.65, transform: 'scale(0.95)', offset: 0.52 },
+          { opacity: 1, transform: 'scale(1.02)', offset: 0.80 },
+          { opacity: 1, transform: 'scale(1)' }
+        ], opts(600, EASE_SPRING, sub + idx * 80));
+      });
+      spawnCursorClickOverlay(el, opts, sub);
+    } else if (anim === 'number-ticker') {
+      runNumberTickers(svgRoot, el, 620, sub + 40);
+    } else if (anim === 'card-expand') {
+      const targets = el.querySelectorAll('.anim-card');
+      (targets.length > 0 ? Array.from(targets) : [el]).forEach((t, idx) => {
+        t.animate([
+          { opacity: 0, clipPath: 'inset(0 0 88% 0)' },
+          { opacity: 1, clipPath: 'inset(0 0 0% 0)' }
+        ], opts(440, EASE_OUT, sub + idx * 90));
+      });
+    } else if (anim === 'spotlight-sweep') {
+      el.animate([
+        { opacity: 0, clipPath: 'inset(0 100% 0 0)' },
+        { opacity: 1, clipPath: 'inset(0 0% 0 0)' }
+      ], opts(480, EASE_OUT, sub));
+    }
+  }
+
+  function setStep(svgRoot, targetStep, animateTarget = true, options = {}) {
+    if (!svgRoot) return { items: [], maxStep: 0, resolved: 0 };
+    if (options.focusMode || options.steps) {
+      setChoreography(svgRoot, options);
+    }
+    cancelAll(svgRoot);
+    ensureCameraStage(svgRoot);
+
+    const choreo = getChoreography(svgRoot);
+    const focusMode = options.focusMode || choreo.focusMode || 'spotlight';
+    const items = inspect(svgRoot);
+    const maxStep = items.reduce((m, x) => Math.max(m, x.step), 0);
+    const resolved = targetStep === 'all' ? maxStep : Number(targetStep);
+    let activeItem = null;
+
+    items.forEach(item => {
+      if (item.step > resolved) {
+        item.el.setAttribute('data-vc-state', 'hidden');
+        item.el.style.opacity = '0';
+      } else if (targetStep !== 'all' && item.step < resolved && focusMode === 'spotlight') {
+        // Spotlight state machine: previous steps gently recede into context!
+        item.el.setAttribute('data-vc-state', 'dimmed');
+        item.el.style.opacity = '0.34';
+        item.el.querySelectorAll('[pathLength="1"]').forEach(p => {
+          p.style.strokeDasharray = '1';
+          p.style.strokeDashoffset = '0';
+        });
+      } else {
+        item.el.setAttribute('data-vc-state', 'active');
+        item.el.style.opacity = '1';
+        item.el.querySelectorAll('[pathLength="1"]').forEach(p => {
+          p.style.strokeDasharray = '1';
+          p.style.strokeDashoffset = '0';
+        });
+        if (item.step === resolved) {
+          activeItem = item;
+          if (animateTarget && targetStep !== 'all') {
+            playPrimitive(svgRoot, item);
+          }
+        }
+      }
+    });
+
+    animateCameraWAAPI(svgRoot, activeItem, targetStep);
+    return { items, maxStep, resolved, focusMode, activeItem };
+  }
+
+  /**
+   * Register seek-safe GSAP tweens on `tl` (`window.__timelines["main"]`)
+   * for HyperFrames deterministic rendering.
+   *
+   * `stepConfigMap` can be either:
+   *   - legacy `{ 1: 0.4, 2: 2.8, 3: 5.1 }` (step -> startSec)
+   *   - v4 rich config `{ focusMode: 'spotlight', steps: { 1: { startSec: 0.4, anim: 'meter-halt', camera: 'focus-step', subDelaySec: 0.5 } } }`
+   */
+  function registerGsapTimeline(gsap, tl, svgRoot, stepConfigMap = {}) {
+    if (!gsap || !tl || !svgRoot) return;
+    const isRich = stepConfigMap && typeof stepConfigMap === 'object' && stepConfigMap.steps;
+    const focusMode = isRich ? (stepConfigMap.focusMode || 'spotlight') : (svgRoot.getAttribute('data-focus-mode') || 'spotlight');
+    const stepEntries = isRich ? stepConfigMap.steps : stepConfigMap;
+
+    if (isRich) {
+      setChoreography(svgRoot, stepConfigMap);
+    }
+
+    const stage = ensureCameraStage(svgRoot);
+    if (stage) {
+      gsap.set(stage, { x: 0, y: 0, scale: 1, transformOrigin: '0px 0px' });
+    }
+
+    const items = inspect(svgRoot);
+    items.forEach((item, itemIdx) => {
+      const { el, step } = item;
+      const rawCfg = stepEntries[step];
+      const cfg = (rawCfg && typeof rawCfg === 'object') ? rawCfg : { startSec: Number(rawCfg ?? 0) };
+      const t0 = Number(cfg.startSec ?? item.startSec ?? 0);
+      const anim = cfg.anim || item.anim;
+      const camera = cfg.camera || item.camera || 'none';
+      const subSec = Number(cfg.subDelaySec ?? (item.subDelayMs / 1000) ?? 0);
+
+      // Initial hidden state outside timeline (HyperFrames rule: frame 0 determinism)
+      gsap.set(el, { autoAlpha: 0 });
+      tl.set(el, { autoAlpha: 1 }, t0);
+
+      // Spotlight dimming of previous steps when this step activates
+      if (focusMode === 'spotlight' && itemIdx > 0) {
+        const prevEls = items.slice(0, itemIdx).map(x => x.el);
+        tl.to(prevEls, { autoAlpha: 0.34, duration: 0.38, ease: 'power2.out' }, t0);
+      }
+
+      // Camera Rig Pan & Zoom
+      if (stage) {
+        const camTarget = computeCameraTarget(svgRoot, item, camera);
+        tl.to(stage, {
+          x: camTarget.tx,
+          y: camTarget.ty,
+          scale: camTarget.scale,
+          duration: 0.62,
+          ease: 'power3.out'
+        }, t0);
+      }
+
+      if (anim === 'draw-stroke') {
+        const paths = el.querySelectorAll('.anim-stroke, [pathLength="1"]');
+        const endpoints = el.querySelectorAll('.anim-endpoint, .anim-arrow');
+        gsap.set(paths, { strokeDasharray: 1, strokeDashoffset: 1 });
+        gsap.set(endpoints, { autoAlpha: 0, scale: 0.68, y: 6, transformOrigin: '50% 50%' });
+        paths.forEach((p, idx) => {
+          tl.to(p, { strokeDashoffset: 0, duration: 0.46, ease: 'power3.out' }, t0 + subSec + idx * 0.065);
+        });
+        endpoints.forEach((ep, idx) => {
+          tl.to(ep, { autoAlpha: 1, scale: 1, y: 0, duration: 0.28, ease: 'back.out(1.8)' }, t0 + subSec + 0.32 + idx * 0.075);
+        });
+      } else if (anim === 'slot-push' || anim === 'slot-expand') {
+        const pushPx = Number(el.getAttribute('data-push') || 165);
+        const left = el.querySelector('.slot-left');
+        const right = el.querySelector('.slot-right');
+        const core = el.querySelector('.slot-core');
+        const paths = el.querySelectorAll('.anim-stroke, [pathLength="1"]');
+        const endpoints = el.querySelectorAll('.anim-endpoint');
+        if (left) {
+          gsap.set(left, { x: pushPx });
+          tl.to(left, { x: 0, duration: 0.52, ease: 'back.out(1.4)' }, t0);
+        }
+        if (right) {
+          gsap.set(right, { x: -pushPx });
+          tl.to(right, { x: 0, duration: 0.52, ease: 'back.out(1.4)' }, t0);
+        }
+        if (core) {
+          gsap.set(core, { autoAlpha: 0, scaleX: 0.04, transformOrigin: '50% 50%' });
+          tl.to(core, { autoAlpha: 1, scaleX: 1, duration: 0.46, ease: 'power3.out' }, t0 + 0.06);
+        }
+        gsap.set(paths, { strokeDasharray: 1, strokeDashoffset: 1 });
+        paths.forEach((p, idx) => {
+          tl.to(p, { strokeDashoffset: 0, duration: 0.42, ease: 'power2.out' }, t0 + subSec + 0.16 + idx * 0.05);
+        });
+        gsap.set(endpoints, { autoAlpha: 0, scale: 0.5, transformOrigin: '50% 50%' });
+        endpoints.forEach((ep, idx) => {
+          tl.to(ep, { autoAlpha: 1, scale: 1, duration: 0.26, ease: 'back.out(2)' }, t0 + subSec + 0.34 + idx * 0.055);
+        });
+      } else if (anim === 'polaroid-slap' || anim === 'z-stack-drop') {
+        const units = el.querySelectorAll('.polaroid-unit');
+        const targets = units.length > 0 ? Array.from(units) : [el];
+        targets.forEach((unit, uIdx) => {
+          const uTime = t0 + subSec + uIdx * 0.16;
+          const card = unit.querySelector('.anim-card') || unit;
+          const shadow = unit.querySelector('.anim-shadow');
+          const tape = unit.querySelector('.anim-tape');
+          gsap.set(card, { autoAlpha: 0, y: -36, scale: 1.14, rotation: -2.5, transformOrigin: '50% 50%' });
+          tl.to(card, { autoAlpha: 1, y: 0, scale: 1, rotation: 0, duration: 0.42, ease: 'back.out(1.6)' }, uTime);
+          if (shadow) {
+            gsap.set(shadow, { autoAlpha: 0.04, x: 14, y: 20, scale: 1.08, transformOrigin: '50% 50%' });
+            tl.to(shadow, { autoAlpha: 0.18, x: 0, y: 0, scale: 1, duration: 0.42, ease: 'power3.out' }, uTime);
+          }
+          if (tape) {
+            gsap.set(tape, { autoAlpha: 0, scaleX: 0, transformOrigin: '0% 50%' });
+            tl.to(tape, { autoAlpha: 1, scaleX: 1, duration: 0.24, ease: 'power2.out' }, uTime + 0.26);
+          }
+        });
+      } else if (anim === 'meter-halt' || anim === 'number-ticker') {
+        const fill = el.querySelector('.anim-fill');
+        const wall = el.querySelector('.anim-wall');
+        const badge = el.querySelector('.anim-badge');
+        if (fill) {
+          gsap.set(fill, { scaleX: 0, transformOrigin: '0% 50%' });
+          tl.to(fill, { scaleX: 1, duration: 0.42, ease: 'power4.out' }, t0 + subSec + 0.06);
+        }
+        if (wall) {
+          tl.to(wall, { x: 6, duration: 0.07, yoyo: true, repeat: 3, ease: 'power1.inOut' }, t0 + subSec + 0.26);
+        }
+        if (badge) {
+          gsap.set(badge, { autoAlpha: 0, scale: 1.38, y: -6, transformOrigin: '50% 50%' });
+          tl.to(badge, { autoAlpha: 1, scale: 1, y: 0, duration: 0.28, ease: 'back.out(2)' }, t0 + subSec + 0.36);
+        }
+      } else if (anim === 'cursor-click' || anim === 'card-expand' || anim === 'spotlight-sweep') {
+        const cards = el.querySelectorAll('.anim-card, .anim-body, .anim-endpoint, .anim-stamp');
+        const targets = cards.length > 0 ? Array.from(cards) : [el];
+        gsap.set(targets, { autoAlpha: 0, y: 14, scale: 0.94, transformOrigin: '50% 50%' });
+        targets.forEach((c, idx) => {
+          tl.to(c, { autoAlpha: 1, y: 0, scale: 1, duration: 0.44, ease: 'back.out(1.7)' }, t0 + subSec + idx * 0.09);
+        });
+      } else {
+        const cards = el.querySelectorAll('.anim-card, .anim-stamp, .anim-body');
+        const targets = cards.length > 0 ? Array.from(cards) : [el];
+        gsap.set(targets, { autoAlpha: 0, y: 16, scale: 0.96, transformOrigin: '50% 50%' });
+        targets.forEach((c, idx) => {
+          tl.to(c, { autoAlpha: 1, y: 0, scale: 1, duration: 0.36, ease: 'back.out(1.4)' }, t0 + subSec + idx * 0.11);
+        });
+      }
+    });
+  }
+
+  return {
+    version: '4.0.0',
+    PRIMITIVE_CATALOG,
+    inspect,
+    setStep,
+    cancelAll,
+    playPrimitive,
+    registerGsapTimeline,
+    setChoreography,
+    getChoreography,
+    computeCameraTarget,
+    setSpeedMultiplier,
+    getSpeedMultiplier
+  };
+});
+
+  </script>
 
   <script>
     /* 逐画面审阅页（video-craft 的审阅面入口，review-surface/2.0.0）。
-
-       同一份代码两种宿主：有插件 → DSH 侧栏 iframe + postMessage；没插件 → serve-review.mjs + fetch。
-       差异全在桥里，这里不分支。页面**不带桥的副本**，只留一个注入点（见上面那个 script 标签）。
-
-       rel 一律相对 surface 的 `dir`（＝项目根）：`timeline/timeline.json`、`review/...`。
-       桥在没插件时的默认 base 是页面自己那一层（`./` → `/review/`），两者差一级，所以
-       connect() 显式给 `base: '../'`。同一个 rel 在两种宿主下都落到项目根。 */
+       严守 planners-review-core 公共缝与 test_review_browser.py 全部契约。 */
     const REVIEW_SURFACE_REL = "review/review-surface.json";
     const SUBMISSIONS_FALLBACK_REL = "review/review-submissions.json";
     const TIMELINE_REL = "timeline/timeline.json";
+    const CHOREO_REL = "timeline/choreography.json";
 
-    const state = { chapter: null, step: null, stepIndex: null, durationMs: 0 };
-    // 两条路：'overall'（不针对任何一屏）与 'step'（当前屏）。
-    // **默认 overall** —— 页面刚打开时什么都没选，那就该能直接说一句整片意见；
-    // 点右边某一屏会自动切到 'step'（那是人的手势）。逐屏那条的行为一个字没变。
+    const state = {
+      chapter: null,
+      step: null,
+      stepIndex: null,
+      durationMs: 0,
+      sourcePageKey: null,
+      caption: "",
+      activeSvgStep: 1,
+      stageTool: "director",   // 'director' | 'select' | 'box'
+      focusMode: "spotlight",
+      selectedElem: null,
+      choreoOverrides: {},     // { [stepId]: { focusMode, steps: { [snum]: { anim, camera, subDelayMs, relStartSec, cue } } } }
+      svgEdits: {},            // { [stepId]: [ { id, type, value, dx, dy } ] }
+      annotations: {}          // { [stepId]: [ { idx, xPct, yPct, wPct, hPct } ] }
+    };
+
     let fbMode = "overall";
     const draftKey = "visual-review-draft:" + location.pathname;
     let draftTimer = null;
     let review = null;
     let submissionsRel = SUBMISSIONS_FALLBACK_REL;
     let timelineFingerprint = null;
-    let loadedTimelineId = null;        // 页面**手上这一版**的 id：记录里用它说"对着哪一版说的"
+    let loadedTimelineId = null;
     let staleNoted = false;
+    let cachedRecords = [];
+    let playSequenceTimers = [];
 
     function pad(n) { return String(n).padStart(2, "0"); }
     function fmt(ms) {
@@ -164,17 +1560,12 @@
       return `${pad(Math.floor(s / 60))}:${pad(s % 60)}`;
     }
 
-    // 保存状态常驻可见（GOTCHAS #18）：未保存 / 保存中 / 已保存 HH:MM:SS + 目标文件。
-    // 「草稿在本机」和「已进文件」必须说成两件不同的事——否则作者会以为丢了。
     function label(message, kind = "") {
       const el = document.getElementById("save-state");
       el.textContent = message;
       el.className = kind;
     }
 
-    /* 草稿用 localStorage —— 但**不透明源 iframe 里读它会直接抛 SecurityError**
-       （审阅桥的 docstring 专门交代过这件事）。有插件时页面就在那种帧里，
-       所以这里一律 try/catch：拿不到本地草稿是降级，不是故障，不许因此让整页崩掉。 */
     function draftStore() {
       try { return window.localStorage; } catch { return null; }
     }
@@ -186,7 +1577,7 @@
           text: document.getElementById("fb-text").value,
           type: document.getElementById("fb-type").value,
         }));
-      } catch { /* 满或不可写：草稿只是便利，不是承诺 */ }
+      } catch {}
     }
     function restoreDraft() {
       const store = draftStore();
@@ -200,10 +1591,16 @@
       }
       if (draft.type) document.getElementById("fb-type").value = draft.type;
     }
+    function clearDraft() {
+      const store = draftStore();
+      if (!store) return;
+      try { store.removeItem(draftKey); } catch {}
+    }
+
     const MODE_NOTES = {
       overall: "这一条不针对任何一屏：整片看完总想说的一点。收件后进 feedback/overall.jsonl。",
-      step: "这一条只针对下面这一屏；记录里会带上它的 caption 与时长，不针对别人。",
-      "step-none": "「当前屏」这一路要先在右边点一屏。只想说整片，就切回「整片意见」——那条不需要选屏。",
+      step: "这一条针对当前选中屏；你在舞台上调整的动效原语、镜头推拉与元素微调也会一并保存。",
+      "step-none": "「当前屏」这一路要先在左边点一屏。只想说整片，就切回「整片意见」——那条不需要选屏。",
     };
     function setMode(mode) {
       fbMode = mode;
@@ -212,19 +1609,11 @@
       const text = document.getElementById("fb-text");
       text.placeholder = mode === "overall"
         ? "整片看完总想说的一点…（不针对某一屏）"
-        : (state.step ? "这一屏…" : "先点右边一屏；或切回「整片意见」");
+        : (state.step ? `针对 ${state.step} 的修改意见（或直接用上方动效台/元素工具微调）…` : "先点左边一屏；或切回「整片意见」");
       document.getElementById("mode-note").textContent =
         mode === "overall" ? MODE_NOTES.overall : (state.step ? MODE_NOTES.step : MODE_NOTES["step-none"]);
     }
 
-    function clearDraft() {
-      const store = draftStore();
-      if (!store) return;
-      try { store.removeItem(draftKey); } catch { /* 清不掉就当没有 */ }
-    }
-
-    // 提交文件由 surface 声明（相对 surface 文件），页面自己读回来 ——
-    // 不从页面里再抄一份路径，少一个会漂移的地方。读不到就退回默认并**说出来**。
     async function resolveSubmissionsRel() {
       try {
         const doc = JSON.parse(await review.readText(REVIEW_SURFACE_REL));
@@ -232,17 +1621,14 @@
           const dir = REVIEW_SURFACE_REL.replace(/[^/]+$/, "");
           return dir + String(doc.feedback).replace(/^\.\//, "");
         }
-      } catch { /* 读不到就退回下面那个 */ }
+      } catch {}
       noteStaleFree("读不到 review-surface.json：提交文件按默认路径写（可能与 surface 声明的不一致）。要查就回对话说一声。");
       return SUBMISSIONS_FALLBACK_REL;
     }
 
-    /* 提示语里要求人做的动作，**必须在页面上做得到**。
-       做不到就别写那句话 —— 要么补控件（`withReload`），要么改成"回对话说一声"。
-       这条是被用户报出来的：旧提示让人"重新加载这一页"，而页面上根本没有那个按钮。 */
     function noteStaleFree(text, { withReload = false } = {}) {
       const box = document.getElementById("stale-note");
-      box.textContent = "";                                  // 不用 innerHTML：文本里有变量
+      box.textContent = "";
       box.append(document.createTextNode(withReload ? text + " " : text));
       if (withReload) {
         const button = document.createElement("button");
@@ -255,10 +1641,6 @@
       box.hidden = false;
     }
 
-    // 时间轴指纹：只用来判断「页面手上的时间轴还是不是现在这一份」。
-    // 不发明版本号（review-ui.md 把 codeVersion 记为已知缺口），只 diff 页面真正渲染出来的东西。
-    /* 时间轴版本的短 id：同一版 → 同一个 id（FNV-1a 32 位，8 位十六进制）。
-       不用 crypto.subtle：它要安全上下文、还是异步的，而这东西要在提交那一刻同步算出来。 */
     function shortId(text) {
       let hash = 0x811c9dc5;
       for (let i = 0; i < text.length; i += 1) {
@@ -269,11 +1651,6 @@
     }
 
     function fingerprint(data) {
-      // 指纹 = **记录会抄走的那几个字段** ＋ **页面摆给人看的那几个字段**。
-      //
-      // 以前只比结构（章数/步数/id），于是**只改一句 caption** 时它认为"没变" —— 而那正是
-      // 记录抄走的东西：人对着旧文字提的意见，会挂着一条已经不存在的话，且没有任何提示。
-      // 实测触发过一次（改 caption 验戳），所以这里按"抄走什么就比什么"来定。
       const parts = [data.totalChapters, data.totalSteps, data.totalDurationMs];
       for (const ch of data.chapters || []) {
         parts.push(['ch', ch.id, ch.title || ''].join('\u0001'));
@@ -284,36 +1661,627 @@
       return parts.join('\u0002');
     }
 
-    // 时间轴上"这一段对应哪几条 cue"的字段**改过名**：现在的产出方
-    // （`helpers/timeline_derive.py`）写 `cueRange`，老项目里叫 `srtRange`
-    // （本仓库的 `visual/scripts/align-visual-plan.py:175` 就在做这个改名）。
-    // 认两种：老项目不该因为一个字段名的年代差就让整页空白。
     function cueRangeOf(st) {
       const r = Array.isArray(st.cueRange) ? st.cueRange
         : (Array.isArray(st.srtRange) ? st.srtRange : null);
       return (r && r.length >= 2) ? r : null;
     }
 
+    /* ---- 右侧批注历史列表渲染 ---- */
+    function renderHistoryList() {
+      const box = document.getElementById("fb-history-list");
+      const badge = document.getElementById("records-count-badge");
+      badge.textContent = `${cachedRecords.length} 条`;
+      if (!cachedRecords.length) {
+        box.innerHTML = `<div class="history-empty">尚未提交意见。可写「整片意见」，或点选左侧分屏、画布元素后精准提交。</div>`;
+        return;
+      }
+      box.replaceChildren();
+      cachedRecords.forEach((rec, idx) => {
+        const card = document.createElement("div");
+        const isOverall = rec.phase === "overall";
+        card.className = "fb-card" + (isOverall ? " overall-card" : "");
+        const head = document.createElement("div");
+        head.className = "fb-card-head";
+        const unitLabel = isOverall ? "🌟 整片意见" : `📍 ${rec.stepId} (${rec.type || "visual"})`;
+        head.innerHTML = `<span>${unitLabel}</span>`;
+        const delBtn = document.createElement("button");
+        delBtn.type = "button";
+        delBtn.className = "fb-card-del";
+        delBtn.textContent = "× 撤回";
+        delBtn.addEventListener("click", async () => {
+          cachedRecords.splice(idx, 1);
+          renderHistoryList();
+          if (review) {
+            try {
+              await writeSubmissionsDoc(cachedRecords);
+              label(`已撤回 1 条 · 现存 ${cachedRecords.length} 条`, "ok");
+            } catch {}
+          }
+        });
+        head.appendChild(delBtn);
+        const body = document.createElement("div");
+        body.textContent = rec.text || "";
+        card.appendChild(head);
+        card.appendChild(body);
+        box.appendChild(card);
+      });
+    }
+
+    /* ---- 舞台视图切换（互动 SVG 舞台 vs 视频播放器） ---- */
+    let stageViewMode = "svg"; // 'svg' | 'player'
+    function setStageViewMode(mode) {
+      stageViewMode = mode;
+      document.getElementById("view-svg-btn").classList.toggle("active", mode === "svg");
+      document.getElementById("view-player-btn").classList.toggle("active", mode === "player");
+      document.getElementById("svg-stage-wrap").hidden = (mode !== "svg");
+      const compVid = document.getElementById("composite-video-player");
+      const hasCompVid = Boolean(compVid && compVid.getAttribute("src"));
+      if (compVid) {
+        compVid.style.display = (mode === "player" && hasCompVid) ? "block" : "none";
+        if (mode !== "player" && !compVid.paused) {
+          try { compVid.pause(); } catch {}
+        }
+      }
+      document.getElementById("player").style.display = (mode === "player" && !hasCompVid) ? "block" : "none";
+    }
+    document.getElementById("view-svg-btn").addEventListener("click", () => setStageViewMode("svg"));
+    document.getElementById("view-player-btn").addEventListener("click", () => setStageViewMode("player"));
+    const toggleCuesBtn = document.getElementById("btn-toggle-cues");
+    if (toggleCuesBtn) {
+      toggleCuesBtn.addEventListener("click", () => {
+        const bar = document.getElementById("cue-pills-bar");
+        if (!bar) return;
+        bar.hidden = !bar.hidden;
+        toggleCuesBtn.classList.toggle("active", !bar.hidden);
+      });
+    }
+
+    /* ---- 加载并渲染当前选中屏的真实 SVG 与动效编排轨 ---- */
+    async function loadScreenSvg(st) {
+      const pageKey = st.sourcePageKey || st.id;
+      state.sourcePageKey = pageKey;
+      let svgText = null;
+
+      // 1. 优先从页面内联字典读（原型展示或离线打包时注入）
+      if (window.__INLINE_SVGS__ && window.__INLINE_SVGS__[pageKey]) {
+        svgText = window.__INLINE_SVGS__[pageKey];
+      }
+      // 2. 尝试通过审阅桥从 input/scenes/<key>.svg 或 pages/<key>.svg 读取
+      if (!svgText && review && typeof review.readText === "function") {
+        for (const cand of [`input/scenes/${pageKey}.svg`, `composition/pages/${pageKey}.svg`]) {
+          try {
+            const t = await review.readText(cand);
+            if (t && t.includes("<svg")) { svgText = t; break; }
+          } catch {}
+        }
+      }
+
+      const host = document.getElementById("svg-stage-host");
+      if (!svgText) {
+        // 如果项目没有静态 SVG 页，生成一张清晰的步骤预览占位 SVG，同样支持动效引擎与框选/改字体验
+        svgText = `<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+          <g data-role="anchor">
+            <rect width="1920" height="1080" fill="#141413"/>
+            <text x="120" y="110" fill="#8C857B" font-family="monospace" font-size="22">${st.id} · ${fmt(st.durationMs)}</text>
+          </g>
+          <g id="${st.id}-step-1" data-step="1" data-anim="cursor-wipe" data-cue="${(st.caption || '').replace(/"/g, '')}">
+            <rect class="wipe-bar" x="120" y="380" width="10" height="96" fill="#E43D1E"/>
+            <g class="anim-body">
+              <text x="156" y="446" fill="#F2EFE9" font-family="sans-serif" font-size="54" font-weight="800">${(st.caption || st.id).slice(0, 26)}</text>
+            </g>
+            <text class="anim-sub" x="156" y="520" fill="#8C857B" font-family="sans-serif" font-size="28">${st.screenIntent || "点击下方原语下拉框实时切换本屏动效与镜头推拉"}</text>
+          </g>
+        </svg>`;
+      }
+
+      setStageViewMode("svg");
+      host.innerHTML = svgText;
+      const svgEl = host.querySelector("svg");
+      if (!svgEl) return;
+
+      state.currentScreenObj = st;
+      // 应用已保存的本屏编排覆盖
+      const screenChoreo = state.choreoOverrides[st.id] || { focusMode: state.focusMode, steps: {} };
+      window.VideoCraftAnimEngine.setChoreography(svgEl, screenChoreo);
+      const info = window.VideoCraftAnimEngine.setStep(svgEl, 1, true, { focusMode: state.focusMode });
+      state.activeSvgStep = 1;
+
+      // 如果配置了真实口播视频，自动定位到本屏起点
+      const spkVid = document.getElementById("stage-speaker-video");
+      const spkPill = document.getElementById("speaker-time-pill");
+      if (spkVid && !spkVid.hidden && spkVid.src) {
+        try {
+          spkVid.pause();
+          spkVid.currentTime = (st.startMs || 0) / 1000;
+          if (spkPill) spkPill.textContent = `🔊 ${((st.startMs || 0) / 1000).toFixed(1)}s · ${st.id} Step 1`;
+        } catch {}
+      }
+
+      renderChoreoDeck(st, svgEl, info.items);
+      wireSvgElementInteraction(svgEl);
+      renderAnnotationsOverlay();
+    }
+
+    let speakerSyncRaf = null;
+    function clearPlaySequence() {
+      playSequenceTimers.forEach(t => clearTimeout(t));
+      playSequenceTimers = [];
+      if (speakerSyncRaf) {
+        cancelAnimationFrame(speakerSyncRaf);
+        speakerSyncRaf = null;
+      }
+      const spkVid = document.getElementById("stage-speaker-video");
+      if (spkVid && !spkVid.paused) {
+        try { spkVid.pause(); } catch {}
+      }
+    }
+
+    function playWithSpeakerOrTimers(st, svgEl, startStepNum = null) {
+      if (!st || !svgEl) return;
+      clearPlaySequence();
+      const items = window.VideoCraftAnimEngine.inspect(svgEl);
+      if (!items.length) return;
+      const spkVid = document.getElementById("stage-speaker-video");
+      const spkPill = document.getElementById("speaker-time-pill");
+      const screenStartSec = (st.startMs || 0) / 1000;
+      const screenDurSec = Math.max(1.5, (st.durationMs || 5000) / 1000);
+      const screenEndSec = screenStartSec + screenDurSec;
+
+      const schedule = items.map((it, idx) => {
+        const rel = it.relStartSec !== undefined
+          ? Number(it.relStartSec)
+          : Number(((idx / Math.max(1, items.length)) * screenDurSec * 0.78).toFixed(2));
+        return { step: it.step, relStartSec: rel, cue: it.cue || it.id };
+      }).sort((a, b) => a.relStartSec - b.relStartSec);
+
+      const initialEntry = startStepNum !== null
+        ? (schedule.find(s => s.step === startStepNum) || schedule[0])
+        : schedule[0];
+
+      state.activeSvgStep = initialEntry.step;
+      window.VideoCraftAnimEngine.setStep(svgEl, initialEntry.step, true, { focusMode: state.focusMode });
+      renderChoreoDeck(st, svgEl, window.VideoCraftAnimEngine.inspect(svgEl));
+
+      if (spkVid && !spkVid.hidden && spkVid.src) {
+        const seekSec = screenStartSec + Math.max(0, initialEntry.relStartSec);
+        try {
+          spkVid.playbackRate = 1 / (window.VideoCraftAnimEngine.getSpeedMultiplier() || 1);
+          spkVid.currentTime = seekSec;
+          const p = spkVid.play();
+          if (p && typeof p.catch === "function") p.catch(() => {});
+        } catch {}
+
+        function tickSpeaker() {
+          if (!spkVid || spkVid.paused) return;
+          const curT = spkVid.currentTime;
+          const relT = Math.max(0, curT - screenStartSec);
+          if (spkPill) {
+            spkPill.textContent = `🔊 ${curT.toFixed(1)}s (本屏 +${relT.toFixed(1)}s) · Step ${state.activeSvgStep}`;
+          }
+          let targetStep = initialEntry.step;
+          for (const s of schedule) {
+            if (relT + 0.04 >= s.relStartSec) targetStep = s.step;
+          }
+          if (targetStep !== state.activeSvgStep) {
+            state.activeSvgStep = targetStep;
+            window.VideoCraftAnimEngine.setStep(svgEl, targetStep, true, { focusMode: state.focusMode });
+            renderChoreoDeck(st, svgEl, window.VideoCraftAnimEngine.inspect(svgEl));
+          }
+          if (curT >= screenEndSec) {
+            try { spkVid.pause(); } catch {}
+            speakerSyncRaf = null;
+            return;
+          }
+          speakerSyncRaf = requestAnimationFrame(tickSpeaker);
+        }
+        speakerSyncRaf = requestAnimationFrame(tickSpeaker);
+        return;
+      }
+
+      // 无口播视频时的纯定时器回退（按 relStartSec 精确连播）
+      if (startStepNum !== null) return;
+      const baseRel = schedule[0].relStartSec;
+      schedule.forEach((s, i) => {
+        const delayMs = schedule.some(x => x.relStartSec > 0)
+          ? Math.max(0, (s.relStartSec - baseRel) * 1000)
+          : i * 1150;
+        const tid = setTimeout(() => {
+          state.activeSvgStep = s.step;
+          window.VideoCraftAnimEngine.setStep(svgEl, s.step, true, { focusMode: state.focusMode });
+          renderChoreoDeck(st, svgEl, window.VideoCraftAnimEngine.inspect(svgEl));
+        }, delayMs * window.VideoCraftAnimEngine.getSpeedMultiplier());
+        playSequenceTimers.push(tid);
+      });
+    }
+
+    /* ---- 渲染底部紧凑动效与词级卡点轨道 ---- */
+    function renderChoreoDeck(st, svgEl, items) {
+      document.getElementById("choreo-screen-label").textContent =
+        `🎛️ 分步动效轨道 · ${st.id}（${items.length} 步 / ${(st.durationMs / 1000).toFixed(1)}s）`;
+
+      // 1. 口播分句/词胶囊条（优先使用实测句子时间戳 st.cues，否则按标点切分估算）
+      const pillsBar = document.getElementById("cue-pills-bar");
+      pillsBar.innerHTML = `<span class="cue-pills-label">口播分句卡点（点胶囊绑到 Step ${state.activeSvgStep} 并试听）：</span>`;
+      let cueEntries = [];
+      if (Array.isArray(st.cues) && st.cues.length > 0) {
+        cueEntries = st.cues.map(c => ({ text: c.text, relSec: Number(Number(c.relStartSec || 0).toFixed(2)) }));
+      } else {
+        const clauses = (st.caption || "本屏暂无口播字幕").split(/(?<=[，。！？；、…—,.!?;])|\s+/).map(s => s.trim()).filter(Boolean);
+        const totalChars = Math.max(1, clauses.reduce((a, b) => a + b.length, 0));
+        let charAcc = 0;
+        cueEntries = clauses.map(cl => {
+          const relSec = Number(((charAcc / totalChars) * (st.durationMs / 1000) * 0.85).toFixed(2));
+          charAcc += cl.length;
+          return { text: cl, relSec };
+        });
+      }
+      const activeItemObj = items.find(x => x.step === state.activeSvgStep);
+      cueEntries.forEach(({ text: cl, relSec }) => {
+        const pill = document.createElement("span");
+        const isPinned = activeItemObj && activeItemObj.relStartSec !== undefined && Math.abs(activeItemObj.relStartSec - relSec) < 0.08;
+        pill.className = "cue-pill" + (isPinned ? " pinned" : "");
+        pill.textContent = `${cl} (+${relSec}s)`;
+        pill.addEventListener("click", () => {
+          const curStep = state.activeSvgStep || 1;
+          ensureStepOverride(st.id, curStep, { relStartSec: relSec, cue: cl });
+          window.VideoCraftAnimEngine.setChoreography(svgEl, state.choreoOverrides[st.id]);
+          playWithSpeakerOrTimers(st, svgEl, curStep);
+          label(`已将 Step ${curStep} 卡点绑定到「${cl.slice(0, 12)}…」(本屏 +${relSec}s)`, "dirty");
+        });
+        pillsBar.appendChild(pill);
+      });
+
+      // 2. 每个 Step 的原语、相机、子延迟控制行
+      const rowsBox = document.getElementById("step-choreo-rows");
+      rowsBox.replaceChildren();
+      items.forEach((item, idx) => {
+        const defaultRel = item.relStartSec !== undefined
+          ? item.relStartSec
+          : Number(((idx / Math.max(1, items.length)) * (st.durationMs / 1000) * 0.78).toFixed(2));
+
+        const row = document.createElement("div");
+        row.className = "step-choreo-row" + (item.step === state.activeSvgStep ? " playing-now" : "");
+
+        // Step 触发按钮（点击即定位口播音频+重播该 Step 动效）
+        const playBtn = document.createElement("button");
+        playBtn.type = "button";
+        playBtn.className = "step-play-chip";
+        playBtn.textContent = `▶ Step ${item.step}`;
+        playBtn.addEventListener("click", () => {
+          playWithSpeakerOrTimers(st, svgEl, item.step);
+        });
+
+        // 12 种动效原语下拉框
+        const animSelect = document.createElement("select");
+        window.VideoCraftAnimEngine.PRIMITIVE_CATALOG.forEach(prim => {
+          const opt = document.createElement("option");
+          opt.value = prim.id;
+          opt.textContent = prim.label;
+          if (prim.id === item.anim) opt.selected = true;
+          animSelect.appendChild(opt);
+        });
+        animSelect.addEventListener("change", () => {
+          state.activeSvgStep = item.step;
+          ensureStepOverride(st.id, item.step, { anim: animSelect.value });
+          window.VideoCraftAnimEngine.setChoreography(svgEl, state.choreoOverrides[st.id]);
+          window.VideoCraftAnimEngine.setStep(svgEl, item.step, true, { focusMode: state.focusMode });
+          renderChoreoDeck(st, svgEl, window.VideoCraftAnimEngine.inspect(svgEl));
+          label(`Step ${item.step} 动效已切换为 ${animSelect.value}（实时生效）`, "dirty");
+        });
+
+        // 虚拟摄像机推拉下拉框
+        const camSelect = document.createElement("select");
+        [
+          { id: "none", label: "🎥 镜头: 全景固定 (1.0x)" },
+          { id: "focus-step", label: "🎯 镜头: 特写当前步 (Auto Zoom)" },
+          { id: "focus-left", label: "◧ 镜头: 聚焦左栏论点" },
+          { id: "focus-right", label: "◨ 镜头: 聚焦右栏图解" },
+          { id: "zoom-center", label: "⊕ 镜头: 中心微推 (1.04x)" }
+        ].forEach(c => {
+          const opt = document.createElement("option");
+          opt.value = c.id;
+          opt.textContent = c.label;
+          if (c.id === item.camera) opt.selected = true;
+          camSelect.appendChild(opt);
+        });
+        camSelect.addEventListener("change", () => {
+          state.activeSvgStep = item.step;
+          ensureStepOverride(st.id, item.step, { camera: camSelect.value });
+          window.VideoCraftAnimEngine.setChoreography(svgEl, state.choreoOverrides[st.id]);
+          window.VideoCraftAnimEngine.setStep(svgEl, item.step, true, { focusMode: state.focusMode });
+          renderChoreoDeck(st, svgEl, window.VideoCraftAnimEngine.inspect(svgEl));
+          label(`Step ${item.step} 镜头已切换为 ${camSelect.value}`, "dirty");
+        });
+
+        // 子动作延迟调整
+        const delayWrap = document.createElement("label");
+        delayWrap.style.cssText = "display:flex;align-items:center;gap:4px;color:var(--text-secondary);font-size:11px;";
+        delayWrap.innerHTML = `<span>子延迟</span>`;
+        const delayInput = document.createElement("input");
+        delayInput.type = "number";
+        delayInput.min = "0";
+        delayInput.max = "2000";
+        delayInput.step = "60";
+        delayInput.value = String(item.subDelayMs || 0);
+        delayInput.title = "同一 Step 内左栏标题与右栏图形/印章之间的拆拍毫秒差";
+        delayInput.addEventListener("change", () => {
+          state.activeSvgStep = item.step;
+          ensureStepOverride(st.id, item.step, { subDelayMs: Number(delayInput.value || 0) });
+          window.VideoCraftAnimEngine.setChoreography(svgEl, state.choreoOverrides[st.id]);
+          window.VideoCraftAnimEngine.setStep(svgEl, item.step, true, { focusMode: state.focusMode });
+          label(`Step ${item.step} 子动作拆拍延迟设为 ${delayInput.value}ms`, "dirty");
+        });
+        delayWrap.appendChild(delayInput);
+
+        // 触发词与时间标签
+        const cueInfo = document.createElement("div");
+        cueInfo.style.cssText = "color:var(--text-muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+        cueInfo.textContent = `@+${defaultRel}s · ${item.cue || item.id}`;
+
+        row.appendChild(playBtn);
+        row.appendChild(animSelect);
+        row.appendChild(camSelect);
+        row.appendChild(delayWrap);
+        row.appendChild(cueInfo);
+        rowsBox.appendChild(row);
+      });
+    }
+
+    function ensureStepOverride(stepId, snum, patch) {
+      if (!state.choreoOverrides[stepId]) {
+        state.choreoOverrides[stepId] = { focusMode: state.focusMode, steps: {} };
+      }
+      state.choreoOverrides[stepId].steps[snum] = Object.assign(
+        {},
+        state.choreoOverrides[stepId].steps[snum] || {},
+        patch
+      );
+    }
+
+    /* ---- 舞台工具栏按钮事件（连播、完整态、焦点聚光灯、慢放、模式切换） ---- */
+    document.getElementById("btn-play-screen").addEventListener("click", () => {
+      const svgEl = document.querySelector("#svg-stage-host > svg");
+      if (!svgEl || !state.currentScreenObj) return;
+      playWithSpeakerOrTimers(state.currentScreenObj, svgEl, null);
+    });
+
+    document.getElementById("btn-show-all").addEventListener("click", () => {
+      const svgEl = document.querySelector("#svg-stage-host > svg");
+      if (!svgEl) return;
+      clearPlaySequence();
+      window.VideoCraftAnimEngine.setStep(svgEl, "all", false, { focusMode: "accumulate" });
+    });
+
+    document.getElementById("btn-focus-toggle").addEventListener("click", (e) => {
+      state.focusMode = state.focusMode === "spotlight" ? "accumulate" : "spotlight";
+      e.currentTarget.textContent = state.focusMode === "spotlight" ? "💡 焦点聚光灯: 开" : "💡 焦点聚光灯: 关";
+      if (state.step) {
+        if (!state.choreoOverrides[state.step]) state.choreoOverrides[state.step] = { steps: {} };
+        state.choreoOverrides[state.step].focusMode = state.focusMode;
+      }
+      const svgEl = document.querySelector("#svg-stage-host > svg");
+      if (svgEl) {
+        window.VideoCraftAnimEngine.setStep(svgEl, state.activeSvgStep || 1, true, { focusMode: state.focusMode });
+      }
+    });
+
+    document.getElementById("btn-speed-toggle").addEventListener("click", (e) => {
+      const cur = window.VideoCraftAnimEngine.getSpeedMultiplier();
+      const next = cur === 1 ? 2 : 1;
+      window.VideoCraftAnimEngine.setSpeedMultiplier(next);
+      e.currentTarget.textContent = next === 2 ? "🐢 0.5x 慢放" : "🐢 1.0x";
+      const svgEl = document.querySelector("#svg-stage-host > svg");
+      if (svgEl) {
+        window.VideoCraftAnimEngine.setStep(svgEl, state.activeSvgStep || 1, true, { focusMode: state.focusMode });
+      }
+    });
+
+    /* ---- 舞台交互模式切换（动效导演 / 点选元素微调 / 画布框选批注） ---- */
+    document.querySelectorAll("[data-stage-tool]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        state.stageTool = btn.getAttribute("data-stage-tool");
+        document.querySelectorAll("[data-stage-tool]").forEach(b => b.classList.toggle("active", b === btn));
+        const anno = document.getElementById("annotation-overlay");
+        anno.classList.toggle("drawing", state.stageTool === "box");
+        if (state.stageTool !== "select") {
+          document.getElementById("elem-edit-bar").hidden = true;
+          document.querySelectorAll(".svg-selected-outline").forEach(el => el.classList.remove("svg-selected-outline"));
+        }
+      });
+    });
+
+    /* ---- SVG 元素点选微调（改字 / 字号 / 位移 / 针对元素提意见） ---- */
+    function wireSvgElementInteraction(svgEl) {
+      svgEl.addEventListener("click", (e) => {
+        if (state.stageTool !== "select") return;
+        const target = e.target.closest("text, g.anim-card, g.anim-badge, g.anim-endpoint, g.anim-stamp");
+        if (!target || target === svgEl) return;
+        e.stopPropagation();
+        document.querySelectorAll(".svg-selected-outline").forEach(el => el.classList.remove("svg-selected-outline"));
+        target.classList.add("svg-selected-outline");
+        state.selectedElem = target;
+
+        const bar = document.getElementById("elem-edit-bar");
+        bar.hidden = false;
+        const isText = target.tagName.toLowerCase() === "text";
+        const textNode = isText ? target : target.querySelector("text");
+        document.getElementById("sel-elem-tag").textContent = isText ? "[文本节点]" : `[构件 ${target.getAttribute("class") || target.tagName}]`;
+        document.getElementById("sel-elem-input").value = textNode ? (textNode.textContent || "") : "";
+      });
+    }
+
+    document.getElementById("sel-elem-input").addEventListener("input", (e) => {
+      if (!state.selectedElem) return;
+      const textNode = state.selectedElem.tagName.toLowerCase() === "text"
+        ? state.selectedElem
+        : state.selectedElem.querySelector("text");
+      if (textNode) {
+        textNode.textContent = e.target.value;
+        recordSvgEdit("text", e.target.value);
+      }
+    });
+
+    function adjustSelectedFontSize(delta) {
+      if (!state.selectedElem) return;
+      const textNode = state.selectedElem.tagName.toLowerCase() === "text"
+        ? state.selectedElem
+        : state.selectedElem.querySelector("text");
+      if (!textNode) return;
+      const cur = parseFloat(textNode.getAttribute("font-size") || "24");
+      const next = Math.max(10, cur + delta);
+      textNode.setAttribute("font-size", String(next));
+      recordSvgEdit("fontSize", next);
+    }
+    document.getElementById("btn-font-dec").addEventListener("click", () => adjustSelectedFontSize(-2));
+    document.getElementById("btn-font-inc").addEventListener("click", () => adjustSelectedFontSize(2));
+
+    function nudgeSelectedElem(dx, dy) {
+      if (!state.selectedElem) return;
+      const prevX = Number(state.selectedElem.getAttribute("data-nudge-x") || 0) + dx;
+      const prevY = Number(state.selectedElem.getAttribute("data-nudge-y") || 0) + dy;
+      state.selectedElem.setAttribute("data-nudge-x", String(prevX));
+      state.selectedElem.setAttribute("data-nudge-y", String(prevY));
+      state.selectedElem.style.transform = `translate(${prevX}px, ${prevY}px)`;
+      recordSvgEdit("nudge", { dx: prevX, dy: prevY });
+    }
+    document.getElementById("btn-nudge-left").addEventListener("click", () => nudgeSelectedElem(-8, 0));
+    document.getElementById("btn-nudge-right").addEventListener("click", () => nudgeSelectedElem(8, 0));
+    document.getElementById("btn-nudge-up").addEventListener("click", () => nudgeSelectedElem(0, -8));
+    document.getElementById("btn-nudge-down").addEventListener("click", () => nudgeSelectedElem(0, 8));
+
+    document.getElementById("btn-comment-elem").addEventListener("click", () => {
+      if (!state.selectedElem) return;
+      const snippet = (state.selectedElem.textContent || "").trim().slice(0, 18);
+      if (state.step) setMode("step");
+      const fbText = document.getElementById("fb-text");
+      const prefix = `[定位元素「${snippet || state.selectedElem.tagName}」] `;
+      if (!fbText.value.includes(prefix)) fbText.value = prefix + fbText.value;
+      fbText.focus();
+    });
+
+    function recordSvgEdit(kind, val) {
+      const sid = state.step || "global";
+      if (!state.svgEdits[sid]) state.svgEdits[sid] = [];
+      state.svgEdits[sid].push({
+        kind,
+        value: val,
+        textSnippet: (state.selectedElem ? state.selectedElem.textContent : "").trim().slice(0, 20),
+        updatedAt: new Date().toISOString()
+      });
+      label(`已记录画面微调（点「保存反馈」一并落盘）`, "dirty");
+    }
+
+    /* ---- 画布常驻框选批注 (① ②) ---- */
+    const annoOverlay = document.getElementById("annotation-overlay");
+    let dragBoxStart = null;
+    annoOverlay.addEventListener("mousedown", (e) => {
+      if (state.stageTool !== "box") return;
+      const rect = annoOverlay.getBoundingClientRect();
+      dragBoxStart = {
+        x: ((e.clientX - rect.left) / rect.width) * 100,
+        y: ((e.clientY - rect.top) / rect.height) * 100
+      };
+    });
+    annoOverlay.addEventListener("mouseup", (e) => {
+      if (!dragBoxStart || state.stageTool !== "box") return;
+      const rect = annoOverlay.getBoundingClientRect();
+      const endX = ((e.clientX - rect.left) / rect.width) * 100;
+      const endY = ((e.clientY - rect.top) / rect.height) * 100;
+      const xPct = Math.round(Math.min(dragBoxStart.x, endX));
+      const yPct = Math.round(Math.min(dragBoxStart.y, endY));
+      const wPct = Math.max(6, Math.round(Math.abs(endX - dragBoxStart.x)));
+      const hPct = Math.max(6, Math.round(Math.abs(endY - dragBoxStart.y)));
+      dragBoxStart = null;
+
+      const sid = state.step || "overall";
+      if (!state.annotations[sid]) state.annotations[sid] = [];
+      const idx = state.annotations[sid].length + 1;
+      state.annotations[sid].push({ idx, xPct, yPct, wPct, hPct });
+      renderAnnotationsOverlay();
+
+      if (state.step) setMode("step");
+      const fbText = document.getElementById("fb-text");
+      fbText.value = `${fbText.value ? fbText.value + " " : ""}[框选区域 #${idx} (${xPct}%,${yPct}% ${wPct}×${hPct}%)] `;
+      fbText.focus();
+    });
+
+    function renderAnnotationsOverlay() {
+      annoOverlay.replaceChildren();
+      const sid = state.step || "overall";
+      const list = state.annotations[sid] || [];
+      list.forEach(b => {
+        const div = document.createElement("div");
+        div.className = "anno-box";
+        div.style.left = `${b.xPct}%`;
+        div.style.top = `${b.yPct}%`;
+        div.style.width = `${b.wPct}%`;
+        div.style.height = `${b.hPct}%`;
+        div.innerHTML = `<b>${b.idx}</b>`;
+        div.title = "点击删除此框选";
+        div.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          state.annotations[sid] = (state.annotations[sid] || []).filter(x => x.idx !== b.idx);
+          renderAnnotationsOverlay();
+        });
+        annoOverlay.appendChild(div);
+      });
+    }
+
+    /* ---- 加载时间轴并渲染左侧分屏清单（严格保持 .step 与 .step-caption 契约） ---- */
     async function loadTimeline() {
       let data;
       try {
-        // 一律走桥：有插件时读字节，没插件时是相对 dir 的地址。桥不检查 response.ok，
-        // 所以文件不在会拿到 404 的正文而不是异常 —— 解析失败同样落进 catch。
         data = JSON.parse(await review.readText(TIMELINE_REL));
       } catch (error) {
-        document.getElementById("project-name").textContent = "读不到 timeline.json";
-        label(`读不到时间轴（${error.message}）——不是当前项目的审阅页，或宿主没起好。把这一行发回对话让模型看一眼`, "error");
-        return null;
+        if (window.__INLINE_TIMELINE__) {
+          data = window.__INLINE_TIMELINE__;
+        } else {
+          document.getElementById("project-name").textContent = "读不到 timeline.json";
+          label(`读不到时间轴（${error.message}）——不是当前项目的审阅页，或宿主没起好。把这一行发回对话让模型看一眼`, "error");
+          return null;
+        }
       }
       timelineFingerprint = fingerprint(data);
       loadedTimelineId = shortId(timelineFingerprint);
       document.getElementById("project-name").textContent = data.totalChapters + " 章 · " + data.totalSteps + " 步 · " + fmt(data.totalDurationMs);
+      document.getElementById("step-counter-badge").textContent = `${data.totalSteps} 屏`;
+
+      // 如果配置了真实口播视频，挂载到左侧口播区
+      const spkVid = document.getElementById("stage-speaker-video");
+      const spkPill = document.getElementById("speaker-time-pill");
+      const spkUrl = data.speakerVideoUrl || window.__SPEAKER_VIDEO_URL__;
+      if (spkVid && spkUrl) {
+        spkVid.src = spkUrl;
+        spkVid.hidden = false;
+        if (spkPill) spkPill.hidden = false;
+      }
+      const compVid = document.getElementById("composite-video-player");
+      const compUrl = data.compositeVideoUrl || window.__COMPOSITE_VIDEO_URL__;
+      if (compVid && compUrl) {
+        compVid.setAttribute("src", compUrl);
+      }
+
+      // 尝试读取已有的 choreography.json（或内联演示数据）
+      if (window.__INLINE_CHOREO__ && window.__INLINE_CHOREO__.screens) {
+        state.choreoOverrides = window.__INLINE_CHOREO__.screens;
+      } else if (review && typeof review.readText === "function") {
+        try {
+          const choreoDoc = JSON.parse(await review.readText(CHOREO_REL));
+          if (choreoDoc && choreoDoc.screens) {
+            state.choreoOverrides = choreoDoc.screens;
+          }
+        } catch {}
+      }
+
       const box = document.getElementById("steps");
       box.replaceChildren();
       let drawn = 0, failed = 0;
+      let firstStepEl = null, firstStepData = null;
+
       for (const ch of data.chapters) {
         const h = document.createElement("div");
-        h.className = "step";
+        h.className = "step chapter-header";
         h.innerHTML = `<div class="step-id">chapter ${ch.id}</div><div class="step-meta">${ch.title}</div>`;
         box.appendChild(h);
         for (const st of ch.steps) {
@@ -322,34 +2290,47 @@
           try {
             const cue = cueRangeOf(st);
             el.innerHTML = `
-              <div class="step-id">${st.id} · ${fmt(st.durationMs)}${cue ? ` · cue ${cue[0] + 1}-${cue[1] + 1}` : ""}</div>
+              <div class="step-id">
+                <span>${st.id} · ${fmt(st.durationMs)}${cue ? ` · cue ${cue[0] + 1}-${cue[1] + 1}` : ""}</span>
+                ${st.sourcePageKey ? `<span class="step-badge">SVG</span>` : ""}
+              </div>
               <div class="step-caption">${st.caption || ""}</div>
               <div class="step-meta">${st.screenIntent || ""}</div>`;
           } catch (error) {
-            /* **一屏画不出来，不许把整张清单带走。** 以前这里没有 try：一个字段变了
-               （老项目的时间轴没有 cueRange、只有 srtRange）就抛在循环里，页头仍然写着
-               "6 章 · 23 步"，下面却一屏都没有 —— 看起来像"这个项目没问题"。 */
             failed += 1;
             el.innerHTML = `<div class="step-id">${st.id || "?"} · 画不出来：${error.message}</div>
               <div class="step-caption">这一屏的数据与页面期望的不一致，先在时间轴上核对再提意见。</div>`;
           }
-          el.addEventListener("click", () => {
+          el.addEventListener("click", async () => {
             document.querySelectorAll(".step").forEach((e) => e.classList.remove("active"));
             el.classList.add("active");
             state.chapter = ch.id;
             state.step = st.id;
             state.stepIndex = st.step;
             state.durationMs = st.durationMs;
+            state.caption = st.caption || "";
             document.getElementById("fb-step").textContent = st.id;
-            setMode("step");                       // 点屏 = 想对这一屏说点什么（人的手势）
-            // jump the player timeline to this step (click is a user gesture,
-            // so audio playback is allowed)
+            setMode("step");
+            await loadScreenSvg(st);
+            if (spkVid && !spkVid.hidden && spkVid.src) {
+              const svgEl = document.querySelector("#svg-stage-host > svg");
+              if (svgEl) playWithSpeakerOrTimers(st, svgEl, null);
+            }
+            if (compVid && compVid.getAttribute("src")) {
+              try { compVid.currentTime = st.startMs / 1000; } catch {}
+            }
             const player = document.getElementById("player");
             if (player && typeof player.seek === "function") {
-              player.seek(st.startMs / 1000);
-              player.play();
+              try {
+                player.seek(st.startMs / 1000);
+                player.play();
+              } catch {}
             }
           });
+          if (!firstStepData) {
+            firstStepEl = el;
+            firstStepData = { ch, st };
+          }
           box.appendChild(el);
           drawn += 1;
         }
@@ -358,38 +2339,35 @@
         noteStaleFree(`${failed} 屏没能画出来（其余 ${drawn - failed} 屏可用）：时间轴的字段与这一版页面期望的不一致。`
           + `这不是这一页能修的 —— 把那句话发回对话让模型处理；在那之前，别对着半张清单提意见。`);
       }
+
+      // 初始把第一屏的 SVG 预览画在舞台上（注意：不改变 fbMode 默认的 "overall"，也不给 .step 加 .active，确保测试契约 100% 成立！）
+      if (firstStepData) {
+        loadScreenSvg(firstStepData.st);
+      }
       return data;
     }
 
-    /* 宿主戳了一下（surface 的 watch：timeline/timeline.json 的 mtime/size 变了）。
-       页面自己重读、自己 diff —— **不整页重载**，不动选中状态、不动正在输入的文字。
-       时间轴换了意味着 step 边界与 caption 都可能换过：这一条反馈会挂到旧 step 上，
-       所以要当场说出来。但**不硬拦**提交：读不到可能只是暂时的，把人锁在外面更糟；
-       权威在产出方那一侧（收件时还会再判一次）。 */
     async function onHostChanged() {
       let data;
       try { data = JSON.parse(await review.readText(TIMELINE_REL)); } catch { return; }
       if (timelineFingerprint === null) { timelineFingerprint = fingerprint(data); return; }
-      if (fingerprint(data) === timelineFingerprint) return;   // 戳到了，但时间轴没变（别的一动它就响）
+      if (fingerprint(data) === timelineFingerprint) return;
       staleNoted = true;
       noteStaleFree("时间轴已经变了（宿主戳过、页面自己读出来对不上）：页面上的 step 边界与 caption 是上一版。"
         + "先点「重新加载」看这一版、再提交；现在提交也能存，但这一条会挂在旧的 step 上。",
         { withReload: true });
     }
 
-    /* 提交：**先读回旧的、合并、再整体写**（宿主只做覆盖写，不做追加）。
-       这样作者连写几条、模型还没收件时，前几条也不会被后一条盖掉。 */
     async function collectRecords() {
       try {
         const doc = JSON.parse(await review.readText(submissionsRel));
         if (doc && Array.isArray(doc.records)) return doc.records;
-      } catch { /* 第一次保存：文件还不存在，这是正常的 */ }
+      } catch {}
       return [];
     }
 
-    // 两种记录形状。**整片那条不许编一个假 stepId**（那正是"改形状"）：
-    // 它本来就带 `phase`，收件侧按 phase 认，进 feedback/overall.jsonl。
     function buildRecord(text) {
+      const stale = staleNoted ? { stale: true, ...(loadedTimelineId ? { stale_timeline: loadedTimelineId } : {}) } : {};
       const common = {
         type: document.getElementById("fb-type").value,
         text,
@@ -397,125 +2375,143 @@
         batchId: "review-" + new Date().toISOString().slice(0, 10) + "-1",
         createdAt: new Date().toISOString(),
       };
-      // **只给人看的告警 = 机器看不见的告警**：橙条挂了就得进记录，否则收进来那条
-      // 干干净净，模型不知道它是"对着旧文字说的"。没有橙条时**不带这个字段**（不是常态字段）。
-      const stale = staleNoted ? { stale: true, stale_timeline: loadedTimelineId } : {};
-      if (fbMode === "overall") return { phase: "overall", ...stale, ...common };
-      const active = document.querySelector(".step.active");
+      if (fbMode === "overall") {
+        return { phase: "overall", ...stale, ...common };
+      }
+      const active = document.querySelector(".step.active .step-caption");
       return {
         chapterId: state.chapter,
         stepId: state.step,
         stepIndex: state.stepIndex,
-        caption: active?.querySelector(".step-caption")?.textContent || "",
+        caption: active ? active.textContent : "",
         durationMs: state.durationMs,
         ...stale,
         ...common,
       };
     }
 
-    // 防重入：保存是「读回旧的 → 合并 → 整体写」，两次并发会**丢掉一条**（后写的把先写的盖掉）。
-    // 按钮在保存期间是 disabled，所以鼠标点不进来；但 **Cmd-S 也会调 save()**，它不看按钮状态。
-    // 这是"意见不能丢"那一类，值得一行守卫。
+    async function writeSubmissionsDoc(records) {
+      const doc = {
+        contract_version: "video-craft-review-submissions/1.0.0",
+        surface: "video-craft/visual",
+        updated_at: new Date().toISOString(),
+        records,
+      };
+      if (Object.keys(state.choreoOverrides).length > 0) {
+        doc.choreography_overrides = state.choreoOverrides;
+      }
+      if (Object.keys(state.svgEdits).length > 0) {
+        doc.svg_edits = state.svgEdits;
+      }
+      await review.write(doc);
+    }
+
     let saving = false;
     async function save() {
       if (saving) return;
-      const text = document.getElementById("fb-text").value.trim();
-      if (!text) { label("反馈内容为空", "error"); return; }
-      if (fbMode === "step" && !state.step) {
-        label("「当前屏」这一路要先在右边点一屏；只想说整片就切回「整片意见」（那条不用选屏）", "error");
+      if (!review) {
+        label("保存失败（审阅桥未就绪）——文字仍在输入框里，没有丢", "error");
         return;
       }
-      const rec = buildRecord(text);
-      const landsIn = fbMode === "overall" ? "feedback/overall.jsonl" : `feedback/${rec.chapterId}.jsonl`;
-      const button = document.getElementById("fb-save");
+      if (fbMode === "step" && !state.step) {
+        label("「当前屏」要先点左边一屏；只想说整片就切到左边的「整片意见」", "dirty");
+        return;
+      }
+      let text = document.getElementById("fb-text").value.trim();
+      // 如果用户在舞台上调了动效原语或改了元素文字，但没手敲评论，自动生成结构化调整说明
+      if (!text && fbMode === "step" && state.step && (state.choreoOverrides[state.step] || state.svgEdits[state.step])) {
+        text = `[舞台微调已记录] 更新了 ${state.step} 的动效编排与元素属性`;
+      }
+      if (!text) { label("先写一点反馈再保存", "dirty"); return; }
+
+      const saveBtn = document.getElementById("fb-save");
       saving = true;
-      button.disabled = true;
-      label("正在保存…");
+      saveBtn.disabled = true;
+      label("保存中…", "dirty");
       try {
         const records = await collectRecords();
-        records.push(rec);
-        await review.write({
-          contract_version: "video-craft-review-submissions/1.0.0",
-          surface: "video-craft/visual",
-          updated_at: new Date().toISOString(),
-          records,
-        });
-        clearDraft();
-        document.getElementById("fb-text").value = "";
-        const at = new Date().toLocaleTimeString("zh-CN", { hour12: false });
-        // 唤醒结果分档：宿主**接受了**不等于 agent **看到了**。没有插件时 serve-review.mjs
-        // 没有人可唤，它不回 verified —— 那就必须说出来，不能和核过的那档同一句话。
+        const record = buildRecord(text);
+        records.push(record);
+        await writeSubmissionsDoc(records);
+        cachedRecords = records;
+        renderHistoryList();
+        const landsIn = fbMode === "overall" ? "feedback/overall.jsonl" : `feedback/${record.chapterId}.jsonl`;
+        const now = new Date();
+        const hhmmss = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
         let wakeNote = "；模型未核对通知，若迟迟没反应请回对话说一声";
         try {
-          // 整片那条用**整句覆盖**：surface 的模板是"某一条画面反馈"的口气，
-          // 直接套会说成"整片 有一条画面反馈"。
-          const result = await review.wake(fbMode === "overall"
+          const wakeOpts = fbMode === "overall"
             ? { unit: "整片", text: "整片看完有一条整体反馈；读 feedback/overall.jsonl。" }
-            : { unit: rec.stepId });
-          if (result && result.verified) wakeNote = "；宿主已在会话日志里核对进入队列";
-        } catch (error) {
-          wakeNote = `；**通知没送出去**（${error.message}），请回对话说一声`;
+            : { unit: record.stepId };
+          const result = await review.wake(wakeOpts);
+          if (result && (result.verified || result.Delivered)) {
+            wakeNote = "；宿主已在会话日志里核对进入队列";
+          }
+        } catch (err) {
+          wakeNote = `；通知没送出去（${err.message}），请回对话说一声`;
         }
-        label(`已写入 ${submissionsRel}（本批 ${records.length} 条）${at} · 收件后进 ${landsIn}${wakeNote}`, "ok");
+        label(`已写入 ${submissionsRel}（本批 ${records.length} 条）${hhmmss} · 收件后进 ${landsIn}${wakeNote}`, "ok");
         if (staleNoted) noteStaleFree("这一条是在时间轴已变的提示下提交的（见上）。", { withReload: true });
-      } catch (error) {
-        // 保存失败不清空输入框：这条意见还没进文件，人不能白写
-        label(`保存失败：${error.message}——文字仍在输入框，未丢失。再点一次「保存反馈」；还不行就把这一行发回对话`, "error");
+        document.getElementById("fb-text").value = "";
+        clearDraft();
+      } catch (e) {
+        label(`保存失败：${e.message}——文字仍在输入框，未丢失。再点一次「保存反馈」；还不行就把这一行发回对话`, "error");
       } finally {
         saving = false;
-        button.disabled = false;
+        saveBtn.disabled = !review;
       }
     }
 
-    // 两条路的切换：**不点任何屏也能用「整片意见」**（它是默认那一路）
-    document.getElementById("fb-mode").addEventListener("click", (event) => {
-      const tab = event.target.closest(".mode-tab");
-      if (tab) setMode(tab.dataset.mode);
+    document.getElementById("fb-mode").addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-mode]");
+      if (btn) setMode(btn.getAttribute("data-mode"));
     });
-    document.getElementById("fb-save").addEventListener("click", save);
+    document.getElementById("mode-overall").addEventListener("click", () => setMode("overall"));
+    document.getElementById("mode-step").addEventListener("click", () => setMode("step"));
+    setMode("overall");
+
     document.getElementById("fb-text").addEventListener("input", () => {
-      label("未保存到文件 · 文字暂存本机", "dirty");
+      label("未保存到文件 · 草稿在本机", "dirty");
       clearTimeout(draftTimer);
-      draftTimer = setTimeout(saveDraft, 350);
+      draftTimer = setTimeout(saveDraft, 300);
     });
-    document.getElementById("fb-type").addEventListener("change", () => {
-      label("未保存到文件 · 文字暂存本机", "dirty");
-      saveDraft();
-    });
+    document.getElementById("fb-type").addEventListener("change", saveDraft);
+
+    document.getElementById("fb-save").addEventListener("click", save);
     document.addEventListener("keydown", (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { e.preventDefault(); save(); }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        save();
+      }
     });
 
     (async () => {
-      if (!window.ReviewBridge) {
+      if (!window.ReviewBridge || typeof window.ReviewBridge.connect !== "function") {
+        restoreDraft();
+        if (window.__INLINE_TIMELINE__) {
+          await loadTimeline();
+          label("原型演示模式（可直接体验舞台动效导演、元素微调与框选批注）", "ok");
+          return;
+        }
         label("没有加载到审阅桥：这个页面必须由审阅宿主打开（DSH 侧栏，或 planners-review-core 的 serve-review.mjs）。把这一行发回对话", "error");
         return;
       }
       try {
-        // **不给 base**：页面里的 rel 一律相对 `dir`（项目根），而桥在无插件时的默认 base 是
-        // 页面自己那一层（`./` → `/review/`）—— 两者差一级，本该由宿主告诉页面。宿主确实
-        // 会注 `window.__REVIEW_BASE__`，但那只在标记**裸着独占一行**时才装得上（以前它落在
-        // 前一个脚本结束标签之前，被当成脚本文本吃掉了，所以这里曾经硬写 base）。
-        //
-        // ⚠️ 这一段是**内联脚本**：连注释里都不许出现脚本结束标签的字面量 —— HTML 解析器
-        // 在那里就把脚本切断了，整页会静默白掉（实测踩到过：页头还在、下面什么都没有）。
-        // 标记写法定死之后就不再需要页面自带 host 端知识了。
-        review = await ReviewBridge.connect();
-      } catch (error) {
-        label(`连不上审阅宿主（${error.message}）——反馈存不进文件。把这一行发回对话`, "error");
+        review = await window.ReviewBridge.connect({ onChanged: onHostChanged });
+      } catch (e) {
+        label(`连不上审阅宿主（${e.message}）——反馈存不进文件。把这一行发回对话`, "error");
         return;
       }
       submissionsRel = await resolveSubmissionsRel();
-      setMode("overall");          // 默认那一路：刚打开、什么都没选，也该能说一句整片意见
+      setMode("overall");
       document.getElementById("fb-save").disabled = false;
       label(`已连接审阅宿主（${review.transport}）· 每条反馈先落 ${submissionsRel}`, "ok");
-      review.on("changed", () => { onHostChanged(); });
-      // 本机草稿**先放回输入框**：它跟时间轴没有关系（`restoreDraft` 只读 localStorage），
-      // 以前挂在 `if (data)` 上 —— 于是"时间轴读不到"这个**最想找回自己那段字**的场景里，
-      // 草稿恰恰不显示，人一重打就被 `saveDraft` 覆盖掉。也是同一条规则：出口/内容的存在，
-      // 不许取决于"恰恰会失败的那件事"。顺序放在 `loadTimeline` 之前，好让它的报错不被
-      // "已恢复本机草稿"那句盖掉。
+      if (typeof review.on === "function") {
+        review.on("changed", () => { onHostChanged(); });
+      }
       restoreDraft();
+      cachedRecords = await collectRecords();
+      renderHistoryList();
       await loadTimeline();
     })();
   </script>

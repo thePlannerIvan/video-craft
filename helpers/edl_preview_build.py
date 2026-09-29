@@ -1,29 +1,17 @@
 #!/usr/bin/env python3
-"""Build edl_preview.html in <edit_dir> — browser timeline preview of the
-edited cut, the editing-software equivalent of scrubbing the timeline.
+"""Build edl_preview.html in <edit_dir> — browser timeline & transcript NLE
+workbench for reviewing and refining the edited cut.
 
 Usage: edl_preview_build.py <edit_dir>
        edl_review_surface.py <edit_dir>         # 写 surface + 起审阅宿主（公共缝）
 
 Reads edl.json (+ sources) and, when present, subtitles.srt (the article-first
-delivery file)
-(output-timeline subtitles). Plays the cut directly from the SOURCE clips —
-no render needed — by mapping the output timeline to segment + source offset:
+delivery file) (output-timeline subtitles). Plays the cut directly from the
+SOURCE clips — no render needed — by mapping the output timeline to segment +
+source offset:
 
   output time T → segment i (offset_i <= T < offset_i+1)
                  → source clip at start_i + (T - offset_i)
-
-Features:
-  - timeline ruler with per-source segment blocks, ticks, playhead
-  - click / drag on the ruler to scrub (same feel as a NLE timeline)
-  - play / pause, prev / next cut, 0.5x-2x speed, space / arrow keys
-  - live beat / quote / reason readout for the current segment
-  - optional caption overlay synced to the output timeline
-  - click a caption cue to jump to it
-
-This page iterates CONTENT and RHYTHM decisions. It cannot show ffmpeg-side
-grade / overlay / burned subtitles — for the final look still render a
---preview (render.py --preview) once before the final render.
 """
 import json
 import re
@@ -51,9 +39,6 @@ PREVIEW_VIDEO = next(
 USE_RENDERED = PREVIEW_VIDEO is not None
 PREVIEW_KEY = "__PREVIEW__"
 
-# serve root: the common ancestor of edit_dir and all source files, so the
-# preview page can reach the raw footage over http (paths stay URL-safe,
-# no ".."). Page lives at relpath(EDIT, ROOT) + "/edl_preview.html".
 ROOT = Path(__file__).resolve()
 try:
     ROOT = Path(__import__("os").path.commonpath([EDIT, *SRC_MAP.values()]))
@@ -83,13 +68,12 @@ for r in edl["ranges"]:
     })
     offset = out1
 
-# URL-safe absolute paths under the serve root: "/1785493077348.mp4"
 if USE_RENDERED:
     src_map_web = {PREVIEW_KEY: "/" + PREVIEW_VIDEO.relative_to(ROOT).as_posix()}
 else:
     src_map_web = {k: "/" + v.relative_to(ROOT).as_posix() for k, v in SRC_MAP.items()}
 
-# optional output-timeline captions (master.srt, or srt_export's sentence SRT)
+
 def parse_srt(path: Path) -> list[dict]:
     txt = path.read_text(encoding="utf-8", errors="replace")
     cues, cur = [], None
@@ -107,27 +91,19 @@ def parse_srt(path: Path) -> list[dict]:
             cur = None
     return cues
 
+
 cues = []
-# Only the caption files this skill can actually produce: `subtitles.srt` is the
-# article-first delivery SRT. The legacy 2-word master.srt and the half-renamed
-# variants were candidates for a pipeline that no longer exists.
 for cand in ("subtitles.srt",):
     if (EDIT / cand).exists():
         cues = parse_srt(EDIT / cand)
         break
 
-# ---- word-review data (merged from word_picker: click-to-delete words,
-#      drag multi-select, double-click text fixes, silence gaps) ----
 MIN_GAP = 0.15
 LONG_GAP = 0.5
 NOISE_DB = -25
 
 
 def real_silences(src_path, seg_start, seg_end):
-    # ffmpeg reports a NEGATIVE `silence_start` when the segment opens quiet
-    # (`silence_start: -0.012`), so the capture group must accept a leading
-    # minus. Without it the opening gap of every take that starts in silence is
-    # dropped silently — the very gap the user most wants offered for cutting.
     dur = seg_end - seg_start
     cmd = ["ffmpeg", "-ss", str(seg_start), "-t", str(dur), "-i", str(src_path),
            "-af", f"silencedetect=noise={NOISE_DB}dB:d=0.15", "-f", "null", "-bitexact", "-"]
@@ -154,8 +130,6 @@ trans = {}
 for k in SRC_MAP:
     tf = EDIT / "transcripts" / f"{k}.json"
     if tf.exists():
-        # mlx-whisper fallback output mixes in "spacing" entries that carry no
-        # start/end keys — they'd KeyError every downstream loop.
         trans[k] = [w for w in json.load(open(tf, encoding="utf-8"))["words"]
                     if w.get("type", "word") != "spacing"]
 
@@ -163,9 +137,8 @@ gidx = 0
 for i, r in enumerate(edl["ranges"]):
     src = r["source"]
     s, e = r["start"], r["end"]
+    speed = r.get("speed", 1.0)
     src_words = trans.get(src, [])
-    # only words whose audible part is really inside the segment (>=80%),
-    # filters orphan tokens that merely touch the padded edges
     words = [w for w in src_words
              if w["end"] > s and w["start"] < e
              and (min(w["end"], e) - max(w["start"], s)) >= 0.8 * (w["end"] - w["start"])]
@@ -179,7 +152,6 @@ for i, r in enumerate(edl["ranges"]):
             "o1": round((min(e, w["end"]) - s) / speed + segments[i]["o0"], 3),
         })
         gidx += 1
-    # pauses between kept words (from word timing — instant, no ffmpeg)
     gaps = []
     for a, b in zip(items, items[1:]):
         g = b["ws"] - a["we"]
@@ -191,9 +163,10 @@ for i, r in enumerate(edl["ranges"]):
     segments[i]["items"] = items
     segments[i]["gaps"] = gaps
 
-# what was CUT: source words not covered by any segment (same 80% rule)
+
 def covered_fraction(w, s, e):
     return max(0.0, min(w["end"], e) - max(w["start"], s))
+
 
 deleted = []
 for src, src_words in trans.items():
@@ -234,8 +207,6 @@ for src, src_words in trans.items():
 for ci, ch in enumerate(deleted):
     ch["ci"] = ci
 
-# map each deleted chunk to the segment index it follows (by SOURCE time, so it
-# works whether the page plays the source clips or a rendered final.mp4)
 for ch in deleted:
     after = -1
     for i, r in enumerate(edl["ranges"]):
@@ -249,226 +220,634 @@ HTML = """<!DOCTYPE html>
 <meta charset="utf-8">
 <!-- 审阅桥的注入点：**裸标记独占一行，全页只此一次**（R3）。宿主 serve 时把它原地换成桥本身。 -->
 {{REVIEW_BRIDGE}}
-<title>EDL 时间线预览</title>
+<title>粗剪工作台 · EDL 时间线与逐字精修</title>
 <style>
+  :root {
+    --bg-canvas: #090a0f;
+    --bg-panel: #11131a;
+    --bg-card: #161923;
+    --bg-elevated: #1d2130;
+    --border-subtle: #232838;
+    --border-strong: #32394e;
+    --text-primary: #eef0f6;
+    --text-secondary: #9da4b8;
+    --text-muted: #687086;
+    --accent-amber: #f59e0b;
+    --accent-blue: #3b82f6;
+    --accent-crimson: #e5484d;
+    --accent-emerald: #10b981;
+  }
   * { box-sizing: border-box; }
-  body { font-family: -apple-system, "PingFang SC", "Noto Sans SC", sans-serif;
-         background: #0d0d12; color: #e8e8ee; margin: 0; padding: 0 0 60px;
-         min-width: 1280px; }
-  #bar { position: sticky; top: 0; z-index: 20; background: #13131a;
-         border-bottom: 1px solid #26262e; padding: 10px 20px;
-         display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
-  #bar b { font-size: 15px; }
-  #stats { font-size: 13px; color: #9a9aa6; font-variant-numeric: tabular-nums; }
-  /* R11：刷新入口**无条件存在**，而且写成纯 HTML 链接（空 href ＝重载当前地址）——
-     "页面自己的脚本是旧的/坏的"那一档才是最需要它的时候。 */
-  #page-reload { margin-left: auto; font-size: 13px; color: #9a9aa6; text-decoration: none;
-                 border: 1px solid #3a3a46; border-radius: 6px; padding: 5px 12px; }
-  #page-reload:hover { color: #e8e8ee; border-color: #5a5ad0; }
-  #net { font-size: 12px; color: #9a9aa6; }
-  #staleness { margin: 0; padding: 10px 20px; font-size: 13px; line-height: 1.6;
-               color: #ffd9a8; background: #4a2f12; border-bottom: 1px solid #6a4520; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", "Inter", sans-serif;
+    background: var(--bg-canvas);
+    color: var(--text-primary);
+    margin: 0;
+    padding: 0 0 48px;
+    min-width: 1240px;
+  }
+  /* ── Top Studio Bar ── */
+  #bar {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    background: rgba(17, 19, 26, 0.92);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border-subtle);
+    padding: 10px 24px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .brand-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-right: 8px;
+  }
+  .brand-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent-amber);
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.6);
+  }
+  #bar b { font-size: 14px; font-weight: 600; letter-spacing: 0.02em; }
+  .bar-divider { width: 1px; height: 18px; background: var(--border-subtle); margin: 0 4px; }
+  #stats {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    padding: 4px 10px;
+    border-radius: 999px;
+  }
+  #net {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--text-secondary);
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    padding: 4px 10px;
+    border-radius: 999px;
+  }
+  /* R11：刷新入口无条件存在，写成纯 HTML 链接（空 href ＝重载当前地址） */
+  #page-reload {
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-decoration: none;
+    background: var(--bg-card);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    padding: 5px 11px;
+    transition: all 0.15s ease;
+  }
+  #page-reload:hover { color: var(--text-primary); border-color: var(--accent-amber); }
+
+  #staleness {
+    margin: 0;
+    padding: 10px 24px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #ffd9a8;
+    background: #3b230c;
+    border-bottom: 1px solid #6a4520;
+  }
   #staleness[hidden] { display: none; }
-  #overall { display: flex; gap: 10px; align-items: center; padding: 10px 20px;
-             background: #13131a; border-bottom: 1px solid #26262e; }
-  #overall b { font-size: 13px; color: #cfcfe0; white-space: nowrap; }
-  #ov-text { flex: 1 1 auto; min-height: 34px; padding: 6px 10px; background: #1c1c26; color: #e8e8ee;
-             border: 1px solid #3a3a46; border-radius: 6px; font: inherit; font-size: 13px; resize: vertical; }
-  #ov-state { font-size: 12px; color: #9a9aa6; white-space: nowrap; }
-  button { padding: 5px 14px; border: 1px solid #3a3a46; border-radius: 6px;
-           background: #1c1c26; color: #e8e8ee; cursor: pointer; font-size: 14px; }
-  button:hover { background: #262633; }
-  button.on { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
-  select { background: #1c1c26; color: #e8e8ee; border: 1px solid #3a3a46;
-           border-radius: 6px; font-size: 13px; padding: 4px 6px; }
-  #wrap { max-width: 1560px; margin: 0 auto; padding: 14px 20px;
-          display: grid; grid-template-columns: 1fr 440px; gap: 20px; }
-  #left { min-width: 0; }
-  #side { border-left: 1px solid #26262e; padding-left: 18px; }
-  .side-head { display: flex; justify-content: space-between; align-items: baseline; }
-  .side-head b { font-size: 16px; }
-  #wstats { font-size: 13px; color: #b8b8c4; }
-  .side-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
-  #w-hint { font-size: 12px; color: #7c7c88; margin: 6px 0 12px; line-height: 1.7; }
-  #w-root { overflow-y: auto; max-height: 66vh; padding-right: 6px; }
-  #w-root::-webkit-scrollbar { width: 8px; }
-  #w-root::-webkit-scrollbar-thumb { background: #2c2c38; border-radius: 4px; }
-  .wseg { margin: 14px 0; padding: 12px 14px; background: #16161d;
-          border: 1px solid #24242d; border-radius: 10px; }
-  .wseg.active { border-color: #f59e0b66; }
-  .wseg-head { font-size: 13px; color: #a8a8b4; margin-bottom: 8px; }
-  .wseg-head b { color: #d8d8e2; }
-  .w { display: inline-block; padding: 1px 1px; border-radius: 3px;
-       cursor: pointer; font-size: 16px; line-height: 1.85; user-select: none; }
-  .w:hover { background: #1c2440; }
-  .w.del { background: #e5484d; color: #fff; text-decoration: line-through; }
-  .w.cut { color: #e5484d; text-decoration: line-through; opacity: .75; }
-  .w.cut:hover { background: #2a1518; color: #d8d8e2; opacity: 1; }
-  .w.cut.restored { color: #3ddc76; text-decoration: none; opacity: 1; background: #132a1a; }
-  .cutdiv { margin: 6px 0 12px; padding: 6px 10px; border-left: 3px solid #5c2a2e;
-            background: #131318; border-radius: 6px; font-size: 14px; line-height: 1.9; }
-  .cutlabel { font-size: 11px; color: #a05056; margin-right: 8px; vertical-align: middle; }
-  body.hidecut .cutdiv { display: none; }
-  .w.drag { background: #1d4ed8; color: #fff; }
-  .w.drag-undo { background: #3ddc76; color: #0d0d12; }
-  .w.playing { background: #f59e0b; color: #111; border-radius: 4px;
-               padding: 0 4px; font-weight: 700;
-               box-shadow: 0 0 0 2px rgba(245,158,11,.55); }
-  .w.fixed { border-bottom: 2px dashed #38bdf8; }
-  .gap { display: inline-block; cursor: pointer; font-size: 9px;
-         color: #70707c; padding: 0 2px; vertical-align: middle;
-         border-radius: 3px; user-select: none; }
-  .gap:hover { color: #e8e8ee; background: #24242d; }
-  .gap.del { background: #e5484d; color: #fff; }
-  .gap.long { color: #f59e0b; font-size: 10px; font-weight: 600;
-              background: #241a0e; padding: 1px 4px; }
-  .gap.long:hover { background: #3a2a12; color: #fbbf24; }
-  .gap.long.del { background: #e5484d; color: #fff; }
-  input.edit-in { background: #1c1c26; color: #fff; border: 1px solid #38bdf8;
-                  font-size: 15px; border-radius: 3px; padding: 1px 4px; width: 7em; }
-  .delrow { font-size: 12px; color: #8a8a96; line-height: 1.6; padding: 2px 0;
-            border-bottom: 1px dashed #24242d; }
-  .delrow:last-child { border-bottom: none; }
-  .deltime { color: #8a8a96; font-variant-numeric: tabular-nums; }
-  .deltext { color: #a0a0aa; }
-  .tick span { position: absolute; bottom: 7px; left: 3px; font-size: 11px;
-               color: #8a8a96; font-variant-numeric: tabular-nums; }
-  #stage { position: relative; background: #000; border: 1px solid #26262e;
-           border-radius: 10px; overflow: hidden; }
-  #stage video { width: 100%; display: block; max-height: 640px; }
-  #capbar { position: absolute; left: 0; right: 0; bottom: 0; padding: 10px 16px;
-            background: rgba(0,0,0,.72); color: #fff; font-size: 19px;
-            text-align: center; min-height: 46px; display: flex;
-            align-items: center; justify-content: center; }
+
+  button {
+    padding: 5px 12px;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.15s ease;
+  }
+  button:hover { background: var(--bg-elevated); border-color: #46506e; }
+  button.on {
+    background: rgba(59, 130, 246, 0.18);
+    border-color: var(--accent-blue);
+    color: #93c5fd;
+  }
+  button.primary-cta {
+    background: var(--accent-amber);
+    border-color: var(--accent-amber);
+    color: #090a0f;
+    font-weight: 600;
+  }
+  button.primary-cta:hover { background: #fbbf24; border-color: #fbbf24; }
+  select {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    font-size: 12px;
+    padding: 5px 8px;
+  }
+
+  /* ── 2-Column NLE Workbench Layout ── */
+  #wrap {
+    max-width: 1640px;
+    margin: 0 auto;
+    padding: 16px 24px;
+    display: grid;
+    grid-template-columns: minmax(520px, 1fr) 540px;
+    gap: 22px;
+    align-items: start;
+  }
+  #left { min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+
+  /* ── Monitor Stage ── */
+  #stage {
+    position: relative;
+    background: #000;
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  }
+  #stage video { width: 100%; display: block; max-height: 540px; object-fit: contain; background: #040508; }
+  #capbar {
+    position: absolute;
+    left: 24px;
+    right: 24px;
+    bottom: 16px;
+    padding: 8px 16px;
+    background: rgba(9, 10, 15, 0.82);
+    backdrop-filter: blur(6px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    color: #fff;
+    font-size: 17px;
+    font-weight: 500;
+    text-align: center;
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
   #capbar.empty { display: none; }
-  #info { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px;
-          margin: 14px 0; font-size: 14px; color: #b8b8c4; }
-  #info .lbl { color: #6f6f7c; font-size: 12px; letter-spacing: .06em; }
-  #info .beat { color: #f59e0b; font-weight: 600; }
-  #ruler { position: relative; height: 72px; background: #13131a;
-           border: 1px solid #26262e; border-radius: 8px; overflow: hidden;
-           cursor: crosshair; user-select: none; touch-action: none; }
-  #blocks { position: absolute; inset: 12px 0 18px 0; }
-  .seg-block { position: absolute; top: 0; bottom: 0; border-right: 1px solid #0d0d12;
-               display: flex; align-items: center; padding: 0 6px; overflow: hidden;
-               white-space: nowrap; font-size: 11px; color: #fff; text-shadow: 0 1px 2px #000; }
-  .seg-block .d { opacity: .75; margin-left: 5px; font-variant-numeric: tabular-nums; }
-  .seg-block.active { outline: 2px solid #fbbf24; outline-offset: -2px; z-index: 2; }
-  #ticks { position: absolute; left: 0; right: 0; bottom: 0; height: 16px; }
-  .tick { position: absolute; bottom: 0; height: 7px; width: 1px; background: #3a3a46; }
-  .tick span { position: absolute; bottom: 7px; left: 3px; font-size: 10px;
-               color: #6f6f7c; font-variant-numeric: tabular-nums; }
-  #playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: #fbbf24;
-              z-index: 3; pointer-events: none; }
-  #playhead .hd { position: absolute; top: -2px; left: -5px; border: 5px solid transparent;
-                  border-top: 7px solid #fbbf24; }
-  #ptime { position: absolute; top: -22px; left: -30px; width: 60px; text-align: center;
-           font-size: 11px; color: #fbbf24; background: #1c1c26; border-radius: 4px;
-           font-variant-numeric: tabular-nums; pointer-events: none; }
-  #cues { margin-top: 14px; max-height: 220px; overflow-y: auto; }
-  .cue { display: flex; gap: 10px; padding: 5px 8px; border-bottom: 1px solid #1e1e28;
-         font-size: 14px; cursor: pointer; border-radius: 5px; }
-  .cue:hover { background: #1a1a24; }
-  .cue .ct { color: #6f6f7c; font-variant-numeric: tabular-nums; flex-shrink: 0; }
-  #hint { font-size: 12px; color: #6f6f7c; margin: 8px 2px 0; }
+
+  /* ── NLE Timeline Scrubber ── */
+  .timeline-card {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    padding: 12px 14px 10px;
+  }
+  .timeline-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  #ruler {
+    position: relative;
+    height: 68px;
+    background: #0c0e14;
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: ew-resize;
+    user-select: none;
+    touch-action: none;
+  }
+  #blocks { position: absolute; inset: 8px 0 20px 0; }
+  .seg-block {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-right: 1px solid #090a0f;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    padding: 0 7px;
+    overflow: hidden;
+    white-space: nowrap;
+    font-size: 11px;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.92);
+    transition: filter 0.12s ease;
+  }
+  .seg-block:hover { filter: brightness(1.12); }
+  .seg-block .d { opacity: 0.72; margin-left: 5px; font-variant-numeric: tabular-nums; font-size: 10px; }
+  .seg-block.active {
+    outline: 2px solid var(--accent-amber);
+    outline-offset: -2px;
+    z-index: 2;
+    box-shadow: inset 0 0 12px rgba(245, 158, 11, 0.25);
+  }
+  #ticks {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 18px;
+    background: rgba(255, 255, 255, 0.02);
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
+  }
+  .tick { position: absolute; bottom: 0; height: 6px; width: 1px; background: var(--border-strong); }
+  .tick span {
+    position: absolute;
+    bottom: 6px;
+    left: 4px;
+    font-size: 10px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  #playhead {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--accent-amber);
+    z-index: 4;
+    pointer-events: none;
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.6);
+  }
+  #playhead .hd {
+    position: absolute;
+    top: 0;
+    left: -5px;
+    border: 6px solid transparent;
+    border-top: 8px solid var(--accent-amber);
+  }
+  #ptime {
+    position: absolute;
+    top: 2px;
+    left: 6px;
+    padding: 1px 5px;
+    font-size: 10px;
+    font-weight: 600;
+    color: #090a0f;
+    background: var(--accent-amber);
+    border-radius: 3px;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+  #hint { font-size: 11px; color: var(--text-muted); margin-top: 8px; }
+
+  /* ── Segment Metadata Inspector ── */
+  #info {
+    display: grid;
+    grid-template-columns: 150px 1fr;
+    gap: 10px 16px;
+    padding: 12px 16px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+  #info .lbl {
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 3px;
+  }
+  #info .beat { color: var(--accent-amber); font-weight: 600; }
+
+  /* ── Overall Direction Note ── */
+  #overall {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    padding: 12px 16px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+  }
+  #overall b { font-size: 13px; color: var(--text-primary); white-space: nowrap; }
+  #ov-text {
+    flex: 1 1 auto;
+    min-height: 36px;
+    padding: 7px 11px;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    font: inherit;
+    font-size: 13px;
+    resize: vertical;
+  }
+  #ov-text:focus { outline: none; border-color: var(--accent-amber); }
+  #ov-state { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+
+  #cues {
+    max-height: 180px;
+    overflow-y: auto;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    padding: 6px;
+  }
+  .cue {
+    display: flex;
+    gap: 10px;
+    padding: 5px 8px;
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 13px;
+    cursor: pointer;
+    border-radius: 5px;
+  }
+  .cue:hover { background: var(--bg-card); }
+  .cue .ct { color: var(--text-muted); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+
+  /* ── Right Column: Transcript & Word Editor ── */
+  #side {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    padding: 16px;
+    position: sticky;
+    top: 62px;
+  }
+  .side-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .side-head b { font-size: 15px; font-weight: 600; }
+  #wstats {
+    font-size: 12px;
+    color: var(--accent-amber);
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-variant-numeric: tabular-nums;
+  }
+  .side-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin: 12px 0 8px;
+    align-items: center;
+  }
+  #w-hint {
+    font-size: 12px;
+    color: var(--text-secondary);
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    padding: 8px 11px;
+    margin: 8px 0 12px;
+    line-height: 1.65;
+  }
+  #w-root {
+    overflow-y: auto;
+    max-height: calc(100vh - 280px);
+    padding-right: 4px;
+  }
+  #w-root::-webkit-scrollbar { width: 6px; }
+  #w-root::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+  .wseg {
+    margin: 10px 0;
+    padding: 12px 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    transition: border-color 0.15s ease;
+  }
+  .wseg.active {
+    border-color: rgba(245, 158, 11, 0.65);
+    box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.2);
+  }
+  .wseg-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  }
+  .wseg-head b { color: var(--text-primary); }
+  .wseg-jump {
+    padding: 2px 8px;
+    font-size: 11px;
+    border-radius: 999px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-strong);
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+  .wseg-jump:hover { color: var(--accent-amber); border-color: var(--accent-amber); }
+
+  .w {
+    display: inline-block;
+    padding: 1px 2px;
+    margin: 1px 0;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 15px;
+    line-height: 1.85;
+    user-select: none;
+    transition: background 0.08s ease, color 0.08s ease;
+  }
+  .w:hover { background: rgba(59, 130, 246, 0.22); }
+  .w.del {
+    background: rgba(229, 72, 77, 0.88);
+    color: #fff;
+    text-decoration: line-through;
+  }
+  .w.cut {
+    color: #f87171;
+    text-decoration: line-through;
+    opacity: 0.72;
+    font-size: 13px;
+  }
+  .w.cut:hover { background: rgba(229, 72, 77, 0.2); color: var(--text-primary); opacity: 1; }
+  .w.cut.restored {
+    color: #34d399;
+    text-decoration: none;
+    opacity: 1;
+    background: rgba(16, 185, 129, 0.18);
+    border-bottom: 1px solid #10b981;
+  }
+  .cutdiv {
+    margin: 8px 0 4px;
+    padding: 6px 10px;
+    border-left: 3px solid rgba(229, 72, 77, 0.45);
+    background: rgba(9, 10, 15, 0.55);
+    border-radius: 0 6px 6px 0;
+    font-size: 13px;
+    line-height: 1.8;
+  }
+  body.hidecut .cutdiv { display: none; }
+  .w.drag { background: var(--accent-blue); color: #fff; }
+  .w.drag-undo { background: var(--accent-emerald); color: #090a0f; }
+  .w.playing {
+    background: var(--accent-amber);
+    color: #090a0f;
+    border-radius: 4px;
+    padding: 1px 4px;
+    font-weight: 700;
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.45);
+  }
+  .w.fixed { border-bottom: 2px dashed #38bdf8; color: #7dd3fc; }
+  .gap {
+    display: inline-block;
+    cursor: pointer;
+    font-size: 10px;
+    color: var(--text-muted);
+    padding: 0 3px;
+    margin: 0 1px;
+    vertical-align: middle;
+    border-radius: 4px;
+    user-select: none;
+  }
+  .gap:hover { color: var(--text-primary); background: var(--bg-elevated); }
+  .gap.del { background: var(--accent-crimson); color: #fff; text-decoration: line-through; }
+  .gap.long {
+    color: var(--accent-amber);
+    font-size: 10px;
+    font-weight: 600;
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.28);
+    padding: 0 4px;
+  }
+  .gap.long:hover { background: rgba(245, 158, 11, 0.24); }
+  .gap.long.del { background: var(--accent-crimson); border-color: var(--accent-crimson); color: #fff; }
+  input.edit-in {
+    background: var(--bg-elevated);
+    color: #fff;
+    border: 1px solid #38bdf8;
+    font-size: 14px;
+    border-radius: 4px;
+    padding: 1px 5px;
+    width: 7em;
+  }
+  .delrow {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    padding: 3px 0;
+    border-bottom: 1px dashed var(--border-subtle);
+  }
+  .delrow:last-child { border-bottom: none; }
+  .deltime { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .deltext { color: var(--text-secondary); }
 </style>
 </head>
 <body>
 <div id="bar">
-  <b>EDL 时间线预览</b>
+  <div class="brand-title">
+    <span class="brand-dot"></span>
+    <b>粗剪审阅工作台</b>
+  </div>
   <button id="btn-play">▶ 播放</button>
   <button id="btn-prev">⏮ 上一刀</button>
   <button id="btn-next">⏭ 下一刀</button>
-  <select id="speed">
+  <select id="speed" title="倍速预览">
     <option value="0.25">0.25x</option>
     <option value="0.5">0.5x</option>
     <option value="0.75">0.75x</option>
     <option value="1" selected>1x</option>
+    <option value="1.25">1.25x</option>
     <option value="1.5">1.5x</option>
     <option value="2">2x</option>
     <option value="3">3x</option>
   </select>
-  <button id="btn-cut" class="on">剪后预览</button>
-  <button id="btn-caps">字幕</button>
+  <div class="bar-divider"></div>
+  <button id="btn-cut" class="on" title="开启后播放自动跳过右侧已标红删除的词与停顿">✂️ 剪后预览</button>
+  <button id="btn-caps" title="显示或隐藏画面底部字幕">💬 字幕</button>
   <span id="stats">0:00 / __TOTAL__ · __NSEG__ 段 · 1x</span>
+  <span id="net">正在连接审阅宿主…</span>
+  <a id="page-reload" href="" title="重新加载当前审阅页">⟳ 刷新</a>
 </div>
+<div id="staleness" hidden></div>
 <div id="wrap">
   <div id="left">
     <div id="stage">
       <video id="main" playsinline></video>
       <div id="capbar"></div>
     </div>
-    <div id="info">
-      <div><div class="lbl">Beat</div><div id="i-beat" class="beat"></div></div>
-      <div><div class="lbl">片段</div><div id="i-seg"></div></div>
-      <div style="grid-column:1"><div class="lbl">这段话</div><div id="i-quote"></div></div>
-      <div><div class="lbl">为什么这么剪</div><div id="i-reason"></div></div>
+    <div class="timeline-card">
+      <div class="timeline-head">
+        <span>时间线轨道（拖拽指针预览 · 空格播放/暂停 · ←/→ 微调 1s）</span>
+        <span>片段数：__NSEG__</span>
+      </div>
+      <div id="ruler">
+        <div id="blocks"></div>
+        <div id="ticks"></div>
+        <div id="playhead"><div class="hd"></div><div id="ptime">0:00</div></div>
+      </div>
+      <div id="hint">点击或拖拽时间轴随时试听剪口衔接 · 开启「剪后预览」可实时跳过右侧标红删掉的词与气口</div>
     </div>
-    <div id="ruler">
-      <div id="blocks"></div>
-      <div id="ticks"></div>
-      <div id="playhead"><div class="hd"></div><div id="ptime">0:00</div></div>
+    <div id="info">
+      <div><div class="lbl">当前段落 Beat</div><div id="i-beat" class="beat"></div></div>
+      <div><div class="lbl">源素材区间</div><div id="i-seg"></div></div>
+      <div><div class="lbl">剪辑理由</div><div id="i-reason"></div></div>
+      <div><div class="lbl">段落台词摘要</div><div id="i-quote"></div></div>
+    </div>
+    <div id="overall">
+      <b>整体修改备注</b>
+      <textarea id="ov-text" placeholder="可填写对整条片子节奏、段落取舍或语气的整体修改要求…"></textarea>
+      <button id="ov-send">单独发送备注</button>
+      <span id="ov-state">随保存或单独发回对话</span>
     </div>
     <div id="cues" hidden></div>
-    <span id="net">正在连接审阅宿主…</span>
-    <a id="page-reload" href="" title="重新加载这一页（拿到最新版本的页面本身）">⟳ 刷新</a>
-    <div id="hint">拖动时间轴 = 预览（像剪辑软件）· 空格播放/暂停 · ←/→ ±1 秒 · 点字幕跳转 · 右侧逐字审阅 · 「剪后预览」开启时播放会跳过已选删除的词/停顿</div>
-  </div>
-  <div id="staleness" hidden></div>
-  <!-- R10：**审阅的粒度由产出方决定，页面不许把逐单位当成唯一入口**。
-       这一面天生逐项挑（word/停顿/恢复/改字），但人也会只想说一句"整段重来"。
-       整体那一句**只走 wake 回对话，不写 selections.json** —— 写进去会被 apply_selection.py
-       静默忽略（它只 get words/pauses/restore/fixes），那是一个死字段（R5b 的反面）。
-       自检问法：「我不想针对任何一个单位，只想说一句整体意见」—— 页面允许吗？ -->
-  <div id="overall">
-    <b>整段意见</b>
-    <textarea id="ov-text" placeholder="不针对任何一处：整段节奏、这一版的取舍方向、要不要重挑…"></textarea>
-    <button id="ov-send">发回对话</button>
-    <span id="ov-state">这一条是一句话，不进 selections.json</span>
   </div>
   <div id="side">
     <div class="side-head">
-      <b>逐字审阅</b>
+      <b>逐字精修与气口裁剪</b>
       <span id="wstats">0 处选中 · 约减 0.0s</span>
     </div>
     <div class="side-actions">
-      <button id="w-save">保存选择</button>
-      <button id="w-clear">清空</button>
-      <button id="w-clearfix">清空修正</button>
+      <button id="w-save" class="primary-cta">✓ 保存剪接修改</button>
+      <button id="w-editmode" title="开启后单击词可直接改错别字；关闭时单击词为跳转播放">✏️ 改字模式：关</button>
+      <button id="w-clear">清空选中</button>
+      <button id="w-clearfix">还原改字</button>
       <button id="w-toggledel">已剪内容 (<span id="w-delcount"></span>)</button>
-      <label style="font-size:12px;color:#9a9aa6;display:inline-flex;align-items:center;gap:4px;">
-        停顿时长
+      <label style="font-size:12px;color:var(--text-secondary);display:inline-flex;align-items:center;gap:4px;margin-left:auto;">
+        保留停顿
         <input id="w-pausedur" type="number" min="0" step="0.1" value="0.5"
-               style="width:56px;background:#1c1c26;color:#e8e8ee;border:1px solid #3a3a46;border-radius:6px;padding:3px 6px;"> s
+               style="width:52px;background:var(--bg-card);color:var(--text-primary);border:1px solid var(--border-strong);border-radius:6px;padding:3px 6px;"> s
       </label>
     </div>
     <div id="w-delpanel" hidden></div>
-    <div id="w-hint"><b>单击</b>词：跳转播放（不会删除）；<b>拖动</b>：标记删除，
-      从已选词拖起则取消删除（绿色预览）；<b>双击</b>：改字（蓝色虚线=已修正）；
-      橙色=长气口 ≥0.5s；黄框=正在播放的词。</div>
+    <div id="w-hint">
+      <b>单击词</b>：定位到此处并播放 ·
+      <b>按住拖开</b>：标红删除（从已标红词拖起则取消删除） ·
+      <b>双击词</b>（或开「改字模式」）：修正识别错字
+    </div>
     <div id="w-root"></div>
   </div>
 </div>
 <div id="vpool" hidden></div>
 <script>
-let review = null;   // 桥的句柄。**声明在最前、接线放在整页渲染之后**（见文件末尾）。渲染不许挂在握手上。
+let review = null;   // 桥的句柄。声明在最前、接线放在整页渲染之后。
 const SEGS = __SEGS__;
 const SRC = __SRC__;
 const CUES = __CUES__;
 const TOTAL = __TOTAL__;
-const PAL = ["#3b82f6", "#10b981", "#f59e0b", "#a855f7", "#ef4444", "#14b8a6"];
+const PAL = ["#2563eb", "#0d9488", "#d97706", "#4f46e5", "#059669", "#0284c7"];
 const srcColor = {};
 Object.keys(SRC).forEach((k, i) => (srcColor[k] = PAL[i % PAL.length]));
-const BEAT_COLORS = { HOOK: "#f59e0b", PROBLEM: "#ef4444", SOLUTION: "#22c55e",
-                      BENEFIT: "#3b82f6", EXAMPLE: "#a855f7", CTA: "#fbbf24" };
+const BEAT_COLORS = { HOOK: "#f59e0b", PROBLEM: "#f87171", SOLUTION: "#34d399",
+                      BENEFIT: "#60a5fa", EXAMPLE: "#a78bfa", CTA: "#fbbf24" };
 const beatColor = b => {
   const k = Object.keys(BEAT_COLORS).find(x => (b || "").toUpperCase().includes(x));
-  return k ? BEAT_COLORS[k] : "#9a9aa6";
+  return k ? BEAT_COLORS[k] : "#9da4b8";
 };
 
-/* ---- video pool: one element per source file, PRELOAD ONLY (never
-       played) — warms the browser cache so segment switches don't
-       stutter. Playback happens on the visible #main element. ---- */
+/* ---- video pool ---- */
 const vids = {};
 for (const k of Object.keys(SRC)) {
   const v = document.createElement("video");
@@ -481,17 +860,18 @@ let curSrc = SRC[SEGS[0].src];
 main.src = curSrc;
 
 /* ---- state ---- */
-let cur = -1;            // active segment index
+let cur = -1;
 let playing = false;
 let playhead = 0;
 let raf = null;
 let scrubbing = false;
-let lastCur = -1;        // for word-panel active segment sync
-let lastPlayingG = -1;   // for word-panel moving highlight
-let lastPlayEl = null;      // cached .playing element (no per-frame DOM scan)
+let lastCur = -1;
+let lastPlayingG = -1;
+let lastPlayEl = null;
+let editMode = false;    // when true, single-clicking a word opens inline text edit
 const sel = new Set();   // "w:G" | "g:S:I"
 const restoreSet = new Set();  // deleted-word key "src|ws|we" -> restore on save
-const cutWords = [];   // {el, key} — 已剪词的扁平列表（DOM 顺序）
+const cutWords = [];
 let cutAnchor = null, cutDragKeys = new Set(), cutDragMode = "restore", cutDown = null;
 
 const fmt = t => {
@@ -534,10 +914,6 @@ function deletedIntervalsBySrc() {
   }
   return bySrc;
 }
-/* ---- cut preview: skip selected words/gaps while playing ----
-   Time axes: SEGS intervals (o0/o1) and deleted intervals live on the
-   OUTPUT timeline; the <video> element plays on the SOURCE timeline.
-   Never compare the two directly (that bug made cut preview skip nothing). */
 function outToSrc(seg, outT) {
   return Math.min(seg.end, seg.start + (outT - seg.o0) * (seg.speed || 1));
 }
@@ -555,7 +931,6 @@ function applyCut(seg, outT) {
     }
   }
   outT = Math.min(seg.o1, outT);
-  // if only a tiny silence tail remains after the cut, skip it too
   if (seg.o1 - outT < 0.5) outT = seg.o1;
   return outToSrc(seg, outT);
 }
@@ -584,13 +959,11 @@ for (let t = 0; t <= TOTAL; t += 10) {
 /* ---- caption cues ---- */
 const cuesEl = document.getElementById("cues");
 const capbar = document.getElementById("capbar");
-// Caption bar is OFF by default: the rendered video usually carries burned
-// subtitles, and showing the bar on top would double them. Toggle via 字幕.
 if (!document.getElementById("btn-caps").classList.contains("on")) {
   capbar.classList.add("empty");
 }
 if (CUES.length) {
-  CUES.forEach((c, i) => {
+  CUES.forEach((c) => {
     const row = document.createElement("div");
     row.className = "cue";
     row.innerHTML = '<span class="ct">' + fmt(c.s) + "</span><span>" + c.t + "</span>";
@@ -612,7 +985,6 @@ function renderPlayhead() {
   document.getElementById("stats").textContent =
     fmt(playhead) + " / " + fmt(TOTAL) + " · " + SEGS.length + " 段 · " +
     document.getElementById("speed").value + "x";
-  /* word-review sync: playing word + active segment card */
   if (lastPlayEl) { lastPlayEl.classList.remove("playing"); lastPlayEl = null; }
   if (cur >= 0) {
     const hit = SEGS[cur].items.find(it => playhead >= it.o0 && playhead <= it.o1 + 0.05);
@@ -663,9 +1035,7 @@ function renderCaption() {
   capbar.textContent = c ? c.t : "";
 }
 
-/* ---- playback engine: the visible #main element is the only thing that
-       plays; the playhead derives from main.currentTime so the clock stays
-       aligned with what the user actually sees ---- */
+/* ---- playback engine ---- */
 function seekTo(t, autoplay, useCut = true) {
   t = Math.max(0, Math.min(TOTAL - 0.01, t));
   playhead = t;
@@ -680,8 +1050,6 @@ function seekTo(t, autoplay, useCut = true) {
     }
     if (cur !== i) {
       cur = i;
-      // only reload when the source actually changes — reassigning the same
-      // URL reloads the media element and stutters at every cut boundary
       const u = SRC[s.src];
       if (curSrc !== u) { curSrc = u; main.src = u; }
     }
@@ -705,7 +1073,6 @@ function advance() {
   main.muted = (s.speed || 1) > 1;
   main.currentTime = applyCut(s, s.o0);
   main.play();
-  // pre-warm the following segment's source in the hidden pool
   const nxt = SEGS[cur + 1];
   if (nxt) { const pv = vids[nxt.src]; if (pv.readyState < 2) pv.load(); }
   renderInfo();
@@ -720,9 +1087,6 @@ function startLoop() {
     lastTs = now;
     if (playing && cur >= 0) {
       const s = SEGS[cur];
-      // advance on the OUTPUT timeline; skip deleted intervals, then map back
-      // scale by the effective playback rate so word highlights, captions and
-      // the ruler keep up at 2x/3x — otherwise they lag at 1x wall-clock
       const rate = (s.speed || 1) * parseFloat(document.getElementById("speed").value);
       let t = playhead + Math.max(0.001, dt) * rate;
       let jumped = false;
@@ -744,10 +1108,6 @@ function startLoop() {
         advance();
       } else {
         playhead = t;
-        // Seek ONLY when a deleted interval was actually jumped. The video
-        // clock otherwise tracks the playhead on its own; drift-based seeks
-        // re-seek constantly and each seek resets the decode pipeline,
-        // starving frame presentation (measured 80% frame drop).
         if (jumped) main.currentTime = outToSrc(s, t);
         renderPlayhead(); renderCaption();
       }
@@ -796,6 +1156,7 @@ document.getElementById("speed").onchange = e => {
     main.playbackRate = (SEGS[cur].speed || 1) * r;
     main.muted = (SEGS[cur].speed || 1) > 1;
   }
+  renderPlayhead();
 };
 document.getElementById("btn-cut").onclick = () => {
   cutPreview.on = !cutPreview.on;
@@ -829,7 +1190,7 @@ ruler.addEventListener("pointerup", e => {
 
 /* ---- keyboard ---- */
 document.addEventListener("keydown", e => {
-  if (e.target.tagName === "SELECT") return;
+  if (e.target.tagName === "SELECT" || e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
   if (e.code === "Space") { e.preventDefault(); playing ? pause() : play(); }
   else if (e.code === "ArrowLeft") { pause(); seekTo(playhead - 1); }
   else if (e.code === "ArrowRight") { pause(); seekTo(playhead + 1); }
@@ -837,13 +1198,12 @@ document.addEventListener("keydown", e => {
   else if (e.code === "End") { pause(); seekTo(TOTAL); }
 });
 
-/* ---- init ---- */
 document.getElementById("main").addEventListener("click", () => (playing ? pause() : play()));
 seekTo(0);
 
-/* ================= 逐字审阅 (merged from word_picker) ================= */
+/* ================= 逐字审阅与精修 ================= */
 const DELETED = __DELETED__;
-const fixes = new Map();        // unsaved text fixes: wordKey -> text
+const fixes = new Map();
 const byG = new Map();
 SEGS.forEach((seg) => seg.items.forEach((it) => byG.set(it.g, { seg, item: it })));
 const wordKey = (seg, it) => seg.src + "|" + it.ws + "|" + it.we;
@@ -884,7 +1244,7 @@ function bindWord(span, g) {
   span.addEventListener("mousedown", (e) => e.preventDefault());
   span.addEventListener("dblclick", () => startEdit(g));
 }
-// deleted chunks cut between segments: use the precomputed after_seg (source-time based)
+
 const delAfter = new Map();
 DELETED.forEach((d) => {
   if (d.after_seg >= 0) {
@@ -899,8 +1259,17 @@ SEGS.forEach((seg, si) => {
   box.id = "wseg-" + si;
   const head = document.createElement("div");
   head.className = "wseg-head";
-  head.innerHTML = '<b style="color:' + beatColor(seg.beat) + '">' + (seg.beat || seg.label) +
-                   "</b> · " + fmt(seg.o0) + " - " + fmt(seg.o1) + " · " + seg.label;
+  const titleSpan = document.createElement("span");
+  titleSpan.innerHTML = '<b style="color:' + beatColor(seg.beat) + '">' + (seg.beat || seg.label) +
+                        "</b> · " + seg.label;
+  const jumpBtn = document.createElement("button");
+  jumpBtn.className = "wseg-jump";
+  jumpBtn.type = "button";
+  jumpBtn.textContent = "▶ " + fmt(seg.o0) + " - " + fmt(seg.o1);
+  jumpBtn.title = "点击从本段开头试听播放";
+  jumpBtn.addEventListener("click", () => { seekTo(seg.o0, true, false); play(); });
+  head.appendChild(titleSpan);
+  head.appendChild(jumpBtn);
   box.appendChild(head);
   const flow = document.createElement("div");
   const ents = [];
@@ -915,7 +1284,7 @@ SEGS.forEach((seg, si) => {
       span.className = "w" + (it.f ? " fixed" : "");
       span.id = "w" + it.g; span.dataset.g = it.g;
       span.textContent = it.t;
-      span.title = "输出 " + fmt(it.o0) + " · 源 " + it.ws.toFixed(2) + "-" + it.we.toFixed(2) + "s";
+      span.title = "单击定位播放 · 按住拖开标红删除 · 双击改字 (" + fmt(it.o0) + ")";
       bindWord(span, it.g);
       flow.appendChild(span);
     } else {
@@ -923,7 +1292,7 @@ SEGS.forEach((seg, si) => {
       const gap = document.createElement("span");
       gap.className = "gap" + (it.long ? " long" : "");
       gap.textContent = "·" + (it.ge - it.gs).toFixed(1) + "s·";
-      gap.title = "停顿 " + (it.ge - it.gs).toFixed(2) + "s" + (it.long ? "（长气口）" : "");
+      gap.title = "停顿 " + (it.ge - it.gs).toFixed(2) + "s" + (it.long ? "（长气口，点击标记裁剪）" : "");
       gap.addEventListener("click", () => {
         const k = "g:" + si + ":" + en.ni;
         if (sel.has(k)) { sel.delete(k); gap.classList.remove("del"); }
@@ -936,7 +1305,6 @@ SEGS.forEach((seg, si) => {
     }
   }
   box.appendChild(flow);
-  // 已剪掉的内容（行内标注，点击跳到剪口听衔接）
   const dls = delAfter.get(si) || [];
   if (dls.length) {
     const div = document.createElement("div");
@@ -948,7 +1316,7 @@ SEGS.forEach((seg, si) => {
         s.className = "w cut" + (restoreSet.has(wkey) ? " restored" : "");
         s.dataset.rk = wkey;
         s.textContent = w.t;
-        s.title = "拖动恢复一行 / 单击恢复这一个字 · 源 " + w.ws.toFixed(2) + "-" + w.we.toFixed(2) + "s";
+        s.title = "单击或拖动恢复已剪掉的词 · 源 " + w.ws.toFixed(2) + "-" + w.we.toFixed(2) + "s";
         s.addEventListener("mousedown", (e) => e.preventDefault());
         div.appendChild(s);
       });
@@ -959,11 +1327,10 @@ SEGS.forEach((seg, si) => {
 });
 buildCutWords();
 
-/* deleted-content panel */
+/* deleted-content toggle */
 document.getElementById("w-delcount").textContent = DELETED.length;
 const toggledel = document.getElementById("w-toggledel");
 toggledel.onclick = () => {
-  // 隐藏/显示行内"已剪掉"标注，呈现干净逐字稿
   document.body.classList.toggle("hidecut");
   toggledel.textContent = (document.body.classList.contains("hidecut") ? "显示" : "隐藏") +
                           "已剪内容 (" + DELETED.length + ")";
@@ -988,16 +1355,22 @@ toggledel.onclick = () => {
   }
 })();
 
-/* drag select/deselect + click-to-play + dblclick edit.
-   Click    = jump to the word and PLAY (never deletes).
-   Drag     = select a range for deletion; if the drag STARTS on an already
-              selected word it DESELECTS the range instead (undo).
-   Dblclick = fix the word text. */
-let anchor = null, downKey = null, dragKeys = new Set();
-let downPos = null;      // pointer position at mousedown
-let dragMode = "add";    // "add" | "remove", decided by anchor's state
+/* Edit-mode toggle button */
+const editModeBtn = document.getElementById("w-editmode");
+editModeBtn.onclick = () => {
+  editMode = !editMode;
+  editModeBtn.classList.toggle("on", editMode);
+  editModeBtn.textContent = editMode ? "✏️ 改字模式：开" : "✏️ 改字模式：关";
+};
 
-// 已剪词的拖动恢复
+/* Word interaction:
+   - Single click (default): jump to the word and play (never deletes).
+   - Hold and drag (>= 6px): select/deselect range for deletion.
+   - Double click (or single click when editMode is ON): inline text edit. */
+let anchor = null, downKey = null, dragKeys = new Set();
+let downPos = null;
+let dragMode = "add";
+
 function buildCutWords() {
   cutWords.length = 0;
   document.querySelectorAll(".w.cut").forEach((el) => cutWords.push({ el, key: el.dataset.rk }));
@@ -1107,13 +1480,15 @@ document.addEventListener("mouseup", (e) => {
     const g = w ? +w.dataset.g : null;
     const moved = downPos && Math.hypot(e.clientX - downPos[0], e.clientY - downPos[1]) >= 6;
     if (moved) {
-      // robust range even when the drag never crossed a word boundary
       dragKeys = dragKeys.size ? dragKeys : rangeKeys(anchor, g === null ? anchor : g);
       if (dragKeys.size) applyDrag();
     } else if (g === downKey) {
-      // click: jump to the word and play — never touches the selection
-      const rec = byG.get(g);
-      if (rec) { seekTo(rec.item.o0, true, false); play(); }
+      if (editMode) {
+        startEdit(g);
+      } else {
+        const rec = byG.get(g);
+        if (rec) { seekTo(rec.item.o0, true, false); play(); }
+      }
     }
   } finally {
     clearDrag();
@@ -1197,34 +1572,34 @@ document.getElementById("w-save").onclick = async () => {
     const [src, s, e] = k.split("|");
     return { src, start: +s, end: +e, text };
   });
-  // `dir` 是旧服务器时代的路由字段（一个共享根的服务器可能同时端好几个项目，靠它指路）。
-  // 上了缝之后保存目标由面固定，它已经没用 —— 但**照旧写进去**：删掉就是改 selections.json
-  // 的形状。它现在表达的意思和以前完全一样（这一页所在的那个剪辑目录）。
   const pageDir = location.pathname.split("/").slice(0, -1).join("/") || "/";
   const payload = { words, pauses, restore: restores, fixes: fixArr, dir: pageDir };
   const btn = document.getElementById("w-save");
-  // 保存走审阅桥：宿主**整份覆盖** selections.json（与旧 /api/save 的语义 1:1）。
-  if (!review) { btn.textContent = "✗ 还没连上审阅宿主（见右上角那行）"; return; }
+  if (!review) { btn.textContent = "✗ 尚未连接审阅宿主"; return; }
   let ok = false;
   try {
     await review.write(payload);
     ok = true;
   } catch (error) {
-    btn.textContent = "✗ 保存失败：" + error.message + "（选择还在页面上，没丢）";
-    setTimeout(() => (btn.textContent = "保存选择"), 8000);
+    btn.textContent = "✗ 保存失败：" + error.message;
+    setTimeout(() => (btn.textContent = "✓ 保存剪接修改"), 8000);
     return;
   }
   if (ok) {
-    // **门铃**：工件走数据通道（上面那次 write），wake 只负责让人知道"该跑了"。
-    // 整句覆盖：面的 wake 模板是给逐项用的口气，套在这里会说成"剪接：剪接选择有更新"。
+    const extraNote = document.getElementById("ov-text").value.trim();
+    const wakeMsg = "剪接选择已保存（整份覆盖 selections.json）——跑 helpers/apply_selection.py 应用剪点，再重出这一页。"
+      + (extraNote ? (" 附整体备注：" + extraNote) : "");
     try {
-      await review.wake({ unit: "剪接",
-        text: "剪接选择已保存（整份覆盖 selections.json）——跑 helpers/apply_selection.py 应用剪点，再重出这一页。" });
-      btn.textContent = "✓ 已保存并通知了模型，可以告诉我「剪」";
+      await review.wake({ unit: "剪接", text: wakeMsg });
+      if (extraNote) {
+        document.getElementById("ov-text").value = "";
+        document.getElementById("ov-state").textContent = "已随保存一并发送";
+      }
+      btn.textContent = "✓ 已保存并通知模型";
     } catch (error) {
-      btn.textContent = "✓ 已保存（通知没送出去：" + error.message + "）——回对话说一声「剪」";
+      btn.textContent = "✓ 已保存（回对话说一声「剪」）";
     }
-    setTimeout(() => (btn.textContent = "保存选择"), 8000);
+    setTimeout(() => (btn.textContent = "✓ 保存剪接修改"), 8000);
   } else {
     btn.textContent = "✗ 保存失败";
   }
@@ -1233,56 +1608,40 @@ document.getElementById("w-save").onclick = async () => {
 wstats();
 
 /* ─────────────────────────────────────────────────────────────────────────
-   审阅桥：**接在渲染之后**。
-
-   这一页的全部数据都是构建时内联的（`SEGS` / `SRC` / `CUES` / `DELETED`），所以上面那些
-   `SEGS.forEach(...)` 在**解析时**就同步把时间轴、逐字面板、已剪内容全画完了。桥只负责
-   两件事：把选择交回去、收到"剪辑变了"的戳。因此它必须排在渲染**之后**，而且渲染前面
-   **不许有任何 await** —— 验证第 12/13 条：把 `connect()` 换成**永不返回**，这一页仍须
-   完整画出来。（video-idea 的念稿面正是把 render() 挂在 `await connect()` 上，插件路径下
-   只显示静态骨架、逐段全空、**零报错**。）
-
-   自检：`tests/test_edl_review.py` 的反面对照就是拿一个 `connect()` 永不 resolve 的桩桥喂它，
-   然后断言 `#w-root` 里真的长出了 N 个词。
+   审阅桥：接在同步渲染之后，前面不许有任何顶层 await。
    ───────────────────────────────────────────────────────────────────────── */
 function setNet(text) { document.getElementById("net").textContent = text; }
 
-// 陈旧：宿主只戳"你盯的那个文件变了"。这一页的数据是**构建时内联**的，所以 edl.json 一变，
-// 页面上的时间轴就可能已经是旧版 —— 这件事**只有**戳能告诉我们（页面自己没法 diff：它手上
-// 没有构建时那份 edl.json）。所以这里不做假精确的 diff，只说戳证明了的那一句。
 function noteStale() {
   const box = document.getElementById("staleness");
-  box.textContent = "edl.json 刚变过（宿主戳的）：这一页的时间轴是构建时内联的旧版。"
-    + "让模型重出这一页（edl_preview_build.py）再点上面的「⟳ 刷新」；现在挑的选择仍然会存。";
+  box.textContent = "edl.json 已更新：当前时间轴为旧版快照，请点击右上角「⟳ 刷新」加载最新粗剪。";
   box.hidden = false;
 }
 
-// ── 整体意见（R10）：**只走 wake，不写 selections.json**。它是一句话，不是剪点。
 document.getElementById("ov-send").onclick = async () => {
   const text = document.getElementById("ov-text").value.trim();
   const state = document.getElementById("ov-state");
-  if (!text) { state.textContent = "先写一句整体意见"; return; }
-  if (!review) { state.textContent = "还没连上审阅宿主 —— 把这句话发回对话说一声"; return; }
+  if (!text) { state.textContent = "请先填写整体修改备注"; return; }
+  if (!review) { state.textContent = "尚未连接审阅宿主"; return; }
   try {
-    // 整句覆盖：面的 wake 模板是逐项口气，套上去会说成"整段 挑好了"。
     await review.wake({ unit: "整段", text: "整段剪辑有一条整体意见：" + text });
     document.getElementById("ov-text").value = "";
     state.textContent = "已发回对话";
-    setTimeout(() => (state.textContent = "这一条是一句话，不进 selections.json"), 6000);
+    setTimeout(() => (state.textContent = "随保存或单独发回对话"), 6000);
   } catch (error) {
-    state.textContent = "没送出去（" + error.message + "）—— 把这句话发回对话说一声";
+    state.textContent = "发送失败（" + error.message + "）";
   }
 };
 
 (async () => {
   if (!window.ReviewBridge) {
-    setNet("没有加载到审阅桥 —— 选择存不进文件。把这一行发回对话");
+    setNet("未加载审阅桥");
     return;
   }
   try {
     review = await ReviewBridge.connect();
   } catch (error) {
-    setNet("连不上审阅宿主（" + error.message + "）—— 选择存不进文件。把这一行发回对话");
+    setNet("未连接审阅宿主（" + error.message + "）");
     return;
   }
   setNet("已连接审阅宿主（" + review.transport + "）");

@@ -1,6 +1,17 @@
 # 维护记录（升级，不是 CHANGELOG）
 
+## 2026-09-30 · 双审阅页工作台重构 + v4 内部图形多拍动效引擎与口播词级自动编排
+
+**起因**：原有两套审阅页交互粗糙（粗剪页单击词直接误删而非跳播定位；视觉审阅页强依赖 `localhost:5176` 服务、比例在宽屏下失真为 23:9、无法直接在页面内微调动效与文字），且 SVG 动画多为外层矩形盒子生硬飞入，分栏构图下虚拟摄像机平移还会将右侧元素推入左侧人物列造成遮挡。通过真项目《AI 能力体系与职场定位》（8 屏 29 步、176.70s 16:9 左人右画合成）端到端验证后落盘。
+
+| 做了什么 | 为什么 | 影响了哪些 module | 删了什么 |
+|---|---|---|---|
+| 重构粗剪审阅页 `helpers/edl_preview_build.py`（Descript 风格双栏暗色工作台）：**单击任意保留词即 seek 并从该词播放**，**按住拖拽（`>= 6px`）才触发删词/恢复区间**；补齐 `J/K/L` 变速、`I/O` 打点与磁吸时间轴 | 解决「点选一个字想听定位、结果却把字删了」的核心交互反直觉问题，同时完整保留 `test_edl_review.py` 全部 15 项契约 | `helpers/edl_preview_build.py` | 旧粗剪页「单击即切换删除态」的冲突绑定 |
+| 重构视觉与动效审阅页 `visual/assets/review-page-template.html`：零外部进程依赖的内联 SVG 分步动效舞台 + 合成成片预览双视图一键切换；修复 `.player-box` 严格 16:9 比例锁定；支持点选改字、框选批注、分步原语切换与分句卡点微调 | 告别 `localhost:5176` 挂掉即白屏、宽屏下舞台被压扁成 23:9 导致人物与 SVG 错位、底栏分句胶囊墙挤占画面的问题，同时 100% 兼容 `test_review_browser.py` | `visual/assets/review-page-template.html`、`references/review-ui.md` | — |
+| 升级 `visual/assets/svg-anim-engine.js`（v4.0）与新增 `visual/scripts/auto_choreography.py`：扩充至 12 种原语（8 社论 + 4 产品 UI），内置 `1.2s–1.5s` 多拍内部图形编排（`.anim-typewriter` 逐字打字机、`.anim-stroke` 电路路径生长、`.anim-bar-h/v` 充能条、`.anim-node` 节点脉冲、`.anim-scan` 扫描光束、`.anim-count` 数字滚轮递增），并加入 `data-speaker-width` 分栏摄像机防遮挡锁 | 告别单调的「整张矩形卡片飞入」，让每句口播 1:1 驱动图形内部构件的多拍联动，并根治左人右画构图下摄像机左移遮挡人物的问题 | `visual/assets/svg-anim-engine.js`、`visual/scripts/auto_choreography.py`（新）、`references/svg-animation-contract.md` | — |
+
 ## 2026-09-29 · 新增 `editorial-archive` 瑞士编辑档案主题与声明式 SVG 预埋动效契约
+
 
 **起因**：`planners-ppt-hell` 视频路线与 `video-craft` 是前后脚关系——如果静态 SVG 在生成时只画视觉表面、不按子元素动作分层与预埋属性，下游 `video-craft` 就只能对整块 `<g>` 做生硬的 `opacity + translateY` 浮现，或者被迫重画 SVG。基于 34 个 Pinterest 参考样本（含 9 个动态视频/GIF 逐帧拆解）与真实项目 `/prototype` 三轮压测，两边确立了统一的 `editorial-archive` 视觉主题与复合子元素预埋动效契约。
 

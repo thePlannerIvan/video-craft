@@ -59,6 +59,13 @@ class VideoCraftReviewHandler(SimpleHTTPRequestHandler):
         self.send_response(200)
         self.end_headers()
 
+    def do_HEAD(self):
+        self._is_head = True
+        try:
+            self.do_GET()
+        finally:
+            self._is_head = False
+
     def do_POST(self):
         """处理反馈提交接口 /__review/write 与 /api/feedback。"""
         if self.path.startswith("/__review/wake"):
@@ -133,14 +140,16 @@ class VideoCraftReviewHandler(SimpleHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()
-            self.wfile.write(b'{"token": "v1"}')
+            if not getattr(self, "_is_head", False):
+                self.wfile.write(b'{"token": "v1"}')
             return
 
         if self.path.startswith("/__review/capabilities"):
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()
-            self.wfile.write(b'{"capabilities": []}')
+            if not getattr(self, "_is_head", False):
+                self.wfile.write(b'{"capabilities": []}')
             return
 
         if self.path.startswith("/__review/bridge.js"):
@@ -151,7 +160,8 @@ class VideoCraftReviewHandler(SimpleHTTPRequestHandler):
                 self.send_header("Content-Length", str(len(bridge_bytes)))
                 self.send_header("Cache-Control", "no-store")
                 self.end_headers()
-                self.wfile.write(bridge_bytes)
+                if not getattr(self, "_is_head", False):
+                    self.wfile.write(bridge_bytes)
                 return
             self.send_error(404, "bridge.js not found")
             return
@@ -160,7 +170,8 @@ class VideoCraftReviewHandler(SimpleHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()
-            self.wfile.write(b'{"ok": true, "woke": false, "note": "serve_review standalone"}')
+            if not getattr(self, "_is_head", False):
+                self.wfile.write(b'{"ok": true, "woke": false, "note": "serve_review standalone"}')
             return
 
         # 去掉 query string 并进行 URL 解码（支持中文路径）
@@ -186,7 +197,8 @@ class VideoCraftReviewHandler(SimpleHTTPRequestHandler):
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(html_bytes)))
             self.end_headers()
-            self.wfile.write(html_bytes)
+            if not getattr(self, "_is_head", False):
+                self.wfile.write(html_bytes)
             return
 
         range_header = self.headers.get("Range")
@@ -197,11 +209,12 @@ class VideoCraftReviewHandler(SimpleHTTPRequestHandler):
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(file_size))
             self.end_headers()
-            try:
-                with open(file_path, "rb") as f:
-                    shutil.copyfileobj(f, self.wfile)
-            except (BrokenPipeError, ConnectionResetError):
-                pass
+            if not getattr(self, "_is_head", False):
+                try:
+                    with open(file_path, "rb") as f:
+                        shutil.copyfileobj(f, self.wfile)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
             return
 
         # 处理 Range 请求
@@ -211,8 +224,9 @@ class VideoCraftReviewHandler(SimpleHTTPRequestHandler):
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(file_size))
             self.end_headers()
-            with open(file_path, "rb") as f:
-                shutil.copyfileobj(f, self.wfile)
+            if not getattr(self, "_is_head", False):
+                with open(file_path, "rb") as f:
+                    shutil.copyfileobj(f, self.wfile)
             return
 
         start = int(range_match.group(1))
@@ -233,19 +247,20 @@ class VideoCraftReviewHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Length", str(chunk_length))
         self.end_headers()
 
-        with open(file_path, "rb") as f:
-            f.seek(start)
-            bytes_to_send = chunk_length
-            buf_size = 64 * 1024
-            while bytes_to_send > 0:
-                chunk = f.read(min(bytes_to_send, buf_size))
-                if not chunk:
-                    break
-                try:
-                    self.wfile.write(chunk)
-                    bytes_to_send -= len(chunk)
-                except (BrokenPipeError, ConnectionResetError):
-                    break
+        if not getattr(self, "_is_head", False):
+            with open(file_path, "rb") as f:
+                f.seek(start)
+                bytes_to_send = chunk_length
+                buf_size = 64 * 1024
+                while bytes_to_send > 0:
+                    chunk = f.read(min(bytes_to_send, buf_size))
+                    if not chunk:
+                        break
+                    try:
+                        self.wfile.write(chunk)
+                        bytes_to_send -= len(chunk)
+                    except (BrokenPipeError, ConnectionResetError):
+                        break
 
 
 def find_free_port(start_port: int = 8765) -> int:

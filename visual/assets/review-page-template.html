@@ -299,18 +299,175 @@
     #speaker-time-pill {
       position: absolute;
       left: 10px;
-      bottom: 10px;
+      top: 10px;
+      bottom: auto;
       z-index: 6;
-      background: rgba(13, 15, 20, 0.84);
+      background: rgba(13, 15, 20, 0.88);
       border: 1px solid rgba(255, 255, 255, 0.16);
       color: #f59e0b;
       font: 700 10.5px/1 var(--font-mono);
-      padding: 4px 8px;
+      padding: 3px 7px;
       border-radius: 4px;
       pointer-events: none;
       backdrop-filter: blur(6px);
     }
     #speaker-time-pill[hidden] { display: none; }
+
+    /* 舞台浮动单行药丸字幕 (底端居中，确保不遮挡主画面内容与人像) */
+    #canvas-caption-layer {
+      position: absolute;
+      bottom: 22px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 8;
+      pointer-events: none;
+      background: rgba(18, 20, 26, 0.88);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      padding: 6px 20px;
+      border-radius: 9999px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+      max-width: 86%;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      text-align: center;
+      transition: opacity 0.15s ease, transform 0.15s ease;
+    }
+    #canvas-caption-layer[hidden] { display: none; }
+    #canvas-caption-text {
+      font-size: clamp(13px, 1.7vw, 19px);
+      font-weight: 700;
+      color: #FAF8F5;
+      letter-spacing: 0.02em;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+    }
+
+    /* 成片与逐字剪辑内嵌容器 */
+    #composite-player-wrap, #verbatim-iframe-wrap {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      z-index: 5;
+    }
+    #composite-player-wrap[hidden], #verbatim-iframe-wrap[hidden] { display: none; }
+    #composite-video-player {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
+    }
+    #composite-empty-placeholder {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 24px;
+      color: var(--text-muted);
+      background: #0f1219;
+    }
+    #composite-empty-placeholder[hidden] { display: none !important; }
+    #verbatim-iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      background: var(--bg-app);
+    }
+
+    /* 全局视听播放与时间轴 Scrubber 操控台 */
+    .global-transport-bar {
+      margin: 0 12px 6px;
+      flex: 0 0 auto;
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 5px 12px;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+    }
+    .transport-btn {
+      background: var(--bg-card);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 3px 9px;
+      font-size: 11.5px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.12s;
+    }
+    .transport-btn:hover { background: var(--bg-card-hover); border-color: var(--blue); }
+    .transport-btn.primary { background: var(--blue); color: #fff; border-color: var(--blue); }
+    .transport-btn.primary:hover { background: #2563eb; }
+    .transport-time {
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--amber);
+      white-space: nowrap;
+      min-width: 110px;
+    }
+    .timeline-scrubber-wrap {
+      flex: 1 1 auto;
+      min-width: 80px;
+      position: relative;
+      cursor: pointer;
+      padding: 6px 0;
+    }
+    .timeline-track {
+      height: 6px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      position: relative;
+      overflow: visible;
+    }
+    .timeline-progress {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--blue), var(--amber));
+      border-radius: 3px;
+      pointer-events: none;
+    }
+    .timeline-thumb {
+      position: absolute;
+      top: 50%;
+      left: 0%;
+      transform: translate(-50%, -50%);
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #fff;
+      border: 2px solid var(--amber);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+      pointer-events: none;
+      transition: transform 0.1s ease;
+    }
+    .timeline-scrubber-wrap:hover .timeline-thumb {
+      transform: translate(-50%, -50%) scale(1.25);
+    }
+    .timeline-markers {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    .timeline-marker {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 1px;
+      background: rgba(255, 255, 255, 0.22);
+    }
     /* 画布框选与元素高亮覆盖层 */
     #annotation-overlay {
       position: absolute;
@@ -664,9 +821,10 @@
       <h1>逐画面审阅 · <span id="project-name">project</span><span id="mode-badge" style="font-size:11px; padding:2px 7px; border-radius:4px; background:var(--accent-soft); color:var(--amber); margin-left:8px; font-weight:700; font-family:var(--font-mono);">复合双通道</span></h1>
     </div>
     <div class="top-right">
-      <div class="stage-switch" title="在分步动效审阅与合成成片预览之间一键切换">
-        <button type="button" id="view-svg-btn" class="active">⚡ 分步动效舞台</button>
-        <button type="button" id="view-player-btn">🎬 合成成片预览</button>
+      <div class="stage-switch" title="在动效舞台、最终合成与逐字剪辑之间切换">
+        <button type="button" id="view-svg-btn" class="active">⚡ 视听动效舞台</button>
+        <button type="button" id="view-player-btn">🎬 最终合成预览</button>
+        <button type="button" id="view-verbatim-btn">📝 逐字精修剪辑</button>
       </div>
       <a class="reload" id="page-reload" href="" title="重新加载页面">⟳ 刷新</a>
     </div>
@@ -713,15 +871,54 @@
       </div>
 
       <div class="player-box" id="player-box">
-        <hyperframes-player id="player" src="http://localhost:5176/api/projects/composition/preview?__hf_shader_capture_scale=1&amp;__hf_shader_loading=player" controls autoplay></hyperframes-player>
-        <video id="composite-video-player" controls playsinline style="display:none;width:100%;height:100%;background:#000;object-fit:contain;"></video>
-        <div id="svg-stage-wrap" hidden>
+        <hyperframes-player id="player" style="display:none;"></hyperframes-player>
+        
+        <!-- 视听动效舞台 (默认活动) -->
+        <div id="svg-stage-wrap">
           <video id="stage-speaker-video" playsinline hidden></video>
           <div id="speaker-time-pill" hidden>🔊 00:00.0</div>
           <div id="svg-stage-host"></div>
+          <!-- 悬浮单行药丸字幕 -->
+          <div id="canvas-caption-layer" hidden>
+            <span id="canvas-caption-text"></span>
+          </div>
           <div id="annotation-overlay"></div>
         </div>
+
+        <!-- 最终合成成片预览 -->
+        <div id="composite-player-wrap" hidden>
+          <video id="composite-video-player" controls playsinline></video>
+          <div id="composite-empty-placeholder" hidden>
+            <div style="font-size:32px;margin-bottom:8px;">🎬</div>
+            <div style="font-size:14px;color:var(--text);font-weight:700;margin-bottom:6px;">合成成片尚未导出</div>
+            <div style="font-size:12px;color:var(--text-secondary);max-width:360px;line-height:1.5;margin-bottom:14px;">
+              可在命令行运行 <code>python3 helpers/export_video.py &lt;project&gt;</code> 一键合成全片视听成品。
+            </div>
+            <button type="button" class="tool-btn active" id="btn-back-to-stage">返回动效舞台</button>
+          </div>
+        </div>
+
+        <!-- 逐字精修剪辑内嵌工作台 -->
+        <div id="verbatim-iframe-wrap" hidden>
+          <iframe id="verbatim-iframe" src="about:blank"></iframe>
+        </div>
         <div class="hint">暂停在出问题的画面 → 在右侧列表里选中对应的一屏 → 填反馈 → 点「保存反馈」。</div>
+      </div>
+
+      <!-- 全局视听播放与时间轴 Scrubber 控制条 -->
+      <div class="global-transport-bar" id="global-transport-bar">
+        <button type="button" class="transport-btn primary" id="btn-global-play" title="播放/暂停全片 (快捷键: 空格键)">▶ 播放</button>
+        <button type="button" class="transport-btn" id="btn-prev-screen" title="上一屏 (快捷键: [)">⏮</button>
+        <button type="button" class="transport-btn" id="btn-next-screen" title="下一屏 (快捷键: ])">⏭</button>
+        <span class="transport-time" id="global-time-display">00:00.0 / 00:00.0</span>
+        <div class="timeline-scrubber-wrap" id="timeline-scrubber-wrap" title="拖拽或点击跳转全片时间点">
+          <div class="timeline-track" id="timeline-track">
+            <div class="timeline-progress" id="timeline-progress"></div>
+            <div class="timeline-thumb" id="timeline-thumb"></div>
+            <div class="timeline-markers" id="timeline-markers"></div>
+          </div>
+        </div>
+        <button type="button" class="tool-btn active" id="btn-toggle-subtitles" title="切换画面底部字幕显示">💬 字幕: 开</button>
       </div>
 
       <!-- 底部紧凑分步动效轨道 -->
@@ -1655,11 +1852,12 @@
       try {
         const doc = JSON.parse(await review.readText(REVIEW_SURFACE_REL));
         if (doc && doc.feedback) {
+          const fb = String(doc.feedback).replace(/^\.\//, "");
+          if (fb.startsWith("review/")) return fb;
           const dir = REVIEW_SURFACE_REL.replace(/[^/]+$/, "");
-          return dir + String(doc.feedback).replace(/^\.\//, "");
+          return dir + fb;
         }
       } catch {}
-      noteStaleFree("读不到 review-surface.json：提交文件按默认路径写（可能与 surface 声明的不一致）。要查就回对话说一声。");
       return SUBMISSIONS_FALLBACK_REL;
     }
 
@@ -1745,25 +1943,76 @@
       });
     }
 
-    /* ---- 舞台视图切换（互动 SVG 舞台 vs 视频播放器） ---- */
-    let stageViewMode = "svg"; // 'svg' | 'player'
+    /* ---- 舞台视图切换（动效舞台 vs 最终合成预览 vs 逐字剪辑） ---- */
+    let stageViewMode = "svg"; // 'svg' | 'composite' | 'verbatim'
     function setStageViewMode(mode) {
+      if (mode === "player") mode = "composite";
       stageViewMode = mode;
-      document.getElementById("view-svg-btn").classList.toggle("active", mode === "svg");
-      document.getElementById("view-player-btn").classList.toggle("active", mode === "player");
-      document.getElementById("svg-stage-wrap").hidden = (mode !== "svg");
+
+      const svgBtn = document.getElementById("view-svg-btn");
+      const compBtn = document.getElementById("view-player-btn");
+      const verbBtn = document.getElementById("view-verbatim-btn");
+      if (svgBtn) svgBtn.classList.toggle("active", mode === "svg");
+      if (compBtn) compBtn.classList.toggle("active", mode === "composite");
+      if (verbBtn) verbBtn.classList.toggle("active", mode === "verbatim");
+
+      const svgWrap = document.getElementById("svg-stage-wrap");
+      const compWrap = document.getElementById("composite-player-wrap");
+      const verbWrap = document.getElementById("verbatim-iframe-wrap");
       const compVid = document.getElementById("composite-video-player");
-      const hasCompVid = Boolean(compVid && compVid.getAttribute("src"));
-      if (compVid) {
-        compVid.style.display = (mode === "player" && hasCompVid) ? "block" : "none";
-        if (mode !== "player" && !compVid.paused) {
+      const compEmpty = document.getElementById("composite-empty-placeholder");
+      const spkVid = document.getElementById("stage-speaker-video");
+
+      if (svgWrap) svgWrap.hidden = (mode !== "svg");
+      if (compWrap) compWrap.hidden = (mode !== "composite");
+      if (verbWrap) verbWrap.hidden = (mode !== "verbatim");
+
+      if (mode === "composite") {
+        if (spkVid && !spkVid.paused) {
+          try { spkVid.pause(); } catch {}
+        }
+        pauseGlobalPlayback();
+        const compSrc = (compVid && compVid.getAttribute("src")) || window.__COMPOSITE_VIDEO_URL__;
+        if (compSrc) {
+          if (compVid.getAttribute("src") !== compSrc) compVid.src = compSrc;
+          compVid.style.display = "block";
+          if (compEmpty) compEmpty.hidden = true;
+          // 同步舞台当前时间点
+          const curT = (spkVid && spkVid.currentTime) || (state.currentScreenObj ? (state.currentScreenObj.startMs || 0) / 1000 : 0);
+          if (curT > 0 && Math.abs(compVid.currentTime - curT) > 0.8) {
+            try { compVid.currentTime = curT; } catch {}
+          }
+        } else {
+          compVid.style.display = "none";
+          if (compEmpty) compEmpty.hidden = false;
+        }
+      } else if (mode === "verbatim") {
+        if (spkVid && !spkVid.paused) {
+          try { spkVid.pause(); } catch {}
+        }
+        pauseGlobalPlayback();
+        if (compVid && !compVid.paused) {
+          try { compVid.pause(); } catch {}
+        }
+        const vIframe = document.getElementById("verbatim-iframe");
+        const transcriptUrl = window.__TRANSCRIPT_URL__ || "../edit/edl_preview.html";
+        if (vIframe && (!vIframe.src || vIframe.src.endsWith("about:blank"))) {
+          vIframe.src = transcriptUrl;
+        }
+      } else {
+        // svg 模式
+        if (compVid && !compVid.paused) {
           try { compVid.pause(); } catch {}
         }
       }
-      document.getElementById("player").style.display = (mode === "player" && !hasCompVid) ? "block" : "none";
     }
     document.getElementById("view-svg-btn").addEventListener("click", () => setStageViewMode("svg"));
-    document.getElementById("view-player-btn").addEventListener("click", () => setStageViewMode("player"));
+    document.getElementById("view-player-btn").addEventListener("click", () => setStageViewMode("composite"));
+    const verbBtn = document.getElementById("view-verbatim-btn");
+    if (verbBtn) verbBtn.addEventListener("click", () => setStageViewMode("verbatim"));
+    const backBtn = document.getElementById("btn-back-to-stage");
+    if (backBtn) backBtn.addEventListener("click", () => setStageViewMode("svg"));
+
     const toggleCuesBtn = document.getElementById("btn-toggle-cues");
     if (toggleCuesBtn) {
       toggleCuesBtn.addEventListener("click", () => {
@@ -1774,8 +2023,218 @@
       });
     }
 
+    /* ---- 浮动字幕与时间轴 Scrubber 控制 ---- */
+    let showSubtitles = true;
+    function updateStageSubtitle(st, curTimeSec) {
+      const capLayer = document.getElementById("canvas-caption-layer");
+      const capText = document.getElementById("canvas-caption-text");
+      if (!capLayer || !capText) return;
+      if (!showSubtitles) {
+        capLayer.hidden = true;
+        return;
+      }
+      let matchedText = "";
+      const captions = (window.__REVIEW_DATA__ && window.__REVIEW_DATA__.captions) || [];
+      if (captions.length > 0 && curTimeSec !== undefined && curTimeSec !== null) {
+        const found = captions.find(c => curTimeSec >= c.start && curTimeSec <= c.end + 0.08);
+        if (found) matchedText = found.text;
+      }
+      if (!matchedText && st) {
+        matchedText = st.caption || "";
+      }
+      if (matchedText) {
+        capText.textContent = matchedText;
+        capLayer.hidden = false;
+      } else {
+        capLayer.hidden = true;
+      }
+    }
+
+    const subToggleBtn = document.getElementById("btn-toggle-subtitles");
+    if (subToggleBtn) {
+      subToggleBtn.addEventListener("click", () => {
+        showSubtitles = !showSubtitles;
+        subToggleBtn.textContent = showSubtitles ? "💬 字幕: 开" : "💬 字幕: 关";
+        subToggleBtn.classList.toggle("active", showSubtitles);
+        const curT = (document.getElementById("stage-speaker-video")?.currentTime) || (state.currentScreenObj ? (state.currentScreenObj.startMs || 0) / 1000 : 0);
+        updateStageSubtitle(state.currentScreenObj, curT);
+      });
+    }
+
+    let allScreensList = [];
+    let isGlobalPlaying = false;
+    let globalTotalDurationMs = 0;
+
+    function updateScrubberDisplay(timeMs) {
+      const tot = globalTotalDurationMs || (state.currentScreenObj ? state.currentScreenObj.durationMs : 1000) || 1;
+      const pct = Math.min(100, Math.max(0, (timeMs / tot) * 100));
+      const prog = document.getElementById("timeline-progress");
+      const thumb = document.getElementById("timeline-thumb");
+      const timeDisp = document.getElementById("global-time-display");
+      if (prog) prog.style.width = `${pct}%`;
+      if (thumb) thumb.style.left = `${pct}%`;
+      if (timeDisp) {
+        timeDisp.textContent = `${fmt(timeMs)} / ${fmt(tot)}`;
+      }
+    }
+
+    function renderScrubberMarkers() {
+      const markersBox = document.getElementById("timeline-markers");
+      if (!markersBox || !globalTotalDurationMs || !allScreensList.length) return;
+      markersBox.replaceChildren();
+      allScreensList.forEach(s => {
+        if (s.startMs > 0) {
+          const m = document.createElement("div");
+          m.className = "timeline-marker";
+          m.style.left = `${(s.startMs / globalTotalDurationMs) * 100}%`;
+          markersBox.appendChild(m);
+        }
+      });
+    }
+
+    async function switchToScreen(st, seekVideo = true) {
+      if (!st) return;
+      document.querySelectorAll(".step").forEach((e) => e.classList.remove("active"));
+      if (st.domEl) {
+        st.domEl.classList.add("active");
+        st.domEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+      state.chapter = st.chapterId || "";
+      state.step = st.id;
+      state.stepIndex = st.step;
+      state.durationMs = st.durationMs;
+      state.caption = st.caption || "";
+      document.getElementById("fb-step").textContent = st.id;
+
+      await loadScreenSvg(st, seekVideo);
+    }
+
+    async function seekGlobalTime(targetSec) {
+      const targetMs = targetSec * 1000;
+      updateScrubberDisplay(targetMs);
+      const spkVid = document.getElementById("stage-speaker-video");
+      const compVid = document.getElementById("composite-video-player");
+
+      if (spkVid && !spkVid.hidden && spkVid.src) {
+        try { spkVid.currentTime = targetSec; } catch {}
+      }
+      if (compVid && compVid.getAttribute("src")) {
+        try { compVid.currentTime = targetSec; } catch {}
+      }
+
+      // 寻找对应的 Screen
+      const targetScreen = allScreensList.find(s => targetMs >= s.startMs && targetMs < s.endMs) || allScreensList[0];
+      if (targetScreen && (!state.currentScreenObj || state.currentScreenObj.id !== targetScreen.id)) {
+        await switchToScreen(targetScreen, false);
+      }
+      updateStageSubtitle(targetScreen, targetSec);
+    }
+
+    // 拖拽与点击 Scrubber
+    const scrubberWrap = document.getElementById("timeline-scrubber-wrap");
+    let isScrubbing = false;
+    if (scrubberWrap) {
+      function handleScrub(e) {
+        const rect = scrubberWrap.getBoundingClientRect();
+        const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        const targetSec = (ratio * (globalTotalDurationMs || 1)) / 1000;
+        seekGlobalTime(targetSec);
+      }
+      scrubberWrap.addEventListener("mousedown", (e) => {
+        isScrubbing = true;
+        handleScrub(e);
+      });
+      window.addEventListener("mousemove", (e) => {
+        if (isScrubbing) handleScrub(e);
+      });
+      window.addEventListener("mouseup", () => {
+        if (isScrubbing) isScrubbing = false;
+      });
+    }
+
+    function toggleGlobalPlayback() {
+      if (isGlobalPlaying) {
+        pauseGlobalPlayback();
+      } else {
+        startGlobalPlayback();
+      }
+    }
+
+    function startGlobalPlayback() {
+      const spkVid = document.getElementById("stage-speaker-video");
+      const playBtn = document.getElementById("btn-global-play");
+      isGlobalPlaying = true;
+      if (playBtn) {
+        playBtn.textContent = "⏸ 暂停";
+        playBtn.classList.remove("primary");
+      }
+      if (spkVid && !spkVid.hidden && spkVid.src) {
+        try {
+          const p = spkVid.play();
+          if (p && typeof p.catch === "function") p.catch(() => {});
+        } catch {}
+      }
+      if (state.currentScreenObj) {
+        const svgEl = document.querySelector("#svg-stage-host > svg");
+        if (svgEl) {
+          playWithSpeakerOrTimers(state.currentScreenObj, svgEl, null, true);
+        }
+      }
+    }
+
+    function pauseGlobalPlayback() {
+      isGlobalPlaying = false;
+      const playBtn = document.getElementById("btn-global-play");
+      if (playBtn) {
+        playBtn.textContent = "▶ 播放";
+        playBtn.classList.add("primary");
+      }
+      clearPlaySequence();
+    }
+
+    const globalPlayBtn = document.getElementById("btn-global-play");
+    if (globalPlayBtn) globalPlayBtn.addEventListener("click", toggleGlobalPlayback);
+
+    const prevScreenBtn = document.getElementById("btn-prev-screen");
+    if (prevScreenBtn) {
+      prevScreenBtn.addEventListener("click", () => {
+        if (!allScreensList.length || !state.currentScreenObj) return;
+        const curIdx = allScreensList.findIndex(s => s.id === state.currentScreenObj.id);
+        if (curIdx > 0) {
+          switchToScreen(allScreensList[curIdx - 1], true);
+        }
+      });
+    }
+
+    const nextScreenBtn = document.getElementById("btn-next-screen");
+    if (nextScreenBtn) {
+      nextScreenBtn.addEventListener("click", () => {
+        if (!allScreensList.length || !state.currentScreenObj) return;
+        const curIdx = allScreensList.findIndex(s => s.id === state.currentScreenObj.id);
+        if (curIdx >= 0 && curIdx < allScreensList.length - 1) {
+          switchToScreen(allScreensList[curIdx + 1], true);
+        }
+      });
+    }
+
+    // 全局快捷键：空格暂停/播放，[ 与 ] 切屏
+    window.addEventListener("keydown", (e) => {
+      const activeTag = (document.activeElement && document.activeElement.tagName.toLowerCase()) || "";
+      if (activeTag === "input" || activeTag === "textarea" || activeTag === "select") return;
+      if (e.code === "Space") {
+        e.preventDefault();
+        toggleGlobalPlayback();
+      } else if (e.key === "[" || (e.code === "ArrowLeft" && e.altKey)) {
+        e.preventDefault();
+        if (prevScreenBtn) prevScreenBtn.click();
+      } else if (e.key === "]" || (e.code === "ArrowRight" && e.altKey)) {
+        e.preventDefault();
+        if (nextScreenBtn) nextScreenBtn.click();
+      }
+    });
+
     /* ---- 加载并渲染当前选中屏的真实 SVG 与动效编排轨 ---- */
-    async function loadScreenSvg(st) {
+    async function loadScreenSvg(st, seekVideo = true) {
       const pageKey = st.sourcePageKey || st.id;
       state.sourcePageKey = pageKey;
       let svgText = null;
@@ -1796,7 +2255,6 @@
 
       const host = document.getElementById("svg-stage-host");
       if (!svgText) {
-        // 如果项目没有静态 SVG 页，生成一张清晰的步骤预览占位 SVG，同样支持动效引擎与框选/改字体验
         svgText = `<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
           <g data-role="anchor">
             <rect width="1920" height="1080" fill="#141413"/>
@@ -1824,16 +2282,19 @@
       const info = window.VideoCraftAnimEngine.setStep(svgEl, 1, true, { focusMode: state.focusMode });
       state.activeSvgStep = 1;
 
-      // 如果配置了真实口播视频，自动定位到本屏起点
+      // 如果配置了真实口播视频，定位到本屏起点
       const spkVid = document.getElementById("stage-speaker-video");
       const spkPill = document.getElementById("speaker-time-pill");
-      if (spkVid && !spkVid.hidden && spkVid.src) {
+      const curT = (st.startMs || 0) / 1000;
+      if (spkVid && !spkVid.hidden && spkVid.src && seekVideo) {
         try {
           spkVid.pause();
-          spkVid.currentTime = (st.startMs || 0) / 1000;
-          if (spkPill) spkPill.textContent = `🔊 ${((st.startMs || 0) / 1000).toFixed(1)}s · ${st.id} Step 1`;
+          spkVid.currentTime = curT;
+          if (spkPill) spkPill.textContent = `🔊 ${curT.toFixed(1)}s · ${st.id} Step 1`;
         } catch {}
       }
+      updateStageSubtitle(st, curT);
+      updateScrubberDisplay(st.startMs || 0);
 
       renderChoreoDeck(st, svgEl, info.items);
       wireSvgElementInteraction(svgEl);
@@ -1854,7 +2315,7 @@
       }
     }
 
-    function playWithSpeakerOrTimers(st, svgEl, startStepNum = null) {
+    function playWithSpeakerOrTimers(st, svgEl, startStepNum = null, isGlobal = false) {
       if (!st || !svgEl) return;
       clearPlaySequence();
       const items = window.VideoCraftAnimEngine.inspect(svgEl);
@@ -1884,7 +2345,9 @@
         const seekSec = screenStartSec + Math.max(0, initialEntry.relStartSec);
         try {
           spkVid.playbackRate = 1 / (window.VideoCraftAnimEngine.getSpeedMultiplier() || 1);
-          spkVid.currentTime = seekSec;
+          if (Math.abs(spkVid.currentTime - seekSec) > 0.5) {
+            spkVid.currentTime = seekSec;
+          }
           const p = spkVid.play();
           if (p && typeof p.catch === "function") p.catch(() => {});
         } catch {}
@@ -1896,6 +2359,9 @@
           if (spkPill) {
             spkPill.textContent = `🔊 ${curT.toFixed(1)}s (本屏 +${relT.toFixed(1)}s) · Step ${state.activeSvgStep}`;
           }
+          updateStageSubtitle(st, curT);
+          updateScrubberDisplay(curT * 1000);
+
           let targetStep = initialEntry.step;
           for (const s of schedule) {
             if (relT + 0.04 >= s.relStartSec) targetStep = s.step;
@@ -1906,7 +2372,20 @@
             renderChoreoDeck(st, svgEl, window.VideoCraftAnimEngine.inspect(svgEl));
           }
           if (curT >= screenEndSec) {
+            if (isGlobal || isGlobalPlaying) {
+              // 自动切换到下一屏，实现全片连续无缝播放
+              const curIdx = allScreensList.findIndex(s => s.id === st.id);
+              if (curIdx >= 0 && curIdx < allScreensList.length - 1) {
+                const nextScreen = allScreensList[curIdx + 1];
+                switchToScreen(nextScreen, false).then(() => {
+                  const nextSvgEl = document.querySelector("#svg-stage-host > svg");
+                  if (nextSvgEl) playWithSpeakerOrTimers(nextScreen, nextSvgEl, null, true);
+                });
+                return;
+              }
+            }
             try { spkVid.pause(); } catch {}
+            pauseGlobalPlayback();
             speakerSyncRaf = null;
             return;
           }
@@ -2333,6 +2812,8 @@
         } catch {}
       }
 
+      globalTotalDurationMs = data.totalDurationMs || 0;
+      allScreensList = [];
       const box = document.getElementById("steps");
       box.replaceChildren();
       let drawn = 0, failed = 0;
@@ -2346,6 +2827,9 @@
         for (const st of ch.steps) {
           const el = document.createElement("div");
           el.className = "step";
+          st.chapterId = ch.id;
+          st.domEl = el;
+          allScreensList.push(st);
           try {
             const cue = cueRangeOf(st);
             el.innerHTML = `
@@ -2370,20 +2854,13 @@
             state.caption = st.caption || "";
             document.getElementById("fb-step").textContent = st.id;
             setMode("step");
-            await loadScreenSvg(st);
+            await loadScreenSvg(st, true);
             if (spkVid && !spkVid.hidden && spkVid.src) {
               const svgEl = document.querySelector("#svg-stage-host > svg");
-              if (svgEl) playWithSpeakerOrTimers(st, svgEl, null);
+              if (svgEl) playWithSpeakerOrTimers(st, svgEl, null, false);
             }
             if (compVid && compVid.getAttribute("src")) {
               try { compVid.currentTime = st.startMs / 1000; } catch {}
-            }
-            const player = document.getElementById("player");
-            if (player && typeof player.seek === "function") {
-              try {
-                player.seek(st.startMs / 1000);
-                player.play();
-              } catch {}
             }
           });
           if (!firstStepData) {
@@ -2399,9 +2876,12 @@
           + `这不是这一页能修的 —— 把那句话发回对话让模型处理；在那之前，别对着半张清单提意见。`);
       }
 
+      renderScrubberMarkers();
+      updateScrubberDisplay(0);
+
       // 初始把第一屏的 SVG 预览画在舞台上（注意：不改变 fbMode 默认的 "overall"，也不给 .step 加 .active，确保测试契约 100% 成立！）
       if (firstStepData) {
-        loadScreenSvg(firstStepData.st);
+        loadScreenSvg(firstStepData.st, true);
       }
       return data;
     }
@@ -2419,8 +2899,12 @@
 
     async function collectRecords() {
       try {
-        const doc = JSON.parse(await review.readText(submissionsRel));
-        if (doc && Array.isArray(doc.records)) return doc.records;
+        const text = await review.readText(submissionsRel);
+        if (text) {
+          const doc = JSON.parse(text);
+          if (doc && Array.isArray(doc.records)) return doc.records;
+          if (Array.isArray(doc)) return doc;
+        }
       } catch {}
       return [];
     }
@@ -2545,22 +3029,17 @@
     });
 
     (async () => {
-      if (!window.ReviewBridge || typeof window.ReviewBridge.connect !== "function") {
-        restoreDraft();
-        if (window.__INLINE_TIMELINE__) {
-          await loadTimeline();
-          label("原型演示模式（可直接体验舞台动效导演、元素微调与框选批注）", "ok");
-          return;
-        }
+      if (!window.ReviewBridge) {
         label("没有加载到审阅桥：这个页面必须由审阅宿主打开（DSH 侧栏，或 planners-review-core 的 serve-review.mjs）。把这一行发回对话", "error");
         return;
       }
       try {
-        review = await window.ReviewBridge.connect({ onChanged: onHostChanged });
-      } catch (e) {
-        label(`连不上审阅宿主（${e.message}）——反馈存不进文件。把这一行发回对话`, "error");
+        review = await ReviewBridge.connect();
+      } catch (error) {
+        label(`连不上审阅宿主（${error.message}）——反馈存不进文件。把这一行发回对话`, "error");
         return;
       }
+
       submissionsRel = await resolveSubmissionsRel();
       setMode("overall");
       document.getElementById("fb-save").disabled = false;

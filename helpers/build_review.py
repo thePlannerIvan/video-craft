@@ -198,6 +198,27 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
             preview_video_rel = os.path.relpath(cand, review_dir)
             break
 
+    # 候选完整成片视频
+    composite_candidates = list((project_root / "成品").glob("*完整*.mp4")) + \
+                           list((project_root / "成品").glob("*成片*.mp4")) + [
+        project_root / "成品" / f"{project_root.name}_完整视听成片.mp4",
+        edit_dir / "cut_subbed.mp4",
+        edit_dir / "base_preview.mp4",
+        edit_dir / "preview.mp4"
+    ]
+    composite_video_rel = None
+    for cand in composite_candidates:
+        if cand.is_file():
+            composite_video_rel = os.path.relpath(cand, review_dir)
+            break
+
+    # 候选逐字稿粗剪工作台
+    transcript_rel = None
+    for cand in [edit_dir / "edl_preview.html", project_root / "edl_preview.html"]:
+        if cand.is_file():
+            transcript_rel = os.path.relpath(cand, review_dir)
+            break
+
     # 候选导引配音
     audio_candidates = [
         project_root / "guide_audio.mp3",
@@ -295,6 +316,8 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
         "media": {
             "speakerVideo": speaker_video_rel,
             "previewVideo": preview_video_rel,
+            "compositeVideo": composite_video_rel,
+            "transcriptUrl": transcript_rel,
             "guideAudio": guide_audio_rel
         },
         "timeline": timeline_data or {
@@ -335,6 +358,8 @@ def write_review_files(project_root: Path, review_data: dict) -> tuple[Path, Pat
         "    window.__INLINE_SVGS__ = window.__REVIEW_DATA__.svgs || {};\n"
         "    window.__INLINE_TIMELINE__ = window.__REVIEW_DATA__.timeline || null;\n"
         "    window.__SPEAKER_VIDEO_URL__ = window.__REVIEW_DATA__.media?.speakerVideo || null;\n"
+        "    window.__COMPOSITE_VIDEO_URL__ = window.__REVIEW_DATA__.media?.compositeVideo || null;\n"
+        "    window.__TRANSCRIPT_URL__ = window.__REVIEW_DATA__.media?.transcriptUrl || null;\n"
         "  </script>\n"
     )
     if "</head>" in template_content:

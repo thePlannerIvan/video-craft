@@ -618,13 +618,50 @@
       cursor: pointer;
     }
     .hint { display: none; }
+
+    /* 动效时序状态机防御样式 (彻底防止未来步在第0帧提前漏出) */
+    svg [data-step][data-vc-state="hidden"] {
+      opacity: 0 !important;
+      pointer-events: none !important;
+    }
+    svg [data-step][data-vc-state="active"] {
+      opacity: 1;
+    }
+    svg [data-step][data-vc-state="dimmed"] {
+      opacity: 0.34;
+    }
+
+    /* 生产任务形态自适应布局 */
+    body.mode-speaker_only #stage-speaker-video {
+      position: relative;
+      width: 100%;
+      border-right: none;
+      object-fit: contain;
+    }
+    body.mode-speaker_only #svg-stage-host {
+      display: none;
+    }
+    body.mode-animation_only #stage-speaker-video,
+    body.mode-animation_only #speaker-time-pill {
+      display: none !important;
+    }
+    body.mode-animation_only #svg-stage-host {
+      width: 100%;
+    }
+    /* 单行药丸字幕安全包裹层，严格禁止折行遮挡视线 */
+    .caption-pill-secure {
+      white-space: nowrap !important;
+      text-overflow: ellipsis;
+      max-width: 90%;
+      font-size: clamp(14px, 2vw, 22px);
+    }
   </style>
 </head>
 <body>
   <header class="top">
     <div class="brand-wrap">
       <span class="brand-badge">VIDEO CRAFT</span>
-      <h1>逐画面审阅 · <span id="project-name">project</span></h1>
+      <h1>逐画面审阅 · <span id="project-name">project</span><span id="mode-badge" style="font-size:11px; padding:2px 7px; border-radius:4px; background:var(--accent-soft); color:var(--amber); margin-left:8px; font-weight:700; font-family:var(--font-mono);">复合双通道</span></h1>
     </div>
     <div class="top-right">
       <div class="stage-switch" title="在分步动效审阅与合成成片预览之间一键切换">
@@ -2246,6 +2283,28 @@
       loadedTimelineId = shortId(timelineFingerprint);
       document.getElementById("project-name").textContent = data.totalChapters + " 章 · " + data.totalSteps + " 步 · " + fmt(data.totalDurationMs);
       document.getElementById("step-counter-badge").textContent = `${data.totalSteps} 屏`;
+
+      // 尝试加载增强审阅契约 review/review_data.json 并同步生产模式
+      if (review && typeof review.readText === "function" && !window.__REVIEW_DATA__) {
+        try {
+          const revText = await review.readText("review/review_data.json");
+          if (revText) window.__REVIEW_DATA__ = JSON.parse(revText);
+        } catch {}
+      }
+      if (window.__REVIEW_DATA__) {
+        const rev = window.__REVIEW_DATA__;
+        if (rev.mode) {
+          document.body.className = `mode-${rev.mode}`;
+          const badge = document.getElementById("mode-badge");
+          if (badge) {
+            const names = { composite: "复合双通道", speaker_only: "纯口播剪辑", animation_only: "纯演示动画" };
+            badge.textContent = names[rev.mode] || rev.mode;
+          }
+        }
+        if (rev.svgs) {
+          window.__INLINE_SVGS__ = Object.assign(window.__INLINE_SVGS__ || {}, rev.svgs);
+        }
+      }
 
       // 如果配置了真实口播视频，挂载到左侧口播区
       const spkVid = document.getElementById("stage-speaker-video");

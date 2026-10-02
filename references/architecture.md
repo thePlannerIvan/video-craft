@@ -116,17 +116,20 @@
 | `helpers/timeline_view.py` | 时间区间的胶片条 + 波形合成图 | `timeline_view.py <video> <start> <end> -o <png> [--n-frames]` | 不做判断 |
 | `helpers/clean_edit_dir.py` | 交付后的工作区清理（首次先呈清单） | `clean_edit_dir.py <edit_dir> [--apply --approve]` | 不删重建所需的最小集 |
 
-### 审阅面
+### 审阅与导出面
 
 | module | 拥有什么 | 接口 | 不做什么 |
 |---|---|---|---|
-| `helpers/edl_preview_build.py` | 剪辑审阅页的 HTML（逐段取舍 + 逐字 + 时间轴），数据**构建时内联** | `edl_preview_build.py <edit_dir>` | 不收集决定；页里的注入点由公共宿主替换 |
+| `helpers/build_review.py` | **一键构建统一审阅契约与控制台**：聚合剪接决策、演示动画与字幕资产，自适应匹配三大任务形态并生成 `review/review_data.json` 与 `review/index.html` | `build_review.py <project_or_edit_dir> [--mode auto/composite/speaker_only/animation_only]` | 不启动服务；不修改源素材 |
+| `helpers/serve_review.py` | **统一审阅控制台专属高性能服务**：完整支持 HTTP 206 Range 大文件秒级快进定位，内置 `/api/feedback` 反馈持久化兜底 | `serve_review.py <project> [--port N] [--open]` | 不负责构建页面（未找到时自动调用 build_review）；不修改时间轴 |
+| `helpers/export_video.py` | **统一成片导出深模块**：全自动化导出四大交付规格（composite, animation, speaker, split），内置 `/tmp` 云盘锁沙盒渲染、时序隐藏样式注入与单行药丸防折行保护 | `export_video.py <project> --mode {composite,animation,speaker,split} [--out-dir 成品]` | 不做粗剪决策（严格忠实于 EDL 与 timeline 实测数据） |
+| `helpers/edl_preview_build.py` | 剪辑审阅页的 HTML（逐段取舍 + 逐字 + 时间轴），数据**构建时内联**（兼容保留） | `edl_preview_build.py <edit_dir>` | 不收集决定；页里的注入点由公共宿主替换 |
 | `helpers/edl_review_surface.py` | 剪接预演**这一份 surface 的内容**（`dir`＝素材与剪辑目录的公共根）+ 业务前置 | `edl_review_surface.py <edit_dir> [--port N] [--no-open] [--surface-only]` | **不再自带 HTTP 服务**（宿主归公共缝）；`selections.json` 的整份覆盖语义由缝的 `write` 1:1 承担 |
 | `helpers/visual_review_feedback.py` | 视觉审阅的**记录契约与唯一落盘路径**（`save_feedback`：先 `.tmp` 再 `os.replace`，旧内容进 `.previous/`）；缺件与过期审阅页副本的守卫 | `visual_review_feedback.py <project>`（只报缺件） | **不再带 HTTP 服务**（服务归公共缝）；不判断"批准算不算门" |
 | `helpers/review_surface.py` | 视觉审阅面**这份 surface 的内容**（业务）：`surface_document`；建文档 → 交给公共件落盘 + 校验；`open_review` 里的缺件前置与 `--surface-only` | `review_surface.py <project> [--port] [--no-open] [--surface-only]` | **不实现宿主生命周期** —— 写/校验/起/判活/停都在 `planners-review-core/scripts/lib/review_host.py`（唯一一份）；不解释反馈形状 |
 | `helpers/lib/planners_modules.py` | **找**公共模组（发布后按名字找兄弟目录）—— 只管解析路径，生命周期不在这里 | 被 `review_surface.py` 用来定位 `planners-review-core` | 不实现任何审阅或宿主逻辑 |
 | `helpers/review_inbox.py` | **收件**：把 surface 声明的那一份提交文件翻译成 `feedback/<chapterId>.jsonl` 的追加（按内容哈希去重） | `review_inbox.py <project> [--dry-run]` | 不改本 Skill 的反馈形状去迁就宿主 |
-| `visual/assets/review-page-template.html` | 审阅页模板的 DOM／样式／播放器接线 | 拷成 `<project>/review/index.html` | 不含项目内容 |
+| `visual/assets/review-page-template.html` | **统一视听审阅控制台模板**：自适应三大生产形态（复合双通道、纯口播、纯动画），支持实时视听播放与逐幕/逐字拆解双视图，内联动效引擎 | 拷成 `<project>/review/index.html` | 不含项目私有数据 |
 | `visual/assets/svg-anim-engine.js` | **声明式 SVG 预埋动效的复合子元素驱动器**（UMD：同时支持浏览器预演 `setStep()` WAAPI 与 HyperFrames 确定性 `registerGsapTimeline()`） | `VideoCraftAnimEngine.registerGsapTimeline(tl, svgRoot, stepOffsets)` ／ `VideoCraftAnimEngine.setStep(svgRoot, step, prevStep)` | 不改 SVG DOM 结构；不猜测未声明 `data-anim` 的元素 |
 
 ### 视觉层（`visual/`）

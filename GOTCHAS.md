@@ -619,3 +619,29 @@ deletion from an accidental loss.
 修法：`setUpClass` 起一次 `sync_playwright().start()` + `chromium.launch()`，`tearDownClass` 里
 `try/finally` 收（浏览器 → playwright → 宿主 → 临时目录）；每个用例 `addCleanup(page.close)`。
 启动次数 4 → 1，整份 suite 还快了约 7 秒。**加固后：文件级 3 连跑 + 全量（含浏览器）2 连跑全绿。**
+
+## 39. 交付审阅页必须启动 HTTP 审阅宿主，绝不能直接 open 本地 file:// 路径
+
+- **现象**：向作者展示 `edl_preview.html` 粗剪工作台时，若直接使用 `open edl_preview.html`（`file://` 协议），页面顶部的审阅桥占位符 `{{REVIEW_BRIDGE}}` 未被宿主动态注入，且现代浏览器出于跨源与安全限制禁止 `file://` 下的 `<video>` 加载上层目录素材或发起 Byte-Range 视频分段流请求，导致画面黑屏、视频无法加载、审阅桥显示未连接。
+- **原因**：`edl_preview.html` 架构设计假定通过 `edl_review_surface.py` 启动本地 HTTP 宿主提供服务（serve root 为素材与剪辑目录的公共根，且在传输 HTML 时由 `serve-review.mjs` 动态将 `{{REVIEW_BRIDGE}}` 替换为审阅桥通信脚本）。如果只执行了 `--surface-only` 或试图绕过服务器直接用浏览器打开本地静态 HTML，破坏了这一架构前提。
+- **行为修正**：凡需给作者呈现审阅页面（无论是粗剪工作台还是视觉审阅），绝不直接 `open file://` 静态文件，必须运行 `edl_review_surface.py <edit_dir>`（或对应的审阅启动脚本）启动/复用 HTTP 宿主，并使用返回的 `http://127.0.0.1:<port>/...` 地址在浏览器中打开。
+- **证据**：2026-10-02 在《Research与Wayfinder调研》实录剪辑中，误用 `open edit/edl_preview.html`，导致作者端显示 `{{REVIEW_BRIDGE}}` 占位符且视频播放器黑屏无法播放；改为启动 `edl_review_surface.py` 并打开 HTTP URL 后立即恢复全功能播放与剪辑。
+- **状态**：已记录，已确立为铁律。
+
+## 40. SVG 空间布局平移 (Layout Transform) 与 WAAPI 动效平移冲突覆盖
+
+- **module**：`visual/assets/review-page-template.html` / `visual/scripts/svg-anim-engine.js` ｜ **状态**：已复现
+- **现象**：在多元素/多卡片并排排版的 SVG 场景中，卡片外层通常带有静态坐标定位（如 `<g transform="translate(610, 0)">` 或 CSS `transform`）。若动效脚本直接在该元素上应用 WAAPI 平移动效（如 `el.animate([{ transform: 'translateY(18px)' }, ...])`），动效执行瞬间该元素的静态 `translate(610, 0)` 被完全重置为 `(0, 0)`，导致所有卡片瞬间挤压并重叠在最左侧边距。
+- **原因**：CSS/WAAPI 的 `transform` 动画属性在执行时会完全覆盖元素 SVG 属性上声明的静态 `transform`。
+- **修正原则**：**静态空间布局与动态入场动效必须物理分层**：外层 `<g transform="...">` 只负责空间栅格与定位；内层子元素（或嵌套 `<g>`）才挂载 `.anim-*` 动效类与 WAAPI 关键帧。动效类绝不可以直接打在带有空间布局位移的外层容器上。
+- **证据**：2026-10-02 在《Research与Wayfinder调研》beat-01 三卡片入场动效中，三张卡片直接被赋予 `pop-card` 动效导致全部被拉回 x=0 挤成一团；重构为外层 `<g transform="translate(...)">` + 内层 `<g class="anim-card">` 后恢复正常排列。
+
+## 41. Headless Browser Screencast 在 `<video>` 元素上的 IPC 缓冲区死锁
+
+- **module**：`helpers/export_video.py` ｜ **状态**：已复现
+- **现象**：使用 Playwright/Puppeteer `page.startScreencast` 对包含正在播放的 `<video>` 元素的 HTML 页面进行录屏导出时，当视频播放超过数秒（IPC 传输数据量超 512KB）后，Chromium 进程彻底卡死，IPC 通道无响应，CPU 占满。
+- **原因**：Headless Chromium 的渲染流水线在将硬解/软解视频帧与 DOM 图层合成并跨进程序列化为 screencast base64/buffer 时存在资源竞争与锁死。
+- **修正原则**：**严禁在浏览器录屏中录制正在播放的真实视频文件**。动画舞台走确定性截帧/离线渲染；真实口播视频交由 FFmpeg 在输出层通过 `overlay` 硬件加速混合。
+- **证据**：2026-10-02 在《Research与Wayfinder调研》导出全片时，尝试直接用 Playwright 录屏捕获包含播放 `<video>` 的双通道页面，连续 3 次在第 30-40 秒彻底死锁；改用离线截帧+FFmpeg overlay 后秒级导出成功。
+
+

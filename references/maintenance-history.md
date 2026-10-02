@@ -1,5 +1,21 @@
 # 维护记录（升级，不是 CHANGELOG）
 
+## 2026-10-02 · 统一多形态视听审阅控制台 + 自动化导出引擎深模块化（消灭“读代码为材料”反模式）
+
+**起因**：在真项目《Research与Wayfinder调研》（226.4s 复合双通道视频）运行中暴露了三个系统性架构缺陷：
+1. **审阅页碎片化失控**：工程中先后产生 4 个审阅页面（逐字稿、SVG 预览、原始视觉页、临时双通道页），割裂了作者审阅体验，且页面与底层时间轴数据脱节；
+2. **“把代码当材料阅读”反模式消耗天量 tokens**：由于 `SKILL.md` 缺少清晰的黑盒 CLI 工具界限与接口封装，Agent 在执行过程中频繁通读上千行 HTML/JS/Python 代码（寻找端点、探查 DOM、手写临时导出脚本）；
+3. **导出链路脆弱与云盘锁超时**：手拼临时 FFmpeg 与录屏脚本频繁发生 OneDrive 写入锁超时（exit code -60）、动效第 0 帧未来步漏出、字幕折行遮挡。
+按照 `/planning-before-create-skill` 架构原则完成系统性重构与深模块内化。
+
+| 做了什么 | 为什么 | 影响了哪些 module | 删了什么 |
+|---|---|---|---|
+| **新增一键审阅构建深模块 `helpers/build_review.py`**：自动扫描项目内 `edl.json`、`timeline.json`、`subtitles.srt`、SVG 场景与音视频底片，统一编译为 `review/review_data.json` 并装配 `review/index.html` 与 `review-surface.json` | 将四处分散的切片数据合流为唯一审阅数据契约，杜绝 Agent 阅读底层解析脚本 | `helpers/build_review.py`（新） | 手工维护临时 `update_review_data.py` 的碎片流程 |
+| **新增统一高性能审阅服务 `helpers/serve_review.py`**：支持 HTTP 206 Partial Content (Range: bytes=...) 秒级拖拽，内置 `/api/feedback` 本地反馈持久化与跨源兜底 | 让大视频（>200MB）在 Chrome/Safari 中秒级快进定位，脱离 DSH 也能稳定落盘 `feedback/*.jsonl` | `helpers/serve_review.py`（新） | 临时手工起静态 http.server 导致的 Range 挂起与死锁 |
+| **新增统一成片导出深模块 `helpers/export_video.py`**：一键支持 `composite`（完整双通道成片）、`animation`（独立演示动画轨）、`speaker`（独立口播剪辑）、`split`（四件套多腿交付）四大规格；内置系统 `/tmp` 沙盒渲染（彻底杜绝云盘写入锁超时）、动效未来步强制隐藏样式注入与单行安全字幕防折行保护 | 将易错的音画合成、视频 overlay 滤镜与帧率锁定封装为黑盒 CLI，彻底消灭 Agent 临时手写 Python/Playwright 录屏代码 | `helpers/export_video.py`（新） | 零散的 `render_full_video.py` 与 `export_animation_track.py` 临时拼装代码 |
+| **重构升级统一审阅控制台模板 `visual/assets/review-page-template.html`**：自适应三大生产形态（复合双通道、纯口播剪辑、纯演示动画）；提供实时视听播放与逐幕/逐字拆解双视图；单行安全药丸字幕防折行；100% 兼容保留 `{{REVIEW_BRIDGE}}` 审阅桥契约 | 一个统一控制台覆盖全部制作场景，杜绝针对不同形态另立新页 | `visual/assets/review-page-template.html` | 碎片化的专用临时审阅页面 |
+| **更新 `SKILL.md` 渐进式披露与黑盒 CLI 速查**：明示三大任务形态，更新 Step 6 与 Step 11 产物凭证，严禁 Agent 读取内部代码，提供清晰的命令行速查表 | 严格落实渐进式披露，从根源消除 tokens 浪费 | `SKILL.md`、`references/architecture.md`、`GOTCHAS.md` | 模糊的审阅与导出描述 |
+
 ## 2026-09-30 · 双审阅页工作台重构 + v4 内部图形多拍动效引擎与口播词级自动编排
 
 **起因**：原有两套审阅页交互粗糙（粗剪页单击词直接误删而非跳播定位；视觉审阅页强依赖 `localhost:5176` 服务、比例在宽屏下失真为 23:9、无法直接在页面内微调动效与文字），且 SVG 动画多为外层矩形盒子生硬飞入，分栏构图下虚拟摄像机平移还会将右侧元素推入左侧人物列造成遮挡。通过真项目《AI 能力体系与职场定位》（8 屏 29 步、176.70s 16:9 左人右画合成）端到端验证后落盘。

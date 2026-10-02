@@ -9,6 +9,21 @@ description: 从创意内容包、口播脚本与画面要求，或已有录音/
 
 从创意内容到成片的制作入口。默认接过 Idea 的口播、逐段画面要求、作者决定和素材，自己组织声音与视觉叙事；已有录音/视频则直接进入相应制作阶段。
 
+## 三种制作任务形态与交付模式
+
+1. **复合双通道 (Composite Dual-Channel)**：
+   - 画面形态：左侧人物出镜口播 (约 32%) + 右侧 16:9 动态演示/SVG 场景 (约 68%) + 底部单行安全字幕药丸。
+   - 审阅模式：双通道联动播放，口播人像与右侧分步动效毫秒级同步。
+   - 导出模式：`python3 helpers/export_video.py <project> --mode composite`（或 `--mode split` 四件套全出）。
+2. **纯口播剪辑 (Pure Speaker)**：
+   - 画面形态：人物竖屏 9:16 或横屏 16:9 出镜口播 + 底部字幕。
+   - 审阅模式：口播原片播放 + 逐字剪接面板（删除词删除线高亮，支持点选跳转）。
+   - 导出模式：`python3 helpers/export_video.py <project> --mode speaker`。
+3. **纯演示动画 (Pure Animation / Presentation)**：
+   - 画面形态：16:9 演示动画全屏舞台 + 旁白/配乐/导引音频。
+   - 审阅模式：全屏 16:9 动效舞台 + 导引配音联动 + 逐步动效原语与元素属性检查。
+   - 导出模式：`python3 helpers/export_video.py <project> --mode animation`。
+
 ## 全片流程
 
 11 步。每步的产物就是它的完成凭证——没见到那个文件，那一步就没做完。
@@ -20,12 +35,12 @@ description: 从创意内容包、口播脚本与画面要求，或已有录音/
 | 3 | 准备声音与素材 | `edit/transcripts/`、`edit/takes_packed.md` |
 | 4 | 画面与节奏预演 | `previs/` |
 | 5 | 剪接决策 | `edit/edl.json` |
-| 6 | 剪接审阅 | `edit/edl_preview.html` + 作者答复 |
+| 6 | 统一视听审阅 | `review/index.html` + `review/review_data.json` + 作者答复 |
 | 7 | 实测底片与语义字幕 | `edit/segment_durations.json`、`edit/captions.json`、`edit/caption_words.json` |
 | 8 | 绑定内容与实测时间 | `edit/timeline/grouping.json`、`edit/timeline/timeline.json` |
 | 9 | 完成视觉与合成 | `composition/index.html` 或 `edit/overlays/`、`render.py` 的输出 |
 | 10 | 自检与创意兑现 | `edit/verify/`、`creative-check.md` |
-| 11 | 交付与核验 | `成品/`（视频 + SRT） |
+| 11 | 统一导出与交付 | `成品/`（01_口播视频, 02_字幕, 03_演示动画, 完整视听成片） |
 
 **第 5 步之后要实测时长，第 1–4 步不要。** 所以没有音频时项目照走到第 4 步并在那里出片可审的样片；「等录音」停的是第 5 步往后，不是整个项目。见[内容到制作](references/content-to-production.md)。
 
@@ -155,10 +170,10 @@ looking for a rule that used to be here, it is in the right-hand column.
    `check_edl.py` 硬失败清零。只有音频加全画面时声明 `canvas`/`fps`。剪点按短语，短语内重复优先在字幕层处理。
    **完成标准**：`edl.json` 存在且 `check_edl.py` 零硬失败；作者批准的演示与停留段都在 `ranges` 里；
    无素材项目已声明 `canvas` 与 `fps`。
-6. **剪接审阅。** `edl_preview_build.py` 出页 + `edl_review_surface.py` 起审阅宿主（公共缝 `planners-review-core`），说明取舍并处理作者反馈；用户批准前不渲染正式底片。
-   预演是独立标注的设计样片，不代表 EDL 已批准。
-   **完成标准**：`edit/edl_preview.html` 能开能播，每个取舍都有一句理由；作者的答复记在
-   [偏好记录](references/preferences.md)约定的位置。
+6. **统一视听审阅。** 运行 `python3 helpers/build_review.py <项目>` 自动聚合剪接决策、演示动画与字幕资产，并运行 `python3 helpers/serve_review.py <项目> --open`（或经 `helpers/review_surface.py` 挂载至 DSH 侧栏）唤起统一视听审阅台。
+   审阅台自动适配三大形态（复合双通道、纯口播、纯动画），支持实时视听播放与逐幕/逐字拆解双视图。
+   **注意：审阅台是供作者交互与决策的工具，Agent 不得读取 `review/index.html` 或辅助脚本源码当材料（严重浪费 tokens）**；Agent 只读取 `review/review-submissions.json` 或 `feedback/*.jsonl` 获取作者反馈决定。
+   **完成标准**：统一审阅台已构建且能流畅播放，作者针对剪接与视听的审阅答复记录在 `feedback/*.jsonl` 或 `review/review-submissions.json` 中。
 7. **实测底片与语义字幕。** 批准后渲染底片，取得 `segment_durations.json`。读取
    `references/caption-article-first.md`，prepare → 语义断句 → lock → build → check，
    生成实测 `captions.json` / `caption_words.json`。字幕保持录音实际说法，画面花字另行设计。
@@ -189,13 +204,14 @@ looking for a rule that used to be here, it is in the right-hand column.
     - `check_caption_breaks.py` —— 字幕断句逐条过，长语块的断点是**人工指定**的，不是算法猜的。
     **完成标准**：`verify_av.py --all` 与三查全部通过；`creative-check.md` 逐 Beat 有结论或明确缺口；
     失败修复轮次与未解决项如实写下来。
-11. **交付与核验。** 给作者看成片代表帧/片段，`export_deliverables.py` 输出视频和 SRT 到 `成品/`，
-    `verify_delivery.py` 检查实际交付副本。清理首次先呈清单，之后按批准的项目模式执行。
-    **多腿交付**：作者自己合成时，画面、口播、字幕可以分开交（如 `画面_1920x1080.mp4` + `人物_1080x1920.mp4` + `字幕.srt`）。
-    三份交付共享实测时间轴；两条视频必须同帧率、同帧数，SRT 与该时间轴一致，口播音轨只挂在人物腿上，
-    画面腿不出声，交付说明写清怎么叠。
-    **完成标准**：`成品/` 里的副本通过 `verify_delivery.py`；作者看过代表帧或片段；多腿交付的三份
-    在同一实测时间轴上对齐，交付说明写清怎么叠。
+11. **统一导出与交付。** 运行统一成片导出深模块 `python3 helpers/export_video.py <项目> --mode {composite,animation,speaker,split}` 输出规范成片至 `成品/`：
+    - `composite`：完整视听成片（口播 + 动画 + 底部字幕 + 48kHz 母带音频）
+    - `animation`：独立 1920x1080 演示动画轨（含参考音轨方便 NLE 对齐）
+    - `speaker`：独立口播剪辑视频
+    - `split`：同时导出以上三轨及 `02_字幕文件.srt`（多腿交付，各腿同帧率同帧数）
+    工具内置 `/tmp` 渲染（彻底防御云盘文件锁）、动效时序隐藏样式注入与单行药丸防折行保护，**禁止 Agent 自行编写临时 FFmpeg 拼合命令或 Playwright 录屏脚本**。
+    最后运行 `python3 helpers/verify_delivery.py <项目>` 检查交付副本。
+    **完成标准**：`成品/` 里的成片通过 `verify_delivery.py`；各分轨与完整成片帧率 (30fps)、总时长与时间轴一致；作者看过代表帧或片段。
 
 ## Layout
 
@@ -252,7 +268,24 @@ looking for a rule that used to be here, it is in the right-hand column.
   `"opaque"`（满屏替换，不要 alpha）。**缺省是 `alpha`**——让响的那个失败赢。
 - `overlays` 里的 `duration` 必须等于文件的真实时长（`check_overlay.py` 会验，容差 0.05s）。
 - `ranges` 可选 `speed`（加速静音段）与 `mute`；带 `speed` 时用 `render_cut.py`。
-- 交付独立 SRT 时，EDL 里**不要**写 `subtitles` 字段，渲染加 `--no-subtitles`。
+## 核心 CLI 工具速查（黑盒调用）
+
+**工具是执行手段，不是阅读材料**。Agent 严禁阅读辅助脚本实现或 HTML 产物源码（极度消耗 tokens 且毫无必要），直接调用以下命令行：
+
+| 阶段 | 任务目标 | 核心命令 | 产物/凭证 |
+|---|---|---|---|
+| 5 剪接 | 校验剪辑决策 | `python3 helpers/check_edl.py edit --max-pause 0.8` | 零硬失败退出 |
+| 7 字幕 | 构建语义字幕 | `python3 helpers/srt_export.py edit --prepare && ... && --build` | `edit/subtitles.srt` |
+| 8 脊柱 | 派生实测时间轴 | `python3 helpers/timeline_derive.py edit --stats` | `edit/timeline/timeline.json` |
+| 6 审阅 | 一键构建审阅台 | `python3 helpers/build_review.py <项目目录>` | `review/review_data.json` + `review/index.html` |
+| 6 审阅 | 启动审阅服务 | `python3 helpers/serve_review.py <项目目录> --open` | 浏览器秒级拖拽，意见落盘 `feedback/*.jsonl` |
+| 9 预检 | 视觉环境预检 | `python3 helpers/check_render_env.py composition` | 字体与环境检查通过 |
+| 10 自检 | 交付前动效三查 | `python3 helpers/check_motion.py ... && check_screen_text.py ...` | 动效与文字闸门全绿 |
+| 11 导出 | 导出完整成片 | `python3 helpers/export_video.py <项目目录> --mode composite` | `成品/完整视听成片.mp4` |
+| 11 导出 | 导出独立动画轨 | `python3 helpers/export_video.py <项目目录> --mode animation` | `成品/03_演示动画.mp4` |
+| 11 导出 | 导出独立口播轨 | `python3 helpers/export_video.py <项目目录> --mode speaker` | `成品/01_口播视频_剪辑成片.mp4` |
+| 11 导出 | 导出多腿四件套 | `python3 helpers/export_video.py <项目目录> --mode split` | 视频、动画、口播、字幕四轨齐备 |
+| 11 核验 | 校验交付副本 | `python3 helpers/verify_delivery.py <项目目录>` | 交付副本逐字节校验通过 |
 
 ## Routing
 

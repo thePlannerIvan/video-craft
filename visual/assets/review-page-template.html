@@ -45,219 +45,201 @@
       overflow: hidden;
       -webkit-font-smoothing: antialiased;
     }
-    /* 顶部全局导航栏（精炼无冗余文字） */
+    /* 顶部全局导航栏（精炼大方） */
     header.top {
-      height: 46px;
-      flex: 0 0 46px;
+      height: 52px;
+      flex: 0 0 52px;
       padding: 0 18px;
-      background: var(--bg-panel);
-      border-bottom: 1px solid var(--border);
+      background: #111317;
+      border-bottom: 1px solid #1e222b;
       display: flex;
       justify-content: space-between;
       align-items: center;
       gap: 12px;
-      z-index: 20;
+      z-index: 30;
     }
-    .brand-wrap { display: flex; align-items: center; gap: 10px; }
+    .brand-wrap { display: flex; align-items: center; gap: 10px; min-width: 0; }
     .brand-badge {
-      font: 800 10px/1 var(--font-mono);
-      letter-spacing: 0.1em;
+      font: 800 11px/1 var(--font-mono);
+      letter-spacing: 0.08em;
       padding: 4px 7px;
       border-radius: 4px;
-      background: var(--accent);
+      background: #e43d1e;
+      color: #fff;
+      flex: 0 0 auto;
+    }
+    .project-title {
+      font-size: 13.5px;
+      font-weight: 700;
+      color: #f3f4f6;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .project-title #project-name {
+      color: #f59e0b;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .header-meta {
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      color: #71798e;
+      margin-left: 6px;
+      white-space: nowrap;
+    }
+    .top-right { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+    .hdr-btn {
+      background: #1c202d;
+      color: #94a3b8;
+      border: 1px solid #2d3448;
+      padding: 5px 11px;
+      font-size: 12px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .hdr-btn:hover { color: #f3f4f6; border-color: #3b82f6; }
+    .hdr-btn.active {
+      background: #e43d1e;
+      color: #fff;
+      border-color: #e43d1e;
+    }
+    .hdr-btn.primary {
+      background: #2563eb;
+      color: #fff;
+      border-color: #2563eb;
+    }
+    .hdr-btn.primary:hover { background: #1d4ed8; }
+    .speed-group {
+      display: inline-flex;
+      background: #181b22;
+      border: 1px solid #2d3448;
+      border-radius: 5px;
+      padding: 2px;
+      gap: 2px;
+    }
+    .speed-btn {
+      background: transparent;
+      color: #94a3b8;
+      border: none;
+      padding: 3px 8px;
+      font-size: 11px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      border-radius: 3px;
+      cursor: pointer;
+    }
+    .speed-btn:hover { color: #fff; }
+    .speed-btn.active {
+      background: #e43d1e;
       color: #fff;
     }
-    h1 { font-size: 14px; font-weight: 700; color: var(--text); letter-spacing: 0.01em; }
-    h1 #project-name { color: var(--amber); font-family: var(--font-mono); font-size: 12.5px; font-weight: 600; margin-left: 4px; }
-    .top-right { display: flex; align-items: center; gap: 8px; }
     .stage-switch {
       display: inline-flex;
-      background: var(--bg-input);
-      border: 1px solid var(--border);
+      background: #181b22;
+      border: 1px solid #2d3448;
       border-radius: 6px;
       padding: 2px;
       gap: 2px;
     }
     .stage-switch button {
       background: transparent;
-      color: var(--text-secondary);
+      color: #94a3b8;
       border: none;
-      padding: 4px 11px;
+      padding: 4px 10px;
       font-size: 12px;
       border-radius: 4px;
       cursor: pointer;
       font-weight: 600;
+      white-space: nowrap;
     }
     .stage-switch button.active {
-      background: var(--blue);
+      background: #2563eb;
       color: #fff;
     }
     .reload {
-      flex: 0 0 auto;
       font-size: 12px;
       line-height: 1;
-      color: var(--text-secondary);
+      color: #94a3b8;
       text-decoration: none;
-      border: 1px solid var(--border);
-      background: var(--bg-card);
-      border-radius: 6px;
-      padding: 6px 10px;
+      border: 1px solid #2d3448;
+      background: #1c202d;
+      border-radius: 5px;
+      padding: 6px 9px;
       transition: all 0.15s;
     }
-    .reload:hover { color: var(--text); border-color: var(--blue); }
+    .reload:hover { color: #fff; border-color: #3b82f6; }
 
-    /* 主三栏工作台布局：左分屏轨 (236px) + 中央 16:9 舞台 (最大化) + 右侧批注栏 (320px) */
+    /* 主两栏工作台布局：左侧大舞台 (自适应占满) + 右侧导航与意见栏 (380px) */
     .layout {
       flex: 1 1 auto;
       min-height: 0;
       display: grid;
-      grid-template-columns: 236px minmax(0, 1fr) 320px;
+      grid-template-columns: minmax(0, 1fr) 380px;
       gap: 0;
+      background: #090b0f;
     }
 
-    /* 左侧栏：分屏列表 (#steps) */
-    .side-left {
-      background: var(--bg-panel);
-      border-right: 1px solid var(--border);
-      display: flex;
-      flex-direction: column;
-      min-height: 0;
-    }
-    .panel-head {
-      padding: 9px 12px;
-      border-bottom: 1px solid var(--border);
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.06em;
-      color: var(--text-muted);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .steps {
-      flex: 1 1 auto;
-      overflow-y: auto;
-      padding: 6px;
-    }
-    .steps::-webkit-scrollbar { width: 5px; }
-    .steps::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-    .step {
-      padding: 8px 10px;
-      border: 1px solid transparent;
-      border-radius: 6px;
-      margin-bottom: 3px;
-      cursor: pointer;
-      transition: background 0.12s, border-color 0.12s;
-    }
-    .step:hover { background: var(--bg-card); }
-    .step.active {
-      background: rgba(59, 130, 246, 0.14);
-      border-color: var(--blue);
-    }
-    .step.chapter-header {
-      background: transparent;
-      cursor: default;
-      padding: 7px 6px 3px;
-      margin-top: 4px;
-      border-bottom: 1px solid var(--border);
-      border-radius: 0;
-    }
-    .step-id {
-      font-family: var(--font-mono);
-      font-size: 11px;
-      color: var(--amber);
-      font-weight: 600;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .step.chapter-header .step-id { color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
-    .step-caption { font-size: 12px; color: var(--text); margin-top: 3px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-    .step-meta { font-size: 10.5px; color: var(--text-muted); margin-top: 2px; }
-    .step-badge {
-      font-size: 10px;
-      padding: 1px 5px;
-      border-radius: 3px;
-      background: var(--accent-soft);
-      color: #ff8066;
-    }
-
-    /* 中央舞台区 */
+    /* 左侧中央大舞台区 */
     .center-stage {
       display: flex;
       flex-direction: column;
       min-width: 0;
       min-height: 0;
       background: #090b0f;
+      padding: 8px 16px 10px;
       overflow: hidden;
+      justify-content: space-between;
     }
-    /* 舞台顶部上下文工具栏 */
-    .canvas-toolbar {
-      padding: 6px 14px;
-      flex: 0 0 auto;
-      background: var(--bg-panel);
-      border-bottom: 1px solid var(--border);
+
+    /* 舞台顶部元信息条 (BEAT-05C // 14 份原件落盘档案台与终局结论) */
+    .stage-meta-bar {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-    .tool-group { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
-    .tool-btn {
-      background: var(--bg-card);
-      color: var(--text-secondary);
-      border: 1px solid var(--border);
-      padding: 4px 9px;
+      gap: 12px;
+      padding: 2px 4px 6px;
+      font-family: var(--font-mono);
       font-size: 11.5px;
-      border-radius: 5px;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      font-weight: 600;
-    }
-    .tool-btn:hover { color: var(--text); border-color: var(--border-strong); }
-    .tool-btn.active { background: var(--blue); color: #fff; border-color: var(--blue); }
-    .tool-btn.accent { background: var(--accent); color: #fff; border-color: var(--accent); }
-    .tool-sep { width: 1px; height: 16px; background: var(--border); margin: 0 2px; }
-
-    /* 元素直改浮动条（选中 SVG 元素时显示） */
-    .elem-edit-bar {
-      padding: 5px 14px;
+      color: #8c95a8;
       flex: 0 0 auto;
-      background: #192030;
-      border-bottom: 1px solid var(--blue);
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 11.5px;
-      flex-wrap: wrap;
     }
-    .elem-edit-bar[hidden] { display: none; }
-    .elem-edit-bar input[type="text"] {
-      flex: 1 1 180px;
-      max-width: 320px;
-      background: var(--bg-input);
-      color: var(--text);
-      border: 1px solid var(--border-strong);
-      border-radius: 4px;
-      padding: 3px 7px;
-      font-size: 11.5px;
+    .stage-beat-pill {
+      font-weight: 700;
+      color: #cbd5e1;
+      letter-spacing: 0.04em;
+    }
+    .stage-zone-meta {
+      color: #64748b;
+      font-size: 11px;
     }
 
-    /* 16:9 画布视口：严格锁定 16:9 比例，不设 max-height 防止 flex 压缩变形导致黑边或错位 */
+    /* 16:9 画布视口：自适应充满主视觉区域，不设固定压缩 */
     .player-box {
       position: relative;
-      margin: 10px auto 8px;
       background: #141413;
-      border: 1px solid var(--border);
+      border: 1px solid #232733;
       border-radius: 8px;
       overflow: hidden;
       aspect-ratio: 16 / 9;
-      width: min(calc(100% - 24px), calc((100vh - 235px) * 16 / 9));
-      flex: 0 0 auto;
-      box-shadow: 0 10px 28px rgba(0,0,0,0.45);
+      width: 100%;
+      max-height: calc(100vh - 200px);
+      margin: 0 auto;
+      flex: 1 1 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 14px 36px rgba(0,0,0,0.55);
     }
     hyperframes-player { display: block; width: 100%; height: 100%; }
     #svg-stage-wrap {
@@ -283,43 +265,68 @@
       height: 100%;
       display: block;
     }
-    #stage-speaker-video {
+    /* 人物口播视频：定位在左侧 0..620px 区域 (32.29%)，带虚线分割与圆角阴影 */
+    .speaker-container {
       position: absolute;
-      left: 0;
       top: 0;
-      width: 31.6667%;
+      left: 0;
+      width: 32.29%;
+      height: 100%;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 20;
+      transition: opacity 0.2s ease;
+      border-right: 2px dashed rgba(228, 61, 30, 0.4);
+      background: linear-gradient(90deg, rgba(20,20,19,0.35) 0%, rgba(20,20,19,0.05) 100%);
+    }
+    .speaker-container.hidden { opacity: 0; pointer-events: none; }
+    .speaker-video-frame {
+      width: 82%;
+      aspect-ratio: 9 / 16;
+      max-height: 94%;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 2px solid #33312C;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.65);
+      background: #000;
+      pointer-events: auto;
+      position: relative;
+    }
+    #stage-speaker-video {
+      width: 100%;
       height: 100%;
       object-fit: cover;
-      z-index: 4;
-      background: #000;
-      border-right: 1px solid rgba(255, 255, 255, 0.14);
-      box-shadow: 6px 0 20px rgba(0, 0, 0, 0.38);
+      display: block;
     }
-    #stage-speaker-video[hidden] { display: none; }
-    #speaker-time-pill {
+    #stage-speaker-video[hidden] { display: none !important; }
+    .speaker-tag, #speaker-time-pill {
       position: absolute;
-      left: 10px;
-      top: 10px;
-      bottom: auto;
-      z-index: 6;
-      background: rgba(13, 15, 20, 0.88);
-      border: 1px solid rgba(255, 255, 255, 0.16);
-      color: #f59e0b;
-      font: 700 10.5px/1 var(--font-mono);
-      padding: 3px 7px;
+      top: 8px;
+      left: 8px;
+      background: rgba(20,20,19,0.85);
+      border: 1px solid var(--amber);
+      color: var(--amber);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 6px;
       border-radius: 4px;
+      letter-spacing: 0.04em;
       pointer-events: none;
-      backdrop-filter: blur(6px);
+      z-index: 12;
+      backdrop-filter: blur(4px);
     }
-    #speaker-time-pill[hidden] { display: none; }
+    #speaker-time-pill[hidden] { display: none !important; }
 
-    /* 舞台浮动单行药丸字幕 (底端居中，确保不遮挡主画面内容与人像) */
+    /* 舞台浮动单行药丸字幕 */
     #canvas-caption-layer {
       position: absolute;
-      bottom: 22px;
+      bottom: 20px;
       left: 50%;
       transform: translateX(-50%);
-      z-index: 8;
+      z-index: 12;
       pointer-events: none;
       background: rgba(18, 20, 26, 0.88);
       backdrop-filter: blur(8px);
@@ -333,9 +340,9 @@
       overflow: hidden;
       text-overflow: ellipsis;
       text-align: center;
-      transition: opacity 0.15s ease, transform 0.15s ease;
+      transition: opacity 0.15s ease;
     }
-    #canvas-caption-layer[hidden] { display: none; }
+    #canvas-caption-layer[hidden] { display: none !important; }
     #canvas-caption-text {
       font-size: clamp(13px, 1.7vw, 19px);
       font-weight: 700;
@@ -380,18 +387,17 @@
       background: var(--bg-app);
     }
 
-    /* 逐字精修剪辑全屏沉浸模式：隐藏两侧栏与多余工具，使双栏双视口 edl_preview 拥有 100% 视口空间 */
-    body.workspace-verbatim .side-left,
+    /* 逐字精修剪辑全屏沉浸模式 */
     body.workspace-verbatim .side-right,
-    body.workspace-verbatim .canvas-toolbar,
-    body.workspace-verbatim .elem-edit-bar,
-    body.workspace-verbatim .global-transport-bar,
-    body.workspace-verbatim .choreo-deck {
+    body.workspace-verbatim .stage-meta-bar,
+    body.workspace-verbatim .stage-status-bar,
+    body.workspace-verbatim .timeline-scrubber-wrap,
+    body.workspace-verbatim .stage-transport-bar {
       display: none !important;
     }
     body.workspace-verbatim .layout {
       grid-template-columns: 1fr !important;
-      height: calc(100vh - 46px) !important;
+      height: calc(100vh - 52px) !important;
       overflow: hidden !important;
     }
     body.workspace-verbatim .center-stage {
@@ -426,65 +432,54 @@
       border: none !important;
     }
 
-    /* 完整成片预览影院模式：收起底部动效编排抽屉，放大视频视口 */
-    body.workspace-composite .choreo-deck,
-    body.workspace-composite .elem-edit-bar,
-    body.workspace-composite .canvas-toolbar {
-      display: none !important;
-    }
-    body.workspace-composite .player-box {
-      width: min(calc(100% - 24px), calc((100vh - 120px) * 16 / 9));
-      margin: 16px auto;
-    }
-
-    /* 全局视听播放与时间轴 Scrubber 操控台 */
-    .global-transport-bar {
-      margin: 0 12px 6px;
-      flex: 0 0 auto;
-      background: var(--bg-panel);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 5px 12px;
+    /* 舞台下方单行状态字幕条 */
+    .stage-status-bar {
       display: flex;
       align-items: center;
-      gap: 9px;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 7px 4px 3px;
+      flex: 0 0 auto;
     }
-    .transport-btn {
-      background: var(--bg-card);
-      color: var(--text);
-      border: 1px solid var(--border);
-      padding: 3px 9px;
-      font-size: 11.5px;
-      border-radius: 5px;
-      cursor: pointer;
+    .status-step-pill {
+      font-family: var(--font-mono);
+      font-size: 11px;
       font-weight: 700;
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      transition: all 0.12s;
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: rgba(245, 158, 11, 0.16);
+      color: #f59e0b;
+      border: 1px solid rgba(245, 158, 11, 0.32);
+      white-space: nowrap;
     }
-    .transport-btn:hover { background: var(--bg-card-hover); border-color: var(--blue); }
-    .transport-btn.primary { background: var(--blue); color: #fff; border-color: var(--blue); }
-    .transport-btn.primary:hover { background: #2563eb; }
-    .transport-time {
+    .status-cue-text {
+      flex: 1 1 auto;
+      font-size: 13px;
+      font-weight: 600;
+      color: #f1f5f9;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .status-time-text {
       font-family: var(--font-mono);
       font-size: 11.5px;
-      font-weight: 600;
-      color: var(--amber);
+      color: #8c95a8;
       white-space: nowrap;
-      min-width: 110px;
     }
+
+    /* Scrubber 进度条 (亮红/橙色，带分段刻度) */
     .timeline-scrubber-wrap {
-      flex: 1 1 auto;
-      min-width: 80px;
+      width: 100%;
       position: relative;
       cursor: pointer;
       padding: 6px 0;
+      flex: 0 0 auto;
     }
     .timeline-track {
       height: 6px;
-      background: var(--bg-input);
-      border: 1px solid var(--border);
+      background: #1c202a;
+      border: 1px solid #2e3547;
       border-radius: 3px;
       position: relative;
       overflow: visible;
@@ -492,7 +487,7 @@
     .timeline-progress {
       height: 100%;
       width: 0%;
-      background: linear-gradient(90deg, var(--blue), var(--amber));
+      background: linear-gradient(90deg, #e43d1e, #f59e0b);
       border-radius: 3px;
       pointer-events: none;
     }
@@ -505,13 +500,13 @@
       height: 12px;
       border-radius: 50%;
       background: #fff;
-      border: 2px solid var(--amber);
-      box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+      border: 2px solid #e43d1e;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.6);
       pointer-events: none;
       transition: transform 0.1s ease;
     }
     .timeline-scrubber-wrap:hover .timeline-thumb {
-      transform: translate(-50%, -50%) scale(1.25);
+      transform: translate(-50%, -50%) scale(1.3);
     }
     .timeline-markers {
       position: absolute;
@@ -523,14 +518,58 @@
       top: 0;
       bottom: 0;
       width: 1px;
-      background: rgba(255, 255, 255, 0.22);
+      background: rgba(255, 255, 255, 0.28);
     }
+
+    /* 舞台底部操控栏 (▶ 播放 | ⏮ 上一幕 | ⏭ 下一幕 | ↺ 重播当前步动效) */
+    .stage-transport-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 3px 0 1px;
+      flex: 0 0 auto;
+    }
+    .transport-controls-left {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .transport-btn {
+      background: #1a1e28;
+      color: #e2e8f0;
+      border: 1px solid #2d3548;
+      padding: 5px 12px;
+      font-size: 12px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.12s;
+    }
+    .transport-btn:hover { background: #262c3b; border-color: #3b82f6; }
+    .transport-btn.primary {
+      background: #2563eb;
+      color: #fff;
+      border-color: #2563eb;
+    }
+    .transport-btn.primary:hover { background: #1d4ed8; }
+    .transport-time {
+      font-family: var(--font-mono);
+      font-size: 12.5px;
+      font-weight: 700;
+      color: #f1f5f9;
+      white-space: nowrap;
+    }
+
     /* 画布框选与元素高亮覆盖层 */
     #annotation-overlay {
       position: absolute;
       inset: 0;
       pointer-events: none;
-      z-index: 10;
+      z-index: 15;
     }
     #annotation-overlay.drawing {
       pointer-events: auto;
@@ -538,7 +577,7 @@
     }
     .anno-box {
       position: absolute;
-      border: 2px solid var(--amber);
+      border: 2px solid #f59e0b;
       background: rgba(245, 158, 11, 0.14);
       border-radius: 4px;
       pointer-events: auto;
@@ -548,7 +587,7 @@
       position: absolute;
       top: -10px;
       left: -10px;
-      background: var(--amber);
+      background: #f59e0b;
       color: #111;
       font: 800 11px/18px var(--font-mono);
       width: 20px;
@@ -563,137 +602,220 @@
       cursor: move;
     }
 
-    /* 底部紧凑分步动效抽屉（不挤占主画布） */
-    .choreo-deck {
-      margin: 0 12px 10px;
-      flex: 1 1 auto;
-      min-height: 0;
-      background: var(--bg-panel);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 8px 12px;
+    /* 右侧栏：两级构件导航 (Beat + Steps) 与 意见清单 Tab */
+    .side-right {
+      background: #111318;
+      border-left: 1px solid #1e222b;
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      min-height: 0;
       overflow: hidden;
     }
-    .choreo-head {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 8px;
-      flex: 0 0 auto;
-    }
-    .choreo-title {
-      font-size: 11.5px;
-      font-weight: 700;
-      color: var(--text-secondary);
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .choreo-controls { display: flex; align-items: center; gap: 6px; }
-    /* 口播词级胶囊条（默认收起，按需展开） */
-    .cue-pills-bar {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      flex-wrap: wrap;
-      padding: 5px 8px;
-      background: var(--bg-input);
-      border: 1px solid var(--border);
-      border-radius: 5px;
-      font-size: 11px;
-      flex: 0 0 auto;
-    }
-    .cue-pills-bar[hidden] { display: none; }
-    .cue-pills-label {
-      font-size: 10.5px;
-      color: var(--text-muted);
-      font-family: var(--font-mono);
-      margin-right: 4px;
-    }
-    .cue-pill {
-      padding: 2px 7px;
-      border-radius: 4px;
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      color: var(--text-secondary);
-      cursor: pointer;
-      font-size: 11px;
-      transition: all 0.12s;
-    }
-    .cue-pill:hover { border-color: var(--amber); color: var(--text); }
-    .cue-pill.pinned {
-      background: var(--amber-soft);
-      border-color: var(--amber);
-      color: var(--amber);
-      font-weight: 700;
-    }
-    /* 分步动效参数矩阵行（紧凑可滚动） */
-    .step-choreo-rows {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      flex: 1 1 auto;
-      min-height: 0;
-      overflow-y: auto;
-      padding-right: 2px;
-    }
-    .step-choreo-rows::-webkit-scrollbar { width: 5px; }
-    .step-choreo-rows::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-    .step-choreo-row {
-      display: grid;
-      grid-template-columns: 72px minmax(150px, 1.1fr) minmax(120px, 0.9fr) 110px minmax(0, 1fr);
-      gap: 6px;
-      align-items: center;
-      padding: 4px 8px;
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 5px;
-      font-size: 11.5px;
-    }
-    .step-choreo-row.playing-now {
-      border-color: var(--amber);
-      background: rgba(245, 158, 11, 0.09);
-    }
-    .step-choreo-row select, .step-choreo-row input {
-      background: var(--bg-input);
-      color: var(--text);
-      border: 1px solid var(--border-strong);
-      border-radius: 4px;
-      padding: 3px 6px;
-      font-size: 11px;
-      width: 100%;
-    }
-    .step-play-chip {
-      font-family: var(--font-mono);
-      font-weight: 700;
-      font-size: 11px;
-      padding: 3px 6px;
-      border-radius: 4px;
-      background: var(--bg-input);
-      color: var(--amber);
-      border: 1px solid var(--border-strong);
-      cursor: pointer;
-      text-align: center;
-    }
-    .step-play-chip:hover { background: var(--amber); color: #111; border-color: var(--amber); }
-
-    /* 右侧栏：已提意见列表 + 反馈输入区 */
+    /* 右侧综合侧边栏三段式布局 */
     .side-right {
       background: var(--bg-panel);
       border-left: 1px solid var(--border);
       display: flex;
       flex-direction: column;
+      height: calc(100vh - 58px);
+      min-height: 0;
+      overflow: hidden;
+    }
+    .nav-section {
+      display: flex;
+      flex-direction: column;
       min-height: 0;
     }
+    .nav-section.beats-section {
+      flex: 0 0 160px;
+      border-bottom: 1px solid #1e222b;
+      min-height: 0;
+    }
+    .nav-section.steps-section {
+      flex: 1 1 auto;
+      border-bottom: 1px solid #1e222b;
+      min-height: 120px;
+    }
+    .feedback-section {
+      flex: 0 0 auto;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-panel);
+    }
+    .section-head {
+      padding: 8px 12px;
+      background: #141720;
+      border-bottom: 1px solid #1e222b;
+      font-size: 11.5px;
+      font-weight: 700;
+      color: #94a3b8;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex: 0 0 auto;
+    }
+    .section-head .meta-tag {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: #64748b;
+    }
+
+    /* Beat 列表 (作为 #steps 容器兼容测试) */
+    .beats-scroll-box {
+      flex: 1 1 auto;
+      overflow-y: auto;
+      padding: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .beats-scroll-box::-webkit-scrollbar, .steps-scroll-box::-webkit-scrollbar { width: 5px; }
+    .beats-scroll-box::-webkit-scrollbar-thumb, .steps-scroll-box::-webkit-scrollbar-thumb { background: #262c3b; border-radius: 3px; }
+    .beat-card {
+      padding: 7px 10px;
+      background: #161922;
+      border: 1px solid #232733;
+      border-radius: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      transition: all 0.12s;
+    }
+    .beat-card:hover { background: #1c212e; border-color: #3b82f6; }
+    .beat-card.active {
+      background: rgba(228, 61, 30, 0.12);
+      border-color: #e43d1e;
+      box-shadow: 0 0 10px rgba(228, 61, 30, 0.2);
+    }
+    .beat-card-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      flex: 1;
+    }
+    .beat-idx-pill {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 700;
+      color: #f59e0b;
+      padding: 1px 4px;
+      border-radius: 3px;
+      background: rgba(245, 158, 11, 0.12);
+      flex: 0 0 auto;
+    }
+    .beat-card.active .beat-idx-pill {
+      color: #fff;
+      background: #e43d1e;
+    }
+    .beat-card-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #cbd5e1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .beat-card.active .beat-card-title { color: #fff; }
+    .beat-card-time {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: #64748b;
+      margin-left: 8px;
+      white-space: nowrap;
+      flex: 0 0 auto;
+    }
+
+    /* Step 构件卡片列表 */
+    .steps-scroll-box {
+      flex: 1 1 auto;
+      overflow-y: auto;
+      padding: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .step.chapter-header {
+      padding: 6px 10px;
+      background: #141720;
+      border: 1px solid #1f2430;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #94a3b8;
+      cursor: default;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2px;
+    }
+    .step-nav-card {
+      padding: 8px 11px;
+      background: #161922;
+      border: 1px solid #232733;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.12s;
+    }
+    .step-nav-card:hover { background: #1c212e; border-color: #f59e0b; }
+    .step-nav-card.active {
+      background: rgba(245, 158, 11, 0.09);
+      border-color: #f59e0b;
+      box-shadow: 0 0 10px rgba(245, 158, 11, 0.18);
+    }
+    .step-nav-card-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+    .step-nav-tag {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      font-weight: 700;
+      color: #f59e0b;
+      letter-spacing: 0.05em;
+    }
+    .step-nav-time {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      color: #71798e;
+    }
+    .step-nav-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #f1f5f9;
+      line-height: 1.4;
+      margin-bottom: 2px;
+    }
+    .step-nav-sub {
+      font-size: 11px;
+      color: #8c95a8;
+      line-height: 1.35;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    /* 视图 2：意见列表与表单 */
+    #sidebar-feedback-view {
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
+    #sidebar-feedback-view[hidden] { display: none !important; }
+    #sidebar-nav-view[hidden] { display: none !important; }
+
     .history-box {
       flex: 1 1 auto;
       min-height: 100px;
       overflow-y: auto;
       padding: 8px 10px;
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid #1e222b;
       display: flex;
       flex-direction: column;
       gap: 5px;
@@ -704,7 +826,7 @@
       line-height: 1.55;
       padding: 10px 8px;
       text-align: center;
-      border: 1px dashed var(--border);
+      border: 1px dashed #282e3e;
       border-radius: 6px;
     }
     .fb-card {
@@ -907,17 +1029,26 @@
     }
 
     /* 生产任务形态自适应布局 */
-    body.mode-speaker_only #stage-speaker-video {
+    body.mode-speaker_only .speaker-container {
       position: relative;
       width: 100%;
       border-right: none;
+      background: none;
+    }
+    body.mode-speaker_only .speaker-video-frame {
+      width: 100%;
+      max-height: 100%;
+      border: none;
+      border-radius: 0;
+      box-shadow: none;
+    }
+    body.mode-speaker_only #stage-speaker-video {
       object-fit: contain;
     }
     body.mode-speaker_only #svg-stage-host {
       display: none;
     }
-    body.mode-animation_only #stage-speaker-video,
-    body.mode-animation_only #speaker-time-pill {
+    body.mode-animation_only .speaker-container {
       display: none !important;
     }
     body.mode-animation_only #svg-stage-host {
@@ -935,67 +1066,53 @@
 <body>
   <header class="top">
     <div class="brand-wrap">
-      <span class="brand-badge">VIDEO CRAFT</span>
+      <span class="brand-badge">VIDEO CRAFT · REVIEW</span>
       <h1>逐画面审阅 · <span id="project-name">project</span><span id="mode-badge" style="font-size:11px; padding:2px 7px; border-radius:4px; background:var(--accent-soft); color:var(--amber); margin-left:8px; font-weight:700; font-family:var(--font-mono);">复合双通道</span></h1>
+      <span class="header-meta" id="header-meta-text">0 Segments · 0s · 0 Beats · 0 Steps</span>
     </div>
     <div class="top-right">
-      <div class="stage-switch" title="在动效舞台、最终合成与逐字剪辑之间切换">
-        <button type="button" id="view-svg-btn" class="active">⚡ 视听动效舞台</button>
-        <button type="button" id="view-player-btn">🎬 最终合成预览</button>
-        <button type="button" id="view-verbatim-btn">📝 逐字精修剪辑</button>
+      <button type="button" class="hdr-btn active" id="btn-toggle-speaker">✓ 人物口播视频</button>
+      <button type="button" class="hdr-btn active" id="btn-toggle-subtitles">✓ 画面烧录字幕</button>
+      <div class="speed-group" title="播放倍速">
+        <button type="button" class="speed-btn" data-speed="0.75">0.75x</button>
+        <button type="button" class="speed-btn active" data-speed="1.0">1.0x</button>
+        <button type="button" class="speed-btn" data-speed="1.25">1.25x</button>
+        <button type="button" class="speed-btn" data-speed="1.5">1.5x</button>
       </div>
+      <div class="stage-switch" title="在动效舞台、最终合成与逐字剪辑之间切换">
+        <button type="button" id="view-svg-btn" class="active">⚡ 动效舞台</button>
+        <button type="button" id="view-player-btn">🎬 完整成片</button>
+        <button type="button" id="view-verbatim-btn">📝 逐字精修</button>
+      </div>
+      <button type="button" class="hdr-btn primary" id="btn-open-feedback" title="提交审阅决定与整体意见">提交审阅决定</button>
       <a class="reload" id="page-reload" href="" title="重新加载页面">⟳ 刷新</a>
     </div>
   </header>
 
   <div class="layout">
-    <!-- 左栏：章节与分屏导航 -->
-    <aside class="side-left">
-      <div class="panel-head">
-        <span>分屏列表</span>
-        <span id="step-counter-badge">0 屏</span>
-      </div>
-      <div class="steps" id="steps"></div>
-    </aside>
-
-    <!-- 中央：严格 16:9 舞台 + 底部紧凑分步控制条 -->
+    <!-- 中央大舞台 (~75% 宽度，极大化可视面积) -->
     <main class="center-stage">
-      <div class="canvas-toolbar">
-        <div class="tool-group" id="interaction-mode-group">
-          <button type="button" class="tool-btn active" data-stage-tool="director" id="tool-director">🎬 预览</button>
-          <button type="button" class="tool-btn" data-stage-tool="select" id="tool-select">🖱️ 点选改字</button>
-          <button type="button" class="tool-btn" data-stage-tool="box" id="tool-box">📐 框选批注</button>
-        </div>
-        <div class="tool-group">
-          <button type="button" class="tool-btn" id="btn-play-screen" title="连播本屏口播与所有分步动效">▶ 连播本屏</button>
-          <button type="button" class="tool-btn" id="btn-show-all" title="展示本屏最终完整态">❖ 最终完整态</button>
-          <div class="tool-sep"></div>
-          <button type="button" class="tool-btn" id="btn-focus-toggle" title="切换焦点聚光灯">💡 聚光灯: 开</button>
-          <button type="button" class="tool-btn" id="btn-speed-toggle" title="切换 0.5x 慢动作">🐢 1.0x</button>
-        </div>
-      </div>
-
-      <!-- 选中 SVG 元素时的轻量直改工具条 -->
-      <div class="elem-edit-bar" id="elem-edit-bar" hidden>
-        <span style="color:#38bdf8;font-family:var(--font-mono);font-weight:700;" id="sel-elem-tag">[文本]</span>
-        <input type="text" id="sel-elem-input" placeholder="直接修改选中元素文字…" />
-        <button type="button" class="tool-btn" id="btn-font-dec">A-</button>
-        <button type="button" class="tool-btn" id="btn-font-inc">A+</button>
-        <button type="button" class="tool-btn" id="btn-nudge-left">←</button>
-        <button type="button" class="tool-btn" id="btn-nudge-right">→</button>
-        <button type="button" class="tool-btn" id="btn-nudge-up">↑</button>
-        <button type="button" class="tool-btn" id="btn-nudge-down">↓</button>
-        <button type="button" class="tool-btn accent" id="btn-comment-elem">💬 提意见</button>
+      <div class="stage-meta-bar">
+        <span id="stage-meta-beat" class="stage-beat-pill">BEAT-00 // 正在加载剧本分幕…</span>
+        <span id="stage-meta-zone" class="stage-zone-meta">0.0s · Zone: 口播 0..620 | 动效 620..1920</span>
       </div>
 
       <div class="player-box" id="player-box">
         <hyperframes-player id="player" style="display:none;"></hyperframes-player>
+        <div class="hint">在右侧列表选中对应 step 后，可以针对当前画面提出修改意见。</div>
         
         <!-- 视听动效舞台 (默认活动) -->
         <div id="svg-stage-wrap">
-          <video id="stage-speaker-video" playsinline hidden></video>
-          <div id="speaker-time-pill" hidden>🔊 00:00.0</div>
           <div id="svg-stage-host"></div>
+          
+          <!-- 口播视频浮层 (x: 0..620 = 32.29%) -->
+          <div class="speaker-container" id="speakerBox">
+            <div class="speaker-video-frame">
+              <video id="stage-speaker-video" playsinline preload="auto"></video>
+              <div class="speaker-tag" id="speaker-time-pill">人物口播实测 (0.5s 紧气口)</div>
+            </div>
+          </div>
+
           <!-- 悬浮单行药丸字幕 -->
           <div id="canvas-caption-layer" hidden>
             <span id="canvas-caption-text"></span>
@@ -1012,7 +1129,7 @@
             <div style="font-size:12px;color:var(--text-secondary);max-width:360px;line-height:1.5;margin-bottom:14px;">
               可在命令行运行 <code>python3 helpers/export_video.py &lt;project&gt;</code> 一键合成全片视听成品。
             </div>
-            <button type="button" class="tool-btn active" id="btn-back-to-stage">返回动效舞台</button>
+            <button type="button" class="hdr-btn primary" id="btn-back-to-stage">返回动效舞台</button>
           </div>
         </div>
 
@@ -1020,72 +1137,87 @@
         <div id="verbatim-iframe-wrap" hidden>
           <iframe id="verbatim-iframe" src="about:blank"></iframe>
         </div>
-        <div class="hint">暂停在出问题的画面 → 在右侧列表里选中对应的一屏 → 填反馈 → 点「保存反馈」。</div>
       </div>
 
-      <!-- 全局视听播放与时间轴 Scrubber 控制条 -->
-      <div class="global-transport-bar" id="global-transport-bar">
-        <button type="button" class="transport-btn primary" id="btn-global-play" title="播放/暂停全片 (快捷键: 空格键)">▶ 播放</button>
-        <button type="button" class="transport-btn" id="btn-prev-screen" title="上一屏 (快捷键: [)">⏮</button>
-        <button type="button" class="transport-btn" id="btn-next-screen" title="下一屏 (快捷键: ])">⏭</button>
-        <span class="transport-time" id="global-time-display">00:00.0 / 00:00.0</span>
-        <div class="timeline-scrubber-wrap" id="timeline-scrubber-wrap" title="拖拽或点击跳转全片时间点">
-          <div class="timeline-track" id="timeline-track">
-            <div class="timeline-progress" id="timeline-progress"></div>
-            <div class="timeline-thumb" id="timeline-thumb"></div>
-            <div class="timeline-markers" id="timeline-markers"></div>
-          </div>
+      <!-- 单行字幕指示条 -->
+      <div class="stage-status-bar" id="stage-status-bar">
+        <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1;">
+          <span class="status-step-pill" id="status-step-pill">BEAT-00 · STEP 1</span>
+          <span class="status-cue-text" id="status-cue-text">正在加载实测口播字句…</span>
         </div>
-        <button type="button" class="tool-btn active" id="btn-toggle-subtitles" title="切换画面底部字幕显示">💬 字幕: 开</button>
+        <span class="status-time-text" id="status-timecode">00:00.0 / 00:00.0</span>
       </div>
 
-      <!-- 底部紧凑分步动效轨道 -->
-      <section class="choreo-deck" id="choreo-deck">
-        <div class="choreo-head">
-          <div class="choreo-title">
-            <span id="choreo-screen-label">🎛️ 分步动效轨道（点左侧分屏加载）</span>
-          </div>
-          <div class="choreo-controls">
-            <button type="button" class="tool-btn" id="btn-toggle-cues" style="padding:2px 8px;font-size:11px;">🎯 分句卡点微调</button>
-          </div>
+      <!-- 全局时间轴 Scrubber -->
+      <div class="timeline-scrubber-wrap" id="timeline-scrubber-wrap" title="拖拽或点击跳转全片时间点">
+        <div class="timeline-track" id="timeline-track">
+          <div class="timeline-markers" id="timeline-markers"></div>
+          <div class="timeline-progress" id="timeline-progress"></div>
+          <div class="timeline-thumb" id="timeline-thumb"></div>
         </div>
-        <!-- 口播词级触发胶囊条（默认折叠，点击按钮展开） -->
-        <div class="cue-pills-bar" id="cue-pills-bar" hidden>
-          <span class="cue-pills-label">点分句绑到当前 Step：</span>
+      </div>
+
+      <!-- 舞台播放控制条 -->
+      <div class="stage-transport-bar">
+        <div class="transport-controls-left">
+          <button type="button" class="transport-btn primary" id="btn-global-play" title="播放/暂停全片 (快捷键: 空格键)">▶ 播放</button>
+          <button type="button" class="transport-btn" id="btn-prev-screen" title="上一幕 (快捷键: [)">⏮ 上一幕</button>
+          <button type="button" class="transport-btn" id="btn-next-screen" title="下一幕 (快捷键: ])">⏭ 下一幕</button>
+          <button type="button" class="transport-btn" id="btn-replay-step" title="重播当前步动效">↺ 重播当前步动效</button>
         </div>
-        <!-- Step 列表 -->
-        <div class="step-choreo-rows" id="step-choreo-rows"></div>
-      </section>
+        <div class="transport-time">
+          <span id="global-time-display">00:00.0 / 00:00.0</span>
+        </div>
+      </div>
     </main>
 
-    <!-- 右栏：本批已提反馈与微调记录 + 反馈输入表单 -->
+    <!-- 右侧综合侧边栏 (~380px，支持剧本节奏与实时审阅) -->
     <aside class="side-right">
-      <div class="panel-head">
-        <span>审阅意见清单</span>
-        <span id="records-count-badge">0 条</span>
-      </div>
-      <div class="history-box" id="fb-history-list">
-        <div class="history-empty">尚未提交意见。可写「整片意见」，或点选左侧分屏、画布元素后精准提交。</div>
+      <div class="nav-section beats-section">
+        <div class="section-head">
+          <span>全片 <span id="beats-count-num">0</span> 个 BEAT 导航</span>
+          <span class="meta-tag" id="current-beat-badge">00 / 00</span>
+        </div>
+        <div class="beats-scroll-box" id="beat-cards-list"></div>
       </div>
 
-      <div class="feedback">
-        <div class="mode" id="fb-mode">
-          <button type="button" class="mode-tab active" data-mode="overall" id="mode-overall">整片意见</button>
-          <button type="button" class="mode-tab" data-mode="step" id="mode-step">当前屏 · <span id="fb-step">未选中</span></button>
+      <div class="nav-section steps-section">
+        <div class="section-head">
+          <span>当前 BEAT 复合动效构件 (<span id="stepCountBadge">0 步</span>)</span>
+          <span class="meta-tag" id="step-counter-badge">0 屏</span>
         </div>
-        <p class="mode-note" id="mode-note"></p>
-        <select id="fb-type">
-          <option value="visual">visual · 画面版式与视觉</option>
-          <option value="animation">animation · 动效原语与镜头</option>
-          <option value="timing">timing · 节奏与词级卡点</option>
-          <option value="copy">copy · 上屏文字与花字</option>
-          <option value="asset">asset · 素材与证据图</option>
-        </select>
-        <textarea id="fb-text" placeholder="整片看完总想说的一点…（不针对某一屏）"></textarea>
-        <div id="stale-note" hidden></div>
-        <div class="save-bar">
-          <button id="fb-save" disabled>保存反馈</button>
-          <div id="save-state">正在连接审阅宿主…</div>
+        <!-- 包含全部 step 构件（严格保留 #steps 与 .step-caption 测试契约） -->
+        <div class="steps-scroll-box steps" id="steps"></div>
+      </div>
+
+      <div class="feedback-section">
+        <div class="section-head" style="padding: 6px 11px; background: #141720; border-bottom: 1px solid #1e222b; display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 11px; font-weight: 700; color: #94a3b8;">💬 审阅反馈</span>
+          <span class="meta-tag" id="records-count-badge" style="font-family: var(--font-mono); font-size: 11px; color: #64748b;">0 条</span>
+        </div>
+        <div class="history-box" id="fb-history-list" style="max-height: 70px; overflow-y: auto;">
+          <div class="history-empty">尚未提交意见。可写「整片意见」，或点选分屏精准提交。</div>
+        </div>
+
+        <div class="feedback">
+          <div class="mode" id="fb-mode">
+            <button type="button" class="mode-tab active" data-mode="overall" id="mode-overall">整片意见</button>
+            <button type="button" class="mode-tab" data-mode="step" id="mode-step">当前屏 · <span id="fb-step">未选中</span></button>
+          </div>
+          <p class="mode-note" id="mode-note"></p>
+          <select id="fb-type">
+            <option value="visual">visual · 画面版式与视觉</option>
+            <option value="animation">animation · 动效原语与镜头</option>
+            <option value="timing">timing · 节奏与词级卡点</option>
+            <option value="copy">copy · 上屏文字与花字</option>
+            <option value="asset">asset · 素材与证据图</option>
+          </select>
+          <textarea id="fb-text" placeholder="整片看完总想说的一点…（不针对某一屏）"></textarea>
+          <div id="stale-note" hidden></div>
+          <div class="save-bar">
+            <button id="fb-save" disabled>保存反馈</button>
+            <div id="save-state">正在连接审阅宿主…</div>
+          </div>
         </div>
       </div>
     </aside>
@@ -2180,13 +2312,71 @@
     const backBtn = document.getElementById("btn-back-to-stage");
     if (backBtn) backBtn.addEventListener("click", () => setStageViewMode("svg"));
 
-    const toggleCuesBtn = document.getElementById("btn-toggle-cues");
-    if (toggleCuesBtn) {
-      toggleCuesBtn.addEventListener("click", () => {
-        const bar = document.getElementById("cue-pills-bar");
-        if (!bar) return;
-        bar.hidden = !bar.hidden;
-        toggleCuesBtn.classList.toggle("active", !bar.hidden);
+    /* ---- 侧边栏 Tab 切换与提交审阅决定 ---- */
+    function setSidebarTab(tab) {
+      const navView = document.getElementById("sidebar-nav-view");
+      const fbView = document.getElementById("sidebar-feedback-view");
+      const navBtn = document.getElementById("tab-nav-btn");
+      const fbBtn = document.getElementById("tab-feedback-btn");
+      if (tab === "feedback") {
+        if (navView) navView.hidden = true;
+        if (fbView) fbView.hidden = false;
+        if (navBtn) navBtn.classList.remove("active");
+        if (fbBtn) fbBtn.classList.add("active");
+      } else {
+        if (navView) navView.hidden = false;
+        if (fbView) fbView.hidden = true;
+        if (navBtn) navBtn.classList.add("active");
+        if (fbBtn) fbBtn.classList.remove("active");
+      }
+    }
+    const tabNavBtn = document.getElementById("tab-nav-btn");
+    const tabFbBtn = document.getElementById("tab-feedback-btn");
+    const openFbBtn = document.getElementById("btn-open-feedback");
+    if (tabNavBtn) tabNavBtn.addEventListener("click", () => setSidebarTab("nav"));
+    if (tabFbBtn) tabFbBtn.addEventListener("click", () => setSidebarTab("feedback"));
+    if (openFbBtn) openFbBtn.addEventListener("click", () => {
+      setSidebarTab("feedback");
+      const textEl = document.getElementById("fb-text");
+      if (textEl) textEl.focus();
+    });
+
+    /* ---- 顶部控制按钮：人物视频浮层开关 ---- */
+    let showSpeakerVideo = true;
+    const spkToggleBtn = document.getElementById("btn-toggle-speaker");
+    if (spkToggleBtn) {
+      spkToggleBtn.addEventListener("click", () => {
+        showSpeakerVideo = !showSpeakerVideo;
+        const box = document.getElementById("speakerBox");
+        if (box) box.classList.toggle("hidden", !showSpeakerVideo);
+        spkToggleBtn.classList.toggle("active", showSpeakerVideo);
+        spkToggleBtn.textContent = showSpeakerVideo ? "✓ 人物口播视频" : "仅画幅剪影";
+      });
+    }
+
+    /* ---- 顶部倍速切换 ---- */
+    document.querySelectorAll(".speed-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const spd = parseFloat(btn.dataset.speed || "1.0");
+        const spkVid = document.getElementById("stage-speaker-video");
+        const compVid = document.getElementById("composite-video-player");
+        if (spkVid) spkVid.playbackRate = spd;
+        if (compVid) compVid.playbackRate = spd;
+        if (window.VideoCraftAnimEngine) {
+          window.VideoCraftAnimEngine.setSpeedMultiplier(1.0 / spd);
+        }
+        document.querySelectorAll(".speed-btn").forEach(b => b.classList.toggle("active", b === btn));
+      });
+    });
+
+    /* ---- 重播当前步动效 ---- */
+    const replayStepBtn = document.getElementById("btn-replay-step");
+    if (replayStepBtn) {
+      replayStepBtn.addEventListener("click", () => {
+        const svgEl = document.querySelector("#svg-stage-host > svg");
+        if (svgEl && state.currentScreenObj) {
+          playWithSpeakerOrTimers(state.currentScreenObj, svgEl, state.activeSvgStep || 1);
+        }
       });
     }
 
@@ -2195,11 +2385,9 @@
     function updateStageSubtitle(st, curTimeSec) {
       const capLayer = document.getElementById("canvas-caption-layer");
       const capText = document.getElementById("canvas-caption-text");
-      if (!capLayer || !capText) return;
-      if (!showSubtitles) {
-        capLayer.hidden = true;
-        return;
-      }
+      const statusPill = document.getElementById("status-step-pill");
+      const statusCue = document.getElementById("status-cue-text");
+      const statusTime = document.getElementById("status-timecode");
       let matchedText = "";
       const captions = (window.__REVIEW_DATA__ && window.__REVIEW_DATA__.captions) || [];
       if (captions.length > 0 && curTimeSec !== undefined && curTimeSec !== null) {
@@ -2209,11 +2397,20 @@
       if (!matchedText && st) {
         matchedText = st.caption || "";
       }
-      if (matchedText) {
-        capText.textContent = matchedText;
-        capLayer.hidden = false;
+      if (statusCue) statusCue.textContent = matchedText || "暂无口播字幕";
+      const bNum = state.activeBeatIndex !== undefined ? String(state.activeBeatIndex).padStart(2, "0") : "00";
+      const sNum = (st && st.step) ? st.step : (state.activeSvgStep || 1);
+      if (statusPill) statusPill.textContent = `BEAT-${bNum} · STEP ${sNum}`;
+      if (statusTime) {
+        const curMs = curTimeSec ? (curTimeSec * 1000) : (st ? st.startMs : 0);
+        const durMs = globalTotalDurationMs || (st ? st.durationMs : 1000);
+        statusTime.textContent = `${fmt(curMs)} / ${fmt(durMs)}`;
+      }
+      if (!showSubtitles || !matchedText) {
+        if (capLayer) capLayer.hidden = true;
       } else {
-        capLayer.hidden = true;
+        if (capText) capText.textContent = matchedText;
+        if (capLayer) capLayer.hidden = false;
       }
     }
 
@@ -2221,7 +2418,7 @@
     if (subToggleBtn) {
       subToggleBtn.addEventListener("click", () => {
         showSubtitles = !showSubtitles;
-        subToggleBtn.textContent = showSubtitles ? "💬 字幕: 开" : "💬 字幕: 关";
+        subToggleBtn.textContent = showSubtitles ? "✓ 画面烧录字幕" : "关 画面烧录字幕";
         subToggleBtn.classList.toggle("active", showSubtitles);
         const curT = (document.getElementById("stage-speaker-video")?.currentTime) || (state.currentScreenObj ? (state.currentScreenObj.startMs || 0) / 1000 : 0);
         updateStageSubtitle(state.currentScreenObj, curT);
@@ -2231,6 +2428,77 @@
     let allScreensList = [];
     let isGlobalPlaying = false;
     let globalTotalDurationMs = 0;
+
+    function renderBeatCards(chapters) {
+      const box = document.getElementById("beat-cards-list");
+      if (!box) return;
+      box.replaceChildren();
+      const numEl = document.getElementById("beats-count-num");
+      if (numEl) numEl.textContent = String(chapters.length);
+      chapters.forEach((ch, idx) => {
+        const card = document.createElement("div");
+        card.className = "beat-card" + (idx === 0 ? " active" : "");
+        card.dataset.chapterId = ch.id;
+        card.id = `beatCard_${idx}`;
+        const firstStep = ch.steps ? ch.steps[0] : null;
+        const lastStep = ch.steps ? ch.steps[ch.steps.length - 1] : null;
+        const sMs = firstStep ? (firstStep.startMs || 0) : 0;
+        const eMs = lastStep ? (lastStep.endMs || (sMs + (lastStep.durationMs || 0))) : 0;
+        card.innerHTML = `
+          <div class="beat-card-left">
+            <span class="beat-idx-pill">${String(idx).padStart(2, "0")}</span>
+            <span class="beat-card-title">${ch.title || ch.id}</span>
+          </div>
+          <span class="beat-card-time">${fmt(sMs)} - ${fmt(eMs)}</span>
+        `;
+        card.addEventListener("click", () => {
+          selectBeat(idx, true);
+        });
+        box.appendChild(card);
+      });
+    }
+
+    function filterStepsByChapter(chapterId) {
+      let count = 0;
+      document.querySelectorAll("#steps .step").forEach(el => {
+        const match = el.dataset.chapterId === chapterId;
+        if (el.classList.contains("chapter-header")) {
+          el.style.display = match ? "flex" : "none";
+        } else {
+          el.style.display = match ? "flex" : "none";
+          if (match) count++;
+        }
+      });
+      const badge = document.getElementById("stepCountBadge");
+      if (badge) badge.textContent = `${count} 步`;
+    }
+
+    async function selectBeat(idx, seekVideo = true) {
+      const chapters = (state.timelineData && state.timelineData.chapters) || [];
+      if (idx < 0 || idx >= chapters.length) return;
+      const ch = chapters[idx];
+      state.activeBeatIndex = idx;
+      document.querySelectorAll(".beat-card").forEach((c, i) => {
+        c.classList.toggle("active", i === idx);
+      });
+      const curBadge = document.getElementById("current-beat-badge");
+      if (curBadge) curBadge.textContent = `${String(idx).padStart(2, "0")} / ${String(chapters.length).padStart(2, "0")}`;
+      const metaBeat = document.getElementById("stage-meta-beat");
+      if (metaBeat) metaBeat.textContent = `BEAT-${String(idx).padStart(2, "0")} // ${ch.title || ch.id}`;
+      const firstStep = ch.steps ? ch.steps[0] : null;
+      const lastStep = ch.steps ? ch.steps[ch.steps.length - 1] : null;
+      const durSec = ((lastStep ? (lastStep.endMs || 0) : 0) - (firstStep ? (firstStep.startMs || 0) : 0)) / 1000;
+      const metaZone = document.getElementById("stage-meta-zone");
+      if (metaZone) {
+        metaZone.textContent = `${durSec > 0 ? durSec.toFixed(1) : ((ch.durationMs || 0)/1000).toFixed(1)}s · Zone: 口播 0..620 | 动效 620..1920`;
+      }
+
+      filterStepsByChapter(ch.id);
+
+      if (firstStep) {
+        await switchToScreen(firstStep, seekVideo);
+      }
+    }
 
     function updateScrubberDisplay(timeMs) {
       const tot = globalTotalDurationMs || (state.currentScreenObj ? state.currentScreenObj.durationMs : 1000) || 1;
@@ -2272,6 +2540,20 @@
       state.durationMs = st.durationMs;
       state.caption = st.caption || "";
       document.getElementById("fb-step").textContent = st.id;
+
+      if (st.chapterId && state.timelineData) {
+        const bIdx = state.timelineData.chapters.findIndex(c => c.id === st.chapterId);
+        if (bIdx >= 0 && bIdx !== state.activeBeatIndex) {
+          state.activeBeatIndex = bIdx;
+          document.querySelectorAll(".beat-card").forEach((c, i) => c.classList.toggle("active", i === bIdx));
+          const curBadge = document.getElementById("current-beat-badge");
+          if (curBadge) curBadge.textContent = `${String(bIdx).padStart(2, "0")} / ${String(state.timelineData.chapters.length).padStart(2, "0")}`;
+          const ch = state.timelineData.chapters[bIdx];
+          const metaBeat = document.getElementById("stage-meta-beat");
+          if (metaBeat) metaBeat.textContent = `BEAT-${String(bIdx).padStart(2, "0")} // ${ch.title || ch.id}`;
+          filterStepsByChapter(st.chapterId);
+        }
+      }
 
       await loadScreenSvg(st, seekVideo);
     }
@@ -2586,11 +2868,14 @@
 
     /* ---- 渲染底部紧凑动效与词级卡点轨道 ---- */
     function renderChoreoDeck(st, svgEl, items) {
-      document.getElementById("choreo-screen-label").textContent =
-        `🎛️ 分步动效轨道 · ${st.id}（${items.length} 步 / ${(st.durationMs / 1000).toFixed(1)}s）`;
+      const lbl = document.getElementById("choreo-screen-label");
+      if (lbl) {
+        lbl.textContent = `🎛️ 分步动效轨道 · ${st.id}（${items.length} 步 / ${(st.durationMs / 1000).toFixed(1)}s）`;
+      }
 
       // 1. 口播分句/词胶囊条（优先使用实测句子时间戳 st.cues，否则按标点切分估算）
       const pillsBar = document.getElementById("cue-pills-bar");
+      if (!pillsBar) return;
       pillsBar.innerHTML = `<span class="cue-pills-label">口播分句卡点（点胶囊绑到 Step ${state.activeSvgStep} 并试听）：</span>`;
       let cueEntries = [];
       if (Array.isArray(st.cues) && st.cues.length > 0) {
@@ -2729,42 +3014,55 @@
     }
 
     /* ---- 舞台工具栏按钮事件（连播、完整态、焦点聚光灯、慢放、模式切换） ---- */
-    document.getElementById("btn-play-screen").addEventListener("click", () => {
-      const svgEl = document.querySelector("#svg-stage-host > svg");
-      if (!svgEl || !state.currentScreenObj) return;
-      playWithSpeakerOrTimers(state.currentScreenObj, svgEl, null);
-    });
+    /* ---- 舞台工具栏按钮事件（连播、完整态、焦点聚光灯、慢放、模式切换） ---- */
+    const btnPlayScreen = document.getElementById("btn-play-screen");
+    if (btnPlayScreen) {
+      btnPlayScreen.addEventListener("click", () => {
+        const svgEl = document.querySelector("#svg-stage-host > svg");
+        if (!svgEl || !state.currentScreenObj) return;
+        playWithSpeakerOrTimers(state.currentScreenObj, svgEl, null);
+      });
+    }
 
-    document.getElementById("btn-show-all").addEventListener("click", () => {
-      const svgEl = document.querySelector("#svg-stage-host > svg");
-      if (!svgEl) return;
-      clearPlaySequence();
-      window.VideoCraftAnimEngine.setStep(svgEl, "all", false, { focusMode: "accumulate" });
-    });
+    const btnShowAll = document.getElementById("btn-show-all");
+    if (btnShowAll) {
+      btnShowAll.addEventListener("click", () => {
+        const svgEl = document.querySelector("#svg-stage-host > svg");
+        if (!svgEl) return;
+        clearPlaySequence();
+        window.VideoCraftAnimEngine.setStep(svgEl, "all", false, { focusMode: "accumulate" });
+      });
+    }
 
-    document.getElementById("btn-focus-toggle").addEventListener("click", (e) => {
-      state.focusMode = state.focusMode === "spotlight" ? "accumulate" : "spotlight";
-      e.currentTarget.textContent = state.focusMode === "spotlight" ? "💡 焦点聚光灯: 开" : "💡 焦点聚光灯: 关";
-      if (state.step) {
-        if (!state.choreoOverrides[state.step]) state.choreoOverrides[state.step] = { steps: {} };
-        state.choreoOverrides[state.step].focusMode = state.focusMode;
-      }
-      const svgEl = document.querySelector("#svg-stage-host > svg");
-      if (svgEl) {
-        window.VideoCraftAnimEngine.setStep(svgEl, state.activeSvgStep || 1, true, { focusMode: state.focusMode });
-      }
-    });
+    const btnFocusToggle = document.getElementById("btn-focus-toggle");
+    if (btnFocusToggle) {
+      btnFocusToggle.addEventListener("click", (e) => {
+        state.focusMode = state.focusMode === "spotlight" ? "accumulate" : "spotlight";
+        e.currentTarget.textContent = state.focusMode === "spotlight" ? "💡 焦点聚光灯: 开" : "💡 焦点聚光灯: 关";
+        if (state.step) {
+          if (!state.choreoOverrides[state.step]) state.choreoOverrides[state.step] = { steps: {} };
+          state.choreoOverrides[state.step].focusMode = state.focusMode;
+        }
+        const svgEl = document.querySelector("#svg-stage-host > svg");
+        if (svgEl) {
+          window.VideoCraftAnimEngine.setStep(svgEl, state.activeSvgStep || 1, true, { focusMode: state.focusMode });
+        }
+      });
+    }
 
-    document.getElementById("btn-speed-toggle").addEventListener("click", (e) => {
-      const cur = window.VideoCraftAnimEngine.getSpeedMultiplier();
-      const next = cur === 1 ? 2 : 1;
-      window.VideoCraftAnimEngine.setSpeedMultiplier(next);
-      e.currentTarget.textContent = next === 2 ? "🐢 0.5x 慢放" : "🐢 1.0x";
-      const svgEl = document.querySelector("#svg-stage-host > svg");
-      if (svgEl) {
-        window.VideoCraftAnimEngine.setStep(svgEl, state.activeSvgStep || 1, true, { focusMode: state.focusMode });
-      }
-    });
+    const btnSpeedToggle = document.getElementById("btn-speed-toggle");
+    if (btnSpeedToggle) {
+      btnSpeedToggle.addEventListener("click", (e) => {
+        const cur = window.VideoCraftAnimEngine.getSpeedMultiplier();
+        const next = cur === 1 ? 2 : 1;
+        window.VideoCraftAnimEngine.setSpeedMultiplier(next);
+        e.currentTarget.textContent = next === 2 ? "🐢 0.5x 慢放" : "🐢 1.0x";
+        const svgEl = document.querySelector("#svg-stage-host > svg");
+        if (svgEl) {
+          window.VideoCraftAnimEngine.setStep(svgEl, state.activeSvgStep || 1, true, { focusMode: state.focusMode });
+        }
+      });
+    }
 
     /* ---- 舞台交互模式切换（动效导演 / 点选元素微调 / 画布框选批注） ---- */
     document.querySelectorAll("[data-stage-tool]").forEach(btn => {
@@ -2772,9 +3070,10 @@
         state.stageTool = btn.getAttribute("data-stage-tool");
         document.querySelectorAll("[data-stage-tool]").forEach(b => b.classList.toggle("active", b === btn));
         const anno = document.getElementById("annotation-overlay");
-        anno.classList.toggle("drawing", state.stageTool === "box");
+        if (anno) anno.classList.toggle("drawing", state.stageTool === "box");
         if (state.stageTool !== "select") {
-          document.getElementById("elem-edit-bar").hidden = true;
+          const editBar = document.getElementById("elem-edit-bar");
+          if (editBar) editBar.hidden = true;
           document.querySelectorAll(".svg-selected-outline").forEach(el => el.classList.remove("svg-selected-outline"));
         }
       });
@@ -2792,24 +3091,29 @@
         state.selectedElem = target;
 
         const bar = document.getElementById("elem-edit-bar");
-        bar.hidden = false;
+        if (bar) bar.hidden = false;
         const isText = target.tagName.toLowerCase() === "text";
         const textNode = isText ? target : target.querySelector("text");
-        document.getElementById("sel-elem-tag").textContent = isText ? "[文本节点]" : `[构件 ${target.getAttribute("class") || target.tagName}]`;
-        document.getElementById("sel-elem-input").value = textNode ? (textNode.textContent || "") : "";
+        const tagEl = document.getElementById("sel-elem-tag");
+        if (tagEl) tagEl.textContent = isText ? "[文本节点]" : `[构件 ${target.getAttribute("class") || target.tagName}]`;
+        const inEl = document.getElementById("sel-elem-input");
+        if (inEl) inEl.value = textNode ? (textNode.textContent || "") : "";
       });
     }
 
-    document.getElementById("sel-elem-input").addEventListener("input", (e) => {
-      if (!state.selectedElem) return;
-      const textNode = state.selectedElem.tagName.toLowerCase() === "text"
-        ? state.selectedElem
-        : state.selectedElem.querySelector("text");
-      if (textNode) {
-        textNode.textContent = e.target.value;
-        recordSvgEdit("text", e.target.value);
-      }
-    });
+    const selElemInput = document.getElementById("sel-elem-input");
+    if (selElemInput) {
+      selElemInput.addEventListener("input", (e) => {
+        if (!state.selectedElem) return;
+        const textNode = state.selectedElem.tagName.toLowerCase() === "text"
+          ? state.selectedElem
+          : state.selectedElem.querySelector("text");
+        if (textNode) {
+          textNode.textContent = e.target.value;
+          recordSvgEdit("text", e.target.value);
+        }
+      });
+    }
 
     function adjustSelectedFontSize(delta) {
       if (!state.selectedElem) return;
@@ -2822,8 +3126,10 @@
       textNode.setAttribute("font-size", String(next));
       recordSvgEdit("fontSize", next);
     }
-    document.getElementById("btn-font-dec").addEventListener("click", () => adjustSelectedFontSize(-2));
-    document.getElementById("btn-font-inc").addEventListener("click", () => adjustSelectedFontSize(2));
+    const btnFontDec = document.getElementById("btn-font-dec");
+    if (btnFontDec) btnFontDec.addEventListener("click", () => adjustSelectedFontSize(-2));
+    const btnFontInc = document.getElementById("btn-font-inc");
+    if (btnFontInc) btnFontInc.addEventListener("click", () => adjustSelectedFontSize(2));
 
     function nudgeSelectedElem(dx, dy) {
       if (!state.selectedElem) return;
@@ -2834,20 +3140,27 @@
       state.selectedElem.style.transform = `translate(${prevX}px, ${prevY}px)`;
       recordSvgEdit("nudge", { dx: prevX, dy: prevY });
     }
-    document.getElementById("btn-nudge-left").addEventListener("click", () => nudgeSelectedElem(-8, 0));
-    document.getElementById("btn-nudge-right").addEventListener("click", () => nudgeSelectedElem(8, 0));
-    document.getElementById("btn-nudge-up").addEventListener("click", () => nudgeSelectedElem(0, -8));
-    document.getElementById("btn-nudge-down").addEventListener("click", () => nudgeSelectedElem(0, 8));
+    const btnNudgeL = document.getElementById("btn-nudge-left");
+    if (btnNudgeL) btnNudgeL.addEventListener("click", () => nudgeSelectedElem(-8, 0));
+    const btnNudgeR = document.getElementById("btn-nudge-right");
+    if (btnNudgeR) btnNudgeR.addEventListener("click", () => nudgeSelectedElem(8, 0));
+    const btnNudgeU = document.getElementById("btn-nudge-up");
+    if (btnNudgeU) btnNudgeU.addEventListener("click", () => nudgeSelectedElem(0, -8));
+    const btnNudgeD = document.getElementById("btn-nudge-down");
+    if (btnNudgeD) btnNudgeD.addEventListener("click", () => nudgeSelectedElem(0, 8));
 
-    document.getElementById("btn-comment-elem").addEventListener("click", () => {
-      if (!state.selectedElem) return;
-      const snippet = (state.selectedElem.textContent || "").trim().slice(0, 18);
-      if (state.step) setMode("step");
-      const fbText = document.getElementById("fb-text");
-      const prefix = `[定位元素「${snippet || state.selectedElem.tagName}」] `;
-      if (!fbText.value.includes(prefix)) fbText.value = prefix + fbText.value;
-      fbText.focus();
-    });
+    const btnCommentElem = document.getElementById("btn-comment-elem");
+    if (btnCommentElem) {
+      btnCommentElem.addEventListener("click", () => {
+        if (!state.selectedElem) return;
+        const snippet = (state.selectedElem.textContent || "").trim().slice(0, 18);
+        if (state.step) setMode("step");
+        const fbText = document.getElementById("fb-text");
+        const prefix = `[定位元素「${snippet || state.selectedElem.tagName}」] `;
+        if (!fbText.value.includes(prefix)) fbText.value = prefix + fbText.value;
+        fbText.focus();
+      });
+    }
 
     function recordSvgEdit(kind, val) {
       const sid = state.step || "global";
@@ -2864,38 +3177,41 @@
     /* ---- 画布常驻框选批注 (① ②) ---- */
     const annoOverlay = document.getElementById("annotation-overlay");
     let dragBoxStart = null;
-    annoOverlay.addEventListener("mousedown", (e) => {
-      if (state.stageTool !== "box") return;
-      const rect = annoOverlay.getBoundingClientRect();
-      dragBoxStart = {
-        x: ((e.clientX - rect.left) / rect.width) * 100,
-        y: ((e.clientY - rect.top) / rect.height) * 100
-      };
-    });
-    annoOverlay.addEventListener("mouseup", (e) => {
-      if (!dragBoxStart || state.stageTool !== "box") return;
-      const rect = annoOverlay.getBoundingClientRect();
-      const endX = ((e.clientX - rect.left) / rect.width) * 100;
-      const endY = ((e.clientY - rect.top) / rect.height) * 100;
-      const xPct = Math.round(Math.min(dragBoxStart.x, endX));
-      const yPct = Math.round(Math.min(dragBoxStart.y, endY));
-      const wPct = Math.max(6, Math.round(Math.abs(endX - dragBoxStart.x)));
-      const hPct = Math.max(6, Math.round(Math.abs(endY - dragBoxStart.y)));
-      dragBoxStart = null;
+    if (annoOverlay) {
+      annoOverlay.addEventListener("mousedown", (e) => {
+        if (state.stageTool !== "box") return;
+        const rect = annoOverlay.getBoundingClientRect();
+        dragBoxStart = {
+          x: ((e.clientX - rect.left) / rect.width) * 100,
+          y: ((e.clientY - rect.top) / rect.height) * 100
+        };
+      });
+      annoOverlay.addEventListener("mouseup", (e) => {
+        if (!dragBoxStart || state.stageTool !== "box") return;
+        const rect = annoOverlay.getBoundingClientRect();
+        const endX = ((e.clientX - rect.left) / rect.width) * 100;
+        const endY = ((e.clientY - rect.top) / rect.height) * 100;
+        const xPct = Math.round(Math.min(dragBoxStart.x, endX));
+        const yPct = Math.round(Math.min(dragBoxStart.y, endY));
+        const wPct = Math.max(6, Math.round(Math.abs(endX - dragBoxStart.x)));
+        const hPct = Math.max(6, Math.round(Math.abs(endY - dragBoxStart.y)));
+        dragBoxStart = null;
 
-      const sid = state.step || "overall";
-      if (!state.annotations[sid]) state.annotations[sid] = [];
-      const idx = state.annotations[sid].length + 1;
-      state.annotations[sid].push({ idx, xPct, yPct, wPct, hPct });
-      renderAnnotationsOverlay();
+        const sid = state.step || "overall";
+        if (!state.annotations[sid]) state.annotations[sid] = [];
+        const idx = state.annotations[sid].length + 1;
+        state.annotations[sid].push({ idx, xPct, yPct, wPct, hPct });
+        renderAnnotationsOverlay();
 
-      if (state.step) setMode("step");
-      const fbText = document.getElementById("fb-text");
-      fbText.value = `${fbText.value ? fbText.value + " " : ""}[框选区域 #${idx} (${xPct}%,${yPct}% ${wPct}×${hPct}%)] `;
-      fbText.focus();
-    });
+        if (state.step) setMode("step");
+        const fbText = document.getElementById("fb-text");
+        fbText.value = `${fbText.value ? fbText.value + " " : ""}[框选区域 #${idx} (${xPct}%,${yPct}% ${wPct}×${hPct}%)] `;
+        fbText.focus();
+      });
+    }
 
     function renderAnnotationsOverlay() {
+      if (!annoOverlay) return;
       annoOverlay.replaceChildren();
       const sid = state.step || "overall";
       const list = state.annotations[sid] || [];
@@ -2985,6 +3301,7 @@
         } catch {}
       }
 
+      state.timelineData = data;
       globalTotalDurationMs = data.totalDurationMs || 0;
       allScreensList = [];
       const box = document.getElementById("steps");
@@ -2995,23 +3312,28 @@
       for (const ch of data.chapters) {
         const h = document.createElement("div");
         h.className = "step chapter-header";
+        h.dataset.chapterId = ch.id;
         h.innerHTML = `<div class="step-id">chapter ${ch.id}</div><div class="step-meta">${ch.title}</div>`;
         box.appendChild(h);
         for (const st of ch.steps) {
           const el = document.createElement("div");
-          el.className = "step";
+          el.className = "step step-nav-card";
+          el.dataset.chapterId = ch.id;
+          el.dataset.stepId = st.id;
           st.chapterId = ch.id;
           st.domEl = el;
           allScreensList.push(st);
           try {
             const cue = cueRangeOf(st);
             el.innerHTML = `
-              <div class="step-id">
-                <span>${st.id} · ${fmt(st.durationMs)}${cue ? ` · cue ${cue[0] + 1}-${cue[1] + 1}` : ""}</span>
-                ${st.sourcePageKey ? `<span class="step-badge">SVG</span>` : ""}
+              <div class="step-nav-card-head">
+                <span class="step-nav-tag">STEP ${String(st.step || 1).padStart(2, "0")} · ${st.id}</span>
+                <span class="step-nav-time">${fmt(st.durationMs)}${cue ? ` · cue ${cue[0] + 1}-${cue[1] + 1}` : ""}</span>
               </div>
               <div class="step-caption">${st.caption || ""}</div>
-              <div class="step-meta">${st.screenIntent || ""}</div>`;
+              <div class="step-nav-sub">${st.screenIntent || ""}</div>
+              <div class="step-id" style="display:none;">${st.id} · ${fmt(st.durationMs)}</div>
+              <div class="step-meta" style="display:none;">${st.screenIntent || ""}</div>`;
           } catch (error) {
             failed += 1;
             el.innerHTML = `<div class="step-id">${st.id || "?"} · 画不出来：${error.message}</div>
@@ -3027,6 +3349,17 @@
             state.caption = st.caption || "";
             document.getElementById("fb-step").textContent = st.id;
             setMode("step");
+
+            const bIdx = data.chapters.findIndex(c => c.id === ch.id);
+            if (bIdx >= 0 && bIdx !== state.activeBeatIndex) {
+              state.activeBeatIndex = bIdx;
+              document.querySelectorAll(".beat-card").forEach((c, i) => c.classList.toggle("active", i === bIdx));
+              const curBadge = document.getElementById("current-beat-badge");
+              if (curBadge) curBadge.textContent = `${String(bIdx).padStart(2, "0")} / ${String(data.chapters.length).padStart(2, "0")}`;
+              const metaBeat = document.getElementById("stage-meta-beat");
+              if (metaBeat) metaBeat.textContent = `BEAT-${String(bIdx).padStart(2, "0")} // ${ch.title || ch.id}`;
+            }
+
             await loadScreenSvg(st, true);
             if (spkVid && !spkVid.hidden && spkVid.src) {
               const svgEl = document.querySelector("#svg-stage-host > svg");
@@ -3047,6 +3380,28 @@
       if (failed) {
         noteStaleFree(`${failed} 屏没能画出来（其余 ${drawn - failed} 屏可用）：时间轴的字段与这一版页面期望的不一致。`
           + `这不是这一页能修的 —— 把那句话发回对话让模型处理；在那之前，别对着半张清单提意见。`);
+      }
+
+      renderBeatCards(data.chapters);
+      if (data.chapters && data.chapters.length > 0) {
+        filterStepsByChapter(data.chapters[0].id);
+        state.activeBeatIndex = 0;
+        const curBadge = document.getElementById("current-beat-badge");
+        if (curBadge) curBadge.textContent = `00 / ${String(data.chapters.length).padStart(2, "0")}`;
+        const metaBeat = document.getElementById("stage-meta-beat");
+        if (metaBeat) metaBeat.textContent = `BEAT-00 // ${data.chapters[0].title || data.chapters[0].id}`;
+        const firstCh = data.chapters[0];
+        const fStep = firstCh.steps ? firstCh.steps[0] : null;
+        const lStep = firstCh.steps ? firstCh.steps[firstCh.steps.length - 1] : null;
+        const durSec = ((lStep ? (lStep.endMs || 0) : 0) - (fStep ? (fStep.startMs || 0) : 0)) / 1000;
+        const metaZone = document.getElementById("stage-meta-zone");
+        if (metaZone) {
+          metaZone.textContent = `${durSec > 0 ? durSec.toFixed(1) : ((firstCh.durationMs || 0)/1000).toFixed(1)}s · Zone: 口播 0..620 | 动效 620..1920`;
+        }
+      }
+      const metaEl = document.getElementById("header-meta-text");
+      if (metaEl) {
+        metaEl.textContent = `${data.totalChapters} Beats · ${data.totalSteps} 步 · ${fmt(data.totalDurationMs)}`;
       }
 
       renderScrubberMarkers();

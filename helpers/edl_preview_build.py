@@ -69,9 +69,9 @@ for r in edl["ranges"]:
     offset = out1
 
 if USE_RENDERED:
-    src_map_web = {PREVIEW_KEY: "/" + PREVIEW_VIDEO.relative_to(ROOT).as_posix()}
+    src_map_web = {PREVIEW_KEY: PREVIEW_VIDEO.relative_to(ROOT).as_posix()}
 else:
-    src_map_web = {k: "/" + v.relative_to(ROOT).as_posix() for k, v in SRC_MAP.items()}
+    src_map_web = {k: v.relative_to(ROOT).as_posix() for k, v in SRC_MAP.items()}
 
 
 def parse_srt(path: Path) -> list[dict]:
@@ -851,13 +851,12 @@ const beatColor = b => {
 const vids = {};
 for (const k of Object.keys(SRC)) {
   const v = document.createElement("video");
-  v.src = SRC[k]; v.preload = "auto"; v.muted = true; v.playsInline = true;
+  v.preload = "metadata"; v.muted = true; v.playsInline = true;
   document.getElementById("vpool").appendChild(v);
   vids[k] = v;
 }
 const main = document.getElementById("main");
-let curSrc = SRC[SEGS[0].src];
-main.src = curSrc;
+let curSrc = null;
 
 /* ---- state ---- */
 let cur = -1;
@@ -1572,7 +1571,7 @@ document.getElementById("w-save").onclick = async () => {
     const [src, s, e] = k.split("|");
     return { src, start: +s, end: +e, text };
   });
-  const pageDir = location.pathname.split("/").slice(0, -1).join("/") || "/";
+  const pageDir = __EDIT_REL__;
   const payload = { words, pauses, restore: restores, fixes: fixArr, dir: pageDir };
   const btn = document.getElementById("w-save");
   if (!review) { btn.textContent = "✗ 尚未连接审阅宿主"; return; }
@@ -1645,6 +1644,13 @@ document.getElementById("ov-send").onclick = async () => {
     return;
   }
   setNet("已连接审阅宿主（" + review.transport + "）");
+  try {
+    for (const key of Object.keys(SRC)) {
+      SRC[key] = await review.asset(SRC[key]);
+      vids[key].src = SRC[key];
+    }
+    if (SEGS.length) { curSrc = SRC[SEGS[0].src]; main.src = curSrc; }
+  } catch (error) { setNet("媒体加载失败：" + error.message); }
   review.on("changed", noteStale);
 })();
 </script>
@@ -1659,10 +1665,40 @@ data = {
     "__DELETED__": json.dumps(deleted, ensure_ascii=False),
     "__TOTAL__": repr(total),
     "__NSEG__": str(len(segments)),
+    "__EDIT_REL__": json.dumps('/' + EDIT.relative_to(ROOT).as_posix()),
 }
 html = HTML
 for k, v in data.items():
-    html = html.replace(k, v)
+    html = html.replace(k, v.replace('<', '\\u003c'))
+
+from lib.planners_modules import resolve_module
+sys.path.insert(0, str(resolve_module('planners-review-core') / 'scripts'))
+from inline_review_tokens import inline, check
+tokens = (resolve_module('planners-review-core') / 'assets/dsh-tokens.css').read_text(encoding='utf-8')
+html = html.replace('<style>', '<style>\n/*__DSH_TOKENS__*/', 1)
+overrides = '''
+body {
+  --bg-app: var(--dsw-alias-bg-base); --bg-panel: var(--dsw-alias-bg-layer-1);
+  --bg-card: var(--dsw-alias-bg-module-platform); --bg-input: var(--dsw-alias-bg-base);
+  --text-primary: var(--dsw-alias-label-primary); --text-secondary: var(--dsw-alias-label-secondary);
+  --text-muted: var(--dsw-alias-label-tertiary); --border: var(--dsw-alias-border-l2);
+  --border-strong: var(--dsw-alias-border-l4);
+}
+* { letter-spacing: 0 !important; }
+button { white-space: normal; }
+#save-state, #net { overflow-wrap: anywhere; }
+@media (max-width: 800px) {
+  body { height: auto; overflow: auto; }
+  #wrap { display: flex; flex-direction: column; height: auto; overflow: visible; }
+  #bar { height: auto; flex-wrap: wrap; }
+  #left { min-width: 0; overflow: visible; }
+  #side { width: 100%; min-width: 0; max-height: none; }
+  .side-actions { flex-wrap: wrap; }
+}
+'''
+html = html.replace('</style>', overrides + '</style>', 1)
+html, _ = inline(html, tokens)
+check(html, tokens)
 
 out = EDIT / "edl_preview.html"
 out.write_text(html, encoding="utf-8")

@@ -97,6 +97,8 @@ def generate(project: Path, theme_id: str, audio: Path | None,
     timeline = json.loads((project / "timeline" / "timeline.json").read_text(encoding="utf-8"))
     total_ms = timeline["totalDurationMs"]
     total_s = total_ms / 1000.0
+    # Resolve the exact snapshot before any output or audio copy is written.
+    page_dir, asset_root = load_picture_pages(project)
     tokens = load_theme_tokens(theme_id)
 
     layout = layout or load_layout(project)
@@ -118,7 +120,6 @@ def generate(project: Path, theme_id: str, audio: Path | None,
             f'src="assets/audio.mp3"></audio>'
         )
 
-    page_dir, asset_root = load_picture_pages(project)
     page_default = pages.read_composite_default(asset_root, project) if page_dir else {}
     imported: list = []
     per_screen: dict[str, dict] = {}

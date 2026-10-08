@@ -60,6 +60,9 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from snapshot_input import load_snapshot, resolve_snapshot, invalidation, asset_records, checked_file
+
 PAGE_ROOT = "_internal/02_svg_source"
 DESIGN_DIRECTION = "_internal/01_content/design_direction.md"
 PACKAGE_SCENES = "input/scenes"
@@ -242,14 +245,33 @@ def import_page(page_key: str, *, page_dir: Path, asset_root: Path, project: Pat
     asset_root = Path(asset_root).resolve()
     project = Path(project).resolve()
     source = page_dir / f"{page_key}.svg"
+    snapshot = resolve_snapshot(project, page_dir)
+    if snapshot:
+        if page_dir != snapshot.root / 'scenes' or asset_root != snapshot.root:
+            raise PageImportError('Snapshot import must use its pinned scenes and asset root')
+        if page_key not in snapshot.pages:
+            raise PageImportError(f'Unknown snapshot page: {page_key}')
     if not source.is_file():
         raise FileNotFoundError(f"no SVG page {source}")
 
-    svg = source.read_text(encoding="utf-8")
     source_bytes = source.read_bytes()
+    svg = source_bytes.decode('utf-8')
+    if snapshot and hashlib.sha256(source_bytes).hexdigest() != snapshot.pages[page_key]['svg_sha256']:
+        raise PageImportError(f'{page_key}: snapshot SVG changed while importing')
 
     mapping, copies, problems = plan_href_targets(
         svg, source_path=source, asset_root=asset_root, page_key=page_key)
+    pinned_hashes = {}
+    if snapshot:
+        for asset in asset_records(snapshot.pages[page_key]['assets']):
+            if asset.get('embedded'):
+                continue
+            dependency = checked_file(snapshot.root, asset['path'], asset['sha256'])
+            target = f'assets/pages/{page_key}/{dependency.name}'
+            if target in copies and copies[target] != dependency:
+                raise PageImportError(f'{page_key}: packaged asset filename collision: {dependency.name}')
+            copies[target] = dependency
+            pinned_hashes[target] = asset['sha256']
     inlined, substitutions = _inline_image_hrefs(svg, mapping)
 
     if copy_assets:
@@ -258,7 +280,13 @@ def import_page(page_key: str, *, page_dir: Path, asset_root: Path, project: Pat
                 continue
             dest = project / "composition" / rel
             dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src, dest)
+            if snapshot:
+                data = src.read_bytes()
+                if hashlib.sha256(data).hexdigest() != pinned_hashes[rel]:
+                    raise PageImportError(f'{page_key}: snapshot asset changed while importing: {src.name}')
+                dest.write_bytes(data)
+            else:
+                shutil.copy2(src, dest)
 
     # The proof: rewriting the hrefs back reproduces the source bytes.
     restored, _ = _inline_image_hrefs(inlined, {s["after"]: s["before"] for s in substitutions})
@@ -281,6 +309,9 @@ def import_page(page_key: str, *, page_dir: Path, asset_root: Path, project: Pat
 
 def list_pages(page_dir: Path) -> list:
     directory = Path(page_dir)
+    snapshot = resolve_snapshot(directory, directory)
+    if snapshot:
+        return snapshot.order
     if not directory.is_dir():
         return []
     return sorted(p.stem for p in directory.glob("*.svg"))
@@ -319,6 +350,9 @@ def resolve_pages(project: Path, explicit: Path | None = None):
     Order: the given path or the project's `.pages` pointer, then the package the
     upstream hands over.
     """
+    snapshot = resolve_snapshot(project, explicit)
+    if snapshot:
+        return snapshot.root / 'scenes', snapshot.root
     candidate = explicit
     if candidate is None:
         pointer = project / ".pages"
@@ -352,6 +386,9 @@ def read_composite_default(asset_root: Path, project: Path | None = None) -> dic
     `personWindow` and `captionSafe`. A per-screen exception goes on that step
     in `grouping.json` and wins over this default.
     """
+    if (Path(asset_root) / 'snapshot.json').is_file():
+        snapshot = load_snapshot(asset_root)
+        return snapshot.data.get('composite', snapshot.data['upstream'].get('composite', {}))
     candidates = [Path(asset_root) / DESIGN_DIRECTION,
                   Path(asset_root) / "design_direction.md"]
     if project is not None:
@@ -381,6 +418,13 @@ def write_manifest(project: Path, default: dict, results: list,
         "perScreen": per_screen or {},
         "ids": ids if ids is not None else audit_pages(results),
     }
+    snapshot = resolve_snapshot(project)
+    if results and (results[0].source.parent.parent / 'snapshot.json').is_file():
+        snapshot = resolve_snapshot(project, results[0].source.parent.parent)
+    if snapshot:
+        previous = json.loads(out.read_text()) if out.is_file() else {}
+        payload['snapshot'] = snapshot.binding()
+        payload['invalidation'] = invalidation(previous.get('snapshot', {}), snapshot)
     out.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return out
 

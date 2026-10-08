@@ -4,7 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Video Craft · 视觉与动效导演工作台</title>
-  <script type="module" src="https://cdn.jsdelivr.net/npm/@hyperframes/player"></script>
   <!--
     审阅桥的注入点＝下面单独一行那个双花括号标记。**这里不放桥的副本**：宿主 serve 时把这个
     标记**原地**换成桥本身（有插件时内联源码；无插件时给 base + 一个外链脚本）。
@@ -12,6 +11,7 @@
   -->
 {{REVIEW_BRIDGE}}
   <style>
+    /*__DSH_TOKENS__*/
     :root {
       --bg-app: #0d0f14;
       --bg-panel: #141720;
@@ -930,6 +930,60 @@
       max-width: 90%;
       font-size: clamp(14px, 2vw, 22px);
     }
+    body {
+      --bg-app: var(--dsw-alias-bg-base);
+      --bg-panel: var(--dsw-alias-bg-layer-1);
+      --bg-card: var(--dsw-alias-bg-module-platform);
+      --bg-card-hover: var(--dsw-alias-bg-overlay);
+      --bg-input: var(--dsw-alias-bg-base);
+      --border: var(--dsw-alias-border-l2);
+      --border-strong: var(--dsw-alias-border-l4);
+      --text: var(--dsw-alias-label-primary);
+      --text-secondary: var(--dsw-alias-label-secondary);
+      --text-muted: var(--dsw-alias-label-tertiary);
+      --accent: var(--dsw-static-blue-600);
+      --accent-soft: var(--dsw-static-blue-100);
+      --blue: var(--dsw-static-blue-600);
+      --amber: var(--dsw-static-amber-600);
+      --green: var(--dsw-static-green-500);
+    }
+    * { letter-spacing: 0 !important; }
+    [hidden] { display: none !important; }
+    button, select, input, textarea { font-family: inherit; }
+    button:focus-visible, select:focus-visible, .step:focus-visible {
+      outline: 2px solid var(--blue); outline-offset: 2px;
+    }
+    .brand-wrap, h1, .top-right, .side-right, .center-stage { min-width: 0; }
+    h1 { overflow-wrap: anywhere; }
+    .canvas-toolbar, .tool-group, .top-right, .save-bar { flex-wrap: wrap; }
+    #save-state { overflow-wrap: anywhere; }
+    #canvas-caption-text { font-size: 18px; white-space: normal; overflow-wrap: anywhere; }
+    .choreo-deck { max-height: 260px; overflow: auto; }
+    #theme-mode { max-width: 76px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text); padding: 4px; }
+    #advanced-toggle { border: 0; background: transparent; color: var(--text-secondary); padding: 8px; cursor: pointer; text-align: left; }
+    @media (max-width: 1100px) {
+      body { height: auto; min-height: 100vh; overflow: auto; }
+      header.top { height: auto; min-height: 46px; flex: none; flex-wrap: wrap; padding: 10px; }
+      .layout { grid-template-columns: 180px minmax(0, 1fr); }
+      .side-right { grid-column: 1 / -1; min-height: 300px; border-top: 1px solid var(--border); }
+      .history-box { max-height: 200px; }
+      .center-stage { overflow: visible; }
+      .player-box { min-height: 0; flex: none; }
+    }
+    @media (max-width: 680px) {
+      .layout { display: flex; flex-direction: column; }
+      .center-stage { order: 0; padding: 8px; }
+      .side-left { order: 1; border-right: 0; max-height: 220px; border-top: 1px solid var(--border); }
+      .side-right { order: 2; }
+      .steps { max-height: 180px; }
+      .stage-switch { flex-wrap: wrap; }
+      .stage-switch button { padding: 7px; }
+      .canvas-toolbar { height: auto; flex: none; }
+      .tool-btn { min-height: 30px; }
+      .save-bar { align-items: flex-start; }
+      .feedback { padding: 12px; }
+      .choreo-deck { max-height: 220px; }
+    }
   </style>
 </head>
 <body>
@@ -939,10 +993,11 @@
       <h1>逐画面审阅 · <span id="project-name">project</span><span id="mode-badge" style="font-size:11px; padding:2px 7px; border-radius:4px; background:var(--accent-soft); color:var(--amber); margin-left:8px; font-weight:700; font-family:var(--font-mono);">复合双通道</span></h1>
     </div>
     <div class="top-right">
+      <select id="theme-mode" aria-label="界面主题"><option value="auto">自动</option><option value="light">浅色</option><option value="dark">深色</option></select>
       <div class="stage-switch" title="在动效舞台、最终合成与逐字剪辑之间切换">
         <button type="button" id="view-svg-btn" class="active">⚡ 视听动效舞台</button>
         <button type="button" id="view-player-btn">🎬 最终合成预览</button>
-        <button type="button" id="view-verbatim-btn">📝 逐字精修剪辑</button>
+        <button type="button" id="view-verbatim-btn">逐字剪辑</button>
       </div>
       <a class="reload" id="page-reload" href="" title="重新加载页面">⟳ 刷新</a>
     </div>
@@ -990,7 +1045,7 @@
 
       <div class="player-box" id="player-box">
         <hyperframes-player id="player" style="display:none;"></hyperframes-player>
-        
+
         <!-- 视听动效舞台 (默认活动) -->
         <div id="svg-stage-wrap">
           <video id="stage-speaker-video" playsinline hidden></video>
@@ -1009,16 +1064,13 @@
           <div id="composite-empty-placeholder" hidden>
             <div style="font-size:32px;margin-bottom:8px;">🎬</div>
             <div style="font-size:14px;color:var(--text);font-weight:700;margin-bottom:6px;">合成成片尚未导出</div>
-            <div style="font-size:12px;color:var(--text-secondary);max-width:360px;line-height:1.5;margin-bottom:14px;">
-              可在命令行运行 <code>python3 helpers/export_video.py &lt;project&gt;</code> 一键合成全片视听成品。
-            </div>
             <button type="button" class="tool-btn active" id="btn-back-to-stage">返回动效舞台</button>
           </div>
         </div>
 
-        <!-- 逐字精修剪辑内嵌工作台 -->
+        <!-- 剪辑选择是独立审阅面，不嵌入第二份桥。 -->
         <div id="verbatim-iframe-wrap" hidden>
-          <iframe id="verbatim-iframe" src="about:blank"></iframe>
+          <p id="edl-open-state" role="status">正在打开剪辑审阅…</p>
         </div>
         <div class="hint">暂停在出问题的画面 → 在右侧列表里选中对应的一屏 → 填反馈 → 点「保存反馈」。</div>
       </div>
@@ -1040,7 +1092,8 @@
       </div>
 
       <!-- 底部紧凑分步动效轨道 -->
-      <section class="choreo-deck" id="choreo-deck">
+      <button type="button" id="advanced-toggle" aria-expanded="false" aria-controls="choreo-deck">分步动效</button>
+      <section class="choreo-deck" id="choreo-deck" hidden>
         <div class="choreo-head">
           <div class="choreo-title">
             <span id="choreo-screen-label">🎛️ 分步动效轨道（点左侧分屏加载）</span>
@@ -1876,7 +1929,7 @@
        严守 planners-review-core 公共缝与 test_review_browser.py 全部契约。 */
     const REVIEW_SURFACE_REL = "review/review-surface.json";
     const SUBMISSIONS_FALLBACK_REL = "review/review-submissions.json";
-    const TIMELINE_REL = "timeline/timeline.json";
+    const TIMELINE_REL = window.__REVIEW_DATA__?.timelinePath || "timeline/timeline.json";
     const CHOREO_REL = "timeline/choreography.json";
 
     const state = {
@@ -1893,10 +1946,11 @@
       choreoOverrides: {},     // { [stepId]: { focusMode, steps: { [snum]: { anim, camera, subDelayMs, relStartSec, cue } } } }
       svgEdits: {},            // { [stepId]: [ { id, type, value, dx, dy } ] }
       annotations: {}          // { [stepId]: [ { idx, xPct, yPct, wPct, hPct } ] }
+      ,pendingDraftStep: null
     };
 
     let fbMode = "overall";
-    const draftKey = "visual-review-draft:" + location.pathname;
+    const DRAFT_REL = "review/review-draft.json";
     let draftTimer = null;
     let review = null;
     let submissionsRel = SUBMISSIONS_FALLBACK_REL;
@@ -1918,35 +1972,73 @@
       el.className = kind;
     }
 
-    function draftStore() {
-      try { return window.localStorage; } catch { return null; }
+    function applyTheme() {
+      const mode = document.getElementById("theme-mode").value;
+      document.body.toggleAttribute("data-ds-dark-theme", mode === "dark" ||
+        (mode === "auto" && matchMedia("(prefers-color-scheme: dark)").matches));
     }
-    function saveDraft() {
-      const store = draftStore();
-      if (!store) return;
+    document.getElementById("theme-mode").addEventListener("change", () => { applyTheme(); saveDraft(); });
+    matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
+    applyTheme();
+    document.getElementById("advanced-toggle").addEventListener("click", () => {
+      const deck = document.getElementById("choreo-deck");
+      deck.hidden = !deck.hidden;
+      document.getElementById("advanced-toggle").setAttribute("aria-expanded", String(!deck.hidden));
+    });
+
+    const mediaUrls = new Map();
+    async function assetUrl(rel) {
+      if (/^(data:|blob:)/.test(rel)) return rel;
+      rel = String(rel).replace(/^\/+/, "");
+      if (!mediaUrls.has(rel)) mediaUrls.set(rel, await review.asset(rel));
+      return mediaUrls.get(rel);
+    }
+    async function attachMedia(el, rel) {
+      if (!el || !rel) return false;
       try {
-        store.setItem(draftKey, JSON.stringify({
+        el.src = await assetUrl(rel);
+        el.addEventListener("error", () => label("媒体无法播放 · 请回对话核对编码与文件", "error"), { once: true });
+        return true;
+      } catch (error) { label(`媒体读取失败：${error.message}`, "error"); return false; }
+    }
+
+    async function saveDraft() {
+      if (!review) return;
+      try {
+        await review.draft({
           text: document.getElementById("fb-text").value,
           type: document.getElementById("fb-type").value,
-        }));
-      } catch {}
+          mode: fbMode, stepId: state.step,
+          snapshot: window.__REVIEW_DATA__?.snapshot || loadedTimelineId,
+          choreography_overrides: state.choreoOverrides,
+          svg_edits: state.svgEdits, annotations: state.annotations,
+          theme: document.getElementById("theme-mode").value,
+        });
+        if (!saving) label("草稿已保存 · 尚未提交", "dirty");
+      } catch (error) { label(`草稿保存失败：${error.message} · 内容仍在页面`, "error"); }
     }
-    function restoreDraft() {
-      const store = draftStore();
-      if (!store) return;
+    async function restoreDraft() {
       let draft = null;
-      try { draft = JSON.parse(store.getItem(draftKey) || "null"); } catch { return; }
+      try { draft = JSON.parse(await review.readText(DRAFT_REL)); } catch { return; }
       if (!draft) return;
       if (draft.text) {
         document.getElementById("fb-text").value = draft.text;
-        label("未保存到文件 · 已恢复本机草稿", "dirty");
+        label("草稿已恢复 · 尚未提交", "dirty");
       }
       if (draft.type) document.getElementById("fb-type").value = draft.type;
+      if (draft.snapshot && draft.snapshot !== (window.__REVIEW_DATA__?.snapshot || loadedTimelineId)) {
+        noteStaleFree("草稿来自上一版作品；文字已保留，画面微调未套用。", { withReload: true });
+        return;
+      }
+      state.choreoOverrides = draft.choreography_overrides || state.choreoOverrides;
+      state.svgEdits = draft.svg_edits || {};
+      state.annotations = draft.annotations || {};
+      state.pendingDraftStep = draft.stepId || null;
+      setMode(draft.mode || "overall");
+      if (draft.theme) { document.getElementById("theme-mode").value = draft.theme; applyTheme(); }
     }
-    function clearDraft() {
-      const store = draftStore();
-      if (!store) return;
-      try { store.removeItem(draftKey); } catch {}
+    async function clearDraft() {
+      await review.draft({ text: "", snapshot: window.__REVIEW_DATA__?.snapshot || loadedTimelineId });
     }
 
     const MODE_NOTES = {
@@ -2139,7 +2231,7 @@
           try { spkVid.pause(); } catch {}
         }
         pauseGlobalPlayback();
-        const compSrc = (compVid && compVid.getAttribute("src")) || window.__COMPOSITE_VIDEO_URL__;
+        const compSrc = compVid && compVid.getAttribute("src");
         if (compSrc) {
           if (compVid.getAttribute("src") !== compSrc) compVid.src = compSrc;
           compVid.style.display = "block";
@@ -2161,11 +2253,12 @@
         if (compVid && !compVid.paused) {
           try { compVid.pause(); } catch {}
         }
-        const vIframe = document.getElementById("verbatim-iframe");
-        const transcriptUrl = window.__TRANSCRIPT_URL__ || "../edit/edl_preview.html";
-        if (vIframe && (!vIframe.src || vIframe.src.endsWith("about:blank"))) {
-          vIframe.src = transcriptUrl;
-        }
+        const target = window.__REVIEW_DATA__?.media?.transcriptSurface;
+        const status = document.getElementById("edl-open-state");
+        if (!target) { status.textContent = "当前没有剪辑审阅面"; return; }
+        review.wake({ unit: "剪辑审阅", text: `请调用 review_open 打开本项目的 ${target}；没有该工具时运行 video-craft/helpers/edl_review_surface.py <本项目>/edit。` })
+          .then(result => { status.textContent = result?.woke === false ? "请回对话打开剪辑审阅" : "已请求打开独立剪辑审阅"; })
+          .catch(error => { status.textContent = `打开失败：${error.message}`; });
       } else {
         // svg 模式
         if (compVid && !compVid.paused) {
@@ -2428,25 +2521,29 @@
 
       const host = document.getElementById("svg-stage-host");
       if (!svgText) {
-        svgText = `<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
-          <g data-role="anchor">
-            <rect width="1920" height="1080" fill="#141413"/>
-            <text x="120" y="110" fill="#8C857B" font-family="monospace" font-size="22">${st.id} · ${fmt(st.durationMs)}</text>
-          </g>
-          <g id="${st.id}-step-1" data-step="1" data-anim="cursor-wipe" data-cue="${(st.caption || '').replace(/"/g, '')}">
-            <rect class="wipe-bar" x="120" y="380" width="10" height="96" fill="#E43D1E"/>
-            <g class="anim-body">
-              <text x="156" y="446" fill="#F2EFE9" font-family="sans-serif" font-size="54" font-weight="800">${(st.caption || st.id).slice(0, 26)}</text>
-            </g>
-            <text class="anim-sub" x="156" y="520" fill="#8C857B" font-family="sans-serif" font-size="28">${st.screenIntent || "点击下方原语下拉框实时切换本屏动效与镜头推拉"}</text>
-          </g>
-        </svg>`;
+        host.textContent = "当前屏没有 SVG 画面";
+        if (!document.getElementById("stage-speaker-video").hidden) {
+          state.currentScreenObj = st;
+          if (seekVideo) document.getElementById("stage-speaker-video").currentTime = (st.startMs || 0) / 1000;
+        }
+        return;
       }
 
       setStageViewMode("svg");
       host.innerHTML = sanitizeSvgForInline(svgText);
       const svgEl = host.querySelector("svg");
       if (!svgEl) return;
+      for (const image of svgEl.querySelectorAll("image")) {
+        const href = image.getAttribute("href") || image.getAttributeNS("http://www.w3.org/1999/xlink", "href");
+        if (!href || /^(data:|blob:|#)/.test(href)) continue;
+        try {
+          const rel = window.__REVIEW_DATA__?.svgAssets?.[pageKey]?.[href];
+          if (!rel) throw new Error(`图片未登记：${href}`);
+          const url = await assetUrl(rel);
+          image.setAttribute("href", url);
+          image.setAttributeNS("http://www.w3.org/1999/xlink", "href", url);
+        } catch (error) { label(error.message, "error"); }
+      }
 
       state.currentScreenObj = st;
       // 应用已保存的本屏编排覆盖
@@ -2925,6 +3022,10 @@
       } catch (error) {
         if (window.__INLINE_TIMELINE__) {
           data = window.__INLINE_TIMELINE__;
+          if (window.__REVIEW_DATA__?.timelinePath) {
+            staleNoted = true;
+            noteStaleFree("无法核对当前时间轴；显示的是构建时快照。", { withReload: true });
+          }
         } else {
           document.getElementById("project-name").textContent = "读不到 timeline.json";
           label(`读不到时间轴（${error.message}）——不是当前项目的审阅页，或宿主没起好。把这一行发回对话让模型看一眼`, "error");
@@ -2946,7 +3047,7 @@
       if (window.__REVIEW_DATA__) {
         const rev = window.__REVIEW_DATA__;
         if (rev.mode) {
-          document.body.className = `mode-${rev.mode}`;
+          document.body.classList.add(`mode-${rev.mode}`);
           const badge = document.getElementById("mode-badge");
           if (badge) {
             const names = { composite: "复合双通道", speaker_only: "纯口播剪辑", animation_only: "纯演示动画" };
@@ -2961,16 +3062,17 @@
       // 如果配置了真实口播视频，挂载到左侧口播区
       const spkVid = document.getElementById("stage-speaker-video");
       const spkPill = document.getElementById("speaker-time-pill");
-      const spkUrl = data.speakerVideoUrl || window.__SPEAKER_VIDEO_URL__;
+      const spkUrl = data.speakerVideoUrl || window.__SPEAKER_VIDEO_URL__ || window.__REVIEW_DATA__?.media?.guideAudio;
       if (spkVid && spkUrl) {
-        spkVid.src = spkUrl;
-        spkVid.hidden = false;
-        if (spkPill) spkPill.hidden = false;
+        const ready = await attachMedia(spkVid, spkUrl);
+        spkVid.hidden = !ready;
+        if (spkPill) spkPill.hidden = !ready;
       }
       const compVid = document.getElementById("composite-video-player");
-      const compUrl = data.compositeVideoUrl || window.__COMPOSITE_VIDEO_URL__;
+      const compUrl = data.compositeVideoUrl || window.__COMPOSITE_VIDEO_URL__ ||
+        window.__REVIEW_DATA__?.media?.previewVideo || window.__SPEAKER_VIDEO_URL__;
       if (compVid && compUrl) {
-        compVid.setAttribute("src", compUrl);
+        await attachMedia(compVid, compUrl);
       }
 
       // 尝试读取已有的 choreography.json（或内联演示数据）
@@ -3000,6 +3102,12 @@
         for (const st of ch.steps) {
           const el = document.createElement("div");
           el.className = "step";
+          el.dataset.stepId = st.id;
+          el.tabIndex = 0;
+          el.setAttribute("role", "button");
+          el.addEventListener("keydown", event => {
+            if (event.key === "Enter" || event.key === " ") { event.preventDefault(); el.click(); }
+          });
           st.chapterId = ch.id;
           st.domEl = el;
           allScreensList.push(st);
@@ -3061,9 +3169,24 @@
 
     async function onHostChanged() {
       let data;
-      try { data = JSON.parse(await review.readText(TIMELINE_REL)); } catch { return; }
+      try { data = JSON.parse(await review.readText(TIMELINE_REL)); } catch {
+        staleNoted = true;
+        noteStaleFree("作品文件有更新，无法核对当前时间轴。", { withReload: true });
+        return;
+      }
       if (timelineFingerprint === null) { timelineFingerprint = fingerprint(data); return; }
-      if (fingerprint(data) === timelineFingerprint) return;
+      if (fingerprint(data) === timelineFingerprint) {
+        try {
+          const next = JSON.parse(await review.readText("review/review_data.json"));
+          if (next.snapshot === window.__REVIEW_DATA__?.snapshot) {
+            // Host notifications also cover media/SVG files, which cannot be
+            // verified by comparing only the timeline document.
+            staleNoted = true;
+            noteStaleFree("作品文件有更新；重新构建审阅后再核对当前画面。", { withReload: true });
+            return;
+          }
+        } catch {}
+      }
       staleNoted = true;
       noteStaleFree("时间轴已经变了（宿主戳过、页面自己读出来对不上）：页面上的 step 边界与 caption 是上一版。"
         + "先点「重新加载」看这一版、再提交；现在提交也能存，但这一条会挂在旧的 step 上。",
@@ -3090,6 +3213,9 @@
         status: "open",
         batchId: "review-" + new Date().toISOString().slice(0, 10) + "-1",
         createdAt: new Date().toISOString(),
+        snapshot: window.__REVIEW_DATA__?.snapshot || loadedTimelineId,
+        playbackTimeMs: Math.round((document.getElementById("composite-video-player").currentTime ||
+          document.getElementById("stage-speaker-video").currentTime || 0) * 1000),
       };
       if (fbMode === "overall") {
         return { phase: "overall", ...stale, ...common };
@@ -3103,6 +3229,11 @@
         durationMs: state.durationMs,
         ...stale,
         ...common,
+        adjustments: {
+          choreography: state.choreoOverrides[state.step] || null,
+          svg_edits: state.svgEdits[state.step] || [],
+          annotations: state.annotations[state.step] || [],
+        },
       };
     }
 
@@ -3156,9 +3287,7 @@
         const hhmmss = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
         let wakeNote = "；模型未核对通知，若迟迟没反应请回对话说一声";
         try {
-          const wakeOpts = fbMode === "overall"
-            ? { unit: "整片", text: "整片看完有一条整体反馈；读 feedback/overall.jsonl。" }
-            : { unit: record.stepId };
+          const wakeOpts = { unit: fbMode === "overall" ? "整片" : record.stepId };
           const result = await review.wake(wakeOpts);
           if (result && (result.verified || result.Delivered)) {
             wakeNote = "；宿主已在会话日志里核对进入队列";
@@ -3169,7 +3298,7 @@
         label(`已写入 ${submissionsRel}（本批 ${records.length} 条）${hhmmss} · 收件后进 ${landsIn}${wakeNote}`, "ok");
         if (staleNoted) noteStaleFree("这一条是在时间轴已变的提示下提交的（见上）。", { withReload: true });
         document.getElementById("fb-text").value = "";
-        clearDraft();
+        await clearDraft();
       } catch (e) {
         label(`保存失败：${e.message}——文字仍在输入框，未丢失。再点一次「保存反馈」；还不行就把这一行发回对话`, "error");
       } finally {
@@ -3187,7 +3316,7 @@
     setMode("overall");
 
     document.getElementById("fb-text").addEventListener("input", () => {
-      label("未保存到文件 · 草稿在本机", "dirty");
+      label("尚未提交 · 正在保存草稿", "dirty");
       clearTimeout(draftTimer);
       draftTimer = setTimeout(saveDraft, 300);
     });
@@ -3220,10 +3349,18 @@
       if (typeof review.on === "function") {
         review.on("changed", () => { onHostChanged(); });
       }
-      restoreDraft();
       cachedRecords = await collectRecords();
       renderHistoryList();
+      await restoreDraft();
       await loadTimeline();
+      if (state.pendingDraftStep) {
+        const target = [...document.querySelectorAll(".step")].find(el => el.dataset.stepId === state.pendingDraftStep);
+        if (target) target.click();
+        state.pendingDraftStep = null;
+      }
+      if (window.__REVIEW_DATA__?.mode === "speaker_only" || window.__REVIEW_DATA__?.media?.compositeVideo) {
+        setStageViewMode("composite");
+      }
     })();
   </script>
 </body>

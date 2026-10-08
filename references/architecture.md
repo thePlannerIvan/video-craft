@@ -121,7 +121,7 @@
 | module | 拥有什么 | 接口 | 不做什么 |
 |---|---|---|---|
 | `helpers/build_review.py` | **一键构建统一审阅契约与控制台**：聚合剪接决策、演示动画与字幕资产，自适应匹配三大任务形态并生成 `review/review_data.json` 与 `review/index.html` | `build_review.py <project_or_edit_dir> [--mode auto/composite/speaker_only/animation_only]` | 不启动服务；不修改源素材 |
-| `helpers/serve_review.py` | **统一审阅控制台专属高性能服务**：完整支持 HTTP 206 Range 大文件秒级快进定位，内置 `/api/feedback` 反馈持久化兜底 | `serve_review.py <project> [--port N] [--open]` | 不负责构建页面（未找到时自动调用 build_review）；不修改时间轴 |
+| `helpers/serve_review.py` | **公共审阅宿主的兼容入口**：先构建页面，再把 `review-surface.json` 交给 `planners-review-core`；Range、桥接、反馈、草稿与唤醒都由公共宿主负责 | `serve_review.py <project> [--port N] [--open]` | 不维护私有 HTTP 服务；不修改时间轴 |
 | `helpers/export_video.py` | **统一成片导出深模块**：全自动化导出四大交付规格（composite, animation, speaker, split），内置 `/tmp` 云盘锁沙盒渲染、时序隐藏样式注入与单行药丸防折行保护 | `export_video.py <project> --mode {composite,animation,speaker,split} [--out-dir 成品]` | 不做粗剪决策（严格忠实于 EDL 与 timeline 实测数据） |
 | `helpers/edl_preview_build.py` | 剪辑审阅页的 HTML（逐段取舍 + 逐字 + 时间轴），数据**构建时内联**（兼容保留） | `edl_preview_build.py <edit_dir>` | 不收集决定；页里的注入点由公共宿主替换 |
 | `helpers/edl_review_surface.py` | 剪接预演**这一份 surface 的内容**（`dir`＝素材与剪辑目录的公共根）+ 业务前置 | `edl_review_surface.py <edit_dir> [--port N] [--no-open] [--surface-only]` | **不再自带 HTTP 服务**（宿主归公共缝）；`selections.json` 的整份覆盖语义由缝的 `write` 1:1 承担 |
@@ -223,8 +223,8 @@
 
 - **本 Skill 的视觉审阅**：约定 `<project>/review/index.html` + `<project>/timeline/timeline.json`，
   由**公共缝的宿主**服务（有插件 → DSH 侧栏；没有 → `serve-review.mjs`），审阅面是
-  `review/review-surface.json`；反馈**只追加**到 `feedback/<chapterId>.jsonl`——页面先写
-  surface 声明的那一份提交文件，`review_inbox.py` 收件时翻译成追加。
+  `review/review-surface.json`；页面先写 surface 声明的提交文件，`review_inbox.py` 收件时
+  翻译成 `feedback/<chapterId>.jsonl` 追加。Range、资产桥、草稿与唤醒不在本 Skill 再实现。
 - **另一套在** `<项目>/_idea/reviews/script/`，属于 `video-idea-system`（念稿审阅：左口播、右样张、下双反馈）。
 - **为什么分开**：审的是两件事——这一套审**剪辑与画面**，那一套审**稿子与内容契约**。作者已裁定不合并。
 - **什么时候交棒**：稿子或逐屏上屏文字要改 → 回 `video-idea-system`；剪点取舍与画面节奏要改 → 本页；

@@ -107,7 +107,8 @@ def surface_document(edit) -> dict:
         'dir': root,
         'entry': (Path(edit).relative_to(common_root(edit))/PAGE_NAME).as_posix(),
         'feedback': FEEDBACK_NAME,
-        'wake': {'mode': 'queue', 'text': WAKE_TEXT},
+        # 唤醒走**插话**（`steer` → `next-step`）：提交的语义是"现在就改"，`queue` 会排到当前回合之后。
+        'wake': {'mode': 'steer', 'text': WAKE_TEXT},
         'watch': list(WATCH),
         # 这个面不上传图片（审阅只需要时间轴与播放器）。声明为空就是为空。
         'capabilities': [],

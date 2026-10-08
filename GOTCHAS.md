@@ -643,5 +643,3 @@ deletion from an accidental loss.
 - **原因**：Headless Chromium 的渲染流水线在将硬解/软解视频帧与 DOM 图层合成并跨进程序列化为 screencast base64/buffer 时存在资源竞争与锁死。
 - **修正原则**：**严禁在浏览器录屏中录制正在播放的真实视频文件**。动画舞台走确定性截帧/离线渲染；真实口播视频交由 FFmpeg 在输出层通过 `overlay` 硬件加速混合。
 - **证据**：2026-10-02 在《Research与Wayfinder调研》导出全片时，尝试直接用 Playwright 录屏捕获包含播放 `<video>` 的双通道页面，连续 3 次在第 30-40 秒彻底死锁；改用离线截帧+FFmpeg overlay 后秒级导出成功。
-
-

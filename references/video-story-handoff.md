@@ -27,3 +27,13 @@ python <skill>/helpers/timeline_derive.py <edit> --grouping <edit>/timeline/grou
 作者要求的擦除、聚焦、翻页、顺序等，从 production-brief 或历史反馈逐条继承。Agent 的设计建议等待本阶段审阅；样张摆法可重做。没有 production-brief 的旧 Story 项目，先从直接反馈提取这三类并核对，不因格式迁移遗漏决定。
 
 每 Beat 在 creative-check.md 对照内容责任、作者动作、素材身份和成片窗口。验收同时看听得到什么、看得清什么、创意变化有没有发生，不能只确认文件存在。
+
+## 工作台 SVG 快照
+
+承接 PPT Hell 工作台时，将 `<project>/.pages` 或 `.snapshot` 指向 `_internal/06_workbench/snapshots/<id>/snapshot.json`（也可指向该快照目录）。快照的 `order` 决定页序，`page_key` 沿用原 screen ID；不读取工作台当前页来补齐缺失快照。
+
+`visual/scripts/snapshot_input.py` 是唯一严格入口；SVG 导入、合成生成、自动动效编排和统一审阅构建共用它。它校验 `snapshot.sha256`、SVG/资产及嵌套 SVG 依赖字节、页面身份、原 visual-plan 与 script 绑定。嵌套 SVG 的固定子图一起复制，父文件保持打包字节；缺依赖、越界、同 ID 快照被改写时拒绝消费。旧 `input/scenes/`、PPT 根目录和普通 SVG 目录入口仍可用。
+
+原 `script_hash` 只证明打包的原脚本身份，不证明编辑后的 SVG 文案与录音语义一致。消费者保留 `content_binding`、逐页 `content_delta` 和 `script_semantics_verified: false`；`changed_needs_check` 交实际差异给内容/核查环节，不改上游 Hash 来消除提示。
+
+再次交接必须产生新快照。导入清单与动效记录标记受影响的静态屏、元素/步骤绑定及待检查内容；notes-only 修订不使静态画面失效。未变化屏的 Craft 动效设置保留；更换步骤 ID 不继承旧元素的设置。程序不改 EDL、音频或实测时间线，不反写工作台或上游内容包。需要调整录音/稿件时明确进入声音与对齐流程。

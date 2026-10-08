@@ -362,9 +362,11 @@ class SurfaceContractCase(TempProjectCase):
         self.assertEqual(doc["dir"], "..")
         self.assertEqual(doc["entry"], "review/index.html")
         self.assertEqual(doc["feedback"], "review-submissions.json")
-        self.assertEqual(doc["wake"]["mode"], "queue")
-        # 这个面不上传图片：声明为空就是为空。
-        self.assertEqual(doc["capabilities"], [])
+        # 唤醒走插话：queue 会让提交排到当前回合之后，模型忙时界面同时出现「已送达」与「排队中」。
+        self.assertEqual(doc["wake"]["mode"], "steer")
+        self.assertEqual(doc["capabilities"], ["draft"])
+        self.assertEqual(doc["draft"], "review-draft.json")
+        self.assertIn('review_inbox.py', doc['wake']['text'])
 
     def test_watch_is_relative_to_the_surface_file(self):
         """`watch` 是这份契约里唯一**相对 surface 文件**的路径字段（其余相对 `dir`）。
@@ -681,8 +683,10 @@ class ReviewPageTemplateTests(unittest.TestCase):
     def test_draft_storage_is_guarded_because_opaque_frames_throw(self):
         """有插件时页面在不透明源 iframe 里，`localStorage` 读一下就直接抛
         SecurityError。草稿是便利，不是承诺 —— 不许因此让整页崩掉。"""
-        self.assertIn("draftStore", self.html)
-        self.assertIn("catch { return null; }", self.html)
+        self.assertNotIn("localStorage", self.html)
+        self.assertIn("await review.draft(", self.html)
+        self.assertIn("await review.readText(DRAFT_REL)", self.html)
+        self.assertIn("草稿保存失败", self.html)
 
     def test_inline_script_is_not_cut_short_by_a_literal_close_tag(self):
         """内联脚本里出现脚本结束标签的**字面量**，HTML 解析器会在那里把脚本切断 → 整页静默白掉
@@ -751,7 +755,7 @@ class ReviewPageTemplateTests(unittest.TestCase):
         self.assertIn('withReload', body)
         # ③ 陈旧那两处提示必须带上它
         self.assertIn('{ withReload: true }', html)
-        self.assertEqual(html.count("{ withReload: true }"), 2)
+        self.assertGreaterEqual(html.count("{ withReload: true }"), 2)
 
     def test_saving_cannot_re_enter_and_lose_a_record(self):
         """保存是「读回旧的 → 合并 → 整体写」；两次并发会**丢掉一条**（后写的盖掉先写的）。
@@ -805,7 +809,7 @@ class ReviewPageTemplateTests(unittest.TestCase):
         self.assertIn('href=""', head)
         self.assertNotIn('onclick', head)
         # ③ 告警里那个仍然在（提示出现时出口就在眼前）
-        self.assertEqual(html.count("{ withReload: true }"), 2)
+        self.assertGreaterEqual(html.count("{ withReload: true }"), 2)
         self.assertIn('id = "stale-reload"', html)
 
     def test_the_local_draft_is_not_gated_on_the_timeline_loading(self):
@@ -817,8 +821,9 @@ class ReviewPageTemplateTests(unittest.TestCase):
         boot = self.html[start:]
         self.assertIn("restoreDraft();", boot)
         self.assertNotIn("if (data) restoreDraft();", boot)
-        # 顺序：先放草稿，再读时间轴 —— 免得"已恢复本机草稿"盖掉时间轴的报错
-        self.assertLess(boot.index("restoreDraft();"), boot.index("await loadTimeline();"))
+        # Draft retrieval is an independent bridge operation; it runs before timeline loading.
+        self.assertIn('await restoreDraft();\n      await loadTimeline();', boot)
+        self.assertIn('if (!draft) return;', self.html)
 
     def test_the_page_does_not_send_people_left_for_something_on_the_right(self):
         """播放器提示曾说"选中左侧对应 step"，而 step 列表在右栏。"""

@@ -1,5 +1,15 @@
 # 维护记录（升级，不是 CHANGELOG）
 
+## 2026-10-08 · 审阅宿主公共化与跨 Skill 接缝收口
+
+| 做了什么 | 为什么 | 影响了哪些 module | 删了什么 |
+|---|---|---|---|
+| 视觉审阅与 EDL 审阅统一改为产出 `review-surface/2.0.0`，通过 `planners-review-core` 的宿主与 DSH `review_open` 打开；`serve_review.py`、`edl_review_surface.py` 只保留业务适配 | 两种审阅面共享生命周期、桥、Range、draft、watch 与唤醒语义，避免 Skill 内再维护一套 HTTP 服务 | `helpers/review_surface.py`、`helpers/edl_review_surface.py`、`helpers/serve_review.py`、`references/review-ui.md`、`00-system/planners-review-core`、DSH review dock | 私有视觉服务器、EDL 私有服务器、页面内嵌第二审阅面 |
+| 审阅页改用 DSH tokens、`review.asset()`、独立 draft 与明确保存状态；结构化动效调整进入提交收件链 | 让人在 DSH 侧栏与无插件本地宿主中都能完成可恢复的人审 | `visual/assets/review-page-template.html`、`helpers/review_inbox.py`、`references/review-ui.md` | 依赖 `localStorage` 的草稿与假成功导出 |
+| 保持 PPT Hell snapshot 作为唯一画面输入，并让视觉审阅构建器复用 snapshot resolver；补齐工具调用手册与上游交接说明 | 顺序、递归资产和来源绑定不能因进入审阅页而丢失；Agent 应按 CLI 调用，不应阅读实现源码 | `helpers/build_review.py`、`visual/scripts/snapshot_input.py`、`references/tools.md`、`references/video-story-handoff.md` | 目录扫描绕过 snapshot 的隐式 fallback |
+
+本次升级的完整行为由 `video-craft` 的 288 项测试、`planners-review-core` 回归、DSH review dock 测试与 surface 校验共同覆盖。视觉审阅与剪辑审阅仍是两个独立 surface：前者审画面/节奏，后者审词级剪辑；页面不互相嵌套，模型通过各自的收件入口继续工作。
+
 ## 2026-10-02 · 统一多形态视听审阅控制台 + 自动化导出引擎深模块化（消灭“读代码为材料”反模式）
 
 **起因**：在真项目《Research与Wayfinder调研》（226.4s 复合双通道视频）运行中暴露了三个系统性架构缺陷：
@@ -185,24 +195,8 @@ sha256 `796ff3f2…` → 按文档那一步用新模板重生成（`15418868…`
   `clean_edit_dir.py` 的沉积清单同步更新。影响：`helpers/srt_export.py`、`helpers/clean_edit_dir.py`、
   `archive/`。
 
-## 未决（不是升级，等一次重构）
+## 当前边界
 
-**审阅页合一。** 现在剪辑审阅（`edl_preview_*`，端口 8737）和视觉审阅
-（`visual/assets/review-page-template.html` + `helpers/visual_review_serve.py`，端口 5176 + 8899）
-是两套基建、两套反馈格式。原计划里「去掉手工复制 JSONL」那一半**已完成**
-（2026-09-25，视觉反馈直接 POST 到 `/api/feedback`，落 `feedback/<chapterId>.jsonl`，见 `review-ui.md`）；
-剩下的是两个页面和两套反馈格式本身。
+视觉审阅和剪辑审阅仍然是两个业务页面与两份反馈形状，这是有意保留的产品边界：视觉面承载画面/节奏/动效反馈，剪辑面承载词级取舍与 `selections.json`。它们共享 `review-surface/2.0.0` 的宿主接缝，但不互相嵌套，也不把两种反馈强行翻译成同一份记录。
 
-侦察发现两件改变判断的事：
-
-1. 剪辑审阅页**没有任何「模式」接缝**（无 `location.search` / `URLSearchParams`），
-   视觉模式是往一个 1201 行的生成器里加新概念，不是接线。
-2. 视觉播放器**必须**依赖 HyperFrames 的运行时注入服务器（`npx hyperframes preview`）——
-   静态服务器加载组成品会「所有 clip 同时可见、音频不播」。所以**一个页面 ≠ 一个进程**，
-   P2 之前那种「端口被残留进程占住端出旧项目」的坑**消不掉**，只能减半。
-
-能拿到的：一个页面、一套反馈格式（去掉手工复制 JSONL 已单独做完）。
-拿不到的：少一个进程、少一类端口 bug。
-
-**另外登记两处没量过的**（见 `references/architecture.md` 末尾）：`edit/timeline/` 与
-`<视觉层项目根>/timeline/` 的落点没有统一口径；审阅那一块的 depth 没做过删除测试。
+仍需在后续真实项目中持续观察的事项是时间轴文件落点（`edit/timeline/` 与项目根 `timeline/` 的历史兼容）以及复杂页面的人工审阅深度；它们不是本次公共宿主收口的阻塞项。

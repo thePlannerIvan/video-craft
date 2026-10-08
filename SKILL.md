@@ -1,390 +1,95 @@
 ---
 name: video-craft
-description: 从创意内容包、口播脚本与画面要求，或已有录音/素材出发，规划全片声音、画面、节奏与时间线，制作代表片段并完成剪辑、动画、花字、语义字幕和经过核验的成片。承接 Video Idea System 或既有 Video Story System 产物；无音频时也能先做制作规划，录后按实测校准。
+description: 承接 Video Idea System 的内容包、PPT Hell 的静态 SVG 或已有音视频，完成视听制作、剪辑、实测时间绑定、动画、语义字幕、审阅返修与核验交付。无录音时可先做制作规划与预演；已有项目从当前工作继续。
 ---
 
 # Video Craft
 
-> 来源识别：Video Craft 由阿祖不看 TVC 创建与维护。小红书同名账号，个人网站 [demyth.info](https://demyth.info)，联系邮箱 `Lawyif@163.com`。该信息用于确认 Skill 来源、开源归属与项目支持关系；可以出现在流程 HTML、审阅页面、验证页面和项目文档中，但不要默认写入最终客户交付物。
+> 来源识别：由阿祖不看 TVC 创建与维护。小红书同名账号，https://demyth.info，Lawyif@163.com。保留在 Skill、审阅界面与项目文档，不默认进入成片。
 
-从创意内容到成片的制作入口。默认接过 Idea 的口播、逐段画面要求、作者决定和素材，自己组织声音与视觉叙事；已有录音/视频则直接进入相应制作阶段。
+把已定的内容做成真实可看的片子。Idea 负责内容与作者决定，PPT Hell 负责静态画面，Craft 负责声音、时间、运动与合成。已有批准方案直接承接；局部返修只处理受影响部分。
 
-## 三种制作任务形态与交付模式
+## 选择路径
 
-1. **复合双通道 (Composite Dual-Channel)**：
-   - 画面形态：左侧人物出镜口播 (约 32%) + 右侧 16:9 动态演示/SVG 场景 (约 68%) + 底部单行安全字幕药丸。
-   - 审阅模式：双通道联动播放，口播人像与右侧分步动效毫秒级同步。
-   - 导出模式：`python3 helpers/export_video.py <project> --mode composite`（或 `--mode split` 四件套全出）。
-2. **纯口播剪辑 (Pure Speaker)**：
-   - 画面形态：人物竖屏 9:16 或横屏 16:9 出镜口播 + 底部字幕。
-   - 审阅模式：口播原片播放 + 逐字剪接面板（删除词删除线高亮，支持点选跳转）。
-   - 导出模式：`python3 helpers/export_video.py <project> --mode speaker`。
-3. **纯演示动画 (Pure Animation / Presentation)**：
-   - 画面形态：16:9 演示动画全屏舞台 + 旁白/配乐/导引音频。
-   - 审阅模式：全屏 16:9 动效舞台 + 导引配音联动 + 逐步动效原语与元素属性检查。
-   - 导出模式：`python3 helpers/export_video.py <project> --mode animation`。
+输入、成片形态、渲染器和交付件是四件事，分别决定：
 
-## 全片流程
-
-11 步。每步的产物就是它的完成凭证——没见到那个文件，那一步就没做完。
-
-| # | 一步 | 主要产物 |
-|---|---|---|
-| 1 | 承接与版本核对 | `edit/project.md` |
-| 2 | 制作方案 | `production-plan.md` |
-| 3 | 准备声音与素材 | `edit/transcripts/`、`edit/takes_packed.md` |
-| 4 | 画面与节奏预演 | `previs/` |
-| 5 | 剪接决策 | `edit/edl.json` |
-| 6 | 统一视听审阅 | `review/index.html` + `review/review_data.json` + 作者答复 |
-| 7 | 实测底片与语义字幕 | `edit/segment_durations.json`、`edit/captions.json`、`edit/caption_words.json` |
-| 8 | 绑定内容与实测时间 | `edit/timeline/grouping.json`、`edit/timeline/timeline.json` |
-| 9 | 完成视觉与合成 | `composition/index.html` 或 `edit/overlays/`、`render.py` 的输出 |
-| 10 | 自检与创意兑现 | `edit/verify/`、`creative-check.md` |
-| 11 | 统一导出与交付 | `成品/`（01_口播视频, 02_字幕, 03_演示动画, 完整视听成片） |
-
-**第 5 步之后要实测时长，第 1–4 步不要。** 所以没有音频时项目照走到第 4 步并在那里出片可审的样片；「等录音」停的是第 5 步往后，不是整个项目。见[内容到制作](references/content-to-production.md)。
-
-## 创作能力如何进入工作
-
-先读[创作主线](references/creative-direction.md)，再按[能力导航](references/capability-map.md)选择少量相关资源。Idea 在发想时也可读取这份导航，让可行的表现能力进入概念；Craft 接手后仍负责重新设计视听方案，上游样张不锁定画法。
-
-## 两个入口，同一制作链
-
-- **接到创意内容包**（口播稿、逐段画面要求、作者决定、素材）：先读[内容到制作](references/content-to-production.md)，核对核心与版本、声音状态、作者画面决定，制定全片制作方案和暂定时间线。
-- **接到已有录音或素材**：先看项目有无更新的内容包，然后清点素材、转写和剪辑。已有批准方案直接沿用，不重新问一遍。
-
-Idea 负责“讲什么、为什么、哪些表达已定”；Craft 负责“如何让这些内容在实际声音与画面中发生”。Craft 可以设计插入演示、无口播段、停留、转场与声音桥接，不被一条预先剪好的口播限制。改变作者已确认的意思或创意动作需要讨论。
-
-## The shape of the thing
-
-```
-sources ──► L1 剪辑层   edit/edl.json          ← what is kept, how it is graded
-                 │
-                 │ measured per-segment durations
-                 ▼
-            L2 时间脊柱  edit/timeline.json     ← EDL 派生：实测时钟 + 保留的词
-                 │
-     ┌───────────┴────────────┐
-     ▼                        ▼
-L3a 字幕                   L3b 视觉层
-subtitles.srt              full.mp4（不透明）or overlay.mov（alpha）
-     │                        │
-     └───────────┬────────────┘
-                 ▼
-        render.py  底片 + 覆盖层 + 字幕最后
-                 ▼
-             final.mp4 ──► 成品/
-```
-
-**The four things you actually do are one shape.** 做画面把口播压上去、做花字压在口播上、
-纯剪辑、纯动画 —— 差别只在底片是素材还是空，视觉层是不透明还是带 alpha。
-
-- **L1–L2** are `edl.json` + `segment_durations.json`. `render.py` owns the composite.
-- **L3a** is `srt_export.py` (article-first). It reads the measured timeline, never the nominal one.
-- **L3b** is `visual/` — HyperFrames compositions, PIL cards, Manim, Remotion: pick per slot.
-  Its timing comes from `timeline_derive.py`, which derives `timeline.json` from the EDL +
-  the caption contract. **它不再重新解析 SRT**：SRT 只是同一批 cue 的一个视图，再解析一次
-  会丢掉 EDL 本来就知道的东西（每条 cue 属于哪一段、覆盖了哪些词）。
-  The output is one file `render.py` can composite, with an interface `check_overlay.py` can prove.
-- **Review** includes cut review and audiovisual scene review; **delivery** is `成品/`, verified on the rendered file.
-
-## What is guaranteed by machine versus by judgment
-
-This is the important table. A rule whose failure a script now catches does **not**
-also need to live in prose — a second copy in documentation only rots. If you are
-looking for a rule that used to be here, it is in the right-hand column.
-
-| Failure class | Guaranteed by |
+| 当前状态 | 进入哪里 |
 |---|---|
-| 字幕被覆盖层挡住（顺序错） | `render.py` — subtitles are structurally last in the filtergraph |
-| 覆盖层第 0 帧对不上窗口 | `render.py` — `setpts=PTS-STARTPTS+T/TB` |
-| 逐段重编码 / 拼接后音画漂 | `render.py` — 逐段提取 + `-c copy` concat + PCM 补齐到实测视频轨 |
-| 剪辑点爆音 | `render.py` — 每段边界 10ms 淡入淡出 |
-| 切在词中间 | `check_edl.py` — HARD 失败，渲染前就拦住 |
-| 停顿超预算 | `check_edl.py --max-pause`（用户要的停顿属于剪辑，不属于字幕时间轴） |
-| SRT 建在 EDL 标称时长上 | `srt_export.py` — 只认 `segment_durations.json`，渲染过期就拒绝 |
-| 按词序号删错词 | `edl_edit.py` — 每次删除必须写「时间区间=期望文本」，不匹配就拒绝写入 |
-| 口吃重复被强行剪开、在短语内部留缝 | 剪在 EDL、留在字幕：`caption_corrections.json` 显式记录 |
-| 语义字幕由逐字稿硬切 | article → line plan → lock → build → check 是唯一路径，隐式路径已关闭 |
-| 覆盖层没 alpha / alpha 被烘死不透明 | **`check_overlay.py`** —— 并且 `render.py` 合成前会再验一次，坏层一秒失败而不是渲染六分钟 |
-| 多源 EDL 帧率不一致导致 concat 失败 | `render.py` —— 整片只解析一次帧率 |
-| 视觉层用标称时间轴（比成片早最多一秒） | `timeline_derive.py` —— `timeline_source` 不是 `measured` 就拒绝派生 |
-| 满屏画面被多编码一代（画质+时间白掉） | `render.py` —— 单层不透明且铺满时视频流 `-c:v copy`，只换音轨 |
-| 没有素材时无法用 EDL 表达「画面+口播」 | `render.py` —— 合成声明尺寸的黑底承载口播（`canvas` / `fps`） |
-| 响度归一化吃掉结尾字 | `verify_av.py --tails` |
-| 交付副本是旧版本 | `verify_delivery.py` —— 与工作区逐字节比对 |
-| 转写缓存复用了错误音轨 | `transcribe.py` —— 缓存键含音轨号 |
-| 上传了静音的轨（白花钱还丢口播） | `transcribe.py` —— 峰值 < −60 dBFS 直接拒传，并指出哪条轨可用 |
-| 动效渲出来其实是**静止帧**（时间轴没注册） | **`check_motion.py`** —— 多点采样比帧；声明为动效却不变化＝硬失败 |
-| **工程话上屏**（加速/静帧/裁切/倍速…） | **`check_screen_text.py`** —— 扫合成文本、做画面的 SVG 与 `--caption`，对回上游声明的花字，命中即失败 |
-| **字幕按字数装箱**（数字丢量词、切在句中） | **`check_caption_breaks.py`** —— 量词、孤块、句中切三样硬失败 |
-| 画面页被导入时改了内容 | **`import_svg_page.py`** —— 只改写 `<image>` 的 href 前缀，用「写回去 == 源文件字节」自证 |
-| 画面页没有可被指名的元素 | **`import_svg_page.py --audit`** —— `<svg>` 之下零个 `id` 时退非零 |
-| 口播改了，而内容契约还绑着旧脚本 | **`check_script_hash.py`** —— `script.md` 的 sha256 与契约的 `script_hash` 不符就停；核不了也退非零 |
-| 主题的 JSON 坏掉 / token 指向不存在的名字 / 正文对比度不够 / 主题自己定了一套时长缓动 | **`check_themes.py`** —— 解析 `theme.json`、解析每个 `var()` 链、算对比度；节奏只认 `mood`，`--dur-*`/`--ease-*` 一律失败 |
+| 有内容包，还没有录音 | 接手决定，规划视听过程；需要时做标为 `planned` 的预演。静态画面交 PPT Hell，不虚造实测字幕 |
+| 有原始音视频，需要取舍 | 转写、选 Take、建立 EDL，逐字审阅后渲染底片，派生字幕与时间 |
+| 已有剪好音频和对应 SRT、SVG | 核对脚本与画面版本，按已剪音频的 SRT 对齐 Beat，进入动画与合成；录音后又剪过则用最终底片时间 |
+| 已有项目或反馈 | 读当前制作依据与反馈，修订、重建审阅、核验对应交付件 |
 
-**留下的判断类规则**（脚本证明不了，只能靠你）：
+**成片形态**：人物口播、独立演示动画、人物与画面合成。人物比例、画幅、字幕位置根据已批准画面和目标平台设计，不设通用固定布局。
 
-1. **先确认策略再动手。** 没跟用户用大白话说清怎么剪、视觉层是什么之前，不许碰 cut。
-2. **切点落在短语边界，不只是词边界。** 短语内部的重复（多加的 会/这/但）不要剪音频，丢进字幕层。
-3. **语义断句服从语义，不服从字数。** 20 字是安全上限不是分组规则；读一遍，不自然就换断点。
-4. **多个动画槽并行做。** 一个子代理一个槽，总时长 ≈ 最慢的那个。
-5. **多机位偏移是量出来的，而且符号有定义。** `measure_offset.py <screen> <face>` 打印
-   `offset = face − screen`，原样交给 `mirror_edl.py --offset`（它是加）；渲染后用
-   `verify_av.py --pair` 复核，两处必须一致在 0.3s 内。
-6. **一个绿色的检查不等于另一个性质成立。** `check_edl` / `check_overlay` / `verify_av` /
-   `verify_delivery` 互不蕴含，说清哪个证明了什么。
-7. **自检要看编码后的画面。** 源素材、审阅页、未封装的中间文件都不能代替成片的首/中/尾帧。
-8. **"做完了"要人看一眼。** 机器验完的下一步永远是给人看那几帧，不是宣布完成。
+**制作工具**：已有合格媒体直接使用；收到 SVG 时沿用元素与预埋动效钩子；HTML 动效由 HyperFrames 编排；严密数学动画按需用内置 Manim；确需自定义逐帧渲染时走 [frame-animation-pipeline](references/frame-animation-pipeline.md)。需要新表现机制才读 [能力导航](references/capability-map.md)，实施 HyperFrames 时读 `$hyperframes`。
 
-## Process
+**交付**：整片或用户需要的独立轨。分别说明有声/无声、透明/不透明、字幕烧录/外挂。审阅副本默认有声音；无声交付轨另列。
 
-**本 Skill 没有 `stages/` 目录：逐步完成标准就住在这一节** —— 下面每步末尾的**完成标准**就是「做完了吗」的判据，做不到就还在这一步。各 `references/` 只写判断方法、命令与责任划分，**不另立第二份完成标准**（`references/content-to-production.md` 的「承接阶段四件产物」受这一条约束，见其开头）。
+## 制作流程
 
-1. **承接与版本核对。** 读取内容包、当前批准状态和作者反馈；本轮目标优先于旧 `edit/project.md`。
-   新版本使用独立工作目录或明确保留旧版，不覆写旧批准稿与旧 EDL。见[内容到制作](references/content-to-production.md)，
-   按[偏好记录](references/preferences.md)读取当前有效决定。
-   **核 `script_hash`**（[两处都核](references/content-to-production.md)，各管自己那一段：
-   做画面那一步在录制**前**核，来得及；这里在录制**后**核，只能事后发现，所以不符就停下来问作者）：
-   `python3 helpers/check_script_hash.py <项目目录>` —— 不符就停下来问作者，核不了就如实说「无法核对」。
-   **完成标准**：`edit/project.md` 写出它读到的每个来源（内容包各件、`_idea/current.md`、作者反馈）
-   与本版的替代关系，本轮目标排在最前；旧批准稿与旧 EDL 仍可寻址；
-   `script_hash` 的结论（相符 / 不符 / 无法核对）已经写进去。
-2. **制作方案。** 先读[画面与动画对齐](references/visual-direction.md)，用可审状态或短片确定关键动作与人物/画面主次。
-   根据内容安排全片的口播、演示、纯画面、声音与转场，提出画面语言、规格和暂定时长。作者已定动作直接纳入，
-   Agent 设计进入审阅。对素材清点、设计规划直接推进；具体剪法、声音获取和设计方案在已有授权范围确认后执行。
-   **完成标准**：`production-plan.md` 存在，且逐 Beat 写明**声音来源、画面过程、必要动作、素材与缺口、
-   预计时长及估计依据、转场关系**六项。**没有音频时**，第 1–4 步照常推进到有可审的样片（这是承接阶段的
-   共同要求，不是某一步的额外动作）：独立代表切片 `previs/`（标 planned，第 4 步产出）
-   加上**分段录制稿 + 需要留出的动作/演示空间**。
-3. **准备声音与素材。** `ffprobe` 检查源文件与音轨；有录制就转写并通读内容，找重来、口误和可用 Take。
-   多音轨显式选轨，录屏先查 VFR 空洞、必要时转 CFR。无录音时明确使用作者后续录制、已授权 TTS 或无口播；
-   同时继续能独立完成的画面准备。临时声音只用于预演，不能冒充作者或最终配音。
-   **完成标准**：每个源文件都有 `ffprobe` 结论和所选音轨；有录音时 `edit/takes_packed.md` 存在，
-   重来、口误、可用 Take 逐条标出；无录音时声音来源（作者后续录制 / 已授权 TTS / 无口播）已写下来。
-4. **画面与节奏预演。** 按制作方案做代表片段（优先覆盖不同视觉机制），用真实素材、清楚标注的临时声音/估时渲染供审阅。
-   确认语言与节奏后再扩展；最终音频到位后必须重校时间，不能直接把预演当成成片。
-   **完成标准**：`previs/` 下至少一版覆盖不同视觉机制的代表片段，标着 planned 和临时声音/估时的来源，
-   并且已经给作者看过。
-5. **剪接决策。** 声音与素材可用后建立 `edl.json`，纳入作者批准的演示/停留段；不能只删口播静音而删掉承载创意的动作。
-   `check_edl.py` 硬失败清零。只有音频加全画面时声明 `canvas`/`fps`。剪点按短语，短语内重复优先在字幕层处理。
-   **完成标准**：`edl.json` 存在且 `check_edl.py` 零硬失败；作者批准的演示与停留段都在 `ranges` 里；
-   无素材项目已声明 `canvas` 与 `fps`。
-6. **统一视听审阅。** 运行 `python3 helpers/build_review.py <项目>` 自动聚合剪接决策、演示动画与字幕资产，并运行 `python3 helpers/serve_review.py <项目> --open`（或经 `helpers/review_surface.py` 挂载至 DSH 侧栏）唤起统一视听审阅台。
-   审阅台自动适配三大形态（复合双通道、纯口播、纯动画），支持实时视听播放与逐幕/逐字拆解双视图。
-   **注意：审阅台是供作者交互与决策的工具，Agent 不得读取 `review/index.html` 或辅助脚本源码当材料（严重浪费 tokens）**；Agent 只读取 `review/review-submissions.json` 或 `feedback/*.jsonl` 获取作者反馈决定。
-   **完成标准**：统一审阅台已构建且能流畅播放，作者针对剪接与视听的审阅答复记录在 `feedback/*.jsonl` 或 `review/review-submissions.json` 中。
-7. **实测底片与语义字幕。** 批准后渲染底片，取得 `segment_durations.json`。读取
-   `references/caption-article-first.md`，prepare → 语义断句 → lock → build → check，
-   生成实测 `captions.json` / `caption_words.json`。字幕保持录音实际说法，画面花字另行设计。
-   **完成标准**：`segment_durations.json` 对应当前 EDL 哈希；`caption_words.json` 的
-   `timeline_source` 是 `measured`；article → line plan → lock → build → check 五步全绿。
-8. **绑定内容与实测时间。** 读取[上游交接](references/video-story-handoff.md)和[时间脊柱](references/visual-timeline.md)，
-   将 Beat/Screen 绑定到实测 cue；处理低置信、删段、插入演示等例外。按内容设计 grouping，派生最终 timeline；
-   不拿剧本估时或旧 SRT 当实测结果。
-   **完成标准**：`edit/timeline/grouping.json` 与 `edit/timeline/timeline.json` 都在；每个 Step 只挂一个
-   `sourceBlueprintId`；对齐文件里的 low / unmatched 逐条处理过，没有一条靠默认值过关。
-9. **完成视觉与合成。** 依已审片段铺全片，必要时多个动画槽并行做。实录变动影响内容/节奏时回看代表片段。
-   用 `check_overlay.py` 验 alpha/opaque 接口，再由 `render.py` 合成，字幕最后；不得手工拼另一条合成路径。
-   **视觉层若是自己写渲染器逐帧画出来的，先读[自绘逐帧动画](references/frame-animation-pipeline.md)**——
-   那条路线最硬的约束是帧数：各槽编码参数必须逐项一致才能 `-c copy` 拼接，返修时内容可变、帧数不可变。
-   **画面页来自 `planners-ppt-hell` 时**，先读[合成工作方式](references/composition-craft.md)的
-   「画面页来自 planners-ppt-hell 时的动画交接」：一屏在该步的 `grouping.json` 写 `sourcePageKey`，
-   生成器逐字内联该页并证明没改页面，动画按元素的 `id` 指名；三个合成事实的键名见
-   [合成事实的字段契约](references/composition-facts-contract.md)。
-   **渲染视觉层之前必须跑** `helpers/check_render_env.py <project>/composition`（见 Setup）。
-   **完成标准**：`check_overlay.py` 通过；`render.py` 输出成片；每个视觉槽的实际时长等于 EDL 声明的窗口；
-   用到画面页时 `composition/pages/manifest.json` 里每页 `verbatim` 为真；渲染前跑过环境预检。
-10. **自检与创意兑现。** 在编码成片上看剪点及首中尾帧，运行 `verify_av.py --all`、适用的覆盖层检查；
-    再逐 Beat 检查内容责任、作者动作、证据、花字与声音是否兑现。技术通过不能代替内容检查。
-    失败修复最多 3 轮，未解决如实报告。
-    **交付前三查**（每条都有闸门，别靠记性）：
-    - `check_motion.py` 逐个动效片段 —— 检查声明的动效窗口是否有变化；有意停留允许静止。另看片验证动作方向、循环末轮及结束状态，帧差通过不代表这些性质通过；
-    - `check_screen_text.py` —— 把**所有会出字的地方**（合成文本、做画面的 `_internal/02_svg_source/*.svg`、`--caption`）对回上游声明（`--plan <项目>/deliverable/visual-plan.json` 的 `sample.captions[]` 与标「文字：」的条目）列成一张表逐条过：画面里只放内容，处理手法不上屏（判断依据见 `references/visual-direction.md`）；
-    - `check_caption_breaks.py` —— 字幕断句逐条过，长语块的断点是**人工指定**的，不是算法猜的。
-    **完成标准**：`verify_av.py --all` 与三查全部通过；`creative-check.md` 逐 Beat 有结论或明确缺口；
-    失败修复轮次与未解决项如实写下来。
-11. **统一导出与交付。** 运行统一成片导出深模块 `python3 helpers/export_video.py <项目> --mode {composite,animation,speaker,split}` 输出规范成片至 `成品/`：
-    - `composite`：完整视听成片（口播 + 动画 + 底部字幕 + 48kHz 母带音频）
-    - `animation`：独立 1920x1080 演示动画轨（含参考音轨方便 NLE 对齐）
-    - `speaker`：独立口播剪辑视频
-    - `split`：同时导出以上三轨及 `02_字幕文件.srt`（多腿交付，各腿同帧率同帧数）
-    工具内置 `/tmp` 渲染（彻底防御云盘文件锁）、动效时序隐藏样式注入与单行药丸防折行保护，**禁止 Agent 自行编写临时 FFmpeg 拼合命令或 Playwright 录屏脚本**。
-    最后运行 `python3 helpers/verify_delivery.py <项目>` 检查交付副本。
-    **完成标准**：`成品/` 里的成片通过 `verify_delivery.py`；各分轨与完整成片帧率 (30fps)、总时长与时间轴一致；作者看过代表帧或片段。
+### 1. 接手当前内容与决定
 
-## Layout
+读 [上游交接](references/content-to-production.md)，确认本轮目标、作者决定、声音状态与资产版本。将输入位置、当前采用版、缺口和下一步记入 `edit/project.md`。
 
-```
-<videos_dir>/
-├── <sources, untouched>
-├── edit/                       工作区
-│   ├── project.md              跨会话记忆
-│   ├── takes_packed.md         短语级逐字稿（主要阅读视图）
-│   ├── edl.json                剪辑决策 + 覆盖层声明（唯一时间编排面）
-│   ├── segment_durations.json  实测每段时长 + 它对应的 EDL 哈希
-│   ├── transcripts/            缓存的逐字稿（按源 + 音轨分键）
-│   ├── caption_*.json / captions_article.txt / semantic_lines.txt   字幕链
-│   ├── subtitles.srt           输出时间轴 SRT（交付用这个）
-│   ├── timeline/grouping.json  L3b 的创作决策（哪个视觉模型承载哪段话）
-│   ├── overlays/ 或 animations/slot_<id>/   视觉层产物
-│   ├── edl_preview.html        审阅页（剪辑 + 逐字）
-│   └── verify/                 自检帧、时间轴图
-└── 成品/                       交付区（视频 + SRT）
-```
+- **Idea → Craft**：`script.md`、可选 `visual-plan.json`、`production-brief.md`、`assets/` 与作者反馈；原项目的 `_idea/current.md` 是当前决定入口。有契约时运行 `helpers/check_script_hash.py`，不符交作者确认，缺文件如实报无法核对。
+- **PPT Hell → Craft**：优先消费项目根 `.snapshot` 指向的 `svg-workbench-snapshot/1` `snapshot.json`；由 `visual/scripts/snapshot_input.py` 严格校验清单、SVG、递归资产、原 visual-plan 与 script 绑定，再由 `visual/scripts/import_svg_page.py` 导入。没有 snapshot 时才兼容 `_internal/02_svg_source/<page_key>.svg` 与旧 `.pages` 路径。`page_key` 继承 `screen_id`；id 全片唯一，`data-step` / `data-anim` 的结构按 [SVG 动效契约](references/svg-animation-contract.md)。
+- **资料来源**：沿用上游 source index 和证据定位，不从画面或字幕反推新的事实；新增事实/素材时读 `$planners-source-index`，补入同一来源账本并校验。
 
-`edit/` 是工作区，`成品/` 是交付区。**不要把 edit/ 里的文件当成品交出去。**
+接手完成意味着知道采用什么、什么待定、谁能改变什么，不要求无关分支也建齐文件。
 
-还读两个指针 / 包目录：
+### 2. 确定视听方案
 
-- `.theme` / `.layout`（项目根，各一行）—— 生成合成时用哪个主题、哪个画幅。
-- 画面页：优先项目根的 `.pages`（一行，指向做画面项目根），其次上游随包交来的
-  `input/scenes/<page_key>.svg`。两者都没有时该项目就是自绘视觉层。
+在 `production-plan.md` 记录实际需要的声音来源、画面过程、强调动作、素材、时间依据与衔接。需要比较方案时用可看的代表片段讨论；已定方向直接制作。无音频的估时留在预演中，后续由实测替代。
 
-## EDL format
+静态画面缺失或需要重构时调 `$planners-ppt-hell` 的视频路线；内容意义、必见对象、固定字或素材关系需要改变时回 `$video-idea-system`。不要让动画阶段静默覆盖上游批准决定。
 
-```json
-{
-  "version": 1,
-  "sources": {"C0103": "/abs/path/C0103.MP4"},
-  "ranges": [
-    {"source": "C0103", "start": 2.42, "end": 6.85,
-     "beat": "HOOK", "quote": "...", "reason": "Cleanest delivery."}
-  ],
-  "grade": "warm_cinematic",
-  "overlays": [
-    {"file": "edit/overlays/slot_1/render.mov", "start_in_output": 0.0,
-     "duration": 5.0, "kind": "alpha"}
-  ],
-  "total_duration_s": 87.4
-}
-```
+### 3. 制作与校准时间
 
-- `grade` 是预设名或原始 ffmpeg filter；`none` 是直通。
-- `canvas` + `fps`（都可选）：**底片没有画面时**（只有口播音频 + 满屏画面）项目自己声明画框。
-  此时 `render.py` 会合成一块该尺寸的黑底承载口播，帧率取 `fps`。有素材时这两个字段被忽略，
-  尺寸和帧率从素材自身推。
-- `kind` 是覆盖层接口的一部分：`"alpha"`（压在底片上，必须有真 alpha 平面）或
-  `"opaque"`（满屏替换，不要 alpha）。**缺省是 `alpha`**——让响的那个失败赢。
-- `overlays` 里的 `duration` 必须等于文件的真实时长（`check_overlay.py` 会验，容差 0.05s）。
-- `ranges` 可选 `speed`（加速静音段）与 `mute`；带 `speed` 时用 `render_cut.py`。
-## 核心 CLI 工具速查（黑盒调用）
+选当前路径执行 [工具手册](references/tools.md)：每个入口有命令、输入、输出与下一消费者，扩展参数调用 `--help`，正常制作无需阅读实现源码。
 
-**工具是执行手段，不是阅读材料**。Agent 严禁阅读辅助脚本实现或 HTML 产物源码（极度消耗 tokens 且毫无必要），直接调用以下命令行：
+- **剪辑**：转写 → EDL → 需要时逐字审阅 → `render.py` 底片。`edl.json` 管取舍，`segment_durations.json` 管该版底片实测时长。
+- **字幕**：按 [语义字幕](references/caption-article-first.md) 做全文校对与语义行，再锁定和生成；字幕不是视觉分屏依据。
+- **视觉时间**：按 [时间绑定](references/visual-timeline.md) 将屏映射到 cue，统一写入项目根 `timeline/`。导入的已剪音频/SRT 标为 `srt-import`，不冒充 EDL 实测证明。一个 Beat 仍是一屏，屏内递进动画跟着实测语句，不创造第二份上游内容契约。
+- **SVG / HTML 动效**：导入 SVG，只由导入器重写图片 href；按 id 和 data-step 绑定强调时间。生成 `composition/index.html` 后完成实际动效，再渲染；骨架不等于成片。
+- **合成**：透明覆盖层或整屏替换按 [合成制作](references/composition-craft.md) 与 [视觉渲染](references/visual-rendering.md) 接入 EDL。字幕、声音与窗口配置归渲染，不归包装导出。
 
-| 阶段 | 任务目标 | 核心命令 | 产物/凭证 |
-|---|---|---|---|
-| 5 剪接 | 校验剪辑决策 | `python3 helpers/check_edl.py edit --max-pause 0.8` | 零硬失败退出 |
-| 7 字幕 | 构建语义字幕 | `python3 helpers/srt_export.py edit --prepare && ... && --build` | `edit/subtitles.srt` |
-| 8 脊柱 | 派生实测时间轴 | `python3 helpers/timeline_derive.py edit --stats` | `edit/timeline/timeline.json` |
-| 6 审阅 | 一键构建审阅台 | `python3 helpers/build_review.py <项目目录>` | `review/review_data.json` + `review/index.html` |
-| 6 审阅 | 启动审阅服务 | `python3 helpers/serve_review.py <项目目录> --open` | 浏览器秒级拖拽，意见落盘 `feedback/*.jsonl` |
-| 9 预检 | 视觉环境预检 | `python3 helpers/check_render_env.py composition` | 字体与环境检查通过 |
-| 10 自检 | 交付前动效三查 | `python3 helpers/check_motion.py ... && check_screen_text.py ...` | 动效与文字闸门全绿 |
-| 11 导出 | 导出完整成片 | `python3 helpers/export_video.py <项目目录> --mode composite` | `成品/完整视听成片.mp4` |
-| 11 导出 | 导出独立动画轨 | `python3 helpers/export_video.py <项目目录> --mode animation` | `成品/03_演示动画.mp4` |
-| 11 导出 | 导出独立口播轨 | `python3 helpers/export_video.py <项目目录> --mode speaker` | `成品/01_口播视频_剪辑成片.mp4` |
-| 11 导出 | 导出多腿四件套 | `python3 helpers/export_video.py <项目目录> --mode split` | 视频、动画、口播、字幕四轨齐备 |
-| 11 核验 | 校验交付副本 | `python3 helpers/verify_delivery.py <项目目录>` | 交付副本逐字节校验通过 |
+### 4. 审阅返修
 
-## Routing
-
-**按你现在卡在哪读**，不必整包读：
-
-| 触发 | 读 |
-|---|---|
-| 刚接到内容包 / 还没有音频 / 要定暂定时间线 / 录完要按实测校准 | [内容到制作](references/content-to-production.md) |
-| 要接 Idea 或 Story 的契约、作者画面决定、把 Beat 对齐到实测 cue | [上游内容交接](references/video-story-handoff.md) |
-| 要写中文语义字幕、定断句 | [语义字幕规格](references/caption-article-first.md) |
-| 要把视觉层挂到实测时间轴、设计分组 | [时间脊柱](references/visual-timeline.md) |
-| 画面来自 `planners-ppt-hell` 的 SVG 页 / 要按口播强调某一屏里的某个元素 / 页面预埋了 `data-step` + `data-anim` 子元素动效 / 要定整片合成方式与字幕安全区 | [合成工作方式](references/composition-craft.md) 的「画面页来自 planners-ppt-hell 时的动画交接」+ [SVG 预埋动效契约](references/svg-animation-contract.md) |
-| 要选主题或换主题 / 想知道这套 token 还有谁在读 | [主题系统](references/themes.md) + `visual/themes/<id>/` |
-| 做画面那一侧要写整片合成方式与字幕安全区，或者你要知道那三个键叫什么 | [合成事实的字段契约](references/composition-facts-contract.md) |
-| 要分清真实证据、复刻、示意与创作 | [素材优先](references/media-first.md) |
-| 要开审阅页、收作者的逐屏反馈 / 稿子或上屏文字要改，该把作者交给哪一套审阅面 | [审阅页与反馈协议](references/review-ui.md) |
-| 要渲染视觉层（含透明 alpha 层） | [视觉层渲染](references/visual-rendering.md) |
-| 要自己写渲染器逐帧画（slot 切分、帧数合同、性能配方、逐画面返修、多腿交付） | [自绘逐帧动画](references/frame-animation-pipeline.md) |
-| 要让字幕跟着内容换模式、定断句原则 | [字幕模式](references/caption-modes.md) |
-| **要改这个 Skill**（想知道某个 module 拥有什么、动了会牵连谁） | [架构](references/architecture.md)——先读它再动手 |
-| 要找上次踩过的坑 / 要记一条新坑 | `GOTCHAS.md`——**记的时候写清 `module` 与状态** |
-| 要查上一次升级做了什么、影响了哪些 module | [维护记录](references/maintenance-history.md) |
-| 要查脱钩前的历史与上游差异 | `upstream-diff.md`（只供查） |
-
-**脚本只做确定性的事**：搜索、转换、保存、恢复、校验、开页面。判断留给模型。
-手工拼 ffmpeg 命令合成覆盖层是**错的**——那说明接口缺了一块，去补接口而不是补命令。
-
-## 运行后迭代
-
-一次运行结束后，结论只有一个去向，按性质挑：
-
-| 你手上是什么 | 落到哪 |
-|---|---|
-| 有证据、会稳定导致错误的行为（现象／原因／修正／证据），或它的状态变了 | `GOTCHAS.md`，写清 `module` 与状态（候选／已复现／已升级／已失效） |
-| 一次已经做完的升级：做了什么、为什么、**影响了哪些 module**、删了什么 | `references/maintenance-history.md` |
-| 模块边界、缝、两个真相源、退役清单变了 | `references/architecture.md` |
-
-三份文件各自的规矩（什么收、什么不收、按 module 怎么聚类）**只写在它们自己里面**，这里不复述。
-
-## 怎么验证
-
-测试套件要同时满足三件事：**`helpers` 在 `PYTHONPATH` 上**（`test_check_overlay.py` 直接
-`import check_overlay`，找不到就整个模块加载失败）、**`ffmpeg` / `ffprobe` 在 `PATH` 上**
-（`check_overlay` 的 16 条要真起 ffmpeg 造文件）、**`PYTHONPATH` 里的 `..` 指到 Skill 根**。
+提供实际编码画面和声音；内部动效参数按需展开。读 [审阅接入与收件](references/review-ui.md)，再运行：
 
 ```bash
-cd "<your video-craft checkout>/tests"
-PYTHONPATH=..:../helpers PATH=/opt/homebrew/bin:$PATH \
-  "${CATEGORY_PY:?set CATEGORY_PY to the shared category python (see install.md)}" \
-  -m unittest discover -s . -p "test_*.py"
+python3 "<craft>/helpers/build_review.py" "<project>"
+python3 "<craft>/helpers/review_surface.py" "<project>" --surface-only
 ```
 
-解释器用 `02-skills-library/.venv/bin/python`：它是 `/usr/bin/python3`（3.9.6）建的
-`--system-site-packages` venv，`pptx` / `lxml` / `PIL` / `playwright` / `numpy` 都装齐，
-本类别的 Skill 共用这一个，离线可用、不需要 `uv`。从 Skill 根跑也成立
-（`PYTHONPATH=helpers python3 -m unittest discover -s tests -p "test_*.py"`）。
+审阅页的 SVG 也必须来自同一份 snapshot；构建器不回退到 live 页面目录，也不把审阅页重新生成的 SVG 当成制作输入。DSH 有 `review_open` 时交 surface 给侧栏；没有时由公共本地宿主启动服务器。
 
-其它自检从 Skill 根跑（`helpers/` 里的脚本自己把同目录放上 `sys.path`）：
+宿主有 `review_open` 时，把返回的 surface **绝对路径**交给它；不另起服务器。没有该工具则第二条去掉 `--surface-only`，由公共宿主打开浏览器。
 
-```bash
-python3 helpers/check_edl.py <edit_dir> --max-pause 0.8
-python3 helpers/check_script_hash.py <项目目录>
-python3 helpers/timeline_derive.py <edit_dir> --stats
-python3 helpers/check_render_env.py <project>/composition
-python3 visual/scripts/check_themes.py
-python3 visual/scripts/import_svg_page.py <project> --pages <picture-project> --audit
-```
+人提交后先运行 `helpers/review_inbox.py <project>`，检查收据，再处理 `feedback/*.jsonl` 的整片意见、逐屏意见及 `adjustments`。逐字剪辑是独立面：`edl_review_surface.py` 写 `selections.json`，由 `apply_selection.py` 消费，不混入视觉反馈。
 
-`--audit` 在一页于 `<svg>` 之下没有任何 `id` 时退非零，两个页面共用一个 `id` 时也退非零——
-那都是做画面那边要补的东西，不是这里的问题。
+完成本轮意味着真实意见已收件、处理或明确挂起，用户能看见修订后的对应版本。草稿、自动检查通过和打开页面都不是用户批准。
 
-**Python 下限是实测出来的，不是声明的。** `helpers/`、`visual/scripts/`、`tests/` 里没有任何
-3.10+ 语法：没有 `match` 语句，`X | None` 这类注解全部在 `from __future__ import annotations`
-之后（不在运行期求值），没有运行期使用的 `list[...]` / `dict[...]`。所以能跑到的解释器就是下限，
-上面的 3.9.6 实测是依据。唯一声明的 3.10+ 是随包的 `skills/manim-video/`（Manim CE 自身的要求），
-只有走 manim 那条视觉路线时才相关。
+### 5. 核验与交付
 
-## Setup
+针对编码文件检查声音、字幕、首中尾画面、运动与创意兑现；透明输出另验 alpha。用 `verify_delivery.py <project>/edit --video <实际成片>`，通过后再包装需要的文件。`export_video.py` 只复制已渲染结果，不生成动画或替你烧字幕；缺真实结果报错。
 
-- `ELEVENLABS_API_KEY` / `ARK_API_KEY` / `DOUBAO_APP_ID` + `DOUBAO_ACCESS_TOKEN`
-  放仓库根 `.env`（**不要**放进用户的 `<videos_dir>`）。
-- `ffmpeg` + `ffprobe` 在 `PATH` 上；Homebrew 默认 ffmpeg **没有** `--enable-libass`，需要烧字幕时先确认。
-  跑测试和 `check_overlay` 都要它们。
-- **透明覆盖层不要走 WebM/VP9**（本机实测 2026-09-22：libvpx 会**宣称** `yuva420p`、容器还写 `alpha_mode=1`，
-  但往返解回来不透明；`-auto-alt-ref 0` 也救不了）。`hyperframes render --help` 说 MOV/WebM 都带透明——
-  **只有 MOV 成立**（第三方 CLI 行为，见 `GOTCHAS.md` #23）。可用的是 **ProRes 4444 / HEVC+alpha / QuickTime RLE**，
-  怎么选见[视觉层渲染](references/visual-rendering.md)；走 png-sequence + `visual/scripts/encode_transparent.py`。
-  **交付前必须用 `helpers/check_alpha.py <file>` 验一次**——丢透明是静默失败（编码器退出 0、文件能播、
-  叠上去是一块黑板），而 `ffprobe` 的 `pix_fmt` 两个方向都会骗人。
-- Python 用 `02-skills-library/.venv/bin/python`（3.9.6，依赖齐）；系统 `python3` 同样能跑这个套件。
-  依赖清单见 `pyproject.toml`。
-- `hyperframes` 走 `npx --yes hyperframes`（Node ≥ 22），**并且必须在 `composition/` 里跑**
-  （`cd composition`）：它只看当前目录的 `index.html`，从项目根跑会说"没有 composition，
-  去跑 `hyperframes init`"，而 `init` 会**覆盖** `generate-composition.py` 生成的那个。
-- **每次渲染前必须跑** `python3 helpers/check_render_env.py <project>/composition`——它不是可选项：
-  字体缓存目录不可写（受限沙箱下的 `EPERM`，渲染跑到一半才炸）和 Node 过旧都在这里提前失败。
-  绕过变量是 `HYPERFRAMES_FONT_CACHE_DIR`；它不在 `--help` 里，`hyperframes doctor` 也不报。
-  **它是一道「要记得跑的检查」，不是自动闸门**：`npm run render` 在 composition 自己的
-  `package.json` 里，而那个文件由 `npx hyperframes init` 写、**不由 `generate-composition.py` 写**
-  （所以本 Skill 没法往渲染路径上挂 `prerender` 钩子），而且变形那一路是直接调
-  `npx hyperframes render`，不经过 npm。见[架构](references/architecture.md) 第 6 节。
-- 详细安装见 `install.md`。
+交出文件位置、规格、核验结论与尚未完成事项。保留 EDL、语义行、时间绑定、SVG/HTML 源与作者决定，下一轮可继续。
+
+## 资源与调用
+
+| 需要什么 | 读取位置 |
+|---|---|
+| 可直接执行的全部工具、产物目录和分支命令 | [tools.md](references/tools.md) |
+| 上游文件、版本与改动责任 | [content-to-production.md](references/content-to-production.md) |
+| 音画表达选择 | [creative-direction.md](references/creative-direction.md)、[capability-map.md](references/capability-map.md) |
+| 已批准风格与合成约束 | [themes.md](references/themes.md)、[composition-facts-contract.md](references/composition-facts-contract.md) |
+| SVG 强调动画结构与引擎调用 | [svg-animation-contract.md](references/svg-animation-contract.md) |
+| 审阅插件、桥、草稿、提交、返修 | [review-ui.md](references/review-ui.md) |
+| 安装或依赖故障 | [install.md](install.md) |
+| 维护本 Skill | [architecture.md](references/architecture.md)、[GOTCHAS.md](GOTCHAS.md)、[maintenance-history.md](references/maintenance-history.md) |
+
+工具路径相对本 Skill；项目路径用绝对路径。Python 与 FFmpeg 依赖按 `install.md` 核实；密钥留在 Skill 根 `.env`，不进入项目交付或版本库。只有诊断工具故障或维护时才读源码。
+
+维护测试：从 Skill 根运行 `PYTHONPATH=helpers python3 -m unittest discover -s tests -p 'test_*.py'`；浏览器自测按 `tests/test_review_browser.py` 与 `tests/test_interactive_ui.py` 的独立临时 fixture 执行，不把测试意见混入作者项目。

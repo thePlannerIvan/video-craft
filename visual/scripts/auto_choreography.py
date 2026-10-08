@@ -10,8 +10,13 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from import_svg_page import resolve_pages
+from snapshot_input import resolve_snapshot, invalidation
 
 
 def _clean_text(s: str) -> str:
@@ -155,30 +160,25 @@ def build_choreography(project: Path, pages_dir: Path | None = None) -> dict:
         raise FileNotFoundError(f"missing timeline: {tl_path}")
     timeline = json.loads(tl_path.read_text(encoding="utf-8"))
 
-    if pages_dir is None:
-        dot_pages = project / ".pages"
-        if dot_pages.is_file():
-            cand = Path(dot_pages.read_text(encoding="utf-8").strip())
-            if (cand / "_internal" / "02_svg_source").is_dir():
-                pages_dir = cand / "_internal" / "02_svg_source"
-            elif cand.is_dir():
-                pages_dir = cand
-        elif (project / "input" / "scenes").is_dir():
-            pages_dir = project / "input" / "scenes"
-        elif (project / "svg").is_dir():
-            pages_dir = project / "svg"
+    snapshot = resolve_snapshot(project, pages_dir)
+    pages_dir, _ = resolve_pages(project, pages_dir)
+    if pages_dir is None and (project / 'svg').is_dir():
+        pages_dir = project / 'svg'
 
     measured_words = _load_measured_words(project)
 
     choreo_path = project / "timeline" / "choreography.json"
     existing_screens = {}
+    existing = {}
     if choreo_path.is_file():
         try:
-            existing_screens = json.loads(choreo_path.read_text(encoding="utf-8")).get("screens", {})
+            existing = json.loads(choreo_path.read_text(encoding="utf-8"))
+            existing_screens = existing.get("screens", {})
         except ValueError:
             existing_screens = {}
 
     screens_out = {}
+    changes = invalidation(existing.get('snapshot', {}), snapshot) if snapshot else None
     fps = float(timeline.get("fps", 30))
     for ch in timeline.get("chapters", []):
         for st in ch.get("steps", []):
@@ -191,10 +191,18 @@ def build_choreography(project: Path, pages_dir: Path | None = None) -> dict:
                 dur_s = 4.0
             start_s = round(float(st.get("startMs", 0)) / 1000.0, 3)
             page_key = st.get("sourcePageKey") or Path(st.get("svg", sid)).stem
+            if snapshot and page_key not in snapshot.pages:
+                raise ValueError(f'Timeline screen {sid} has no matching snapshot page {page_key}')
             svg_file = (pages_dir / f"{page_key}.svg") if pages_dir else None
             raw_steps = parse_svg_steps(svg_file) if svg_file else []
 
             prev_screen = existing_screens.get(sid, {})
+            if (snapshot and page_key not in changes['static_screens'] and prev_screen
+                    and prev_screen.get('sourcePageKey') == page_key
+                    and prev_screen.get('startSec') == start_s and prev_screen.get('durationSec') == dur_s
+                    and prev_screen.get('chapterId') == ch['id']):
+                screens_out[sid] = prev_screen
+                continue
             prev_steps = {int(k): v for k, v in (prev_screen.get("steps") or {}).items()}
 
             has_speaker = any(item.get("speakerWidth", 0) > 0 for item in raw_steps)
@@ -211,6 +219,8 @@ def build_choreography(project: Path, pages_dir: Path | None = None) -> dict:
                         words=measured_words, screen_start_s=start_s
                     )
                 over = prev_steps.get(snum, {})
+                if snapshot and over.get('id') != item['id']:
+                    over = {}
                 resolved_rel = over.get("relStartSec", rel_s)
                 step_map[str(snum)] = {
                     "step": snum,
@@ -239,6 +249,9 @@ def build_choreography(project: Path, pages_dir: Path | None = None) -> dict:
         "contract_version": "video-craft-choreography/1.0.0",
         "screens": screens_out,
     }
+    if snapshot:
+        doc['snapshot'] = snapshot.binding()
+        doc['invalidation'] = changes
     choreo_path.parent.mkdir(parents=True, exist_ok=True)
     choreo_path.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return doc

@@ -173,7 +173,8 @@ def check_project(project: Path) -> list[str]:
                 f"{page} 是剪贴板时代的审阅页（只写剪贴板，连不上审阅宿主）——"
                 "重新复制 visual/assets/review-page-template.html 覆盖它"
             )
-    if not (project / TIMELINE_REL).is_file():
+    data_path = project / 'review/review_data.json'
+    if not (project / TIMELINE_REL).is_file() and not data_path.is_file():
         problems.append(
             f"缺少 {project / TIMELINE_REL}——先按 references/visual-timeline.md 派生时间轴"
         )

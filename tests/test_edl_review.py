@@ -207,9 +207,10 @@ class EdlRealProjectCase(unittest.TestCase):
         self.assertTrue(src, "SRC 不该是空的")
         for key, url in src.items():
             with self.subTest(key=key):
-                self.assertTrue(url.startswith("/"), f"{url} 不是 serve root 下的绝对路径")
+                self.assertFalse(url.startswith("/"), f"{url} 必须相对 surface dir")
                 self.assertTrue((self.edit.parent / url.lstrip("/")).is_file(),
                                 f"{url} 在 serve root（公共根）下不存在")
+        self.assertIn('await review.asset(SRC[key])', text)
 
     def test_the_page_is_served_and_really_grows_content(self):
         """**验证第 12 条**：不只看宿主 ok —— 断言磁盘上这一页真的带着内容（词/段/时间轴数据）。"""
@@ -412,4 +413,3 @@ class EdlBrowserCase(unittest.TestCase):
         wake_log = (self.edit / review_host.WAKE_LOG_NAME).read_text(encoding="utf-8")
         self.assertIn("整段节奏偏慢", wake_log)
         self.assertIn("整段", wake_log)
-

@@ -160,9 +160,12 @@ def import_submissions(project: Path, dry_run: bool = False) -> dict:
     """
     project = Path(project).expanduser().resolve()
     records = load_submissions(project)
+    doc = json.loads(submissions_path(project).read_text(encoding="utf-8")) if submissions_path(project).is_file() else {}
+    legacy_adjustments = {key: doc[key] for key in ('choreography_overrides', 'svg_edits') if doc.get(key)}
     imported = load_cursor(project)
     receipt = {"ok": True, "submissions": str(submissions_path(project)),
-               "seen": len(records), "imported": [], "skipped": [], "rejected": []}
+               "seen": len(records), "imported": [], "skipped": [], "rejected": [],
+               "legacy_adjustments": legacy_adjustments}
     for index, record in enumerate(records):
         digest = record_hash(record)
         if digest in imported:

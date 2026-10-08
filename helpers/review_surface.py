@@ -41,7 +41,9 @@ HOST_STATE_REL = f'{REVIEW_DIR}/{review_host.HOST_STATE_NAME}'
 ID = 'video-craft/visual'
 # 一次提交只带一条记录（页面一次审一步）。唤醒语**不自称"只重出这一页"** ——
 # 本 Skill 的返修环是「改 composition → npm run check → 重渲染整片」，那句话在这里是假的。
-WAKE_TEXT = '{unit} 有一条画面反馈；读 feedback/*.jsonl，按 references/review-ui.md 的协议处理。'
+WAKE_TEXT = ('{unit} 有一条视听反馈。先运行 video-craft/helpers/review_inbox.py <本项目绝对路径>，'
+             '检查收据中的 rejected 与结构化调整，再读 feedback/*.jsonl；'
+             '按 video-craft/references/review-ui.md 处理并重建审阅。')
 # 宿主只 stat 它（mtime/size），一变就戳页面；**它不知道什么变了**，页面收到戳之后自己
 # 重读时间轴、自己 diff（见 review-ui.md「变化戳与陈旧判定」）。
 #
@@ -59,6 +61,12 @@ def surface_path(root):
 
 def surface_document(root=None):
     """这一份 surface 的内容。`project_root` / `dir` / `entry` / `feedback` 都**相对 surface 文件**。"""
+    watch = list(WATCH)
+    if root is not None and (Path(root)/'review/review_data.json').is_file():
+        data = json.loads((Path(root)/'review/review_data.json').read_text(encoding='utf-8'))
+        watch = ['review_data.json', 'index.html'] + [
+            '../' + one['path'] for one in data.get('sourceManifest', [])]
+        watch = list(dict.fromkeys(watch))
     return {
         'contract_version': review_host.CONTRACT_VERSION,
         'id': ID,
@@ -68,13 +76,17 @@ def surface_document(root=None):
         'dir': '..',
         'entry': 'review/index.html',
         'feedback': 'review-submissions.json',
-        'wake': {'mode': 'queue', 'text': WAKE_TEXT},
+        'draft': 'review-draft.json',
+        # 唤醒走**插话**（`steer` → `next-step`）：人点了提交就是要"现在就改"，而 `queue` 会排到
+        # 当前回合之后 —— 模型正忙时它躺在持久队列里，界面上同时显示「已送达」与「排队中」两份。
+        'wake': {'mode': 'steer', 'text': WAKE_TEXT.replace('<本项目绝对路径>', str(Path(root).resolve()))
+                 if root is not None else WAKE_TEXT},
         # 本 Skill 没有单位级版本层（review-ui.md 把 `codeVersion` 记为已知缺口）。
         # 不为了适配缝硬造一个版本号；只声明宿主**该盯哪个文件**——时间轴一重派生，
         # 页面上的 step 清单与 caption 就旧了，页面据此提示作者重新加载。
-        'watch': list(WATCH),
+        'watch': watch,
         # 这个面不上传图片：审阅只需要时间轴与播放器。声明为空就是为空。
-        'capabilities': [],
+        'capabilities': ['draft'],
     }
 
 

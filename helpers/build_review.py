@@ -15,12 +15,47 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
 import shutil
 import sys
 from pathlib import Path
+import xml.etree.ElementTree as ET
+
+from lib.planners_modules import resolve_module
+from review_surface import write_surface, validate_surface
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "visual" / "scripts"))
+from snapshot_input import resolve_snapshot  # noqa: E402
+from import_svg_page import import_page, _inline_image_hrefs  # noqa: E402
+
+
+def snapshot_file(path: Path, root: Path) -> dict:
+    stat = path.stat()
+    item = {"path": path.relative_to(root).as_posix(), "size": stat.st_size,
+            "mtime_ns": stat.st_mtime_ns}
+    if path.suffix.lower() in (".json", ".svg", ".srt", ".html", ".js"):
+        item["sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return item
+
+
+def find_scene_files(project_root: Path, edit_dir: Path) -> dict:
+    dirs = [project_root / "visual_screens" / "_internal" / "02_svg_source",
+            project_root / "composition" / "pages",
+            project_root / "scenes", project_root / "deliverable" / "scenes",
+            project_root / "input" / "scenes", edit_dir / "scenes", project_root / "previs"]
+    pointer = project_root / ".pages"
+    if pointer.is_file():
+        pages = Path(pointer.read_text(encoding="utf-8").strip())
+        pages = pages if pages.is_absolute() else project_root / pages
+        dirs.insert(0, pages / "_internal" / "02_svg_source")
+    files = {}
+    for directory in dirs:
+        for path in sorted(directory.glob("*.svg")):
+            files.setdefault(path.stem, path.resolve())
+    return files
 
 
 def parse_srt(srt_text: str) -> list[dict]:
@@ -67,56 +102,44 @@ def resolve_project_paths(target: Path) -> tuple[Path, Path]:
 
 def find_svg_scenes(project_root: Path, edit_dir: Path) -> dict[str, str]:
     """寻找并加载项目中所有的 SVG 场景。"""
-    svg_map: dict[str, str] = {}
-    search_dirs = [
-        project_root / "visual_screens" / "_internal" / "02_svg_source",
-        project_root / "scenes",
-        project_root / "deliverable" / "scenes",
-        project_root / "input" / "scenes",
-        edit_dir / "scenes",
-        project_root / "previs",
-    ]
-    
-    # 检查 .pages 指针
-    pages_pointer = project_root / ".pages"
-    if pages_pointer.is_file():
-        pointer_line = pages_pointer.read_text(encoding="utf-8").strip()
-        if pointer_line:
-            p_dir = Path(pointer_line)
-            if not p_dir.is_absolute():
-                p_dir = project_root / p_dir
-            search_dirs.insert(0, p_dir / "visual_screens" / "_internal" / "02_svg_source")
-            search_dirs.insert(0, p_dir / "scenes")
-
-    for s_dir in search_dirs:
-        if s_dir.is_dir():
-            for svg_file in sorted(s_dir.glob("*.svg")):
-                key = svg_file.stem
-                if key not in svg_map:
-                    try:
-                        svg_map[key] = svg_file.read_text(encoding="utf-8")
-                    except Exception:
-                        pass
-    return svg_map
+    snapshot = resolve_snapshot(project_root)
+    if snapshot:
+        result = {}
+        for key in snapshot.order:
+            imported = import_page(
+                key,
+                page_dir=snapshot.root / "scenes",
+                asset_root=snapshot.root,
+                project=project_root,
+            )
+            # The importer pins any copied assets under composition/assets so the
+            # review page and the later composition consumer resolve the same bytes.
+            result[key], _ = _inline_image_hrefs(
+                imported.inlined,
+                {entry["after"]: "../composition/" + entry["after"]
+                 for entry in imported.substitutions},
+            )
+        return result
+    return {key: path.read_text(encoding="utf-8")
+            for key, path in find_scene_files(project_root, edit_dir).items()}
 
 
 def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = "auto") -> dict:
     """搜集、对齐并构造统一审阅数据契约。"""
     # 1. 查找 timeline.json
     timeline_paths = [
-        edit_dir / "timeline" / "timeline.json",
         project_root / "timeline" / "timeline.json",
+        edit_dir / "timeline" / "timeline.json",
         edit_dir / "timeline.json",
         project_root / "timeline.json"
     ]
     timeline_data = None
+    timeline_path = None
     for tp in timeline_paths:
         if tp.is_file():
-            try:
-                timeline_data = json.loads(tp.read_text(encoding="utf-8"))
-                break
-            except Exception:
-                pass
+            timeline_data = json.loads(tp.read_text(encoding="utf-8"))
+            timeline_path = tp
+            break
 
     # 2. 查找 edl.json
     edl_data = None
@@ -145,8 +168,8 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
                 pass
 
     # 如果没有 srt，查找 captions.json
+    cap_json_paths = [edit_dir / "captions.json", project_root / "captions.json"]
     if not captions:
-        cap_json_paths = [edit_dir / "captions.json", project_root / "captions.json"]
         for cjp in cap_json_paths:
             if cjp.is_file():
                 try:
@@ -167,6 +190,7 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
 
     # 4. 查找 SVG 场景
     svg_map = find_svg_scenes(project_root, edit_dir)
+    workbench_snapshot = resolve_snapshot(project_root)
 
     # 5. 查找媒体文件
     review_dir = project_root / "review"
@@ -183,7 +207,7 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
     speaker_video_rel = None
     for cand in speaker_candidates:
         if cand.is_file():
-            speaker_video_rel = os.path.relpath(cand, review_dir)
+            speaker_video_rel = os.path.relpath(cand, project_root)
             break
 
     # 候选动画预览视频
@@ -195,40 +219,42 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
     preview_video_rel = None
     for cand in anim_candidates:
         if cand.is_file():
-            preview_video_rel = os.path.relpath(cand, review_dir)
+            preview_video_rel = os.path.relpath(cand, project_root)
             break
 
     # 候选完整成片视频
     composite_candidates = list((project_root / "成品").glob("*完整*.mp4")) + \
-                           list((project_root / "成品").glob("*成片*.mp4")) + [
+                           [
         project_root / "成品" / f"{project_root.name}_完整视听成片.mp4",
-        edit_dir / "cut_subbed.mp4",
-        edit_dir / "base_preview.mp4",
+        edit_dir / "final.mp4",
+        edit_dir / "screen_final.mp4",
         edit_dir / "preview.mp4"
     ]
     composite_video_rel = None
     for cand in composite_candidates:
         if cand.is_file():
-            composite_video_rel = os.path.relpath(cand, review_dir)
+            composite_video_rel = os.path.relpath(cand, project_root)
             break
 
     # 候选逐字稿粗剪工作台
     transcript_rel = None
     for cand in [edit_dir / "edl_preview.html", project_root / "edl_preview.html"]:
         if cand.is_file():
-            transcript_rel = os.path.relpath(cand, review_dir)
+            transcript_rel = os.path.relpath(cand, project_root)
             break
 
     # 候选导引配音
     audio_candidates = [
         project_root / "guide_audio.mp3",
         edit_dir / "guide_audio.mp3",
-        edit_dir / "audio.wav"
+        edit_dir / "audio.wav",
+        project_root / "input" / "audio.mp3",
+        project_root / "input" / "audio.wav",
     ]
     guide_audio_rel = None
     for cand in audio_candidates:
         if cand.is_file():
-            guide_audio_rel = os.path.relpath(cand, review_dir)
+            guide_audio_rel = os.path.relpath(cand, project_root)
             break
 
     # 6. 计算模式
@@ -252,7 +278,8 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
     elif captions:
         total_duration_ms = int(captions[-1]["end"] * 1000)
     elif edl_data and "ranges" in edl_data:
-        total_duration_ms = int(sum((r.get("end", 0) - r.get("start", 0)) for r in edl_data["ranges"]) * 1000)
+        total_duration_ms = int(sum((r.get("end", 0) - r.get("start", 0)) / r.get("speed", 1)
+                                    for r in edl_data["ranges"]) * 1000)
 
     # 构造统一 beats 视图
     beats = []
@@ -285,7 +312,7 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
         cur_ms = 0
         edl_steps = []
         for i, r in enumerate(edl_data["ranges"]):
-            dur_ms = int(round((r.get("end", 0) - r.get("start", 0)) * 1000))
+            dur_ms = int(round((r.get("end", 0) - r.get("start", 0)) / r.get("speed", 1) * 1000))
             edl_steps.append({
                 "id": f"cut-{i+1:02d}",
                 "step": i + 1,
@@ -307,9 +334,63 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
             "steps": edl_steps
         })
 
+    if not beats and captions:
+        beats = [{"id": "captions", "title": "口播", "steps": [
+            {"id": f"cue-{c['id']}", "step": i, "startMs": c["startMs"],
+             "endMs": c["endMs"], "durationMs": c["endMs"] - c["startMs"],
+             "caption": c["text"], "cueRange": [i, i]} for i, c in enumerate(captions)]}]
+    scene_assets = {}
+    watched = []
+    for path in [timeline_path, *edl_paths, *srt_paths, *cap_json_paths]:
+        if path and path.is_file():
+            watched.append(path)
+    scene_files = find_scene_files(project_root, edit_dir)
+    if workbench_snapshot:
+        scene_files = {key: workbench_snapshot.root / "scenes" / f"{key}.svg"
+                       for key in workbench_snapshot.order}
+    for key, path in scene_files.items():
+        # Review assets stay inside the declared project. External page projects
+        # must first use import_svg_page.py --emit, which preserves asset hrefs.
+        try:
+            path.relative_to(project_root)
+        except ValueError:
+            raise ValueError(f"SVG 在审阅目录之外：{path}；先用 import_svg_page.py --emit 导入项目")
+        watched.append(path)
+        scene_assets[key] = {}
+        tree = ET.fromstring(svg_map[key])
+        if workbench_snapshot:
+            # The immutable snapshot already validated and pinned every nested
+            # dependency. Do not reinterpret its packaged hrefs against live
+            # project files while building a review surface.
+            continue
+        for node in tree.iter():
+            if node.tag.rsplit("}", 1)[-1] != "image":
+                continue
+            href = node.get("href") or node.get("{http://www.w3.org/1999/xlink}href") or ""
+            if href.startswith(("data:", "#")):
+                continue
+            asset = (path.parent / href).resolve()
+            try:
+                rel = asset.relative_to(project_root).as_posix()
+            except ValueError:
+                raise ValueError(f"SVG 图片越出项目：{asset}；先导入图片资产")
+            if not asset.is_file():
+                raise ValueError(f"SVG 图片不存在：{asset}")
+            scene_assets[key][href] = rel
+            watched.append(asset)
+    for rel in [speaker_video_rel, preview_video_rel, composite_video_rel, guide_audio_rel]:
+        if rel:
+            watched.append(project_root / rel)
+    watched = sorted(set(watched))
+    manifest = [snapshot_file(path, project_root) for path in watched]
+    snapshot = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
     review_data = {
         "version": "2.0.0",
         "project": project_root.name,
+        "snapshot": snapshot,
+        "sourceManifest": manifest,
+        "timelinePath": timeline_path.relative_to(project_root).as_posix() if timeline_path else None,
+        "svgAssets": scene_assets,
         "mode": final_mode,
         "aspectRatio": "16:9",
         "totalDurationMs": total_duration_ms,
@@ -317,7 +398,8 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
             "speakerVideo": speaker_video_rel,
             "previewVideo": preview_video_rel,
             "compositeVideo": composite_video_rel,
-            "transcriptUrl": transcript_rel,
+            "transcriptSurface": (os.path.relpath(edit_dir / "edl_review_surface.json", project_root)
+                                  if transcript_rel else None),
             "guideAudio": guide_audio_rel
         },
         "timeline": timeline_data or {
@@ -330,6 +412,7 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
         "beats": beats,
         "captions": captions,
         "svgs": svg_map,
+        "workbenchSnapshot": workbench_snapshot.binding() if workbench_snapshot else None,
         "edl": edl_data or {}
     }
     return review_data
@@ -350,16 +433,21 @@ def write_review_files(project_root: Path, review_data: dict) -> tuple[Path, Pat
     index_path = review_dir / "index.html"
 
     template_content = template_path.read_text(encoding="utf-8")
+    core = resolve_module("planners-review-core")
+    sys.path.insert(0, str(core / "scripts"))
+    from inline_review_tokens import inline, check
+    tokens = (core / "assets" / "dsh-tokens.css").read_text(encoding="utf-8")
+    template_content, _ = inline(template_content, tokens)
+    check(template_content, tokens)
     
     # 注入内联审阅数据（确保在 file:// 协议与审阅宿主下均能秒级加载，且保留 {{REVIEW_BRIDGE}} 独立行）
     inline_script = (
         "\n  <script id=\"inlined-review-data\">\n"
-        f"    window.__REVIEW_DATA__ = {json.dumps(review_data, ensure_ascii=False)};\n"
+        f"    window.__REVIEW_DATA__ = {json.dumps(review_data, ensure_ascii=False).replace('<', chr(92) + 'u003c')};\n"
         "    window.__INLINE_SVGS__ = window.__REVIEW_DATA__.svgs || {};\n"
         "    window.__INLINE_TIMELINE__ = window.__REVIEW_DATA__.timeline || null;\n"
         "    window.__SPEAKER_VIDEO_URL__ = window.__REVIEW_DATA__.media?.speakerVideo || null;\n"
         "    window.__COMPOSITE_VIDEO_URL__ = window.__REVIEW_DATA__.media?.compositeVideo || null;\n"
-        "    window.__TRANSCRIPT_URL__ = window.__REVIEW_DATA__.media?.transcriptUrl || null;\n"
         "  </script>\n"
     )
     if "</head>" in template_content:
@@ -368,21 +456,8 @@ def write_review_files(project_root: Path, review_data: dict) -> tuple[Path, Pat
     index_path.write_text(template_content, encoding="utf-8")
 
     # 3. 确保 review-surface.json 存在
-    surface_path = review_dir / "review-surface.json"
-    surface_doc = {
-        "version": 1,
-        "id": "video-craft/visual",
-        "title": f"Video Craft · {project_root.name}",
-        "dir": str(project_root),
-        "entry": "review/index.html",
-        "feedback": "review/review-submissions.json",
-        "wake": {
-            "text": "{unit} 有一条审阅意见；已追加至 feedback/*.jsonl。"
-        },
-        "watch": ["../timeline/timeline.json"],
-        "capabilities": ["feedback", "timeline", "visual_preview"]
-    }
-    surface_path.write_text(json.dumps(surface_doc, ensure_ascii=False, indent=2), encoding="utf-8")
+    write_surface(project_root)
+    validate_surface(project_root)
 
     return data_path, index_path
 
@@ -414,7 +489,8 @@ def main():
     print(f"    - 字幕条数: {len(data['captions'])} 条")
     print(f"    - SVG 场景数: {len(data['svgs'])} 个")
     print(f"✓ 统一审阅控制台已就绪: {index_path}")
-    print(f"    - 下一步: 运行 `python3 helpers/serve_review.py {project_root} --open` 打开审阅")
+    print(f"    - 下一步: python3 helpers/review_surface.py \"{project_root}\" --surface-only；"
+          "有 review_open 时传返回的 surface；无插件时去掉 --surface-only")
 
 
 if __name__ == "__main__":

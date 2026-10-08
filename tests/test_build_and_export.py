@@ -6,6 +6,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 HELPERS = Path(__file__).parents[1] / "helpers"
@@ -104,9 +105,13 @@ class TestBuildReview(unittest.TestCase):
 
 
 class TestServeReview(unittest.TestCase):
-    def test_find_free_port(self):
-        port = serve_review.find_free_port(9876)
-        self.assertGreaterEqual(port, 9876)
+    def test_delegates_to_public_host(self):
+        with patch.object(sys, 'argv', ['serve_review.py', '/tmp/fixture']), \
+                patch.object(serve_review, 'build_review_data', return_value={}), \
+                patch.object(serve_review, 'write_review_files'), \
+                patch.object(serve_review, 'open_review', return_value={}) as host:
+            serve_review.main()
+            host.assert_called_once_with(Path('/tmp/fixture').resolve(), port=0, open_browser=False)
 
 
 class TestExportVideo(unittest.TestCase):

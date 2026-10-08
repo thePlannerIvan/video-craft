@@ -100,26 +100,50 @@ def resolve_project_paths(target: Path) -> tuple[Path, Path]:
     return project_root, edit_dir
 
 
+def import_snapshot_scenes(project_root: Path) -> dict[str, dict] | None:
+    """Import an external workbench snapshot into project-local review assets.
+
+    A snapshot may live outside the video project.  The importer is still the
+    authority for validating and copying its pinned assets; this helper only
+    adapts the imported page for the review surface, whose asset bridge is
+    rooted at the video project.
+    """
+    snapshot = resolve_snapshot(project_root)
+    if not snapshot:
+        return None
+
+    result = {}
+    for key in snapshot.order:
+        imported = import_page(
+            key,
+            page_dir=snapshot.root / "scenes",
+            asset_root=snapshot.root,
+            project=project_root,
+        )
+        # The composition importer first rewrites source hrefs to
+        # assets/pages/<key>/..., then the review page needs a path relative to
+        # review/index.html. Keep the second substitution so svgAssets can map
+        # the exact href present in the inlined SVG to a project-local asset.
+        rendered, review_substitutions = _inline_image_hrefs(
+            imported.inlined,
+            {entry["after"]: "../composition/" + entry["after"]
+             for entry in imported.substitutions},
+        )
+        result[key] = {
+            "svg": rendered,
+            "assets": {
+                entry["after"]: entry["after"].removeprefix("../")
+                for entry in review_substitutions
+            },
+        }
+    return result
+
+
 def find_svg_scenes(project_root: Path, edit_dir: Path) -> dict[str, str]:
     """寻找并加载项目中所有的 SVG 场景。"""
-    snapshot = resolve_snapshot(project_root)
-    if snapshot:
-        result = {}
-        for key in snapshot.order:
-            imported = import_page(
-                key,
-                page_dir=snapshot.root / "scenes",
-                asset_root=snapshot.root,
-                project=project_root,
-            )
-            # The importer pins any copied assets under composition/assets so the
-            # review page and the later composition consumer resolve the same bytes.
-            result[key], _ = _inline_image_hrefs(
-                imported.inlined,
-                {entry["after"]: "../composition/" + entry["after"]
-                 for entry in imported.substitutions},
-            )
-        return result
+    snapshot_scenes = import_snapshot_scenes(project_root)
+    if snapshot_scenes is not None:
+        return {key: value["svg"] for key, value in snapshot_scenes.items()}
     return {key: path.read_text(encoding="utf-8")
             for key, path in find_scene_files(project_root, edit_dir).items()}
 
@@ -189,8 +213,10 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
                     pass
 
     # 4. 查找 SVG 场景
-    svg_map = find_svg_scenes(project_root, edit_dir)
     workbench_snapshot = resolve_snapshot(project_root)
+    snapshot_scenes = import_snapshot_scenes(project_root) if workbench_snapshot else None
+    svg_map = ({key: value["svg"] for key, value in snapshot_scenes.items()}
+               if snapshot_scenes is not None else find_svg_scenes(project_root, edit_dir))
 
     # 5. 查找媒体文件
     review_dir = project_root / "review"
@@ -344,13 +370,15 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
     for path in [timeline_path, *edl_paths, *srt_paths, *cap_json_paths]:
         if path and path.is_file():
             watched.append(path)
-    scene_files = find_scene_files(project_root, edit_dir)
+    scene_files = find_scene_files(project_root, edit_dir) if not workbench_snapshot else {}
     if workbench_snapshot:
-        scene_files = {key: workbench_snapshot.root / "scenes" / f"{key}.svg"
-                       for key in workbench_snapshot.order}
+        # The source SVGs may be outside project_root.  Their identity and
+        # provenance remain bound by workbenchSnapshot; only copied assets are
+        # watched here because those are the bytes this review page serves.
+        for key in workbench_snapshot.order:
+            scene_assets[key] = dict(snapshot_scenes[key]["assets"])
+            watched.extend(project_root / rel for rel in scene_assets[key].values())
     for key, path in scene_files.items():
-        # Review assets stay inside the declared project. External page projects
-        # must first use import_svg_page.py --emit, which preserves asset hrefs.
         try:
             path.relative_to(project_root)
         except ValueError:
@@ -358,11 +386,6 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
         watched.append(path)
         scene_assets[key] = {}
         tree = ET.fromstring(svg_map[key])
-        if workbench_snapshot:
-            # The immutable snapshot already validated and pinned every nested
-            # dependency. Do not reinterpret its packaged hrefs against live
-            # project files while building a review surface.
-            continue
         for node in tree.iter():
             if node.tag.rsplit("}", 1)[-1] != "image":
                 continue

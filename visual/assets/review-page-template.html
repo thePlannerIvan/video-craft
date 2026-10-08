@@ -1956,8 +1956,10 @@
     let submissionsRel = SUBMISSIONS_FALLBACK_REL;
     let timelineFingerprint = null;
     let loadedTimelineId = null;
+    let loadedReviewSnapshot = null;
     let staleNoted = false;
     let cachedRecords = [];
+    let pendingDraftForTimeline = null;
     let playSequenceTimers = [];
 
     function pad(n) { return String(n).padStart(2, "0"); }
@@ -2021,21 +2023,41 @@
       let draft = null;
       try { draft = JSON.parse(await review.readText(DRAFT_REL)); } catch { return; }
       if (!draft) return;
+      const hasAdjustments = [draft.choreography_overrides, draft.svg_edits, draft.annotations]
+        .some(value => value && Object.keys(value).length > 0);
+      if (!draft.text && !hasAdjustments && !draft.mode && !draft.theme) return;
       if (draft.text) {
         document.getElementById("fb-text").value = draft.text;
         label("草稿已恢复 · 尚未提交", "dirty");
       }
       if (draft.type) document.getElementById("fb-type").value = draft.type;
+      if (timelineFingerprint === null) {
+        pendingDraftForTimeline = draft;
+        return;
+      }
       if (draft.snapshot && draft.snapshot !== (window.__REVIEW_DATA__?.snapshot || loadedTimelineId)) {
         noteStaleFree("草稿来自上一版作品；文字已保留，画面微调未套用。", { withReload: true });
         return;
       }
+      applyDraftState(draft);
+    }
+    function applyDraftState(draft) {
       state.choreoOverrides = draft.choreography_overrides || state.choreoOverrides;
       state.svgEdits = draft.svg_edits || {};
       state.annotations = draft.annotations || {};
       state.pendingDraftStep = draft.stepId || null;
       setMode(draft.mode || "overall");
       if (draft.theme) { document.getElementById("theme-mode").value = draft.theme; applyTheme(); }
+    }
+    function finishDraftRestore() {
+      const draft = pendingDraftForTimeline;
+      pendingDraftForTimeline = null;
+      if (!draft) return;
+      if (draft.snapshot && draft.snapshot !== (window.__REVIEW_DATA__?.snapshot || loadedTimelineId)) {
+        noteStaleFree("草稿来自上一版作品；文字已保留，画面微调未套用。", { withReload: true });
+        return;
+      }
+      applyDraftState(draft);
     }
     async function clearDraft() {
       await review.draft({ text: "", snapshot: window.__REVIEW_DATA__?.snapshot || loadedTimelineId });
@@ -3046,6 +3068,7 @@
       }
       if (window.__REVIEW_DATA__) {
         const rev = window.__REVIEW_DATA__;
+        loadedReviewSnapshot = rev.snapshot || null;
         if (rev.mode) {
           document.body.classList.add(`mode-${rev.mode}`);
           const badge = document.getElementById("mode-badge");
@@ -3178,14 +3201,23 @@
       if (fingerprint(data) === timelineFingerprint) {
         try {
           const next = JSON.parse(await review.readText("review/review_data.json"));
-          if (next.snapshot === window.__REVIEW_DATA__?.snapshot) {
+          if (next && typeof next === "object") {
             // Host notifications also cover media/SVG files, which cannot be
-            // verified by comparing only the timeline document.
+            // verified by comparing only the timeline document. A snapshot
+            // exists, so any watched-file tick requires a rebuilt review.
             staleNoted = true;
-            noteStaleFree("作品文件有更新；重新构建审阅后再核对当前画面。", { withReload: true });
+            noteStaleFree(
+              next.snapshot === loadedReviewSnapshot
+                ? "作品文件有更新；重新构建审阅后再核对当前画面。"
+                : "审阅快照已经变了；重新构建审阅后再核对当前画面。",
+              { withReload: true },
+            );
             return;
           }
-        } catch {}
+        } catch {
+          // Projects without review_data.json only have the timeline signal.
+          return;
+        }
       }
       staleNoted = true;
       noteStaleFree("时间轴已经变了（宿主戳过、页面自己读出来对不上）：页面上的 step 边界与 caption 是上一版。"
@@ -3353,6 +3385,7 @@
       renderHistoryList();
       await restoreDraft();
       await loadTimeline();
+      finishDraftRestore();
       if (state.pendingDraftStep) {
         const target = [...document.querySelectorAll(".step")].find(el => el.dataset.stepId === state.pendingDraftStep);
         if (target) target.click();

@@ -336,6 +336,18 @@ class SnapshotTests(unittest.TestCase):
             with self.assertRaises(SnapshotError):
                 consumer()
 
+    def test_review_imports_external_snapshot_assets_into_project_local_paths(self):
+        root, _ = self.snapshot()
+        data = review.build_review_data(self.project, self.project / 'edit', 'auto')
+        self.assertEqual(list(data['svgs']), ['beat-02', 'beat-01'])
+        href = '../composition/assets/pages/beat-02/' + next(
+            (p.name for p in (root / 'scenes/assets').iterdir() if p.suffix == '.png'),
+            '',
+        )
+        self.assertEqual(data['svgAssets']['beat-02'][href], href.removeprefix('../'))
+        self.assertTrue((self.project / data['svgAssets']['beat-02'][href]).is_file())
+        self.assertTrue(all(not item['path'].startswith('/') for item in data['sourceManifest']))
+
     def test_unregistered_nested_href_is_rejected(self):
         root, data, parent = self.nested_snapshot()
         parent['dependencies'] = []

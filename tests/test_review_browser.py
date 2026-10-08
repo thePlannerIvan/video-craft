@@ -185,15 +185,21 @@ class ReviewBrowserTests(unittest.TestCase):
             # 记录形状 = review-ui.md 的 schema：页面产出的字段一个不多一个不少
             self.assertEqual(set(record), {
                 "chapterId", "stepId", "stepIndex", "caption", "durationMs",
-                "type", "text", "status", "batchId", "createdAt"})
+                "type", "text", "status", "batchId", "createdAt", "snapshot",
+                "playbackTimeMs", "adjustments"})
+            self.assertRegex(record["snapshot"], r"^[0-9a-f]{8,}$")
+            self.assertIsInstance(record["playbackTimeMs"], int)
+            self.assertEqual(set(record["adjustments"]), {
+                "choreography", "svg_edits", "annotations"})
 
             # ④b wake 被调用两次：整片那条用**整句覆盖**（surface 的模板是逐屏口气）
             wake_log = Path(self.host["wake_log"])
             self.assertTrue(wake_log.is_file(), "wake 没有被调用")
-            wakes = [json.loads(line) for line in wake_log.read_text(encoding="utf-8").splitlines() if line.strip()]
+            wakes = [json.loads(line) for line in wake_log.read_text(encoding="utf-8").splitlines()
+                     if line.strip() and json.loads(line).get("kind") == "wake"]
             self.assertEqual(len(wakes), 2)
             self.assertEqual(wakes[0]["unit"], "整片")
-            self.assertIn("overall.jsonl", wakes[0]["text"])
+            self.assertIn("feedback/*.jsonl", wakes[0]["text"])
             self.assertEqual(wakes[1]["unit"], record["stepId"])
             self.assertIn(record["stepId"], wakes[1]["text"])
             # 状态条说的是**诚实的**那一档：宿主没核对，别和"已进队列"混为一谈
@@ -273,7 +279,8 @@ class ReviewBrowserTests(unittest.TestCase):
         overall_written = [json.loads(line) for line in overall_jsonl.read_text(encoding="utf-8").splitlines() if line.strip()]
         self.assertEqual(len(overall_written), 1)
         self.assertEqual(overall_written[0]["phase"], "overall")
-        self.assertEqual(set(overall_written[0]), {"phase", "type", "text", "status", "batchId", "createdAt"})
+        self.assertEqual(set(overall_written[0]), {
+            "phase", "type", "text", "status", "batchId", "createdAt", "snapshot", "playbackTimeMs"})
 
         jsonl = self.project / "feedback" / "intro.jsonl"
         self.assertTrue(jsonl.is_file())

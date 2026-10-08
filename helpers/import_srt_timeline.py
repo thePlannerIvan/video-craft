@@ -18,7 +18,22 @@ aligner = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(aligner)
 
 
-def build_timeline(srt: Path, alignment: dict) -> dict:
+def resolve_alignment_path(value: str, *, alignment_dir: Path, project_root: Path) -> Path:
+    """Resolve paths emitted by align-visual-plan.py from any working directory."""
+    candidate = Path(value)
+    if candidate.is_absolute():
+        return candidate.resolve()
+    for base in (alignment_dir, project_root, Path.cwd()):
+        resolved = (base / candidate).resolve()
+        if resolved.is_file():
+            return resolved
+    # Return the most useful deterministic location so the caller's normal
+    # FileNotFoundError names the path an agent should inspect.
+    return (project_root / candidate).resolve()
+
+
+def build_timeline(srt: Path, alignment: dict, *, alignment_dir: Path | None = None,
+                   project_root: Path | None = None) -> dict:
     entries = aligner.parse_srt(srt)
     if not entries:
         raise ValueError('SRT 没有有效 cue')
@@ -32,8 +47,12 @@ def build_timeline(srt: Path, alignment: dict) -> dict:
         raise ValueError('对齐不是这份 SRT 的 srt-import 版本；重新运行 align-visual-plan.py --srt')
     if alignment.get('errors'):
         raise ValueError(f"对齐含错误：{alignment['errors']}")
-    plan = Path(alignment['sourcePlan'])
-    script = Path(alignment['sourceScript'])
+    alignment_dir = Path(alignment_dir or Path.cwd()).resolve()
+    project_root = Path(project_root or alignment_dir).resolve()
+    plan = resolve_alignment_path(alignment['sourcePlan'], alignment_dir=alignment_dir,
+                                  project_root=project_root)
+    script = resolve_alignment_path(alignment['sourceScript'], alignment_dir=alignment_dir,
+                                    project_root=project_root)
     plan_doc = json.loads(plan.read_text(encoding='utf-8'))
     if plan_doc.get('script_hash') != hashlib.sha256(script.read_bytes()).hexdigest():
         raise ValueError('脚本版本已改变；回上游确认当前契约')
@@ -77,7 +96,14 @@ def main():
     parser.add_argument('--alignment', type=Path, required=True)
     args = parser.parse_args()
     try:
-        data = build_timeline(args.srt, json.loads(args.alignment.read_text(encoding='utf-8')))
+        srt = args.srt.resolve()
+        alignment = args.alignment.resolve()
+        data = build_timeline(
+            srt,
+            json.loads(alignment.read_text(encoding='utf-8')),
+            alignment_dir=alignment.parent,
+            project_root=args.project.resolve(),
+        )
         path = args.project.resolve() / 'timeline/timeline.json'
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')

@@ -2021,7 +2021,8 @@
     }
     async function restoreDraft() {
       let draft = null;
-      try { draft = JSON.parse(await review.readText(DRAFT_REL)); } catch { return; }
+      // A draft is a recovery convenience, not a required project asset.
+      try { draft = JSON.parse(await review.readText(DRAFT_REL, { optional: true })); } catch { return; }
       if (!draft) return;
       const hasAdjustments = [draft.choreography_overrides, draft.svg_edits, draft.annotations]
         .some(value => value && Object.keys(value).length > 0);

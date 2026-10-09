@@ -685,7 +685,7 @@ class ReviewPageTemplateTests(unittest.TestCase):
         SecurityError。草稿是便利，不是承诺 —— 不许因此让整页崩掉。"""
         self.assertNotIn("localStorage", self.html)
         self.assertIn("await review.draft(", self.html)
-        self.assertIn("await review.readText(DRAFT_REL)", self.html)
+        self.assertIn("await review.readText(DRAFT_REL, { optional: true })", self.html)
         self.assertIn("草稿保存失败", self.html)
 
     def test_inline_script_is_not_cut_short_by_a_literal_close_tag(self):

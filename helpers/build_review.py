@@ -307,14 +307,22 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
         total_duration_ms = int(sum((r.get("end", 0) - r.get("start", 0)) / r.get("speed", 1)
                                     for r in edl_data["ranges"]) * 1000)
 
-    # 构造统一 beats 视图
+    # 构造统一 beats 视图。`timeline.json` 是时间脊柱；视觉段的显示 id
+    # 不能再按当前页面排序临时编号，否则一个 overlay 增删就会把反馈指到
+    # 另一段。稳定 unitId 由来源 id 派生，页面和收件器都只使用它。
     beats = []
     if timeline_data and "chapters" in timeline_data:
         for ch in timeline_data["chapters"]:
             ch_steps = []
             for st in ch.get("steps", []):
+                fallback_id = f"{ch.get('id')}-{st.get('step', 0)}"
                 step_obj = {
-                    "id": st.get("id", f"{ch.get('id')}-{st.get('step', 0)}"),
+                    "id": st.get("id", fallback_id),
+                    "unitId": st.get("unitId") or (
+                        f"visual:{st.get('sourcePageKey')}"
+                        if st.get("sourcePageKey") else f"speech:{st.get('id', fallback_id)}"
+                    ),
+                    "bindingSource": "timeline",
                     "step": st.get("step", 0),
                     "startMs": st.get("startMs", 0),
                     "endMs": st.get("endMs", 0),
@@ -341,6 +349,8 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
             dur_ms = int(round((r.get("end", 0) - r.get("start", 0)) / r.get("speed", 1) * 1000))
             edl_steps.append({
                 "id": f"cut-{i+1:02d}",
+                "unitId": f"speech:cut-{i+1:02d}",
+                "bindingSource": "edl",
                 "step": i + 1,
                 "startMs": cur_ms,
                 "endMs": cur_ms + dur_ms,
@@ -363,6 +373,7 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
     if not beats and captions:
         beats = [{"id": "captions", "title": "口播", "steps": [
             {"id": f"cue-{c['id']}", "step": i, "startMs": c["startMs"],
+             "unitId": f"speech:cue-{c['id']}", "bindingSource": "captions",
              "endMs": c["endMs"], "durationMs": c["endMs"] - c["startMs"],
              "caption": c["text"], "cueRange": [i, i]} for i, c in enumerate(captions)]}]
     scene_assets = {}
@@ -407,10 +418,56 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
     watched = sorted(set(watched))
     manifest = [snapshot_file(path, project_root) for path in watched]
     snapshot = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
+    # 将 EDL 覆盖层也挂回同一条时间脊柱。overlay 本身有自己的稳定 tag，
+    # 同时记录它落在哪个口播段，供页面定位和 Agent 返修时核对上下文。
+    cut_steps = [s for beat in beats for s in beat.get("steps", [])
+                 if str(s.get("id", "")).startswith("cut-")]
+    overlay_units = []
+    for index, overlay in enumerate((edl_data or {}).get("overlays") or []):
+        tag = str(overlay.get("tag") or Path(str(overlay.get("file", ""))).stem or f"overlay-{index + 1:02d}")
+        start_ms = int(round(float(overlay.get("start_in_output", overlay.get("start", 0))) * 1000))
+        duration_ms = int(round(float(overlay.get("duration", 0)) * 1000))
+        end_ms = start_ms + duration_ms
+        parent = next((s for s in cut_steps if int(s.get("startMs", 0)) <= start_ms < int(s.get("endMs", 0))), None)
+        parent_chapter = next((b["id"] for b in beats if parent in b.get("steps", [])), None) if parent else None
+        overlay_units.append({
+            "unitId": f"visual:{tag}",
+            "kind": "visual",
+            "sourceId": tag,
+            "startMs": start_ms,
+            "endMs": end_ms,
+            "parentUnitId": parent.get("unitId") if parent else None,
+            "chapterId": parent_chapter,
+            "file": overlay.get("file"),
+            "overlayKind": overlay.get("kind", "alpha"),
+        })
+    binding_units = []
+    for beat in beats:
+        for step in beat.get("steps", []):
+            binding_units.append({
+                "unitId": step["unitId"], "kind": "speech" if step["unitId"].startswith("speech:") else "visual",
+                "sourceId": step["id"], "startMs": step.get("startMs", 0), "endMs": step.get("endMs", 0),
+                "chapterId": beat["id"], "parentUnitId": None,
+            })
+    # A visual page and its rendered overlay can describe the same stable unit.
+    # Keep one binding record per unitId; merge the overlay transport facts into
+    # the page record instead of creating two records with different chapters.
+    by_unit = {item["unitId"]: item for item in binding_units}
+    for overlay_unit in overlay_units:
+        existing = by_unit.get(overlay_unit["unitId"])
+        if existing is None:
+            by_unit[overlay_unit["unitId"]] = overlay_unit
+            continue
+        for key in ("file", "overlayKind", "parentUnitId"):
+            if overlay_unit.get(key) is not None:
+                existing[key] = overlay_unit[key]
+        existing["overlayChapterId"] = overlay_unit.get("chapterId")
+    binding_units = list(by_unit.values())
     review_data = {
         "version": "2.0.0",
         "project": project_root.name,
         "snapshot": snapshot,
+        "binding": {"version": "video-craft-binding/1.0.0", "source": "timeline/timeline.json", "units": binding_units},
         "sourceManifest": manifest,
         "timelinePath": timeline_path.relative_to(project_root).as_posix() if timeline_path else None,
         "svgAssets": scene_assets,

@@ -347,6 +347,8 @@ class SnapshotTests(unittest.TestCase):
         self.assertEqual(data['svgAssets']['beat-02'][href], href.removeprefix('../'))
         self.assertTrue((self.project / data['svgAssets']['beat-02'][href]).is_file())
         self.assertTrue(all(not item['path'].startswith('/') for item in data['sourceManifest']))
+        units = data['binding']['units']
+        self.assertEqual(len(units), len({item['unitId'] for item in units}))
 
     def test_unregistered_nested_href_is_rejected(self):
         root, data, parent = self.nested_snapshot()

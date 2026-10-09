@@ -206,6 +206,7 @@ def _measured_durations(edit_dir: Path, edl_file: Path, count: int,
     except json.JSONDecodeError:
         print("  · segment_durations.json 无法解析，按标称时间轴生成")
         return None
+    mismatches = []
     for tag, entry in blob.items():
         if not isinstance(entry, dict) or not isinstance(entry.get("durations"), list):
             continue
@@ -217,13 +218,18 @@ def _measured_durations(edit_dir: Path, edl_file: Path, count: int,
         elif entry.get("edl_sha256") and entry["edl_sha256"] != _sha256(edl_file):
             problem = "segment_durations.json 是另一次 EDL 的渲染结果（哈希不符）"
         if problem:
-            if strict:
-                _fail(f"{problem}——渲染已过期，先重新渲染再生成字幕；"
-                      "否则字幕会与成片错位")
-            print(f"  ! {problem}——本次按标称时间轴生成，不能作为交付版本")
-            return None
+            mismatches.append(f"{tag}: {problem}")
+            continue
         print(f"  · 字幕时间轴取自实测段时长（{tag}，共 {sum(durations):.3f}s）")
         return durations
+    if mismatches:
+        detail = "；".join(mismatches)
+        if strict:
+            _fail(f"没有找到与当前 EDL 匹配的实测段时长（{detail}）——"
+                  "先重新渲染再生成字幕，否则字幕会与成片错位")
+        print(f"  ! 没有找到与当前 EDL 匹配的实测段时长（{detail}）——"
+              "本次按标称时间轴生成，不能作为交付版本")
+        return None
     print("  · segment_durations.json 是旧格式，按标称时间轴生成")
     return None
 

@@ -325,6 +325,38 @@ class InboxCase(SurfaceWrittenCase):
         # 拒了就不许落文件 —— 静默丢一条意见是这套东西最坏的失败方式
         self.assertFalse((self.project / "feedback").exists())
 
+    def test_bound_unit_is_routed_by_snapshot_binding(self):
+        (self.project / "review" / "review_data.json").write_text(json.dumps({
+            "binding": {"version": "video-craft-binding/1.0.0", "units": [
+                {"unitId": "visual:hero", "chapterId": "intro"}
+            ]}
+        }), encoding="utf-8")
+        post_submissions(self.project, [dict(RECORD, unitId="visual:hero", chapterId="intro")])
+        receipt = INBOX.import_submissions(self.project)
+        self.assertTrue(receipt["ok"], receipt)
+        self.assertEqual(self.lines("intro.jsonl")[0]["unitId"], "visual:hero")
+
+    def test_bound_unit_mismatch_is_refused_instead_of_routed_by_chapter(self):
+        (self.project / "review" / "review_data.json").write_text(json.dumps({
+            "binding": {"version": "video-craft-binding/1.0.0", "units": [
+                {"unitId": "visual:hero", "chapterId": "intro"}
+            ]}
+        }), encoding="utf-8")
+        post_submissions(self.project, [dict(RECORD, unitId="visual:hero", chapterId="other")])
+        receipt = INBOX.import_submissions(self.project)
+        self.assertFalse(receipt["ok"])
+        self.assertIn("unitId 与 chapterId 不匹配", receipt["rejected"][0]["reason"])
+        self.assertFalse((self.project / "feedback").exists())
+
+    def test_unknown_bound_unit_is_refused(self):
+        (self.project / "review" / "review_data.json").write_text(json.dumps({
+            "binding": {"version": "video-craft-binding/1.0.0", "units": []}
+        }), encoding="utf-8")
+        post_submissions(self.project, [dict(RECORD, unitId="visual:missing")])
+        receipt = INBOX.import_submissions(self.project)
+        self.assertFalse(receipt["ok"])
+        self.assertIn("unitId 不在当前审阅快照", receipt["rejected"][0]["reason"])
+
     def test_garbage_submissions_are_refused_not_written(self):
         path = post_submissions(self.project, [])
         path.write_text("not json", encoding="utf-8")

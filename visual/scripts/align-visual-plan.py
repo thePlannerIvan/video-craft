@@ -96,6 +96,13 @@ def main() -> int:
     timing.add_argument('--srt', type=Path, help='Legacy/import timing; not measured EDL proof')
     parser.add_argument('--output', required=True, type=Path)
     args = parser.parse_args()
+    args.plan = args.plan.resolve()
+    args.script = args.script.resolve()
+    args.output = args.output.resolve()
+    if args.srt:
+        args.srt = args.srt.resolve()
+    if args.edit_dir:
+        args.edit_dir = args.edit_dir.resolve()
     plan = json.loads(args.plan.read_text(encoding='utf-8'))
     beats = parse_script(args.script)
     if args.edit_dir:

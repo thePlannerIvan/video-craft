@@ -751,9 +751,9 @@ HTML = """<!DOCTYPE html>
     <span class="brand-dot"></span>
     <b>粗剪审阅工作台</b>
   </div>
-  <button id="btn-play">▶ 播放</button>
-  <button id="btn-prev">⏮ 上一刀</button>
-  <button id="btn-next">⏭ 下一刀</button>
+  <button id="btn-play">播放</button>
+  <button id="btn-prev">上一刀</button>
+  <button id="btn-next">下一刀</button>
   <select id="speed" title="倍速预览">
     <option value="0.25">0.25x</option>
     <option value="0.5">0.5x</option>
@@ -765,8 +765,8 @@ HTML = """<!DOCTYPE html>
     <option value="3">3x</option>
   </select>
   <div class="bar-divider"></div>
-  <button id="btn-cut" class="on" title="开启后播放自动跳过右侧已标红删除的词与停顿">✂️ 剪后预览</button>
-  <button id="btn-caps" title="显示或隐藏画面底部字幕">💬 字幕</button>
+  <button id="btn-cut" class="on" title="开启后播放自动跳过右侧已标红删除的词与停顿">剪后预览</button>
+  <button id="btn-caps" title="显示或隐藏画面底部字幕">字幕</button>
   <span id="stats">0:00 / __TOTAL__ · __NSEG__ 段 · 1x</span>
   <span id="net">正在连接审阅宿主…</span>
   <a id="page-reload" href="" title="重新加载当前审阅页">⟳ 刷新</a>
@@ -811,7 +811,7 @@ HTML = """<!DOCTYPE html>
     </div>
     <div class="side-actions">
       <button id="w-save" class="primary-cta">✓ 保存剪接修改</button>
-      <button id="w-editmode" title="开启后单击词可直接改错别字；关闭时单击词为跳转播放">✏️ 改字模式：关</button>
+      <button id="w-editmode" title="开启后单击词可直接改错别字；关闭时单击词为跳转播放">改字模式：关</button>
       <button id="w-clear">清空选中</button>
       <button id="w-clearfix">还原改字</button>
       <button id="w-toggledel">已剪内容 (<span id="w-delcount"></span>)</button>
@@ -1128,7 +1128,7 @@ function pause() {
   playing = false;
   main.pause();
   Object.values(vids).forEach(v => v.pause());
-  document.getElementById("btn-play").textContent = "▶ 播放";
+  document.getElementById("btn-play").textContent = "播放";
   stopLoop();
   renderPlayhead();
 }
@@ -1264,7 +1264,7 @@ SEGS.forEach((seg, si) => {
   const jumpBtn = document.createElement("button");
   jumpBtn.className = "wseg-jump";
   jumpBtn.type = "button";
-  jumpBtn.textContent = "▶ " + fmt(seg.o0) + " - " + fmt(seg.o1);
+  jumpBtn.textContent = "跳转 " + fmt(seg.o0) + " - " + fmt(seg.o1);
   jumpBtn.title = "点击从本段开头试听播放";
   jumpBtn.addEventListener("click", () => { seekTo(seg.o0, true, false); play(); });
   head.appendChild(titleSpan);
@@ -1359,7 +1359,7 @@ const editModeBtn = document.getElementById("w-editmode");
 editModeBtn.onclick = () => {
   editMode = !editMode;
   editModeBtn.classList.toggle("on", editMode);
-  editModeBtn.textContent = editMode ? "✏️ 改字模式：开" : "✏️ 改字模式：关";
+  editModeBtn.textContent = editMode ? "改字模式：开" : "改字模式：关";
 };
 
 /* Word interaction:
@@ -1678,14 +1678,34 @@ tokens = (resolve_module('planners-review-core') / 'assets/dsh-tokens.css').read
 html = html.replace('<style>', '<style>\n/*__DSH_TOKENS__*/', 1)
 overrides = '''
 body {
-  --bg-app: var(--dsw-alias-bg-base); --bg-panel: var(--dsw-alias-bg-layer-1);
+  --bg-canvas: var(--dsw-alias-bg-base); --bg-panel: var(--dsw-alias-bg-layer-1);
   --bg-card: var(--dsw-alias-bg-module-platform); --bg-input: var(--dsw-alias-bg-base);
+  --bg-elevated: var(--dsw-alias-bg-layer-1);
   --text-primary: var(--dsw-alias-label-primary); --text-secondary: var(--dsw-alias-label-secondary);
-  --text-muted: var(--dsw-alias-label-tertiary); --border: var(--dsw-alias-border-l2);
-  --border-strong: var(--dsw-alias-border-l4);
+  --text-muted: var(--dsw-alias-label-tertiary); --border-subtle: var(--dsw-alias-border-l2);
+  --border-strong: var(--dsw-alias-border-l3); --accent-blue: var(--dsw-static-deepseek-500);
+  --accent-amber: var(--dsw-static-deepseek-500); --accent-crimson: var(--dsw-static-red-500);
+  --accent-emerald: var(--dsw-static-green-500);
+  background: var(--bg-canvas); color: var(--text-primary); min-width: 0;
 }
 * { letter-spacing: 0 !important; }
-button { white-space: normal; }
+button { white-space: normal; color: var(--text-primary); }
+#bar { background: var(--bg-panel); border-bottom-color: var(--border-subtle); padding: 10px 16px; }
+#wrap { grid-template-columns: minmax(250px, 0.92fr) minmax(420px, 1.8fr) minmax(280px, 1fr); gap: 12px; padding: 12px 16px 22px; height: calc(100vh - 68px); }
+#left, #side { background: var(--bg-panel); border: 1px solid var(--border-subtle); border-radius: 8px; }
+#left { padding: 12px; gap: 10px; }
+#stage { background: var(--dsw-alias-bg-document-preview); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 10px; }
+#stage video { background: var(--dsw-alias-bg-document-preview); border-radius: 6px; }
+#timeline, #info, #overall, #workbench { background: var(--bg-panel); border-color: var(--border-subtle); }
+#side { padding: 12px; }
+.seg.active, .cue.active, .wseg.active { background: var(--dsw-static-deepseek-50); border-color: var(--dsw-static-deepseek-500); }
+.seg, .cue, .wseg { border-color: var(--border-subtle); }
+.seg b, .cue b, .wseg-head b, #info .beat, #stats { color: var(--dsw-static-deepseek-600); }
+button.primary-cta { background: var(--dsw-static-deepseek-500); border-color: var(--dsw-static-deepseek-500); color: #fff; }
+button.primary-cta:hover { background: var(--dsw-static-deepseek-600); border-color: var(--dsw-static-deepseek-600); }
+#net, #save-state { color: var(--text-secondary); }
+#hint { color: var(--text-muted); }
+input, textarea, select { background: var(--bg-input) !important; color: var(--text-primary) !important; border-color: var(--border-strong) !important; }
 #save-state, #net { overflow-wrap: anywhere; }
 @media (max-width: 800px) {
   body { height: auto; overflow: auto; }
@@ -1694,6 +1714,79 @@ button { white-space: normal; }
   #left { min-width: 0; overflow: visible; }
   #side { width: 100%; min-width: 0; max-height: none; }
   .side-actions { flex-wrap: wrap; }
+}
+/* Final DSH review layout: the left side is context, the center is the current
+   cut, and the right side is reserved for edits and feedback. */
+body {
+  --bg-canvas: var(--dsw-alias-bg-base);
+  --bg-panel: var(--dsw-alias-bg-layer-1);
+  --bg-card: var(--dsw-alias-bg-module-platform);
+  --bg-elevated: var(--dsw-alias-bg-overlay);
+  --border-subtle: var(--dsw-alias-border-l2);
+  --border-strong: var(--dsw-alias-border-l3);
+  --text-primary: var(--dsw-alias-label-primary);
+  --text-secondary: var(--dsw-alias-label-secondary);
+  --text-muted: var(--dsw-alias-label-tertiary);
+  --accent-blue: var(--dsw-static-deepseek-500);
+  --accent-amber: var(--dsw-static-deepseek-500);
+  --accent-crimson: var(--dsw-static-red-500);
+  --accent-emerald: var(--dsw-static-green-500);
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+}
+#bar {
+  padding: 8px 16px;
+  background: var(--bg-panel);
+  border-bottom-color: var(--border-subtle);
+}
+#bar button, #bar select, #page-reload {
+  min-height: 30px;
+  border-radius: 6px;
+  background: var(--bg-card);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+#bar button:hover, #page-reload:hover { border-color: var(--accent-blue); }
+#stats, #net { background: var(--bg-card); border-color: var(--border-subtle); color: var(--text-secondary); }
+#wrap {
+  max-width: 1680px;
+  grid-template-columns: minmax(0, 1.25fr) minmax(420px, 0.9fr);
+  gap: 14px;
+  padding: 14px 16px 22px;
+  height: calc(100vh - 58px);
+}
+#left, #side {
+  min-width: 0;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(31, 41, 55, 0.05);
+}
+#left { padding: 12px; gap: 12px; }
+#side { padding: 12px; display: flex; flex-direction: column; }
+#stage { background: var(--dsw-alias-bg-document-preview); border-color: var(--border-subtle); box-shadow: none; }
+#stage video { background: var(--dsw-alias-bg-document-preview); }
+.timeline-card, #info, #overall, .wseg, #w-delpanel, .side-head, .side-actions, #w-hint {
+  background: var(--bg-card);
+  border-color: var(--border-subtle);
+}
+.timeline-card, #info, #overall { border-radius: 7px; }
+#ruler { background: var(--bg-elevated); border-color: var(--border-subtle); }
+.seg-block { color: #fff; }
+.seg-block.active { outline-color: var(--accent-blue); }
+#playhead, #ptime { background: var(--accent-blue); }
+#ptime { color: #fff; }
+.wseg.active, .cue.active { background: var(--dsw-static-deepseek-50); border-color: var(--accent-blue); }
+.w { color: var(--text-primary); }
+.w.playing { background: var(--dsw-static-amber-100); color: var(--dsw-static-amber-700); box-shadow: none; }
+.gap.long { background: var(--dsw-static-amber-50); border-color: var(--dsw-static-amber-200); color: var(--dsw-static-amber-700); }
+.feedback, #overall { color: var(--text-primary); }
+.primary-cta, #w-save, #ov-send { background: var(--accent-blue) !important; border-color: var(--accent-blue) !important; color: #fff !important; }
+.primary-cta:hover, #w-save:hover, #ov-send:hover { background: var(--dsw-static-deepseek-600) !important; }
+#w-save, #ov-send { font-weight: 600; }
+@media (max-width: 980px) {
+  #wrap { grid-template-columns: 1fr; height: auto; }
+  #side { min-height: 520px; }
 }
 '''
 html = html.replace('</style>', overrides + '</style>', 1)

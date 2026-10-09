@@ -133,7 +133,7 @@ def phase_file(record: dict):
     return None
 
 
-def route_of(record: dict) -> tuple:
+def route_of(record: dict, project: Path | None = None) -> tuple:
     """一条记录该进哪个文件。Plan 检查点单走 `storyboard.jsonl`。
 
     返回 `(filename, record, error)`：`filename=None` 表示这条被拒，`error` 说明理由。
@@ -144,6 +144,28 @@ def route_of(record: dict) -> tuple:
         routed = dict(record)
         routed.setdefault("phase", str(record.get("phase")).strip())   # 与旧服务端同一个补法（此处是空操作）
         return filename, routed, None
+    # 新构建器交出 binding/1 时，unitId 是唯一可回指键。保留旧 fixture 和
+    # 老项目的 stepId 兼容，但新提交若带 unitId 必须能在当前快照中找到，
+    # 且不能用另一个 chapterId 伪装它的归属。
+    unit_id = str(record.get("unitId") or "").strip()
+    if unit_id:
+        if project is not None:
+            data_path = Path(project) / "review" / "review_data.json"
+            try:
+                data = json.loads(data_path.read_text(encoding="utf-8"))
+                units = {u.get("unitId"): u for u in (data.get("binding") or {}).get("units", [])}
+            except (OSError, ValueError):
+                units = {}
+            bound = units.get(unit_id)
+            if not bound:
+                return None, record, f"unitId 不在当前审阅快照：{unit_id}"
+            expected_chapter = str(bound.get("chapterId") or "").strip()
+            supplied_chapter = str(record.get("chapterId") or "").strip()
+            if expected_chapter and supplied_chapter and expected_chapter != supplied_chapter:
+                return None, record, f"unitId 与 chapterId 不匹配：{unit_id} ≠ {supplied_chapter}"
+            if expected_chapter and not supplied_chapter:
+                record = dict(record)
+                record["chapterId"] = expected_chapter
     chapter_id = str(record.get("chapterId") or "").strip()
     if not chapter_id:
         return None, record, "缺少 chapterId"
@@ -171,7 +193,7 @@ def import_submissions(project: Path, dry_run: bool = False) -> dict:
         if digest in imported:
             receipt["skipped"].append({"index": index, "reason": "已经收过（内容哈希相同）"})
             continue
-        filename, routed, error = route_of(record)
+        filename, routed, error = route_of(record, project)
         if filename is None:
             receipt["rejected"].append({"index": index, "reason": error,
                                         "chapterId": routed.get("chapterId"),

@@ -1,95 +1,274 @@
 ---
 name: video-craft
-description: 承接 Video Idea System 的内容包、PPT Hell 的静态 SVG 或已有音视频，完成视听制作、剪辑、实测时间绑定、动画、语义字幕、审阅返修与核验交付。无录音时可先做制作规划与预演；已有项目从当前工作继续。
+description: 承接 Video Idea System 的内容包、PPT Hell 的静态 SVG 或已有音视频，完成剪辑、实测时间绑定、动画、语义字幕、视听合成、人工审阅返修与交付核验。
 ---
 
 # Video Craft
 
-> 来源识别：由阿祖不看 TVC 创建与维护。小红书同名账号，https://demyth.info，Lawyif@163.com。保留在 Skill、审阅界面与项目文档，不默认进入成片。
+Video Craft 把已经确定的内容做成可播放、可审阅、可返修的真实视频。
 
-把已定的内容做成真实可看的片子。Idea 负责内容与作者决定，PPT Hell 负责静态画面，Craft 负责声音、时间、运动与合成。已有批准方案直接承接；局部返修只处理受影响部分。
+- `video-idea-system` 负责内容主张、口播稿、念稿决定和 visual-plan。
+- `planners-ppt-hell` 负责静态页面、SVG、静态页面审阅和页面级视觉决定。
+- `video-craft` 负责声音、剪辑、实测时间、字幕、动效、合成、两个制作审阅面和交付核验。
+- `planners-review-core` 只负责审阅桥、宿主、资产读取、草稿、提交和唤醒；它不理解视频业务。
+- `planners-source-index` 负责来源索引；Craft 不从画面或字幕反推新事实。
 
-## 选择路径
+本 Skill 的审阅面有两个：
 
-输入、成片形态、渲染器和交付件是四件事，分别决定：
+1. **逐字剪辑面**：取舍词、删除气口、恢复片段、改字，写入剪辑选择。
+2. **动效与合成面**：按稳定 `unitId` 查看一屏一段，调整动效参数、元素位置、文字、框选批注并攒批提交。
 
-| 当前状态 | 进入哪里 |
-|---|---|
-| 有内容包，还没有录音 | 接手决定，规划视听过程；需要时做标为 `planned` 的预演。静态画面交 PPT Hell，不虚造实测字幕 |
-| 有原始音视频，需要取舍 | 转写、选 Take、建立 EDL，逐字审阅后渲染底片，派生字幕与时间 |
-| 已有剪好音频和对应 SRT、SVG | 核对脚本与画面版本，按已剪音频的 SRT 对齐 Beat，进入动画与合成；录音后又剪过则用最终底片时间 |
-| 已有项目或反馈 | 读当前制作依据与反馈，修订、重建审阅、核验对应交付件 |
+念稿确认仍回 `video-idea-system`；静态画面审阅仍回 `planners-ppt-hell`。不要用 Craft 的两个面替代上游决定。
 
-**成片形态**：人物口播、独立演示动画、人物与画面合成。人物比例、画幅、字幕位置根据已批准画面和目标平台设计，不设通用固定布局。
+## 入口判断
 
-**制作工具**：已有合格媒体直接使用；收到 SVG 时沿用元素与预埋动效钩子；HTML 动效由 HyperFrames 编排；严密数学动画按需用内置 Manim；确需自定义逐帧渲染时走 [frame-animation-pipeline](references/frame-animation-pipeline.md)。需要新表现机制才读 [能力导航](references/capability-map.md)，实施 HyperFrames 时读 `$hyperframes`。
+| 输入 | 入口 | 不要跳过 |
+|---|---|---|
+| 内容包，没有录音 | 接手并写制作方案；可做 `planned` 预演 | 不把估时当成实测时间，不生成假字幕 |
+| 原始视频或录音，需要取舍 | 转写 → EDL → 逐字剪辑面 → 正式底片 | 不直接手改成片后再猜字幕时间 |
+| 已剪音频 + SRT + SVG | 核版本 → 导入 SVG → 对齐时间 → 动效与合成 | SRT 只能标为 `srt-import`，不能冒充 EDL 实测 |
+| 已有项目或返修反馈 | 读项目依据和收件回执 → 只重建受影响部分 | 不在旧审阅页上继续写新反馈 |
 
-**交付**：整片或用户需要的独立轨。分别说明有声/无声、透明/不透明、字幕烧录/外挂。审阅副本默认有声音；无声交付轨另列。
+项目目录、剪辑目录和上游目录必须使用绝对路径。先确认当前采用版本，再执行下面的流程。
 
-## 制作流程
+## 全链流程
 
-### 1. 接手当前内容与决定
+每一步都必须把产物交给表中的下一消费者。完成标准是硬事实，不是“页面打开了”。
 
-读 [上游交接](references/content-to-production.md)，确认本轮目标、作者决定、声音状态与资产版本。将输入位置、当前采用版、缺口和下一步记入 `edit/project.md`。
+### 1. 接手与版本核对
 
-- **Idea → Craft**：`script.md`、可选 `visual-plan.json`、`production-brief.md`、`assets/` 与作者反馈；原项目的 `_idea/current.md` 是当前决定入口。有契约时运行 `helpers/check_script_hash.py`，不符交作者确认，缺文件如实报无法核对。
-- **PPT Hell → Craft**：优先消费项目根 `.snapshot` 指向的 `svg-workbench-snapshot/1` `snapshot.json`；由 `visual/scripts/snapshot_input.py` 严格校验清单、SVG、递归资产、原 visual-plan 与 script 绑定，再由 `visual/scripts/import_svg_page.py` 导入。没有 snapshot 时才兼容 `_internal/02_svg_source/<page_key>.svg` 与旧 `.pages` 路径。`page_key` 继承 `screen_id`；id 全片唯一，`data-step` / `data-anim` 的结构按 [SVG 动效契约](references/svg-animation-contract.md)。
-- **资料来源**：沿用上游 source index 和证据定位，不从画面或字幕反推新的事实；新增事实/素材时读 `$planners-source-index`，补入同一来源账本并校验。
+**何时进入**：所有新项目、恢复项目、收到返修反馈时。
 
-接手完成意味着知道采用什么、什么待定、谁能改变什么，不要求无关分支也建齐文件。
+**先读**：`references/content-to-production.md`、项目 `_idea/current.md`、PPT Hell 的 `.snapshot`、已有 `edit/project.md`、`production-plan.md` 和 `feedback/`。
 
-### 2. 确定视听方案
-
-在 `production-plan.md` 记录实际需要的声音来源、画面过程、强调动作、素材、时间依据与衔接。需要比较方案时用可看的代表片段讨论；已定方向直接制作。无音频的估时留在预演中，后续由实测替代。
-
-静态画面缺失或需要重构时调 `$planners-ppt-hell` 的视频路线；内容意义、必见对象、固定字或素材关系需要改变时回 `$video-idea-system`。不要让动画阶段静默覆盖上游批准决定。
-
-### 3. 制作与校准时间
-
-选当前路径执行 [工具手册](references/tools.md)：每个入口有命令、输入、输出与下一消费者，扩展参数调用 `--help`，正常制作无需阅读实现源码。
-
-- **剪辑**：转写 → EDL → 需要时逐字审阅 → `render.py` 底片。`edl.json` 管取舍，`segment_durations.json` 管该版底片实测时长。
-- **字幕**：按 [语义字幕](references/caption-article-first.md) 做全文校对与语义行，再锁定和生成；字幕不是视觉分屏依据。
-- **视觉时间**：按 [时间绑定](references/visual-timeline.md) 将屏映射到 cue，统一写入项目根 `timeline/`。导入的已剪音频/SRT 标为 `srt-import`，不冒充 EDL 实测证明。一个 Beat 仍是一屏，屏内递进动画跟着实测语句，不创造第二份上游内容契约。
-- **SVG / HTML 动效**：导入 SVG，只由导入器重写图片 href；按 id 和 data-step 绑定强调时间。生成 `composition/index.html` 后完成实际动效，再渲染；骨架不等于成片。
-- **合成**：透明覆盖层或整屏替换按 [合成制作](references/composition-craft.md) 与 [视觉渲染](references/visual-rendering.md) 接入 EDL。字幕、声音与窗口配置归渲染，不归包装导出。
-
-### 4. 审阅返修
-
-提供实际编码画面和声音；内部动效参数按需展开。读 [审阅接入与收件](references/review-ui.md)，再运行：
+**调用**：
 
 ```bash
-python3 "<craft>/helpers/build_review.py" "<project>"
+node "<idea>/scripts/check-handoff-artifacts.mjs" --project "<idea-project>"
+python3 "<craft>/helpers/check_script_hash.py" "<project>" --script "<script.md>" --plan "<visual-plan.json>"
+python3 "<craft>/visual/scripts/snapshot_input.py" "<project>" --audit
+```
+
+拿到 PPT Hell snapshot 后导入项目内资产：
+
+```bash
+python3 "<craft>/visual/scripts/import_svg_page.py" "<project>" --pages "<ppt-project>" --audit --prove --emit --json
+```
+
+**输入**：上游交接包、作者决定、脚本、visual-plan、snapshot、SVG、素材。
+
+**输出**：`edit/project.md` 记录本轮采用版、输入路径、缺口、责任边界；必要时生成 `composition/pages/manifest.json` 和项目内 SVG / 图片副本。
+
+**下一消费者**：制作方案、转写 / EDL、视觉时间绑定。
+
+**完成标准**：知道当前使用哪一版脚本、哪一版画面、哪条声音、哪些决定不可自行改变；hash 不一致、snapshot 不完整或资产越界时停止并回上游，不静默继续。
+
+### 2. 确定制作方案
+
+在 `production-plan.md` 写清楚：成片形态（口播 / 动画 / 合成）、声音来源、画幅、画面过程、强调动作、素材、时间依据、字幕形态、交付件和返修范围。
+
+需要改内容意义、必见对象、固定文字或素材关系时回 `$video-idea-system`；需要重做静态画面时回 `$planners-ppt-hell`；需要复用方法时调用 `$planners-method-wiki`，但 Wiki 只提供方法，不提供本项目事实。
+
+**完成标准**：每个交付轨都明确，且知道后续是“以 EDL 实测时间为准”还是“以外部 SRT 为准”。
+
+### 3. 声音与剪辑
+
+原始媒体走：
+
+```bash
+python3 "<craft>/helpers/transcribe.py" "<source-video>" --edit-dir "<edit>" --audio-track 0 --backend auto
+python3 "<craft>/helpers/pack_transcripts.py" --edit-dir "<edit>"
+python3 "<craft>/helpers/check_edl.py" "<edit>" --max-pause 0.8
+```
+
+用 `edl.json` 表达取舍，不手改底片来表达取舍。逐字面写入的选择由 `selections.json` 表达，之后调用：
+
+```bash
+python3 "<craft>/helpers/apply_selection.py" "<edit>"
+```
+
+有声质量问题先诊断再处理：
+
+```bash
+python3 "<craft>/helpers/audio_diag.py" "<media>" --json
+python3 "<craft>/helpers/audio_fix.py" "<media>" -o "<fixed.wav>" --target-lufs -16.5
+```
+
+**输出**：`transcripts/`、`takes_packed.md`、`edl.json`、必要时 `selections.json`。
+
+**下一消费者**：正式渲染、字幕、逐字审阅面。
+
+**完成标准**：EDL 可检查；源文件、区间、速度、段落累计时间明确；没有把预览渲染当成正式底片。
+
+### 4. 逐字剪辑审阅
+
+**何时进入**：EDL 已可检查，但剪点、错字或气口仍需要人确认。
+
+**构建并挂载**：
+
+```bash
+python3 "<craft>/helpers/edl_preview_build.py" "<edit>"
+python3 "<craft>/helpers/edl_review_surface.py" "<edit>" --surface-only
+```
+
+DSH 有 `review_open` 时，把返回的 **surface 绝对路径**交给 `review_open`；没有插件时去掉 `--surface-only`，使用公共 review-core 本地宿主。不要自己另起一份 Craft 专用宿主。
+
+**人可以做的事**：播放、上一刀 / 下一刀、拖时间轨、点词定位、拖选删除词、选择或恢复气口、改字、提交剪辑选择、另写整片意见。
+
+**工具与反馈边界**：播放器、时间轨、选词、改字、停顿数值属于页面工具；整片备注和“请 Agent 应用剪点”属于反馈。页面写 `selections.json`，Agent 收件后才运行 `apply_selection.py`。
+
+**完成标准**：提交文件真实写入；没有桥时页面明确显示未连接；Agent 先读取提交再应用选择；应用后重新渲染并重建下游产物。
+
+### 5. 正式底片与字幕
+
+正式底片使用会记录实测段时长的渲染路径：
+
+```bash
+python3 "<craft>/helpers/render.py" "<edit>/edl.json" -o "<edit>/cut.mp4" --preview --no-subtitles
+```
+
+字幕采用“全文校对 → 语义断句 → 锁定 → 生成”的顺序：
+
+```text
+先改 caption_corrections.json
+→ --prepare --force-prepare（只有确认 EDL / 转写改变时）
+→ 把人工校对后的 captions_article.txt 放回
+→ 写 semantic_lines.txt
+→ --lock
+→ --build
+→ --check
+```
+
+具体入口均在 `helpers/srt_export.py --help`。`segment_durations.json` 必须与当前 EDL hash 和段数匹配；旧记录不匹配时工具会继续找其他历史记录，找不到才拒绝严格构建。
+
+**输出**：`segment_durations.json`、`captions_article.txt`、`semantic_lines.txt`、`caption_lock.json`、`caption_words.json`、`captions.json`、`subtitles.srt`。
+
+**下一消费者**：唯一时间脊柱、静态视觉对齐、合成与字幕交付。
+
+### 6. 建立唯一时间脊柱
+
+`timeline/timeline.json` 是页面、动效、字幕和审阅绑定共同消费的时间脊柱。
+
+已有实测字幕时用 `timeline_derive.py`；只有外部剪好音频和 SRT 时：
+
+```bash
+python3 "<craft>/visual/scripts/align-visual-plan.py" \
+  --plan "<visual-plan.json>" --script "<script.md>" --srt "<audio.srt>" \
+  --output "<project>/timeline/alignment.json"
+python3 "<craft>/helpers/import_srt_timeline.py" "<project>" \
+  --srt "<audio.srt>" --alignment "<project>/timeline/alignment.json"
+```
+
+对齐工具写绝对来源路径；`srt-import` 只证明“这份 SRT 与这份内容契约完成了对齐”，不证明 EDL 实测。
+
+**绑定规则**：
+
+- 页面使用 `unitId`，不使用会随排序变化的临时序号。
+- 视觉页优先为 `visual:<sourcePageKey>`；口播段为 `speech:<step-id>`；overlay 为 `visual:<tag>`。
+- `review/review_data.json.binding` 是当前审阅快照的绑定证明。
+- 反馈至少带 `unitId`、`chapterId`、`stepId`、`snapshot`、`text`；收件器会拒绝不存在或 chapter 不匹配的 `unitId`。
+- 改变时间轴、EDL、SVG 或字幕后必须重新 build review；不能拿旧页面继续提交。
+
+### 7. 动效与合成
+
+静态 SVG 必须来自第 1 步导入的项目内副本。沿用 `data-step`、`data-anim`、元素 `id` 和画面原有尺寸；不要把页面截图当成可编辑 SVG。
+
+- HyperFrames：读 `$hyperframes`，用 `visual/scripts/generate-composition.py` 生成 / 更新 `composition/`，再运行对应 `hyperframes check` / render。
+- Manim：只有严密数学或技术动画才调用 `$manim-video`。
+- 自定义逐帧：读 `references/frame-animation-pipeline.md`。
+- 合成：读 `references/composition-craft.md` 与 `references/visual-rendering.md`。
+
+所有 overlay 在写入 EDL 前检查：画布尺寸、alpha、起止时间、父级 `unitId` 和输出路径。尺寸不匹配必须报错，不能静默跳过。
+
+**输出**：`composition/`、透明或整屏视觉层、合成预览和最终合成视频。
+
+**下一消费者**：动效与合成审阅面、交付核验。
+
+### 8. 动效与合成审阅
+
+构建统一数据和审阅面：
+
+```bash
+python3 "<craft>/helpers/build_review.py" "<project>" --mode auto
 python3 "<craft>/helpers/review_surface.py" "<project>" --surface-only
 ```
 
-审阅页的 SVG 也必须来自同一份 snapshot；构建器不回退到 live 页面目录，也不把审阅页重新生成的 SVG 当成制作输入。DSH 有 `review_open` 时交 surface 给侧栏；没有时由公共本地宿主启动服务器。
+页面结构固定为：左侧单元导航；中央当前单元 / 视频 / SVG 舞台；底部细时间轨与分句卡点；右侧上部历史、下部“反馈给 Agent”。
 
-宿主有 `review_open` 时，把返回的 surface **绝对路径**交给它；不另起服务器。没有该工具则第二条去掉 `--surface-only`，由公共宿主打开浏览器。
+**页面工具**：播放、1x / 2x / 4x、上一屏 / 下一屏、字幕开关、分句卡点、动效模板 / 焦点 / 速度 / 角度、点选文字或元素、框选批注、攒批。
 
-人提交后先运行 `helpers/review_inbox.py <project>`，检查收据，再处理 `feedback/*.jsonl` 的整片意见、逐屏意见及 `adjustments`。逐字剪辑是独立面：`edl_review_surface.py` 写 `selections.json`，由 `apply_selection.py` 消费，不混入视觉反馈。
+**页面反馈**：整片意见和当前 `unitId` 意见分开；工具改动先成为草稿，点击提交才调用 `review.write()`；需要 Agent 处理时才调用 `review.wake()`。
 
-完成本轮意味着真实意见已收件、处理或明确挂起，用户能看见修订后的对应版本。草稿、自动检查通过和打开页面都不是用户批准。
+**桥的调用语义**：
 
-### 5. 核验与交付
+- `ReviewBridge.connect()`：取得当前 surface 的连接；失败必须显示失败。
+- `review.asset(rel)`：`rel` 相对 surface 的 `dir`，不相对 HTML 当前目录猜路径。
+- `review.readText(rel)`：读取 JSON / 时间轴 / 当前提交文件。
+- `review.draft(payload)`：保存未提交草稿，不代表已提交，不触发收件。
+- `review.write(payload)`：正式提交；成功后才显示“已写入”。
+- `review.wake(payload)`：只负责通知 Agent 处理；通知未核对不能显示“已送达”。
+- `review.command(name, payload)`：只有 surface 声明并且宿主提供受限后端时才调用；不能把任意命令当成 command。
 
-针对编码文件检查声音、字幕、首中尾画面、运动与创意兑现；透明输出另验 alpha。用 `verify_delivery.py <project>/edit --video <实际成片>`，通过后再包装需要的文件。`export_video.py` 只复制已渲染结果，不生成动画或替你烧字幕；缺真实结果报错。
+**完成标准**：页面使用当前 `review_data.json`；资产可加载；每条提交能回到稳定 `unitId`；草稿、正式提交、唤醒和失败状态分别显示；不把页面打开或本地草稿当成用户批准。
 
-交出文件位置、规格、核验结论与尚未完成事项。保留 EDL、语义行、时间绑定、SVG/HTML 源与作者决定，下一轮可继续。
+### 9. 收件、返修与重建
 
-## 资源与调用
+先收件，再读反馈，再改源：
 
-| 需要什么 | 读取位置 |
+```bash
+python3 "<craft>/helpers/review_inbox.py" "<project>"
+```
+
+检查收据中的 `imported`、`skipped`、`rejected`。有 rejected 时先修复记录或重建快照，不能假装收件完成。
+
+- 逐字反馈：读 `selections.json`，运行 `apply_selection.py`，再渲染底片、重建字幕和时间轴。
+- 动效 / 合成反馈：读 `feedback/<chapterId>.jsonl` 和记录中的 `adjustments`，修改 composition / SVG 源，再重新 render。
+- 元素微调若要写回源 SVG，必须核对 source snapshot / version；源已改变时拒绝覆盖，交 Agent 决定如何合并。
+- 改变任何时间、页面或媒体绑定后，重新运行 `build_review.py`，让旧 snapshot 失效。
+
+### 10. 核验与交付
+
+```bash
+python3 "<craft>/helpers/verify_delivery.py" "<edit>" --video "<final-video>"
+python3 "<craft>/helpers/export_deliverables.py" "<project>"
+```
+
+核验实际成片，不核验预览假象：声音、首 / 中 / 尾画面、字幕、关键动效、alpha、画幅、帧率、时长和交付文件名。交付中明确：有声 / 无声、透明 / 不透明、字幕烧录 / 外挂，以及仍未完成的事项。
+
+## 故障表
+
+| 现象 | 处理 |
 |---|---|
-| 可直接执行的全部工具、产物目录和分支命令 | [tools.md](references/tools.md) |
-| 上游文件、版本与改动责任 | [content-to-production.md](references/content-to-production.md) |
-| 音画表达选择 | [creative-direction.md](references/creative-direction.md)、[capability-map.md](references/capability-map.md) |
-| 已批准风格与合成约束 | [themes.md](references/themes.md)、[composition-facts-contract.md](references/composition-facts-contract.md) |
-| SVG 强调动画结构与引擎调用 | [svg-animation-contract.md](references/svg-animation-contract.md) |
-| 审阅插件、桥、草稿、提交、返修 | [review-ui.md](references/review-ui.md) |
-| 安装或依赖故障 | [install.md](install.md) |
-| 维护本 Skill | [architecture.md](references/architecture.md)、[GOTCHAS.md](GOTCHAS.md)、[maintenance-history.md](references/maintenance-history.md) |
+| segment duration 累积或 hash 不匹配 | 不手改字幕；重新渲染当前 EDL，再 `--build --check` |
+| `--prepare` 会覆盖人工正文 | 先确认版本；只有确认 EDL / 转写已变时用 `--force-prepare`，之后重新放回人工正文 |
+| overlay 尺寸与画布不符 | 修正源尺寸或显式适配；禁止静默跳过 |
+| 审阅页媒体读不到 | 检查 `review.asset` 的相对 `dir` 路径和项目内资产副本，不改成猜相对路径 |
+| surface 加载但 bridge 不可用 | 用 DSH `review_open` 或公共 review-core 宿主；不显示假成功 |
+| 草稿显示已保存但提交文件没变 | 这是 `draft()`，不是 `write()`；点击正式提交并检查回执 |
+| `unitId` 被收件器拒绝 | 重新 build review；检查当前 `review_data.json.binding` 与反馈的 chapter / snapshot |
+| SRT 对齐路径不稳定 | 从任意工作目录调用时使用绝对 `--plan`、`--script`、`--srt`、`--output` |
+| 音频需要 EQ 但工具没有该能力 | 先用 `audio_diag.py` 诊断；没有明确处理器就报告能力边界，不伪造完成 |
+| 导出结果纯色、无声或无字幕 | 回到正式 render；`export_video.py` 只包装已有结果，不替代渲染 |
 
-工具路径相对本 Skill；项目路径用绝对路径。Python 与 FFmpeg 依赖按 `install.md` 核实；密钥留在 Skill 根 `.env`，不进入项目交付或版本库。只有诊断工具故障或维护时才读源码。
+## 文件与参考入口
 
-维护测试：从 Skill 根运行 `PYTHONPATH=helpers python3 -m unittest discover -s tests -p 'test_*.py'`；浏览器自测按 `tests/test_review_browser.py` 与 `tests/test_interactive_ui.py` 的独立临时 fixture 执行，不把测试意见混入作者项目。
+- 可执行命令与产物目录：`references/tools.md`
+- 上游交接与责任边界：`references/content-to-production.md`
+- 视觉时间绑定：`references/visual-timeline.md`
+- 字幕契约：`references/caption-article-first.md`
+- SVG 动效契约：`references/svg-animation-contract.md`
+- 合成与渲染：`references/composition-craft.md`、`references/visual-rendering.md`
+- 审阅桥与收件：`references/review-ui.md`、`$planners-review-core`
+- 维护与已知陷阱：`GOTCHAS.md`、`references/architecture.md`
+
+## 自检
+
+从 Skill 根运行：
+
+```bash
+PYTHONPATH=helpers python3 -m unittest discover -s tests -p 'test_*.py'
+node "<review-core>/evals/run.mjs"
+python3 -m unittest discover -s "<review-core>/evals" -p 'test_*.py'
+```
+
+真实项目至少走一遍：`build_review → surface-only → 页面加载 → 提交带 unitId 的反馈 → review_inbox → 修改源 → 重新 build review`。只有这条链通过，才报告审阅接缝可用。

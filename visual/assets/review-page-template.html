@@ -970,6 +970,137 @@
       .center-stage { overflow: visible; }
       .player-box { min-height: 0; flex: none; }
     }
+    /* Final review surface layout: tools stay in the work area; feedback stays in the right rail. */
+    body {
+      --bg-app: var(--dsw-alias-bg-base);
+      --bg-panel: var(--dsw-alias-bg-layer-1);
+      --bg-card: var(--dsw-alias-bg-module-platform);
+      --bg-card-hover: var(--dsw-alias-bg-overlay);
+      --bg-input: var(--dsw-alias-bg-base);
+      --border: var(--dsw-alias-border-l2);
+      --border-strong: var(--dsw-alias-border-l3);
+      --text: var(--dsw-alias-label-primary);
+      --text-secondary: var(--dsw-alias-label-secondary);
+      --text-muted: var(--dsw-alias-label-tertiary);
+      --accent: var(--dsw-static-deepseek-500);
+      --accent-soft: var(--dsw-static-deepseek-50);
+      --blue: var(--dsw-static-deepseek-500);
+      --amber: var(--dsw-static-amber-600);
+      --green: var(--dsw-static-green-500);
+      background: var(--bg-app);
+      color: var(--text);
+    }
+    header.top {
+      height: 52px;
+      flex-basis: 52px;
+      padding: 0 16px;
+      background: var(--bg-panel);
+      border-bottom-color: var(--border);
+    }
+    .layout {
+      grid-template-columns: 236px minmax(480px, 1fr) 360px;
+      background: var(--bg-app);
+    }
+    .side-left, .side-right, .center-stage {
+      background: var(--bg-panel);
+      color: var(--text);
+    }
+    .side-left { border-right-color: var(--border); }
+    .side-right { border-left-color: var(--border); }
+    .center-stage { min-width: 0; }
+    .panel-head, .canvas-toolbar, .transport-bar, .choreo-deck,
+    .history-box, .feedback, .elem-edit-bar { border-color: var(--border); }
+    .panel-head {
+      min-height: 42px;
+      padding: 10px 14px;
+      color: var(--text-secondary);
+      background: var(--bg-panel);
+    }
+    .steps { padding: 8px; }
+    .step { border-radius: 6px; color: var(--text-secondary); }
+    .step.active {
+      background: var(--dsw-static-deepseek-50);
+      border-color: var(--dsw-static-deepseek-500);
+      color: var(--dsw-static-deepseek-700);
+    }
+    .canvas-toolbar {
+      padding: 8px 14px;
+      background: var(--bg-panel);
+    }
+    .canvas-toolbar::before {
+      content: "工具";
+      display: inline-flex;
+      align-items: center;
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 700;
+      margin-right: 2px;
+    }
+    .tool-btn, .transport-btn, .reload, .stage-switch, .stage-switch button {
+      border-color: var(--border-strong);
+      border-radius: 6px;
+      background: var(--bg-card);
+      color: var(--text-secondary);
+    }
+    .tool-btn:hover, .transport-btn:hover, .reload:hover { border-color: var(--dsw-static-deepseek-500); color: var(--text); }
+    .tool-btn.active, .transport-btn.primary, .tool-btn.accent, .stage-switch button.active {
+      background: var(--dsw-static-deepseek-500);
+      border-color: var(--dsw-static-deepseek-500);
+      color: #fff;
+    }
+    .player-box {
+      margin-top: 14px;
+      background: var(--dsw-alias-bg-document-preview);
+      border-color: var(--border);
+      box-shadow: 0 8px 24px rgba(31, 41, 55, 0.08);
+    }
+    #svg-stage-wrap, #composite-player-wrap, #verbatim-iframe-wrap { background: var(--dsw-alias-bg-document-preview); }
+    #canvas-caption-layer, #speaker-time-pill {
+      background: rgba(31, 41, 55, 0.88);
+      border-color: rgba(255, 255, 255, 0.24);
+    }
+    .transport-bar { background: var(--bg-panel); }
+    .timeline-track, .cue-pills-bar, .step-choreo-rows { border-color: var(--border); background: var(--bg-card); }
+    .history-box { background: var(--bg-card); }
+    .side-right { display: flex; flex-direction: column; min-width: 0; }
+    .history-box { flex: 1 1 auto; min-height: 160px; overflow: auto; }
+    .feedback {
+      flex: 0 0 auto;
+      background: var(--bg-panel);
+      padding: 14px;
+    }
+    .feedback::before {
+      content: "反馈给 Agent";
+      display: block;
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 700;
+      margin-bottom: 9px;
+    }
+    textarea, input, select { background: var(--bg-input) !important; color: var(--text) !important; border-color: var(--border-strong) !important; }
+    textarea:focus, input:focus, select:focus { border-color: var(--dsw-static-deepseek-500) !important; outline: 2px solid var(--dsw-static-deepseek-100); }
+    .save-bar { align-items: center; gap: 8px; }
+    #save-state { overflow-wrap: anywhere; color: var(--text-secondary); }
+    #save-state.ok { color: var(--dsw-static-green-600); }
+    #save-state.error { color: var(--dsw-static-red-600); }
+    @media (max-width: 1100px) {
+      .layout { grid-template-columns: 200px minmax(0, 1fr); }
+      .side-right { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--border); }
+    }
+    @media (min-width: 901px) and (max-width: 1100px) {
+      .layout { grid-template-columns: 180px minmax(420px, 1fr) 300px; }
+      .side-right { grid-column: auto; border-left: 1px solid var(--border); border-top: 0; }
+      .history-box { min-height: 120px; }
+      .feedback { padding: 10px; }
+      .mode-tab { padding: 5px 7px; }
+    }
+    @media (max-width: 680px) {
+      .layout { display: flex; flex-direction: column; }
+      .side-left { order: 1; max-height: 240px; border-right: 0; border-bottom: 1px solid var(--border); }
+      .center-stage { order: 0; }
+      .side-right { order: 2; }
+      .steps { max-height: 190px; }
+    }
     @media (max-width: 680px) {
       .layout { display: flex; flex-direction: column; }
       .center-stage { order: 0; padding: 8px; }
@@ -995,8 +1126,8 @@
     <div class="top-right">
       <select id="theme-mode" aria-label="界面主题"><option value="auto">自动</option><option value="light">浅色</option><option value="dark">深色</option></select>
       <div class="stage-switch" title="在动效舞台、最终合成与逐字剪辑之间切换">
-        <button type="button" id="view-svg-btn" class="active">⚡ 视听动效舞台</button>
-        <button type="button" id="view-player-btn">🎬 最终合成预览</button>
+        <button type="button" id="view-svg-btn" class="active">视听动效舞台</button>
+        <button type="button" id="view-player-btn">最终合成预览</button>
         <button type="button" id="view-verbatim-btn">逐字剪辑</button>
       </div>
       <a class="reload" id="page-reload" href="" title="重新加载页面">⟳ 刷新</a>
@@ -1017,16 +1148,16 @@
     <main class="center-stage">
       <div class="canvas-toolbar">
         <div class="tool-group" id="interaction-mode-group">
-          <button type="button" class="tool-btn active" data-stage-tool="director" id="tool-director">🎬 预览</button>
-          <button type="button" class="tool-btn" data-stage-tool="select" id="tool-select">🖱️ 点选改字</button>
-          <button type="button" class="tool-btn" data-stage-tool="box" id="tool-box">📐 框选批注</button>
+          <button type="button" class="tool-btn active" data-stage-tool="director" id="tool-director">预览</button>
+          <button type="button" class="tool-btn" data-stage-tool="select" id="tool-select">点选调整</button>
+          <button type="button" class="tool-btn" data-stage-tool="box" id="tool-box">框选批注</button>
         </div>
         <div class="tool-group">
-          <button type="button" class="tool-btn" id="btn-play-screen" title="连播本屏口播与所有分步动效">▶ 连播本屏</button>
-          <button type="button" class="tool-btn" id="btn-show-all" title="展示本屏最终完整态">❖ 最终完整态</button>
+          <button type="button" class="tool-btn" id="btn-play-screen" title="连播本屏口播与所有分步动效">连播本屏</button>
+          <button type="button" class="tool-btn" id="btn-show-all" title="展示本屏最终完整态">最终完整态</button>
           <div class="tool-sep"></div>
-          <button type="button" class="tool-btn" id="btn-focus-toggle" title="切换焦点聚光灯">💡 聚光灯: 开</button>
-          <button type="button" class="tool-btn" id="btn-speed-toggle" title="切换 0.5x 慢动作">🐢 1.0x</button>
+          <button type="button" class="tool-btn" id="btn-focus-toggle" title="切换焦点聚光灯">聚光灯: 开</button>
+          <button type="button" class="tool-btn" id="btn-speed-toggle" title="切换 0.5x 慢动作">速度: 1.0x</button>
         </div>
       </div>
 
@@ -1040,7 +1171,7 @@
         <button type="button" class="tool-btn" id="btn-nudge-right">→</button>
         <button type="button" class="tool-btn" id="btn-nudge-up">↑</button>
         <button type="button" class="tool-btn" id="btn-nudge-down">↓</button>
-        <button type="button" class="tool-btn accent" id="btn-comment-elem">💬 提意见</button>
+        <button type="button" class="tool-btn accent" id="btn-comment-elem">反馈当前选择</button>
       </div>
 
       <div class="player-box" id="player-box">
@@ -1062,7 +1193,7 @@
         <div id="composite-player-wrap" hidden>
           <video id="composite-video-player" controls playsinline></video>
           <div id="composite-empty-placeholder" hidden>
-            <div style="font-size:32px;margin-bottom:8px;">🎬</div>
+            <div style="font-size:32px;margin-bottom:8px;">预览</div>
             <div style="font-size:14px;color:var(--text);font-weight:700;margin-bottom:6px;">合成成片尚未导出</div>
             <button type="button" class="tool-btn active" id="btn-back-to-stage">返回动效舞台</button>
           </div>
@@ -1077,9 +1208,9 @@
 
       <!-- 全局视听播放与时间轴 Scrubber 控制条 -->
       <div class="global-transport-bar" id="global-transport-bar">
-        <button type="button" class="transport-btn primary" id="btn-global-play" title="播放/暂停全片 (快捷键: 空格键)">▶ 播放</button>
-        <button type="button" class="transport-btn" id="btn-prev-screen" title="上一屏 (快捷键: [)">⏮</button>
-        <button type="button" class="transport-btn" id="btn-next-screen" title="下一屏 (快捷键: ])">⏭</button>
+        <button type="button" class="transport-btn primary" id="btn-global-play" title="播放/暂停全片 (快捷键: 空格键)">播放</button>
+        <button type="button" class="transport-btn" id="btn-prev-screen" title="上一屏 (快捷键: [)">上一屏</button>
+        <button type="button" class="transport-btn" id="btn-next-screen" title="下一屏 (快捷键: ])">下一屏</button>
         <span class="transport-time" id="global-time-display">00:00.0 / 00:00.0</span>
         <div class="timeline-scrubber-wrap" id="timeline-scrubber-wrap" title="拖拽或点击跳转全片时间点">
           <div class="timeline-track" id="timeline-track">
@@ -1088,7 +1219,7 @@
             <div class="timeline-markers" id="timeline-markers"></div>
           </div>
         </div>
-        <button type="button" class="tool-btn active" id="btn-toggle-subtitles" title="切换画面底部字幕显示">💬 字幕: 开</button>
+        <button type="button" class="tool-btn active" id="btn-toggle-subtitles" title="切换画面底部字幕显示">字幕: 开</button>
       </div>
 
       <!-- 底部紧凑分步动效轨道 -->
@@ -1096,10 +1227,10 @@
       <section class="choreo-deck" id="choreo-deck" hidden>
         <div class="choreo-head">
           <div class="choreo-title">
-            <span id="choreo-screen-label">🎛️ 分步动效轨道（点左侧分屏加载）</span>
+            <span id="choreo-screen-label">分步动效轨道（点左侧分屏加载）</span>
           </div>
           <div class="choreo-controls">
-            <button type="button" class="tool-btn" id="btn-toggle-cues" style="padding:2px 8px;font-size:11px;">🎯 分句卡点微调</button>
+            <button type="button" class="tool-btn" id="btn-toggle-cues" style="padding:2px 8px;font-size:11px;">分句卡点微调</button>
           </div>
         </div>
         <!-- 口播词级触发胶囊条（默认折叠，点击按钮展开） -->
@@ -1197,9 +1328,9 @@
     { id: 'stagger-cards', label: '错峰弹簧升卡 (stagger-cards)', group: 'editorial' },
     { id: 'stamp-in', label: '印章重砸过冲 (stamp-in)', group: 'editorial' },
     { id: 'paper-unroll', label: '卷宗展开浮现 (paper-unroll)', group: 'editorial' },
-    { id: 'cursor-click', label: '🖱️ 拟真光标点击展开 (cursor-click)', group: 'product-ui' },
+    { id: 'cursor-click', label: '拟真光标点击展开 (cursor-click)', group: 'product-ui' },
     { id: 'number-ticker', label: '🔢 数字滚轮攀升充能 (number-ticker)', group: 'product-ui' },
-    { id: 'card-expand', label: '📐 面板丝滑撑开让位 (card-expand)', group: 'product-ui' },
+    { id: 'card-expand', label: '面板撑开让位 (card-expand)', group: 'product-ui' },
     { id: 'spotlight-sweep', label: '✨ 流光扫掠+微呼吸 (spotlight-sweep)', group: 'product-ui' }
   ];
 
@@ -2158,7 +2289,7 @@
 
         const tagBadge = document.createElement("span");
         tagBadge.className = "fb-card-badge";
-        tagBadge.textContent = isOverall ? "🌟 整片" : `📍 ${rec.stepId}`;
+        tagBadge.textContent = isOverall ? "整片" : `当前屏 · ${rec.stepId}`;
         badgeWrap.appendChild(tagBadge);
 
         if (rec.type) {
@@ -2337,7 +2468,7 @@
     if (subToggleBtn) {
       subToggleBtn.addEventListener("click", () => {
         showSubtitles = !showSubtitles;
-        subToggleBtn.textContent = showSubtitles ? "💬 字幕: 开" : "💬 字幕: 关";
+        subToggleBtn.textContent = showSubtitles ? "字幕: 开" : "字幕: 关";
         subToggleBtn.classList.toggle("active", showSubtitles);
         const curT = (document.getElementById("stage-speaker-video")?.currentTime) || (state.currentScreenObj ? (state.currentScreenObj.startMs || 0) / 1000 : 0);
         updateStageSubtitle(state.currentScreenObj, curT);
@@ -2469,7 +2600,7 @@
       isGlobalPlaying = false;
       const playBtn = document.getElementById("btn-global-play");
       if (playBtn) {
-        playBtn.textContent = "▶ 播放";
+        playBtn.textContent = "播放";
         playBtn.classList.add("primary");
       }
       clearPlaySequence();
@@ -2707,7 +2838,7 @@
     /* ---- 渲染底部紧凑动效与词级卡点轨道 ---- */
     function renderChoreoDeck(st, svgEl, items) {
       document.getElementById("choreo-screen-label").textContent =
-        `🎛️ 分步动效轨道 · ${st.id}（${items.length} 步 / ${(st.durationMs / 1000).toFixed(1)}s）`;
+        `分步动效轨道 · ${st.id}（${items.length} 步 / ${(st.durationMs / 1000).toFixed(1)}s）`;
 
       // 1. 口播分句/词胶囊条（优先使用实测句子时间戳 st.cues，否则按标点切分估算）
       const pillsBar = document.getElementById("cue-pills-bar");
@@ -2756,7 +2887,7 @@
         const playBtn = document.createElement("button");
         playBtn.type = "button";
         playBtn.className = "step-play-chip";
-        playBtn.textContent = `▶ Step ${item.step}`;
+        playBtn.textContent = `播放 Step ${item.step}`;
         playBtn.addEventListener("click", () => {
           playWithSpeakerOrTimers(st, svgEl, item.step);
         });
@@ -2783,7 +2914,7 @@
         const camSelect = document.createElement("select");
         [
           { id: "none", label: "🎥 镜头: 全景固定 (1.0x)" },
-          { id: "focus-step", label: "🎯 镜头: 特写当前步 (Auto Zoom)" },
+          { id: "focus-step", label: "镜头: 特写当前步 (Auto Zoom)" },
           { id: "focus-left", label: "◧ 镜头: 聚焦左栏论点" },
           { id: "focus-right", label: "◨ 镜头: 聚焦右栏图解" },
           { id: "zoom-center", label: "⊕ 镜头: 中心微推 (1.04x)" }
@@ -2864,7 +2995,7 @@
 
     document.getElementById("btn-focus-toggle").addEventListener("click", (e) => {
       state.focusMode = state.focusMode === "spotlight" ? "accumulate" : "spotlight";
-      e.currentTarget.textContent = state.focusMode === "spotlight" ? "💡 焦点聚光灯: 开" : "💡 焦点聚光灯: 关";
+      e.currentTarget.textContent = state.focusMode === "spotlight" ? "聚光灯: 开" : "聚光灯: 关";
       if (state.step) {
         if (!state.choreoOverrides[state.step]) state.choreoOverrides[state.step] = { steps: {} };
         state.choreoOverrides[state.step].focusMode = state.focusMode;
@@ -2879,7 +3010,7 @@
       const cur = window.VideoCraftAnimEngine.getSpeedMultiplier();
       const next = cur === 1 ? 2 : 1;
       window.VideoCraftAnimEngine.setSpeedMultiplier(next);
-      e.currentTarget.textContent = next === 2 ? "🐢 0.5x 慢放" : "🐢 1.0x";
+      e.currentTarget.textContent = next === 2 ? "速度: 0.5x" : "速度: 1.0x";
       const svgEl = document.querySelector("#svg-stage-host > svg");
       if (svgEl) {
         window.VideoCraftAnimEngine.setStep(svgEl, state.activeSvgStep || 1, true, { focusMode: state.focusMode });

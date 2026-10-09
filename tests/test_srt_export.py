@@ -122,6 +122,24 @@ class ArticleFirstSrtTests(unittest.TestCase):
         # the cue still ends on the last CONTENT word, not on a zero-length token
         self.assertAlmostEqual(cues[0][1], 0.8, places=3)
 
+    def test_measured_durations_skips_stale_history_until_matching_entry(self) -> None:
+        edit = self.make_edit()
+        edl = edit / "edl.json"
+        durations = {"old": {"durations": [9.0], "edl_sha256": "stale"},
+                     "current": {"durations": [1.25, 2.5], "edl_sha256": MODULE._sha256(edl)}}
+        (edit / "segment_durations.json").write_text(json.dumps(durations), encoding="utf-8")
+        self.assertEqual(MODULE._measured_durations(edit, edl, 2, True), [1.25, 2.5])
+
+    def test_measured_durations_rejects_only_when_no_entry_matches(self) -> None:
+        edit = self.make_edit()
+        edl = edit / "edl.json"
+        (edit / "segment_durations.json").write_text(json.dumps({
+            "old": {"durations": [9.0], "edl_sha256": "stale"},
+            "another": {"durations": [1.0, 2.0], "edl_sha256": "stale"},
+        }), encoding="utf-8")
+        with self.assertRaises(SystemExit):
+            MODULE._measured_durations(edit, edl, 2, True)
+
 
 if __name__ == "__main__":
     unittest.main()

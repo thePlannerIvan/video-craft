@@ -39,6 +39,11 @@ python3 "<craft>/helpers/edl_review_surface.py" "<project>/edit" --surface-only
 缺这份文件时仍会退回按文件名猜，但**会在构建输出里明说**——`anim_preview.mp4` 这种名字
 曾让一份全长 720p 副本被当成「演示动画」轨。声明了却不存在的文件也会被报出来。
 
+`media.json` 还可以声明 `baseVideo`：**未烘焙视觉层的底片**。声明后 `compositeVideo`
+就是这份底片，并置 `layersBaked: false`，页面在它上面**实时合成层**——这才是「改一层不必
+重渲整片」。不给 `baseVideo` 时默认 `layersBaked: true`（成片里已经烘焙了层），页面**不会**
+再叠一遍（叠了就重影），并会明说原因。
+
 `media` 里另有两项：
 
 - `layers`：EDL 覆盖层，带稳定 `unitId`（`visual:<tag>`）、时间窗与 `previewFile`。

@@ -73,8 +73,15 @@ python3 "<craft>/helpers/edl_edit.py" "<edit>" --restore "<起秒>,<止秒>=<期
 python3 "<craft>/helpers/duration_plan.py" "<edit>"       # 解析预演（frame-quantised, projected）
 python3 "<craft>/helpers/review_copy.py" "<成片>"         # 保留时间与原生分辨率的审阅副本
 python3 "<craft>/helpers/review_slices.py" "<project>"    # 按步切片，页面只取当前窗口
-python3 "<craft>/helpers/preview_layers.py" "<edit>"      # 每个 alpha 层出一份 WebM(VP9+alpha)
+python3 "<craft>/helpers/preview_layers.py" "<edit>"      # 已有 alpha 层补一份 WebM(VP9+alpha)
+python3 "<craft>/helpers/render_layer.py" "<composition>" -o "<层主干名>" \
+    --variables '{"set":"bolt"}'                          # HTML composition → MOV + WebM
 ```
+
+**动效的源是 composition，不是那段视频。** `render_layer.py` 一次渲染出两份载体：`.mov`
+给 ffmpeg 合成成片，`.webm`（VP9+alpha）给浏览器——后者是审阅页唯一能自己合成的带 alpha
+载体。两者同一次渲染，所以预览与交付不可能各走各的。已存在的视频层补 WebM 用
+`preview_layers.py`；新做的层直接从 HTML 出。
 
 `duration_plan.py` 写的记录带 `"projected": true`。它**可以**支撑字幕、时间脊柱与审阅页，
 但**不是交付证据**：`_edl.render_record` 默认跳过它，所以 `verify_delivery.py` 永远拿真实

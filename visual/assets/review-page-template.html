@@ -3255,8 +3255,15 @@
       const layerStack = document.getElementById("layer-stack");
       const layerDefs = (window.__REVIEW_DATA__?.media?.layers) || [];
       const layerEls = [];
+      const layersBaked = window.__REVIEW_DATA__?.media?.layersBaked !== false;
       async function initLayers() {
         if (!layerStack || !compVid || !layerDefs.length) return;
+        if (layersBaked) {
+          // 成片里已经烘焙了这些层。再叠一遍就是重影，所以宁可不叠并说清楚。
+          noteStaleFree("这一版成片已经把视觉层烘焙进去了，页面不再重复叠加——"
+            + "想在这里实时调层，就让项目声明一份未烘焙的底片（review/media.json 的 baseVideo）。");
+          return;
+        }
         let skipped = 0;
         for (const def of layerDefs) {
           if (!def.previewFile) { skipped += 1; continue; }

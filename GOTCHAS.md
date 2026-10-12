@@ -683,3 +683,18 @@ deletion from an accidental loss.
 - **原因**：工作区在 OneDrive 上，新建目录的元数据没有立刻对下一个进程可见（与第 5 条同源：云同步目录对 ffmpeg 的间歇性影响）。
 - **修正原则**：建完目录**立即验证**，不可见就重试一次，仍不可见则明确报错——而不是「跑了 28 个切片，实际 0 个」。同类写入前都该这样自证。
 - **证据**：手工先 `mkdir -p` 再跑则 28 个切片全部成功；不先建目录时同一命令失败。
+
+## 47. 页面实时叠层，不能叠在已经烘焙了层的成片上
+
+- **module**：`helpers/build_review.py`、`visual/assets/review-page-template.html` ｜ **状态**：已复现
+- **现象**：审阅页学会了把 EDL 的层叠在视频上之后，如果播放的仍是「已经把层烘焙进去的成片」，同一层就被画两遍——翻页动画叠出一个重影，而且因为两次编码的起点差几帧，重影还会轻微错位。
+- **原因**：两种模式是互斥的，但数据契约里没有表达：`compositeVideo` 既可能是「烘焙好的成片」，也可能是「待叠层的底片」。
+- **修正原则**：`review/media.json` 声明 `baseVideo`（未烘焙的底片）时，`compositeVideo` 取这份底片并置 `layersBaked: false`，页面才实时叠层；没声明时默认 `layersBaked: true`，页面**不叠**并说明原因。宁可少画一层，也不能画出重影。
+- **证据**：2026-10-12《图拉斯创新》——13 个层 + 已烘焙成片同时在场时才暴露；改成「底片 + 实时叠层」后一致。
+
+## 48. composition 里 CSS 初始 transform 与 GSAP 补间会互相抢
+
+- **module**：`hyperframes` 的 lint（`gsap_css_transform_conflict`、`root_composition_missing_data_start`） ｜ **状态**：已确认
+- **现象**：给元素写 `style="transform: translateY(20px)"` 再用 GSAP 补间同一属性，lint 直接拒；根元素漏掉 `data-start="0"` 报 `root_composition_missing_data_start`。
+- **修正原则**：初始状态写在补间里（`gsap.fromTo(el, {y:20}, {y:0})`），CSS 只负责布局（`left`/`top`/尺寸）；根元素四件套 `data-composition-id` / `data-start` / `data-width` / `data-height` 一个都不能少。翻页这类「有意扫出画布」的动效要显式 `data-layout-allow-overflow`，否则每次 check 都报 info。
+- **证据**：《图拉斯创新》翻页 composition，`hyperframes check` 从 8 error + 2 info 到 **0 error / 0 issue**。

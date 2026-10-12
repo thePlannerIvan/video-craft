@@ -212,6 +212,7 @@ def resolve_review_media(project_root: Path, edit_dir: Path, *,
 
     media: dict[str, str | None] = {k: None for k in _MEDIA_GUESSES}
     media["transcriptSurface"] = None
+    media["layersBaked"] = True
 
     if declared_at is not None and declared:
         for key in _MEDIA_GUESSES:
@@ -220,6 +221,16 @@ def resolve_review_media(project_root: Path, edit_dir: Path, *,
             if declared.get(key) and resolved is None:
                 notes.append(f"{declared_at.name} 声明了 {key}={declared[key]!r}，"
                              "但该文件不存在——这一轨将为空")
+        # A declared base means "composite the layers live over the CUT". Playing a
+        # film that already has the layers baked in while also stacking those layers
+        # would double them, so the two modes are mutually exclusive and explicit.
+        base = _resolve_media_entry(declared.get("baseVideo"), project_root, edit_dir)
+        if base:
+            media["compositeVideo"] = base
+            media["layersBaked"] = False
+            media["baseVideo"] = base
+            notes.append("媒体用的是底片（未烘焙层）+ 页面实时叠层；"
+                         "成片里的烘焙结果不在这一页上重复叠加")
     else:
         for key, names in _MEDIA_GUESSES.items():
             for name in names:
@@ -636,6 +647,7 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
                                   if transcript_rel else None),
             "guideAudio": guide_audio_rel,
             "layers": media.get("layers") or [],
+            "layersBaked": media.get("layersBaked", True),
             "slices": media.get("slices"),
             "hostAdvice": media.get("hostAdvice"),
         },

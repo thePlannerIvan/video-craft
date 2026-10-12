@@ -184,7 +184,8 @@ python3 "<craft>/helpers/import_srt_timeline.py" "<project>" \
 
 静态 SVG 必须来自第 1 步导入的项目内副本。沿用 `data-step`、`data-anim`、元素 `id` 和画面原有尺寸；不要把页面截图当成可编辑 SVG。
 
-- HyperFrames：读 `$hyperframes`，用 `visual/scripts/generate-composition.py` 生成 / 更新 `composition/`，再运行对应 `hyperframes check` / render。
+- HyperFrames：读 `$hyperframes`。整片走 `visual/scripts/generate-composition.py`；单层动效写一份 composition，再用 `helpers/render_layer.py` 一次渲出两份载体（`.mov` 交付合成、`.webm` 预览叠层），跑之前先 `hyperframes check`。
+  **动效的源是 composition，不是那段视频**：层要能改、能预览，才谈得上「先审后渲」。
 - Manim：只有严密数学或技术动画才调用 `$manim-video`。
 - 自定义逐帧：读 `references/frame-animation-pipeline.md`。
 - 合成：读 `references/composition-craft.md` 与 `references/visual-rendering.md`。

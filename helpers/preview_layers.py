@@ -24,6 +24,7 @@ import json
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -38,17 +39,26 @@ def export_one(src: Path, *, crf: int = 24, force: bool = False) -> dict:
         return {"file": str(src), "webm": str(out), "action": "cached"}
     if shutil.which("ffmpeg") is None:
         raise SystemExit("✗ PATH 上没有 ffmpeg")
-    proc = subprocess.run(
-        ["ffmpeg", "-v", "error", "-y", "-i", str(src),
-         "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-auto-alt-ref", "0",
-         "-b:v", "0", "-crf", str(crf), "-row-mt", "1",
-         "-cpu-used", "5", "-deadline", "good", str(out)],
-        capture_output=True)
-    if proc.returncode != 0:
-        tail = proc.stderr.decode("utf-8", "replace").strip().splitlines()[-3:]
-        raise SystemExit(f"✗ {src.name} 转 WebM 失败：" + " / ".join(tail))
+    # Encode into LOCAL disk and move the finished file into place. Writing straight
+    # to a cloud-synced workspace makes the encoder hit "Error writing trailer:
+    # Operation timed out" partway through a long VP9 run (same class of problem as
+    # the 100-hardlink stall this project already recorded), which loses the whole
+    # encode with no file to show for it.
+    with tempfile.TemporaryDirectory(prefix="vc_webm_") as tmp:
+        staging = Path(tmp) / out.name
+        proc = subprocess.run(
+            ["ffmpeg", "-v", "error", "-y", "-i", str(src),
+             "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-auto-alt-ref", "0",
+             "-b:v", "0", "-crf", str(crf), "-row-mt", "1",
+             "-cpu-used", "5", "-deadline", "good", str(staging)],
+            capture_output=True)
+        if proc.returncode != 0:
+            tail = proc.stderr.decode("utf-8", "replace").strip().splitlines()[-3:]
+            raise SystemExit(f"✗ {src.name} 转 WebM 失败：" + " / ".join(tail))
+        verify_alpha(staging)   # refuses an opaque "preview" rather than shipping one
+        out.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(staging), str(out))
     print(f"  {src.name}")
-    verify_alpha(out)      # refuses an opaque "preview" rather than shipping one
     return {"file": str(src), "webm": str(out), "action": "made",
             "size_mb": round(out.stat().st_size / 1e6, 2)}
 

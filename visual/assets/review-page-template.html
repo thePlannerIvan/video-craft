@@ -70,6 +70,17 @@
     h1 { font-size: 14px; font-weight: 700; color: var(--text); letter-spacing: 0.01em; }
     h1 #project-name { color: var(--amber); font-family: var(--font-mono); font-size: 12.5px; font-weight: 600; margin-left: 4px; }
     .top-right { display: flex; align-items: center; gap: 8px; }
+    #view-verbatim-btn {
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      color: var(--text);
+      padding: 5px 11px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    #view-verbatim-btn:hover { background: var(--bg-card-hover); border-color: var(--border-strong); }
     .stage-switch {
       display: inline-flex;
       background: var(--bg-input);
@@ -141,26 +152,29 @@
     }
     .steps::-webkit-scrollbar { width: 5px; }
     .steps::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    /* 每一步是一张有边界的卡：原先只有透明边框 + 3px 间距，逐条读起来连成一片，
+       分不清哪一行属于哪一屏。 */
     .step {
-      padding: 8px 10px;
-      border: 1px solid transparent;
-      border-radius: 6px;
-      margin-bottom: 3px;
+      padding: 9px 11px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg-panel);
       cursor: pointer;
       transition: background 0.12s, border-color 0.12s;
     }
-    .step:hover { background: var(--bg-card); }
+    .step:hover { background: var(--bg-card-hover); border-color: var(--border-strong); }
     .step.active {
-      background: rgba(59, 130, 246, 0.14);
+      background: var(--accent-soft);
       border-color: var(--blue);
     }
     .step.chapter-header {
       background: transparent;
-      cursor: default;
-      padding: 7px 6px 3px;
-      margin-top: 4px;
-      border-bottom: 1px solid var(--border);
+      border: 0;
+      border-bottom: 1px solid var(--border-strong);
       border-radius: 0;
+      cursor: default;
+      padding: 8px 4px 5px;
+      margin-top: 6px;
     }
     .step-id {
       font-family: var(--font-mono);
@@ -170,6 +184,13 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+    .step-id .step-id-main {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .step.chapter-header .step-id { color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
     .step-caption { font-size: 12px; color: var(--text); margin-top: 3px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -179,7 +200,7 @@
       padding: 1px 5px;
       border-radius: 3px;
       background: var(--accent-soft);
-      color: #ff8066;
+      color: var(--accent);
     }
 
     /* 中央舞台区 */
@@ -188,7 +209,7 @@
       flex-direction: column;
       min-width: 0;
       min-height: 0;
-      background: #090b0f;
+      background: var(--bg-app);
       overflow: hidden;
     }
     /* 舞台顶部上下文工具栏 */
@@ -715,6 +736,20 @@
       flex-direction: column;
       gap: 5px;
     }
+    .fb-history {
+      margin-top: 10px;
+      border-top: 1px dashed var(--border);
+      padding-top: 8px;
+    }
+    .fb-history > summary {
+      cursor: pointer;
+      font-size: 11px;
+      color: var(--text-muted);
+      list-style: none;
+      padding: 4px 2px;
+    }
+    .fb-history > summary:hover { color: var(--text-secondary); }
+    .fb-history .fb-card { opacity: 0.72; }
     .history-empty {
       font-size: 11.5px;
       color: var(--text-muted);
@@ -724,21 +759,22 @@
       border: 1px dashed var(--border);
       border-radius: 6px;
     }
+    /* 用 token，而不是硬编码深色 + !important —— 那是这一栏看起来「突兀、不像这一页」的
+       原因：它连明色主题下都维持深底。 */
     .fb-card {
       padding: 9px 12px;
-      background: #1c202d !important;
-      border: 1px solid #2d3448 !important;
-      border-left: 3.5px solid var(--blue) !important;
-      border-radius: 6px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--blue);
+      border-radius: 8px;
       font-size: 12px;
       line-height: 1.45;
-      color: #e2e8f0 !important;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.28);
-      margin-bottom: 7px;
+      color: var(--text);
+      margin-bottom: 8px;
     }
     .fb-card.overall-card {
-      border-left-color: var(--amber) !important;
-      background: #20222e !important;
+      border-left-color: var(--amber);
+      background: var(--bg-card-hover);
     }
     .fb-card-head {
       display: flex;
@@ -758,9 +794,9 @@
       font-weight: 700;
       padding: 2px 6px;
       border-radius: 4px;
-      background: rgba(59, 130, 246, 0.18);
-      color: #60a5fa;
-      border: 1px solid rgba(59, 130, 246, 0.35);
+      background: var(--accent-soft);
+      color: var(--blue);
+      border: 1px solid var(--border-strong);
     }
     .fb-card.overall-card .fb-card-badge {
       background: rgba(245, 158, 11, 0.18);
@@ -769,12 +805,12 @@
     }
     .fb-card-type-tag {
       font-size: 10.5px;
-      color: #94a3b8;
+      color: var(--text-muted);
     }
     .fb-card-del {
       background: transparent;
       border: 1px solid transparent;
-      color: #94a3b8;
+      color: var(--text-muted);
       cursor: pointer;
       font-size: 11px;
       padding: 1px 6px;
@@ -787,7 +823,7 @@
       border-color: rgba(239, 68, 68, 0.3);
     }
     .fb-card-body {
-      color: #f8fafc !important;
+      color: var(--text);
       font-size: 12px;
       line-height: 1.5;
       word-break: break-word;
@@ -796,11 +832,11 @@
     .fb-card-quote {
       margin-top: 6px;
       padding: 4px 8px;
-      background: rgba(0, 0, 0, 0.35);
-      border-left: 2px solid #64748b;
+      background: var(--bg-input);
+      border-left: 2px solid var(--border-strong);
       border-radius: 0 4px 4px 0;
       font-size: 11px;
-      color: #94a3b8;
+      color: var(--text-secondary);
       line-height: 1.35;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -810,7 +846,7 @@
       margin-top: 5px;
       font-family: var(--font-mono);
       font-size: 9.5px;
-      color: #64748b;
+      color: var(--text-muted);
       text-align: right;
     }
 
@@ -892,11 +928,12 @@
     #stale-note {
       font-size: 11px;
       line-height: 1.45;
-      color: #ffd9a8;
-      background: #4a2f12;
-      border: 1px solid #8a5a24;
-      border-radius: 5px;
-      padding: 6px 8px;
+      color: var(--text);
+      background: var(--bg-card-hover);
+      border: 1px solid var(--border-strong);
+      border-left: 3px solid var(--amber);
+      border-radius: 6px;
+      padding: 7px 10px;
     }
     #stale-note[hidden] { display: none; }
     #stale-note button {
@@ -946,23 +983,6 @@
       text-overflow: ellipsis;
       max-width: 90%;
       font-size: clamp(14px, 2vw, 22px);
-    }
-    body {
-      --bg-app: var(--dsw-alias-bg-base);
-      --bg-panel: var(--dsw-alias-bg-layer-1);
-      --bg-card: var(--dsw-alias-bg-module-platform);
-      --bg-card-hover: var(--dsw-alias-bg-overlay);
-      --bg-input: var(--dsw-alias-bg-base);
-      --border: var(--dsw-alias-border-l2);
-      --border-strong: var(--dsw-alias-border-l4);
-      --text: var(--dsw-alias-label-primary);
-      --text-secondary: var(--dsw-alias-label-secondary);
-      --text-muted: var(--dsw-alias-label-tertiary);
-      --accent: var(--dsw-static-blue-600);
-      --accent-soft: var(--dsw-static-blue-100);
-      --blue: var(--dsw-static-blue-600);
-      --amber: var(--dsw-static-amber-600);
-      --green: var(--dsw-static-green-500);
     }
     * { letter-spacing: 0 !important; }
     [hidden] { display: none !important; }
@@ -1142,11 +1162,7 @@
     </div>
     <div class="top-right">
       <select id="theme-mode" aria-label="界面主题"><option value="auto">自动</option><option value="light">浅色</option><option value="dark">深色</option></select>
-      <div class="stage-switch" title="在动效舞台、最终合成与逐字剪辑之间切换">
-        <button type="button" id="view-svg-btn" class="active">视听动效舞台</button>
-        <button type="button" id="view-player-btn">最终合成预览</button>
-        <button type="button" id="view-verbatim-btn">逐字剪辑</button>
-      </div>
+      <button type="button" id="view-verbatim-btn" title="打开独立剪辑审阅面">剪辑审阅</button>
       <a class="reload" id="page-reload" href="" title="重新加载页面">⟳ 刷新</a>
     </div>
   </header>
@@ -1194,8 +1210,9 @@
       <div class="player-box" id="player-box">
         <hyperframes-player id="player" style="display:none;"></hyperframes-player>
 
-        <!-- 视听动效舞台 (默认活动) -->
-        <div id="svg-stage-wrap">
+        <!-- 这里原本是两个舞台二选一。现在只有成片预览一个舞台（见 setStageViewMode）；
+             SVG 舞台只在项目真的声明了分屏时才有内容，默认隐藏。 -->
+        <div id="svg-stage-wrap" hidden>
           <video id="stage-speaker-video" playsinline hidden></video>
           <div id="speaker-time-pill" hidden>🔊 00:00.0</div>
           <div id="svg-stage-host"></div>
@@ -1207,7 +1224,7 @@
         </div>
 
         <!-- 最终合成成片预览 -->
-        <div id="composite-player-wrap" hidden>
+        <div id="composite-player-wrap">
           <video id="composite-video-player" controls playsinline></video>
           <div id="layer-stack" hidden aria-hidden="true"></div>
           <div id="composite-empty-placeholder" hidden>
@@ -2288,12 +2305,22 @@
     function renderHistoryList() {
       const box = document.getElementById("fb-history-list");
       const badge = document.getElementById("records-count-badge");
-      badge.textContent = `${cachedRecords.length} 条`;
+      // 「待处理」= 冲着当前这一版写的；其余归历史（折叠），不再一直挂在最上面。
+      const currentBuild = window.__REVIEW_DATA__?.buildId || null;
+      // 只有明确冲着当前这一版写的才算待处理。早期记录没有 buildId（那时还没这个字段），
+      // 一律归历史——否则它们会永远占着「待处理」。
+      const isPendingRecord = (rec) => !!currentBuild && rec.buildId === currentBuild;
+      const pendingRecords = cachedRecords.filter(isPendingRecord);
+      const historyRecords = cachedRecords.filter((r) => !isPendingRecord(r));
+      badge.textContent = historyRecords.length
+        ? `${pendingRecords.length} 条待处理 · ${historyRecords.length} 条历史`
+        : `${pendingRecords.length} 条`;
       if (!cachedRecords.length) {
         box.innerHTML = `<div class="history-empty">尚未提交意见。可写「整片意见」，或点选左侧分屏、画布元素后精准提交。</div>`;
         return;
       }
       box.replaceChildren();
+      let historyBox = null;
       cachedRecords.forEach((rec, idx) => {
         const card = document.createElement("div");
         const isOverall = rec.phase === "overall" || !rec.stepId;
@@ -2367,25 +2394,34 @@
           card.appendChild(time);
         }
 
-        box.appendChild(card);
+        // 历史意见收进折叠块：它们针对的是更早的版本，别占着「待处理」的位置。
+        if (historyRecords.includes(rec)) {
+          if (!historyBox) {
+            historyBox = document.createElement("details");
+            historyBox.className = "fb-history";
+            const sum = document.createElement("summary");
+            sum.textContent = `历史反馈 · ${historyRecords.length} 条（针对更早的版本）`;
+            historyBox.appendChild(sum);
+            box.appendChild(historyBox);
+          }
+          historyBox.appendChild(card);
+        } else {
+          box.appendChild(card);
+        }
       });
     }
 
     /* ---- 舞台视图切换（动效舞台 vs 最终合成预览 vs 逐字剪辑） ---- */
     let stageViewMode = "svg"; // 'svg' | 'composite' | 'verbatim'
     function setStageViewMode(mode) {
-      if (mode === "player") mode = "composite";
+      // 只有一个舞台。原先「视听动效舞台 / 最终合成预览 / 逐字剪辑」三选一，在没有 SVG
+      // 分屏的项目里前两块长得一模一样，作者看不出为什么要分。剪辑审阅本来就是**独立
+      // 审阅面**，现在由顶栏一个按钮打开，不再冒充播放器的一种模式。
+      mode = "composite";
       stageViewMode = mode;
 
       document.body.classList.toggle("workspace-verbatim", mode === "verbatim");
       document.body.classList.toggle("workspace-composite", mode === "composite");
-
-      const svgBtn = document.getElementById("view-svg-btn");
-      const compBtn = document.getElementById("view-player-btn");
-      const verbBtn = document.getElementById("view-verbatim-btn");
-      if (svgBtn) svgBtn.classList.toggle("active", mode === "svg");
-      if (compBtn) compBtn.classList.toggle("active", mode === "composite");
-      if (verbBtn) verbBtn.classList.toggle("active", mode === "verbatim");
 
       const svgWrap = document.getElementById("svg-stage-wrap");
       const compWrap = document.getElementById("composite-player-wrap");
@@ -2438,12 +2474,8 @@
         }
       }
     }
-    document.getElementById("view-svg-btn").addEventListener("click", () => setStageViewMode("svg"));
-    document.getElementById("view-player-btn").addEventListener("click", () => setStageViewMode("composite"));
-    const verbBtn = document.getElementById("view-verbatim-btn");
-    if (verbBtn) verbBtn.addEventListener("click", () => setStageViewMode("verbatim"));
-    const backBtn = document.getElementById("btn-back-to-stage");
-    if (backBtn) backBtn.addEventListener("click", () => setStageViewMode("svg"));
+    // 舞台切换按钮已移除（只留一个播放器）；初始可见性已在标记里给对，不在这里调
+    // setStageViewMode —— 它在顶层会碰到还没初始化的 let（TDZ），页面整个挂掉。
 
     const toggleCuesBtn = document.getElementById("btn-toggle-cues");
     if (toggleCuesBtn) {
@@ -2539,6 +2571,16 @@
       document.getElementById("fb-step").textContent = st.id;
 
       await loadScreenSvg(st, seekVideo);
+
+      // 换屏必须把画面也带过去。原先只更新了选中态与左侧高亮，成片播放头不动 ——
+      // 「上一屏 / 下一屏」看起来就像什么都没发生。
+      const compVid = document.getElementById("composite-video-player");
+      if (seekVideo && compVid && compVid.getAttribute("src")) {
+        const startSec = (st.startMs || 0) / 1000;
+        if (Math.abs(compVid.currentTime - startSec) > 0.05) {
+          try { compVid.currentTime = startSec; } catch {}
+        }
+      }
     }
 
     async function seekGlobalTime(targetSec) {
@@ -2606,6 +2648,15 @@
           if (p && typeof p.catch === "function") p.catch(() => {});
         } catch {}
       }
+      // 舞台就是一个成片播放器——「播放」必须驱动它。原先只驱动扬声器轨（很多项目
+      // 那条轨是空的），于是按钮状态变了、画面纹丝不动。
+      const compVid = document.getElementById("composite-video-player");
+      if (compVid && compVid.getAttribute("src")) {
+        try {
+          const p = compVid.play();
+          if (p && typeof p.catch === "function") p.catch(() => {});
+        } catch {}
+      }
       if (state.currentScreenObj) {
         const svgEl = document.querySelector("#svg-stage-host > svg");
         if (svgEl) {
@@ -2621,31 +2672,56 @@
         playBtn.textContent = "播放";
         playBtn.classList.add("primary");
       }
+      const compVid = document.getElementById("composite-video-player");
+      if (compVid && !compVid.paused) {
+        try { compVid.pause(); } catch {}
+      }
       clearPlaySequence();
     }
 
     const globalPlayBtn = document.getElementById("btn-global-play");
     if (globalPlayBtn) globalPlayBtn.addEventListener("click", toggleGlobalPlayback);
 
+    const verbatimBtn = document.getElementById("view-verbatim-btn");
+    if (verbatimBtn) {
+      verbatimBtn.addEventListener("click", () => {
+        const target = window.__REVIEW_DATA__?.media?.transcriptSurface;
+        if (!target) { noteStaleFree("当前没有剪辑审阅面。"); return; }
+        if (!(review && typeof review.wake === "function")) {
+          noteStaleFree(`请回对话打开剪辑审阅：${target}`);
+          return;
+        }
+        noteStaleFree("正在请求打开独立剪辑审阅…");
+        review.wake({ unit: "剪辑审阅",
+          text: `请调用 review_open 打开本项目的 ${target}；没有该工具时运行 video-craft/helpers/edl_review_surface.py <本项目>/edit。` })
+          .then(result => noteStaleFree(result?.woke === false
+            ? "请回对话说一声「打开剪辑审阅」" : "已请求打开独立剪辑审阅"))
+          .catch(error => noteStaleFree(`打开失败：${error.message}`));
+      });
+    }
+
     const prevScreenBtn = document.getElementById("btn-prev-screen");
     if (prevScreenBtn) {
       prevScreenBtn.addEventListener("click", () => {
-        if (!allScreensList.length || !state.currentScreenObj) return;
-        const curIdx = allScreensList.findIndex(s => s.id === state.currentScreenObj.id);
-        if (curIdx > 0) {
-          switchToScreen(allScreensList[curIdx - 1], true);
-        }
+        // 页面初始没有选中任何一屏。原先这里直接 return，于是「上一屏 / 下一屏」
+        // 在还没点过左侧列表时完全没反应——看起来就像坏了。
+        if (!allScreensList.length) return;
+        const curIdx = state.currentScreenObj
+          ? allScreensList.findIndex(s => s.id === state.currentScreenObj.id) : -1;
+        const target = curIdx > 0 ? allScreensList[curIdx - 1]
+          : (curIdx < 0 ? allScreensList[0] : null);
+        if (target) switchToScreen(target, true);
       });
     }
 
     const nextScreenBtn = document.getElementById("btn-next-screen");
     if (nextScreenBtn) {
       nextScreenBtn.addEventListener("click", () => {
-        if (!allScreensList.length || !state.currentScreenObj) return;
-        const curIdx = allScreensList.findIndex(s => s.id === state.currentScreenObj.id);
-        if (curIdx >= 0 && curIdx < allScreensList.length - 1) {
-          switchToScreen(allScreensList[curIdx + 1], true);
-        }
+        if (!allScreensList.length) return;
+        const curIdx = state.currentScreenObj
+          ? allScreensList.findIndex(s => s.id === state.currentScreenObj.id) : -1;
+        const target = curIdx < 0 ? allScreensList[0] : allScreensList[curIdx + 1];
+        if (target) switchToScreen(target, true);
       });
     }
 
@@ -2675,6 +2751,10 @@
     async function loadScreenSvg(st, seekVideo = true) {
       const pageKey = st.sourcePageKey || st.id;
       state.sourcePageKey = pageKey;
+      // 「当前屏」就是选中的这一屏，无条件记下。原先只在「扬声器视频可见且没有 SVG」
+      // 这条分支里赋值，而很多项目根本没有扬声器轨 —— 于是 currentScreenObj 永远是
+      // null，「上一屏 / 下一屏」和全局播放全都没反应。
+      state.currentScreenObj = st;
       let svgText = null;
 
       // 1. 优先从页面内联字典读（原型展示或离线打包时注入）
@@ -2682,7 +2762,12 @@
         svgText = window.__INLINE_SVGS__[pageKey];
       }
       // 2. 尝试通过审阅桥从 input/scenes/<key>.svg 或 pages/<key>.svg 读取
-      if (!svgText && review && typeof review.readText === "function") {
+      // 只有这一屏真的声明了 SVG 画面才去读。否则每点一屏都会为两个不存在的路径各刷
+      // 一条红色 404（本项目 28 屏 = 56 条），把真正的错误淹掉。
+      const hasSvg = !!(st.sourcePageKey
+        || (window.__INLINE_SVGS__ && window.__INLINE_SVGS__[pageKey])
+        || (window.__REVIEW_DATA__?.svgAssets && window.__REVIEW_DATA__.svgAssets[pageKey]));
+      if (!svgText && hasSvg && review && typeof review.readText === "function") {
         for (const cand of [`input/scenes/${pageKey}.svg`, `composition/pages/${pageKey}.svg`]) {
           try {
             const t = await review.readText(cand);
@@ -3371,7 +3456,8 @@
             const cue = cueRangeOf(st);
             el.innerHTML = `
               <div class="step-id">
-                <span>${st.id} · ${fmt(st.durationMs)}${cue ? ` · cue ${cue[0] + 1}-${cue[1] + 1}` : ""}</span>
+                <span class="step-id-main">${st.id}</span>
+                <span>${fmt(st.durationMs)}${cue ? ` · cue ${cue[0] + 1}-${cue[1] + 1}` : ""}</span>
                 ${st.sourcePageKey ? `<span class="step-badge">SVG</span>` : ""}
               </div>
               <div class="step-caption">${st.caption || ""}</div>
@@ -3418,7 +3504,9 @@
 
       // 初始把第一屏的 SVG 预览画在舞台上（注意：不改变 fbMode 默认的 "overall"，也不给 .step 加 .active，确保测试契约 100% 成立！）
       if (firstStepData) {
-        loadScreenSvg(firstStepData.st, true);
+        // 走 switchToScreen 而不是直接 loadScreenSvg：否则状态里已经选中第一屏、左侧列表
+        // 却没有任何高亮，看起来像两套状态。
+        switchToScreen(firstStepData.st, true);
       }
       return data;
     }
@@ -3476,6 +3564,8 @@
         type: document.getElementById("fb-type").value,
         text,
         status: "open",
+        // 记下这一条是冲着哪一版审阅面写的：重建之后旧意见自动归入历史。
+        buildId: window.__REVIEW_DATA__?.buildId || null,
         batchId: "review-" + new Date().toISOString().slice(0, 10) + "-1",
         createdAt: new Date().toISOString(),
         snapshot: window.__REVIEW_DATA__?.snapshot || loadedTimelineId,

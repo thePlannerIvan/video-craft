@@ -272,6 +272,64 @@ def resolve_review_media(project_root: Path, edit_dir: Path, *,
     return media, notes
 
 
+def review_build_id(project_root: Path, edit_dir: Path) -> str:
+    """A short fingerprint of everything the review page shows.
+
+    The page uses it to decide which feedback is still pending: a record carries the
+    build it was written against, so once the surface is rebuilt the older ones are
+    known to be about a version that no longer exists. Hashing (path, size, mtime) of
+    the reviewed inputs is enough — the point is "did this change", not integrity.
+    """
+    import hashlib
+    project_root = project_root.resolve()
+    edit_dir = edit_dir.resolve()
+    watched = [
+        edit_dir / "edl.json",
+        edit_dir / "captions.json",
+        edit_dir / "timeline" / "timeline.json",
+        edit_dir / "review" / "media.json",
+        project_root / "review" / "media.json",
+    ]
+    try:
+        edl = json.loads((edit_dir / "edl.json").read_text(encoding="utf-8"))
+        for overlay in edl.get("overlays") or []:
+            raw = str(overlay.get("file") or "")
+            if raw:
+                watched.append(Path(raw) if Path(raw).is_absolute() else edit_dir / raw)
+    except Exception:                                          # noqa: BLE001
+        pass
+    try:
+        media_file = edit_dir / "review" / "media.json"
+        if media_file.is_file():
+            for value in json.loads(media_file.read_text(encoding="utf-8")).values():
+                if isinstance(value, str) and value:
+                    watched.append(edit_dir / value)
+    except Exception:                                          # noqa: BLE001
+        pass
+
+    parts: list[str] = []
+    for path in watched:
+        try:
+            stat = path.stat()
+            parts.append(f"{path.name}:{stat.st_size}:{int(stat.st_mtime)}")
+        except OSError:
+            continue
+    parts.append(f"duration:{int((timeline_data_span(edit_dir)) * 1000)}")
+    return hashlib.sha256("|".join(sorted(parts)).encode("utf-8")).hexdigest()[:16]
+
+
+def timeline_data_span(edit_dir: Path) -> float:
+    path = edit_dir / "timeline" / "timeline.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        steps = [s for ch in data.get("chapters", []) for s in ch.get("steps", [])]
+        if steps:
+            return (steps[-1].get("endMs", 0) - steps[0].get("startMs", 0)) / 1000.0
+    except Exception:                                          # noqa: BLE001
+        pass
+    return 0.0
+
+
 def _overlay_layers(project_root: Path, edit_dir: Path, edl_data: dict | None) -> list[dict]:
     """The EDL's visual overlays, addressed as page-compositeable layers.
 
@@ -651,6 +709,7 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
             "slices": media.get("slices"),
             "hostAdvice": media.get("hostAdvice"),
         },
+        "buildId": review_build_id(project_root, edit_dir),
         # How the media above was decided: explicit media.json, guessed filenames,
         # or an auto-generated 审阅副本. Surfaced so a wrong pick is visible on the
         # page instead of silently reviewed.

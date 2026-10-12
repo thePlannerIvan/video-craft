@@ -727,3 +727,27 @@ deletion from an accidental loss.
 - **现象**：把 VP9/MOV 直接编码到 OneDrive 上的目标路径，长任务跑到一半报 `Error writing trailer: Operation timed out` / `Error closing file`，**留下 0 字节文件**（五层里坏了两层），而命令看上去只是「慢」。
 - **原因**：与第 5、46 条同源：云同步目录对长时间连续写入不稳。
 - **修正原则**：**先编码到本地 /tmp，成功后再 move 进目标目录**。`encode_sequence()` 与 `preview_layers.export_one()` 现在都这么做；凡是「跑几十秒以上的写盘」都该按这条自查。
+
+## 53. 审阅页在**不透明源 iframe** 里：宿主 token 不会继承，硬编码会静默胜出
+
+- **module**：`visual/assets/review-page-template.html` ｜ **状态**：已复现
+- **现象**：页面「看着能用」，但整片偏暗、反馈卡是深底、跟宿主的明色主题格格不入；一查发现模板里有**两个重复的 `body { --bg-*: var(--dsw-*) }` 块**（映射还不一致：`blue-600` vs `deepseek-500`、`border-l4` vs `border-l3`，后者覆盖前者），另有 49 处硬编码色值绕过 token。
+- **原因**：审阅页跑在 `sandbox="allow-scripts"` 的**不透明源 iframe** 里——宿主的 CSS 变量不继承进来，外链样式表也会被信任围栏打回。所以 DSH token 必须**随页面发**（`/*__DSH_TOKENS__*/` 占位符 + `planners-review-core/assets/dsh-tokens.css`）。真正致命的是**组件自己写死颜色**：`.fb-card { background:#1c202d !important; color:#e2e8f0 !important }` 这种带 `!important` 的硬编码，会让 token 桥形同虚设，而且明暗两套主题下都不报错。
+- **修正原则**：模板只允许引用 `var(--dsw-*)`（经 `body` 的别名映射）与语义变量；**组件级硬编码一律清掉，尤其带 `!important` 的**。改完 count 从 63 → 32（剩下的是 token 缺失时的兜底调色板）。
+- **证据**：同一份数据，改前反馈卡深底近似白字、改后随主题；`#stale-note`、`.fb-card-body`、`.fb-card-badge` 等都是这一类。
+
+## 54. 删掉标记、却没删挂事件的代码 → 页面死在渲染数据之前
+
+- **module**：`visual/assets/review-page-template.html` ｜ **状态**：已复现
+- **现象**：去掉「视听动效舞台 / 最终合成预览 / 逐字剪辑」三个切换按钮后，页面变成**「0 屏」**——像是数据没加载，其实是 `document.getElementById("view-svg-btn").addEventListener(...)` 拿到 null 抛了 `TypeError`，整个脚本在渲染列表之前就停了。
+- **原因**：这类挂载点不写 null 保护；一旦元素不在（被删、或某个模式不渲染），失败发生在**离症状很远的地方**。
+- **修正原则**：删 UI 元素时必须同时删/收口它的挂载点，并且新挂载一律 `if (el)` 保护。另外**不要在顶层调用依赖 `let` 的函数**：`setStageViewMode("composite")` 提前调用会撞上 `isGlobalPlaying` 的 TDZ，报的是 `Cannot access ... before initialization`。初始可见性应当写在标记里，而不是靠初始化脚本补。
+- **证据**：《图拉斯创新》审阅页两轮排查：先 `Cannot read properties of null`，修完暴露 `Cannot access 'isGlobalPlaying' before initialization`。
+
+## 55. 「当前屏」只在扬声器轨可见时才被记下 → 上一屏/下一屏看着像坏的
+
+- **module**：`visual/assets/review-page-template.html` ｜ **状态**：已复现
+- **现象**：点「上一屏 / 下一屏」完全没反应，且**换屏不跳画面**；「播放」只把按钮文字变成「暂停」，画面纹丝不动。
+- **原因**：三处相互叠加。① `state.currentScreenObj = st` 只写在「扬声器视频可见且没有 SVG」那条分支里，而很多项目根本没有扬声器轨 → 变量恒为 null，而按钮处理开头就是 `if (!... || !state.currentScreenObj) return;`。② `startGlobalPlayback()` 只 play 扬声器轨，没 play 成片播放器。③ `switchToScreen()` 更新了选中态却没同步成片播放头。
+- **修正原则**：**「当前屏」就是选中的那一屏，无条件赋值**；舞台只有一个播放器时，播放/暂停/换屏都必须驱动它。判定这类问题不要靠肉眼看截图——用 CDP 驱动真实点击，断言 `state.currentScreenObj` 与 `video.currentTime` 的实际变化（实测：`hook-001 → hook-002(t=10.29) → hook-003(t=18.25) → 回 hook-002`，播放后 t 持续推进）。
+- **证据**：《图拉斯创新》审阅页，修前 `sel:null` / `paused:true`，修后如上。

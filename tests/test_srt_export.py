@@ -128,7 +128,35 @@ class ArticleFirstSrtTests(unittest.TestCase):
         durations = {"old": {"durations": [9.0], "edl_sha256": "stale"},
                      "current": {"durations": [1.25, 2.5], "edl_sha256": MODULE._sha256(edl)}}
         (edit / "segment_durations.json").write_text(json.dumps(durations), encoding="utf-8")
-        self.assertEqual(MODULE._measured_durations(edit, edl, 2, True), [1.25, 2.5])
+        self.assertEqual(MODULE._measured_durations(edit, edl, 2, True),
+                         ([1.25, 2.5], "measured"))
+
+    def test_a_projected_plan_is_usable_but_marked_projected(self) -> None:
+        """duration_plan.py lets captions/timeline exist before the render.
+
+        It must stay distinguishable from a render, because `verify_delivery`
+        compares a real file against a recorded render.
+        """
+        edit = self.make_edit()
+        edl = edit / "edl.json"
+        (edit / "segment_durations.json").write_text(json.dumps({
+            "plan": {"durations": [1.25, 2.5], "edl_sha256": MODULE._sha256(edl),
+                     "projected": True, "fps": 30.0},
+        }), encoding="utf-8")
+        self.assertEqual(MODULE._measured_durations(edit, edl, 2, True),
+                         ([1.25, 2.5], "projected"))
+
+    def test_a_real_render_wins_over_a_projection(self) -> None:
+        edit = self.make_edit()
+        edl = edit / "edl.json"
+        digest = MODULE._sha256(edl)
+        (edit / "segment_durations.json").write_text(json.dumps({
+            "plan": {"durations": [1.25, 2.5], "edl_sha256": digest,
+                     "projected": True, "fps": 30.0},
+            "final": {"durations": [1.3, 2.6], "edl_sha256": digest},
+        }), encoding="utf-8")
+        self.assertEqual(MODULE._measured_durations(edit, edl, 2, True),
+                         ([1.3, 2.6], "measured"))
 
     def test_measured_durations_rejects_only_when_no_entry_matches(self) -> None:
         edit = self.make_edit()

@@ -22,6 +22,7 @@ the same plane test and exits non-zero when transparency is missing.
 Usage:
     python3 scripts/encode_transparent.py <png_dir> -o out.mov
     python3 scripts/encode_transparent.py <png_dir> -o out.mov --codec prores --fps 30
+    python3 scripts/encode_transparent.py <png_dir> -o layer.webm --codec webm
 
 Companion render (Phase 5, RENDERING.md):
     npx hyperframes render --no-low-memory-mode --format png-sequence -o <png_dir>
@@ -40,6 +41,17 @@ from pathlib import Path
 CODECS = {
     "png": ["-c:v", "png", "-pix_fmt", "rgba"],                      # default: small, lossless alpha
     "prores": ["-c:v", "prores_videotoolbox", "-profile:v", "4444"],  # 4444 alpha, ~5x larger
+    # Browser-compositable alpha. MOV/ProRes alpha is fine for ffmpeg and invisible
+    # to every browser (Chrome cannot composite it at all), which is why an overlay
+    # could only ever be reviewed as a baked render. VP9-in-WebM with yuva420p is the
+    # one alpha carrier the review page can stack over a video itself.
+    # -auto-alt-ref 0 is required: VP9 alpha in WebM is not written otherwise.
+    # -cpu-used 5 / -deadline good: default VP9 speed spends minutes on a 1080x1920
+    # overlay that exists only to be looked at. A review preview does not need
+    # slow-search quality; the MOV remains the delivery artefact.
+    "webm": ["-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-auto-alt-ref", "0",
+             "-b:v", "0", "-crf", "24", "-row-mt", "1",
+             "-cpu-used", "5", "-deadline", "good"],
 }
 
 
@@ -75,10 +87,27 @@ def verify_alpha(path: Path) -> tuple[str, float, float]:
 
 
 def _alpha_range(path: Path) -> tuple[float, float]:
-    out = subprocess.run(
-        ["ffmpeg", "-v", "error", "-i", str(path), "-vf", "alphaextract,format=gray",
-         "-f", "rawvideo", "-pix_fmt", "gray", "-"],
-        capture_output=True).stdout
+    """Alpha plane range, or exit.
+
+    VP9-in-WebM keeps alpha in a separate block that ffmpeg's *default* decoder does
+    not surface: `alphaextract` then fails with "Requested planes not available" on a
+    file that does carry alpha, and ffprobe still reports `pix_fmt=yuv420p`. Naming
+    the decoder makes the plane appear, so a failed extract retries that way instead
+    of condemning a good overlay.
+    """
+    def extract(extra: list[str]) -> bytes:
+        return subprocess.run(
+            ["ffmpeg", "-v", "error", *extra, "-i", str(path),
+             "-vf", "alphaextract,format=gray",
+             "-f", "rawvideo", "-pix_fmt", "gray", "-"],
+            capture_output=True).stdout
+
+    out = extract([])
+    if not out:
+        out = extract(["-c:v", "libvpx-vp9"])
+        if out:
+            print("  note: alpha needed the explicit libvpx-vp9 decoder to surface "
+                  "(VP9 stores it out-of-band; the default decoder hides the plane)")
     if not out:
         sys.exit(f"FAIL: could not extract alpha from {path.name}")
     return min(out), max(out)
@@ -89,7 +118,9 @@ def main() -> None:
     ap.add_argument("png_dir", type=Path)
     ap.add_argument("-o", "--output", type=Path, required=True)
     ap.add_argument("--codec", choices=sorted(CODECS), default="png",
-                    help="png = PNG-in-MOV (default, ~1/5 ProRes size); prores = ProRes 4444")
+                    help="png = PNG-in-MOV (default, ~1/5 ProRes size); "
+                         "prores = ProRes 4444; webm = VP9 + alpha, the only carrier "
+                         "a browser can composite (use it for review previews)")
     ap.add_argument("--fps", type=int, default=30)
     args = ap.parse_args()
 

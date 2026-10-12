@@ -185,7 +185,7 @@ def _edl_paths(edit_dir: Path, edl_path: Path | None = None) -> tuple[Path, dict
 
 
 def _measured_durations(edit_dir: Path, edl_file: Path, count: int,
-                        strict: bool) -> list[float] | None:
+                        strict: bool) -> tuple[list[float] | None, str | None]:
     """Per-segment durations the last render actually produced.
 
     The rendered timeline is authoritative. ffmpeg's frame-grid rounding is only
@@ -193,19 +193,27 @@ def _measured_durations(edit_dir: Path, edl_file: Path, count: int,
     full second over 38 segments), so cues built on the EDL's nominal
     Σ(end-start) ran early and every caption check still passed.
 
-    Returns None when no render exists yet (nominal timeline). A render that
-    does not belong to this EDL is refused when `strict` (build/check), and
-    reported otherwise (article preparation is text work and stays unblocked).
+    Returns `(durations, source)` with source in {"measured", "projected", None}:
+    a real render is preferred; the analytic projection written by
+    `duration_plan.py` is used when no render exists yet, so captions and the
+    visual timeline can be built AND reviewed before the film is encoded. A
+    projected timeline is recorded as such and is not a delivery artefact. A
+    render that does not belong to this EDL is refused when `strict`
+    (build/check), and reported otherwise (article preparation is text work).
     """
     path = edit_dir / "segment_durations.json"
     if not path.exists():
-        print("  · 还没有渲染结果，字幕按 EDL 标称时间轴生成（交付前必须渲染并重建字幕）")
-        return None
+        print("  · 还没有渲染结果，也没有解析预演，字幕按 EDL 标称时间轴生成"
+              "（可先跑 helpers/duration_plan.py 得到预演时间轴）")
+        return None, None
     try:
         blob = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         print("  · segment_durations.json 无法解析，按标称时间轴生成")
-        return None
+        return None, None
+    digest = _sha256(edl_file)
+    measured: tuple[str, list[float]] | None = None
+    projected: tuple[str, list[float]] | None = None
     mismatches = []
     for tag, entry in blob.items():
         if not isinstance(entry, dict) or not isinstance(entry.get("durations"), list):
@@ -215,30 +223,42 @@ def _measured_durations(edit_dir: Path, edl_file: Path, count: int,
         if len(durations) != count:
             problem = (f"segment_durations.json[{tag}] 有 {len(durations)} 段，"
                        f"EDL 有 {count} 段")
-        elif entry.get("edl_sha256") and entry["edl_sha256"] != _sha256(edl_file):
+        elif entry.get("edl_sha256") and entry["edl_sha256"] != digest:
             problem = "segment_durations.json 是另一次 EDL 的渲染结果（哈希不符）"
         if problem:
             mismatches.append(f"{tag}: {problem}")
             continue
+        if entry.get("projected"):
+            projected = projected or (tag, durations)
+        else:
+            measured = measured or (tag, durations)
+    if measured:
+        tag, durations = measured
         print(f"  · 字幕时间轴取自实测段时长（{tag}，共 {sum(durations):.3f}s）")
-        return durations
+        return durations, "measured"
+    if projected:
+        tag, durations = projected
+        print(f"  ！字幕时间轴取自解析预演（{tag}，共 {sum(durations):.3f}s）——"
+              "可在渲染前用于审阅；交付前必须真实渲染并重建字幕")
+        return durations, "projected"
     if mismatches:
         detail = "；".join(mismatches)
         if strict:
-            _fail(f"没有找到与当前 EDL 匹配的实测段时长（{detail}）——"
-                  "先重新渲染再生成字幕，否则字幕会与成片错位")
-        print(f"  ! 没有找到与当前 EDL 匹配的实测段时长（{detail}）——"
+            _fail(f"没有找到与当前 EDL 匹配的段时长记录（{detail}）——"
+                  "先跑 helpers/duration_plan.py 得到预演时间轴，或重新渲染后再生成字幕")
+        print(f"  ! 没有找到与当前 EDL 匹配的段时长记录（{detail}）——"
               "本次按标称时间轴生成，不能作为交付版本")
-        return None
+        return None, None
     print("  · segment_durations.json 是旧格式，按标称时间轴生成")
-    return None
+    return None, None
 
 
 def _load_timeline_words(edit_dir: Path, edl_path: Path | None = None,
                          corrections_path: Path | None = None,
                          strict_render: bool = False) -> tuple[dict, list[dict]]:
     edl_file, edl = _edl_paths(edit_dir, edl_path)
-    measured = _measured_durations(edit_dir, edl_file, len(edl["ranges"]), strict_render)
+    measured, timeline_source = _measured_durations(
+        edit_dir, edl_file, len(edl["ranges"]), strict_render)
     corrections, corrections_sha256 = _load_corrections(edit_dir, corrections_path)
     transcripts_dir = edit_dir / "transcripts"
     if not transcripts_dir.is_dir():
@@ -316,10 +336,11 @@ def _load_timeline_words(edit_dir: Path, edl_path: Path | None = None,
         "corrections_sha256": corrections_sha256,
         "segments": segments,
         "total_duration": round(output_offset, 6),
-        # Which timeline the cue times were derived from. "measured" means the
-        # render's own per-segment durations; "nominal" means no render existed
-        # yet and the SRT is NOT a delivery artefact.
-        "timeline_source": "measured" if measured else "nominal",
+        # Which timeline the cue times were derived from. "measured" is the
+        # render's own per-segment durations; "projected" is the frame-quantised
+        # analytic plan (good enough to review, NOT a delivery artefact);
+        # "nominal" means neither existed and the SRT must not ship.
+        "timeline_source": timeline_source or "nominal",
     }
     return contract, words
 

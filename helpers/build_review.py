@@ -26,6 +26,8 @@ import xml.etree.ElementTree as ET
 
 from lib.planners_modules import resolve_module
 from review_surface import write_surface, validate_surface
+import review_copy
+import review_slices
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "visual" / "scripts"))
 from snapshot_input import resolve_snapshot  # noqa: E402
@@ -148,7 +150,175 @@ def find_svg_scenes(project_root: Path, edit_dir: Path) -> dict[str, str]:
             for key, path in find_scene_files(project_root, edit_dir).items()}
 
 
-def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = "auto") -> dict:
+REVIEW_MEDIA_NAME = "media.json"
+DEFAULT_REVIEW_COPY_MB = 80.0
+
+# Last-resort filename guesses. Kept only because projects predate media.json;
+# every use is reported, because guessing is how a full-length 720p copy named
+# `anim_preview.mp4` got picked as the "演示动画" track on the 图拉斯 project.
+_MEDIA_GUESSES = {
+    "speakerVideo": ["cut.mp4", "cut_subbed.mp4", "base_preview.mp4",
+                     "成品/01_口播视频_剪辑成片.mp4", "preview.mp4"],
+    "previewVideo": ["成品/03_演示动画.mp4", "screen_final.mp4", "anim_preview.mp4"],
+    "compositeVideo": ["final.mp4", "screen_final.mp4", "preview.mp4"],
+    "guideAudio": ["guide_audio.mp3", "guide_audio.mp3", "audio.wav",
+                   "input/audio.mp3", "input/audio.wav"],
+}
+
+
+def _resolve_media_entry(entry, project_root: Path, edit_dir: Path) -> str | None:
+    """Resolve one explicit media entry to a project-root-relative path."""
+    if not entry:
+        return None
+    raw = Path(str(entry))
+    for base in ((project_root, edit_dir) if not raw.is_absolute() else (Path("/"),)):
+        cand = raw if raw.is_absolute() else (base / raw)
+        if cand.is_file():
+            return os.path.relpath(cand.resolve(), project_root)
+    return None
+
+
+def resolve_review_media(project_root: Path, edit_dir: Path, *,
+                         allow_review_copy: bool = True,
+                         max_mb: float = DEFAULT_REVIEW_COPY_MB) -> tuple[dict, list[str]]:
+    """Decide which media the console shows, and say how it decided.
+
+    Explicit beats guessing: `review/media.json` names the files:
+        {"compositeVideo": "edit/final.mp4", "speakerVideo": null, ...}
+    Without it we fall back to filename candidates and report that we guessed.
+
+    The composite then goes through the 审阅副本 rule: the review host transfers
+    whole files, so a master bigger than `max_mb` is re-encoded once to a
+    time-preserving, native-resolution copy and THAT is what the page loads.
+    """
+    # Normalise both roots first: on macOS a temp/project path can reach the same
+    # directory through a symlink (/var vs /private/var), and relpath against the
+    # unresolved form then yields "../../.." instead of a usable project path.
+    project_root = Path(project_root).resolve()
+    edit_dir = Path(edit_dir).resolve()
+    notes: list[str] = []
+    declared: dict = {}
+    declared_at: Path | None = None
+    for base in (project_root / "review", edit_dir / "review"):
+        f = base / REVIEW_MEDIA_NAME
+        if f.is_file():
+            declared_at = f
+            try:
+                payload = json.loads(f.read_text(encoding="utf-8"))
+                declared = payload if isinstance(payload, dict) else {}
+            except json.JSONDecodeError:
+                notes.append(f"{f.name} 解析失败，退回按文件名猜媒体")
+            break
+
+    media: dict[str, str | None] = {k: None for k in _MEDIA_GUESSES}
+    media["transcriptSurface"] = None
+
+    if declared_at is not None and declared:
+        for key in _MEDIA_GUESSES:
+            resolved = _resolve_media_entry(declared.get(key), project_root, edit_dir)
+            media[key] = resolved
+            if declared.get(key) and resolved is None:
+                notes.append(f"{declared_at.name} 声明了 {key}={declared[key]!r}，"
+                             "但该文件不存在——这一轨将为空")
+    else:
+        for key, names in _MEDIA_GUESSES.items():
+            for name in names:
+                cand = project_root / name
+                if not cand.is_file():
+                    cand = edit_dir / name
+                if cand.is_file():
+                    media[key] = os.path.relpath(cand.resolve(), project_root)
+                    break
+        if any(media[k] for k in ("speakerVideo", "previewVideo", "compositeVideo")):
+            notes.append("没有 review/media.json，媒体是按文件名猜的；"
+                         "写一份显式声明可避免猜错（例如把全长副本当成演示动画）")
+
+    for cand in (edit_dir / "edl_preview.html", project_root / "edl_preview.html"):
+        if cand.is_file():
+            media["transcriptSurface"] = os.path.relpath(cand.resolve(), project_root)
+            break
+
+    # ---- 审阅副本 ----
+    composite = media.get("compositeVideo")
+    if allow_review_copy and composite:
+        src = (project_root / composite).resolve()
+        if review_copy.needs_copy(src, max_mb):
+            out = src.with_suffix("").with_name(src.stem + ".review.mp4")
+            fresh = out.is_file() and out.stat().st_mtime >= src.stat().st_mtime
+            if fresh:
+                media["compositeVideo"] = os.path.relpath(out.resolve(), project_root)
+                notes.append(f"复合片用审阅副本 {out.name}"
+                             f"（{out.stat().st_size / 1e6:.0f}MB，源 "
+                             f"{src.stat().st_size / 1e6:.0f}MB）")
+            else:
+                print(f"    · 复合片 {src.name} 有 {src.stat().st_size / 1e6:.0f}MB，"
+                      f"正在生成审阅副本（保留时间与原生分辨率）…", flush=True)
+                record = review_copy.make(src, out, max_mb=max_mb)
+                media["compositeVideo"] = os.path.relpath(Path(record["path"]),
+                                                          project_root)
+                notes.append(f"已生成审阅副本 {out.name}"
+                             f"（{record['source_mb']}MB → {record['size_mb']}MB）")
+    return media, notes
+
+
+def _overlay_layers(project_root: Path, edit_dir: Path, edl_data: dict | None) -> list[dict]:
+    """The EDL's visual overlays, addressed as page-compositeable layers.
+
+    Until now an overlay was only a *feedback anchor*: `build_review` gave it a
+    `visual:<tag>` unitId so a comment could point at it, and the template never
+    read it (grep for `overlayKind` in review-page-template.html: zero hits). The
+    page showed one baked composite and nothing else.
+
+    Emitting the file + window here is what lets the page composite the layer
+    itself — the first half of "preview the animation without rendering the film".
+    A layer whose file lives outside the project cannot be reached through the
+    asset bridge and is marked so, rather than silently failing to load.
+    """
+    layers: list[dict] = []
+    for index, overlay in enumerate((edl_data or {}).get("overlays") or []):
+        raw = str(overlay.get("file") or "")
+        if not raw:
+            continue
+        path = Path(raw)
+        if not path.is_absolute():
+            path = (edit_dir / path).resolve()
+        tag = str(overlay.get("tag") or path.stem or f"overlay-{index + 1:02d}")
+        try:
+            rel = path.relative_to(project_root.resolve()).as_posix()
+            inside = True
+        except ValueError:
+            rel, inside = raw, False
+        # A browser cannot composite MOV/ProRes alpha at all, so a layer is only
+        # previewable if the same source was also exported to WebM VP9 + alpha
+        # (encode_transparent.py --codec webm). Point at that when it exists.
+        sibling = path.with_suffix(".webm")
+        preview_rel = None
+        if sibling.is_file():
+            try:
+                preview_rel = sibling.relative_to(project_root.resolve()).as_posix()
+            except ValueError:
+                preview_rel = None
+        start_ms = int(round(float(overlay.get("start_in_output",
+                                                overlay.get("start", 0))) * 1000))
+        duration_ms = int(round(float(overlay.get("duration", 0)) * 1000))
+        layers.append({
+            "unitId": f"visual:{tag}",
+            "tag": tag,
+            "file": rel,
+            "inProject": inside,
+            "startMs": start_ms,
+            "endMs": start_ms + duration_ms,
+            "durationMs": duration_ms,
+            "kind": overlay.get("kind", "alpha"),
+            "previewFile": preview_rel,
+            "browserCompositable": preview_rel is not None,
+        })
+    return sorted(layers, key=lambda x: x["startMs"])
+
+
+def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = "auto",
+                      *, allow_review_copy: bool = True,
+                      slices: str = "auto") -> dict:
     """搜集、对齐并构造统一审阅数据契约。"""
     # 1. 查找 timeline.json
     timeline_paths = [
@@ -222,66 +392,50 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
     review_dir = project_root / "review"
     review_dir.mkdir(parents=True, exist_ok=True)
 
-    # 候选口播视频
-    speaker_candidates = [
-        edit_dir / "cut.mp4",
-        edit_dir / "cut_subbed.mp4",
-        edit_dir / "base_preview.mp4",
-        project_root / "成品" / "01_口播视频_剪辑成片.mp4",
-        edit_dir / "preview.mp4"
-    ]
-    speaker_video_rel = None
-    for cand in speaker_candidates:
-        if cand.is_file():
-            speaker_video_rel = os.path.relpath(cand, project_root)
-            break
+    media, media_notes = resolve_review_media(
+        project_root, edit_dir, allow_review_copy=allow_review_copy)
+    media["layers"] = _overlay_layers(project_root, edit_dir, edl_data)
+    media["slices"] = None
+    _step_list = [s for ch in (timeline_data or {}).get("chapters", [])
+                  for s in ch.get("steps", [])]
+    if media.get("compositeVideo") and _step_list:
+        composite_path = (project_root / media["compositeVideo"]).resolve()
+        want_slices = (slices == "on"
+                       or (slices == "auto" and composite_path.is_file()
+                           and composite_path.stat().st_size > 40_000_000))
+        if want_slices:
+            try:
+                _manifest = review_slices.build_slices(
+                    project_root, composite_rel=media["compositeVideo"],
+                    steps=_step_list)
+                media["slices"] = _manifest["slices"]
+                media_notes.append(
+                    f"已按步切片 {_manifest['sliceCount']} 个"
+                    f"（最大关键帧提前量 "
+                    f"{max(s['keyframeLeadMs'] for s in _manifest['slices'])}ms）"
+                    "——页面只需加载当前窗口")
+            except Exception as exc:                       # noqa: BLE001
+                media_notes.append(f"按步切片失败，页面将整片加载：{exc}")
 
-    # 候选动画预览视频
-    anim_candidates = [
-        project_root / "成品" / "03_演示动画.mp4",
-        edit_dir / "screen_final.mp4",
-        edit_dir / "anim_preview.mp4"
-    ]
-    preview_video_rel = None
-    for cand in anim_candidates:
-        if cand.is_file():
-            preview_video_rel = os.path.relpath(cand, project_root)
-            break
-
-    # 候选完整成片视频
-    composite_candidates = list((project_root / "成品").glob("*完整*.mp4")) + \
-                           [
-        project_root / "成品" / f"{project_root.name}_完整视听成片.mp4",
-        edit_dir / "final.mp4",
-        edit_dir / "screen_final.mp4",
-        edit_dir / "preview.mp4"
-    ]
-    composite_video_rel = None
-    for cand in composite_candidates:
-        if cand.is_file():
-            composite_video_rel = os.path.relpath(cand, project_root)
-            break
-
-    # 候选逐字稿粗剪工作台
-    transcript_rel = None
-    for cand in [edit_dir / "edl_preview.html", project_root / "edl_preview.html"]:
-        if cand.is_file():
-            transcript_rel = os.path.relpath(cand, project_root)
-            break
-
-    # 候选导引配音
-    audio_candidates = [
-        project_root / "guide_audio.mp3",
-        edit_dir / "guide_audio.mp3",
-        edit_dir / "audio.wav",
-        project_root / "input" / "audio.mp3",
-        project_root / "input" / "audio.wav",
-    ]
-    guide_audio_rel = None
-    for cand in audio_candidates:
-        if cand.is_file():
-            guide_audio_rel = os.path.relpath(cand, project_root)
-            break
+    # Which host should carry the review media. The sidebar bridge hands the whole
+    # file over, so past a few hundred MB the honest answer is "not the sidebar".
+    media["hostAdvice"] = None
+    if media.get("compositeVideo"):
+        _cpath = (project_root / media["compositeVideo"]).resolve()
+        _size = _cpath.stat().st_size if _cpath.is_file() else 0
+        if not media.get("slices") and _size > 200_000_000:
+            media["hostAdvice"] = "local"
+            media_notes.append(
+                f"复合片 {_size / 1e6:.0f}MB 远超侧栏适合的范围，且没有按步切片"
+                "——改用本地宿主起审阅（review_surface.py 不带 --surface-only），"
+                "或让审阅副本/切片先生成")
+    speaker_video_rel = media.get("speakerVideo")
+    preview_video_rel = media.get("previewVideo")
+    composite_video_rel = media.get("compositeVideo")
+    transcript_rel = media.get("transcriptSurface")
+    guide_audio_rel = media.get("guideAudio")
+    for note in media_notes:
+        print(f"    · {note}")
 
     # 6. 计算模式
     has_speaker = speaker_video_rel is not None or (edl_data and edl_data.get("ranges"))
@@ -480,8 +634,15 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
             "compositeVideo": composite_video_rel,
             "transcriptSurface": (os.path.relpath(edit_dir / "edl_review_surface.json", project_root)
                                   if transcript_rel else None),
-            "guideAudio": guide_audio_rel
+            "guideAudio": guide_audio_rel,
+            "layers": media.get("layers") or [],
+            "slices": media.get("slices"),
+            "hostAdvice": media.get("hostAdvice"),
         },
+        # How the media above was decided: explicit media.json, guessed filenames,
+        # or an auto-generated 审阅副本. Surfaced so a wrong pick is visible on the
+        # page instead of silently reviewed.
+        "mediaNotes": media_notes,
         "timeline": timeline_data or {
             "source": "edl",
             "totalChapters": len(beats),
@@ -545,6 +706,10 @@ def write_review_files(project_root: Path, review_data: dict) -> tuple[Path, Pat
 def main():
     parser = argparse.ArgumentParser(description="一键构建 Video Craft 统一视听审阅控制台与数据契约")
     parser.add_argument("project", help="项目根目录或 edit 目录")
+    parser.add_argument("--slices", choices=["auto", "on", "off"], default="auto",
+                        help="按步切片供页面只加载当前窗口（auto=复合片超过 40MB 时）")
+    parser.add_argument("--no-review-copy", action="store_true",
+                        help="不要自动生成审阅副本（默认复合片超过 80MB 时生成）")
     parser.add_argument("--mode", choices=["auto", "composite", "speaker_only", "animation_only"],
                         default="auto", help="审阅模式（默认 auto 自动识别）")
     args = parser.parse_args()
@@ -559,7 +724,9 @@ def main():
     print(f"    - 工作区路径: {edit_dir}")
     print(f"    - 请求模式: {args.mode}")
 
-    data = build_review_data(project_root, edit_dir, args.mode)
+    data = build_review_data(project_root, edit_dir, args.mode,
+                             allow_review_copy=not args.no_review_copy,
+                             slices=args.slices)
     data_path, index_path = write_review_files(project_root, data)
 
     print(f"✓ 审阅数据契约构建完成: {data_path}")

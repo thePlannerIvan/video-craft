@@ -27,6 +27,28 @@ python3 "<craft>/helpers/edl_review_surface.py" "<project>/edit" --surface-only
 
 有插件时 `review_open` 接返回的 `edit/edl_review_surface.json`；没有插件去掉 `--surface-only`。视觉页的「逐字剪辑」只请求模型打开独立面，不嵌入另一份审阅桥。
 
+## 媒体从哪来
+
+审阅面不再按文件名猜媒体。显式声明优先：`<project>/review/media.json`
+
+```json
+{"speakerVideo": null, "previewVideo": null,
+ "compositeVideo": "edit/final.mp4", "guideAudio": null}
+```
+
+缺这份文件时仍会退回按文件名猜，但**会在构建输出里明说**——`anim_preview.mp4` 这种名字
+曾让一份全长 720p 副本被当成「演示动画」轨。声明了却不存在的文件也会被报出来。
+
+`media` 里另有两项：
+
+- `layers`：EDL 覆盖层，带稳定 `unitId`（`visual:<tag>`）、时间窗与 `previewFile`。
+  页面据此在成片上**自己合成**这些层（`previewFile` 是 WebM VP9+alpha，浏览器唯一能合成的
+  带 alpha 载体；没有它就只能看成片里的烘焙结果，页面会明说）。
+- `slices`：按步切片，页面只加载当前窗口。切片用 `-c copy` 从关键帧切，manifest 记的是
+  **真实起点**与关键帧提前量，不是步边界——写错会让页面上的每条批注平移。
+
+`hostAdvice: "local"` 表示复合片大到侧栏不适合承载且没有切片，应改用本地宿主。
+
 ## 公共接口
 
 surface 采用 `review-surface/2.0.0`。`project_root`、`dir`、`feedback`、`draft`、`watch` 相对 surface 文件；`entry` 相对 dir。页面中所有 read/asset 路径相对 dir。视觉面 dir 是项目根，提交和草稿分别在 `review/review-submissions.json`、`review/review-draft.json`。

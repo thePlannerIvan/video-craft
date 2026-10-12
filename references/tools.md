@@ -64,6 +64,25 @@ python3 "<craft>/helpers/edl_edit.py" "<edit>" --restore "<起秒>,<止秒>=<期
 
 `doubao_asr_file.js` 是 SeedASR 的内部传输实现；`_edl.py`、`_words.py`、`_probe.py` 与 `helpers/lib/` 是库模块，不是 Agent 操作入口。`screen_detect.py` 是视觉场景检测库；需要它的策略与参数时由 `timeline_view.py --help` 选择公开能力，不直接导入内部函数。
 
+## 免渲染的工程态（先审后渲）
+
+渲染不再是「能开始干活」的前提。段时长可以解析算出来，覆盖层可以有浏览器可合成的载体，
+于是剪辑、字幕、时间脊柱、审阅都先跑起来，确认后才渲染。
+
+```bash
+python3 "<craft>/helpers/duration_plan.py" "<edit>"       # 解析预演（frame-quantised, projected）
+python3 "<craft>/helpers/review_copy.py" "<成片>"         # 保留时间与原生分辨率的审阅副本
+python3 "<craft>/helpers/review_slices.py" "<project>"    # 按步切片，页面只取当前窗口
+python3 "<craft>/helpers/preview_layers.py" "<edit>"      # 每个 alpha 层出一份 WebM(VP9+alpha)
+```
+
+`duration_plan.py` 写的记录带 `"projected": true`。它**可以**支撑字幕、时间脊柱与审阅页，
+但**不是交付证据**：`_edl.render_record` 默认跳过它，所以 `verify_delivery.py` 永远拿真实
+文件对真实渲染；交付前仍必须渲染并用 `srt_export.py --prepare --lock --build` 重建字幕。
+
+`preview_layers.py` 产出的 `.webm` 只服务预览，交付合成仍走 MOV。审阅页据此在成片上叠层，
+所以改一层不必重渲整片。
+
 ## 语义字幕
 
 ```bash

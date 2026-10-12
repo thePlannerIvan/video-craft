@@ -23,7 +23,12 @@ Required:
 - `edit/captions.json` — the cue list, written by `srt_export.py --build`
 - `edit/caption_words.json` — the word contract, `timeline_source: "measured"`
 
-The deriver **refuses a nominal timeline**. `caption_words.json` records which
+The deriver accepts `measured` or `projected` and **refuses a nominal timeline**.
+`projected` comes from `duration_plan.py`: the frame-quantised `ceil(raw × fps) / fps`
+grid, which reproduced all 14 segment durations of a real render exactly. It exists so
+the spine, the captions and the review surface can be built *before* the film is
+encoded; it prints that it is unverified, and delivery still requires a real render
+(`_edl.render_record` ignores projected records by default). `caption_words.json` records which
 timeline it was built on; cues off the EDL's nominal Σ(end−start) are up to a
 second early, so a visual step placed on them lands before its own narration. If
 the guard fires, render first, then re-run `srt_export.py --prepare --lock --build`.

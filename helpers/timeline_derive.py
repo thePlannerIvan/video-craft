@@ -77,11 +77,16 @@ def load_contract(edit_dir: Path, *, edl_path: Path | None = None) -> tuple[list
         _fail(f"{CAPTIONS_NAME} must be a non-empty list of cues")
 
     source = words.get("timeline_source")
-    if source != "measured":
+    if source not in ("measured", "projected"):
         _fail(
             f"{WORDS_NAME} was built on the '{source or 'unknown'}' timeline. "
-            "Run the render, then `srt_export.py <edit_dir> --prepare --lock --build` "
-            "so the cues carry MEASURED segment durations, and derive again.")
+            "Either run `duration_plan.py <edit_dir>` for a frame-quantised "
+            "projection, or render and run "
+            "`srt_export.py <edit_dir> --prepare --lock --build` so the cues carry "
+            "MEASURED segment durations, then derive again.")
+    if source == "projected":
+        print("  · 时间脊柱取自解析预演（帧量化，无渲染校验）——"
+              "可据此审阅；交付前必须真实渲染并复核")
 
     edl_file = (edl_path or (edit_dir / EDIT_DEFAULT)).resolve()
     if edl_file.exists():
@@ -221,11 +226,19 @@ def build_timeline(entries: list[dict], grouping: dict) -> tuple[dict, dict]:
             durations.append(item["durationMs"])
         chapters.append({"id": chapter_id, "title": title, "steps": steps})
         duration_map[chapter_id] = durations
+    first_start = chapters[0]["steps"][0]["startMs"] if chapters and chapters[0]["steps"] else 0
+    last_end = chapters[-1]["steps"][-1]["endMs"] if chapters and chapters[-1]["steps"] else 0
     return {
         "source": "edl",
         "totalChapters": len(chapters),
         "totalSteps": sum(len(ch["steps"]) for ch in chapters),
-        "totalDurationMs": sum(sum(v) for v in duration_map.values()),
+        # The axis length is the SPAN from the first step to the last, not the sum
+        # of step durations. Cues have real gaps between them (0.2-0.7s each; 11.4s
+        # on the 图拉斯 project), so summing drops those gaps: a 251.4s film was
+        # reported as exactly 240.0s and every consumer that used this as the axis
+        # length lost the tail (the review console could not reach the last 12s,
+        # and each step after a gap sat early by the accumulated gap).
+        "totalDurationMs": last_end - first_start,
         "chapters": chapters,
     }, duration_map
 

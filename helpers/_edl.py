@@ -25,7 +25,8 @@ def load_edl(edit_dir: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def select_render_record(blob: dict, digest: str | None) -> tuple:
+def select_render_record(blob: dict, digest: str | None, *,
+                         allow_projected: bool = False) -> tuple:
     """Pick the render record that belongs to THIS EDL.
 
     `segment_durations.json` accumulates one key per output name — `poc`,
@@ -41,22 +42,28 @@ def select_render_record(blob: dict, digest: str | None) -> tuple:
     - `"no-digest"` — older records without a digest; the newest is the best guess
     - `"none"`    — nothing usable in the file
     """
+    # Records written by duration_plan.py are analytic projections, not render
+    # evidence. They are skipped by default so verify_delivery can never compare a
+    # real file against a projection and call it verified; `allow_projected` is for
+    # callers that only want to *report* that a projection exists.
     records = [(tag, entry) for tag, entry in blob.items()
-               if isinstance(entry, dict) and isinstance(entry.get("durations"), list)]
+               if isinstance(entry, dict) and isinstance(entry.get("durations"), list)
+               and (allow_projected or not entry.get("projected"))]
     if not records:
         return None, None, "none"
     if digest:
         matching = [(tag, entry) for tag, entry in records
                     if entry.get("edl_sha256") == digest]
         if matching:
-            return matching[-1][0], matching[-1][1], "digest"
+            tag, entry = matching[-1]
+            return tag, entry, "projected" if entry.get("projected") else "digest"
         hashed = [(tag, entry) for tag, entry in records if entry.get("edl_sha256")]
         if hashed:
             return hashed[-1][0], hashed[-1][1], "mismatch"
     return records[-1][0], records[-1][1], "no-digest"
 
 
-def render_record(edit_dir: Path) -> tuple:
+def render_record(edit_dir: Path, *, allow_projected: bool = False) -> tuple:
     """`select_render_record` over `<edit_dir>/segment_durations.json`."""
     path = Path(edit_dir) / "segment_durations.json"
     if not path.exists():
@@ -69,4 +76,4 @@ def render_record(edit_dir: Path) -> tuple:
         return None, None, "none"
     edl_path = Path(edit_dir) / "edl.json"
     digest = edl_digest(edl_path) if edl_path.exists() else None
-    return select_render_record(blob, digest)
+    return select_render_record(blob, digest, allow_projected=allow_projected)

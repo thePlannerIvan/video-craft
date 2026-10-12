@@ -643,3 +643,43 @@ deletion from an accidental loss.
 - **原因**：Headless Chromium 的渲染流水线在将硬解/软解视频帧与 DOM 图层合成并跨进程序列化为 screencast base64/buffer 时存在资源竞争与锁死。
 - **修正原则**：**严禁在浏览器录屏中录制正在播放的真实视频文件**。动画舞台走确定性截帧/离线渲染；真实口播视频交由 FFmpeg 在输出层通过 `overlay` 硬件加速混合。
 - **证据**：2026-10-02 在《Research与Wayfinder调研》导出全片时，尝试直接用 Playwright 录屏捕获包含播放 `<video>` 的双通道页面，连续 3 次在第 30-40 秒彻底死锁；改用离线截帧+FFmpeg overlay 后秒级导出成功。
+
+## 42. 剪点必须按实测音频判，不能按转写词框判
+
+- **module**：`helpers/_silence.py`、`helpers/check_edl.py` ｜ **状态**：已复现
+- **现象**：`check_edl.py` 原先用「剪点是否落在某个词的 `start`-`end` 之间」作硬判据。在《图拉斯创新》2026-10-09 那条录音上，按 SeedASR 词框重建 EDL 时 34 个剪点里有 **11 个被判为「切在词内」**，按 Scribe 词框则报出另一批——两版都判错，因为两版词框都不准。
+- **原因**：两个引擎各错一个方向：SeedASR 的**起点早 0.15–0.25s**、词尾伸进后面的静音（实测「包」报 67.87，音频静音实到 68.04）；Scribe 的停顿估计反而准，但 token 跨度会并吞（把「。muji，」并成一个 2.9s token）。词框既非充分也非必要，唯一真相是音频本身。
+- **修正原则**：判据换成 10ms RMS 包络（阈值按 5% 分位底噪 +10dB 自适应）。**落在实测语音里 = HARD**（会切到声音）；**落在词框内但实测是静音 = WARN**（词框偏松，剪点没问题）。测量不可用时退回词框判据并在结果里标注 `silence_gate: unavailable`，绝不静默放过。
+- **证据**：同一条录音，实测 129.79 处为 −73.8dB 房间底噪（真语音 130.00 起）、210.62 处为 −65dB（真语音 210.80 起），两处都被旧判据误杀。回归测试 `tests/test_edl_silence_gate.py`。
+
+## 43. 渲染器的帧格是 ceil，不是 round
+
+- **module**：`helpers/duration_plan.py` ｜ **状态**：已复现
+- **现象**：用 `round(raw × fps) / fps` 解析预测各段时长，14 段里只对 6 段；总长比实测少 0.267s。
+- **原因**：编码器把每段**向上**取到帧格（`-t` 的 3 位小数 + 编码器自身的 ceil），不是四舍五入。逐段向上累积，38 段能累出一整秒——这正是当初引入「实测段时长」的原因。
+- **修正原则**：预演公式用 `ceil(round(raw × fps, 6)) / fps`（内层 round 只为消浮点噪声，否则 8.8×30 = 264.00000000000006 会被 ceil 成 265）。**改用 ceil 后 14/14 段与真实渲染逐位一致**，回归测试 `tests/test_duration_plan.py::test_the_grid_is_ceil_not_round` 钉住这组实测对。
+- **证据**：《图拉斯创新》`segment_durations.json["master_final"]` 的 14 个实测值。
+
+## 44. 审阅页要能合成层，就必须有一份浏览器可合成的载体
+
+- **module**：`visual/scripts/encode_transparent.py`、`helpers/preview_layers.py` ｜ **状态**：已复现
+- **现象**：覆盖层按 MOV（PNG-in-MOV / ProRes 4444）编码——那是 ffmpeg 能合成的格式。把它放进 `<video>` 叠在成片上，浏览器给的是不透明黑块，于是「在页面上预览动效」根本不成立，只能把层烘焙进整片再看。
+- **原因**：浏览器不支持 MOV/ProRes 的 alpha（Chrome 系完全不支持，Safari 仅限 HEVC-with-alpha）。唯一被广泛支持的载体是 **WebM VP9 + `yuva420p`**。
+- **修正原则**：同一份源出两份载体——MOV 交交付合成，**WebM 只作预览**（`encode_transparent.py --codec webm`，`-auto-alt-ref 0` 必须给，否则 alpha 不写入）。`preview_layers.py` 为 EDL 里每个层补 sibling `.webm`；`build_review.py` 据此填 `media.layers[].previewFile`；页面用它叠层。
+- **证据**：红底合成验证——WebM 层叠上去后透明处透出底色；`verify_alpha` 报 plane range [0,255] span 255。
+
+## 45. VP9 的 alpha 是带外的：不点明解码器就抽不出来
+
+- **module**：`visual/scripts/encode_transparent.py::_alpha_range` ｜ **状态**：已复现
+- **现象**：对带 alpha 的 WebM 调 `alphaextract`，默认解码路径报 `Requested planes not available`，`ffprobe` 也只报 `pix_fmt=yuv420p`——看起来像「编码没写进 alpha」，其实写进去了。
+- **原因**：VP9 在 WebM 里把 alpha 存在独立的 BlockAdditional 里，ffmpeg 的默认解码器不暴露这个平面，必须显式 `-c:v libvpx-vp9`。
+- **修正原则**：`_alpha_range` 先用默认路径抽，失败后**用显式解码器重试并打印说明**，而不是直接判失败。（原有的判据「pix_fmt 只是参考、以平面为准」是对的，这里补的是取平面的方法。）
+- **证据**：同一份 WebM，默认路径 0 字节；`-c:v libvpx-vp9` 得到 1080×1920×96 帧 = 199,065,600 字节完整平面。
+
+## 46. 云同步目录里刚建的目录，下一个进程可能看不见
+
+- **module**：`helpers/review_slices.py` ｜ **状态**：已复现
+- **现象**：`out_dir.mkdir(parents=True, exist_ok=True)` 之后立刻调 ffmpeg 写该目录，ffmpeg 报 `Error opening output ... No such file or directory`（exit 254），事后该目录也不存在。
+- **原因**：工作区在 OneDrive 上，新建目录的元数据没有立刻对下一个进程可见（与第 5 条同源：云同步目录对 ffmpeg 的间歇性影响）。
+- **修正原则**：建完目录**立即验证**，不可见就重试一次，仍不可见则明确报错——而不是「跑了 28 个切片，实际 0 个」。同类写入前都该这样自证。
+- **证据**：手工先 `mkdir -p` 再跑则 28 个切片全部成功；不先建目录时同一命令失败。

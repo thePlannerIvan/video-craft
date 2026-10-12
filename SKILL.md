@@ -121,6 +121,17 @@ DSH 有 `review_open` 时，把返回的 **surface 绝对路径**交给 `review_
 
 ### 5. 正式底片与字幕
 
+**渲染不是「能开始干活」的前提。** 想让作者先看到东西，先出工程态：
+
+```bash
+python3 "<craft>/helpers/duration_plan.py" "<edit>"     # 解析预演（帧量化，projected）
+python3 "<craft>/helpers/preview_layers.py" "<edit>"    # 每个 alpha 层一份 WebM(VP9+alpha)
+```
+
+`projected` 记录可以支撑第 6 步的时间脊柱、字幕和审阅页，但**不是交付证据**——
+`_edl.render_record` 默认跳过它，`verify_delivery.py` 永远拿真实文件对真实渲染。
+交付前仍必须走下面这条渲染路径并重建字幕。
+
 正式底片使用会记录实测段时长的渲染路径：
 
 ```bash
@@ -185,6 +196,15 @@ python3 "<craft>/helpers/import_srt_timeline.py" "<project>" \
 **下一消费者**：动效与合成审阅面、交付核验。
 
 ### 8. 动效与合成审阅
+
+审阅媒体从哪来是显式声明的，不按文件名猜：`<project>/review/media.json`。缺这份文件时
+会退回按名字猜并在输出里明说。复合片超过 80MB 时自动出一份**保留时间与原生分辨率**的
+审阅副本（侧栏传整份文件，263MB 的主片不该整份交给它）；超过 200MB 且没有切片时会建议
+改用本地宿主。
+
+页面还能**自己合成覆盖层**：`media.layers[].previewFile`（WebM VP9+alpha，浏览器唯一能
+合成的带 alpha 载体）让层直接叠在成片上，所以改一层不必重渲整片；`media.slices` 让页面
+只加载当前步的窗口，而不是整片。没有可合成载体的层会明说，不假装。
 
 构建统一数据和审阅面：
 

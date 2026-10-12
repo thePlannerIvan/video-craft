@@ -360,6 +360,23 @@
       object-fit: contain;
       background: #000;
     }
+    /* 覆盖层预览：页面自己对同一份源做合成，不必为了改一层重渲整片。
+       尺寸由 fitLayerStack() 按视频实际显示区域算，避免 object-fit:contain
+       留下的黑边让层错位。 */
+    #layer-stack {
+      position: absolute;
+      pointer-events: none;
+      z-index: 2;
+    }
+    #layer-stack[hidden] { display: none; }
+    #layer-stack > video.vc-layer {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0;
+      transition: opacity 60ms linear;
+    }
     #composite-empty-placeholder {
       width: 100%;
       height: 100%;
@@ -1192,6 +1209,7 @@
         <!-- 最终合成成片预览 -->
         <div id="composite-player-wrap" hidden>
           <video id="composite-video-player" controls playsinline></video>
+          <div id="layer-stack" hidden aria-hidden="true"></div>
           <div id="composite-empty-placeholder" hidden>
             <div style="font-size:32px;margin-bottom:8px;">预览</div>
             <div style="font-size:14px;color:var(--text);font-weight:700;margin-bottom:6px;">合成成片尚未导出</div>
@@ -3228,6 +3246,82 @@
         window.__REVIEW_DATA__?.media?.previewVideo || window.__SPEAKER_VIDEO_URL__;
       if (compVid && compUrl) {
         await attachMedia(compVid, compUrl);
+      }
+
+      // ---- 覆盖层预览：把 EDL 的视觉层叠在成片上 ----
+      // 烘焙进成片的层只能作为"已渲染结果"被审。这里让页面自己对同一份源合成，
+      // 于是改一层不必重渲整片。浏览器读不出 MOV/ProRes 的 alpha，只认带 alpha 的
+      // WebM —— build_review 为每个层挑好 previewFile，没有载体就明说，不假装。
+      const layerStack = document.getElementById("layer-stack");
+      const layerDefs = (window.__REVIEW_DATA__?.media?.layers) || [];
+      const layerEls = [];
+      async function initLayers() {
+        if (!layerStack || !compVid || !layerDefs.length) return;
+        let skipped = 0;
+        for (const def of layerDefs) {
+          if (!def.previewFile) { skipped += 1; continue; }
+          const el = document.createElement("video");
+          el.className = "vc-layer";
+          el.muted = true; el.playsInline = true; el.preload = "auto";
+          el.dataset.unitId = def.unitId || "";
+          try {
+            el.src = (review && typeof review.asset === "function")
+              ? await review.asset(def.previewFile) : def.previewFile;
+          } catch { skipped += 1; continue; }
+          layerStack.appendChild(el);
+          layerEls.push({ def, el });
+        }
+        layerStack.hidden = layerEls.length === 0;
+        if (skipped) {
+          noteStaleFree(`${skipped} 个视觉层没有浏览器可合成的载体`
+            + `（MOV/ProRes 的 alpha 浏览器读不出来），这一版页面看不到它们。`
+            + `让模型对同一份源跑 encode_transparent.py --codec webm 即可就地预览。`);
+        }
+        fitLayerStack();
+      }
+      function fitLayerStack() {
+        if (!layerStack || !compVid) return;
+        const vw = compVid.videoWidth, vh = compVid.videoHeight;
+        const wrap = document.getElementById("composite-player-wrap");
+        if (!vw || !vh || !wrap) return;
+        const cw = wrap.clientWidth, ch = wrap.clientHeight;
+        const scale = Math.min(cw / vw, ch / vh);
+        const w = vw * scale, h = vh * scale;
+        layerStack.style.width = w + "px";
+        layerStack.style.height = h + "px";
+        layerStack.style.left = ((cw - w) / 2) + "px";
+        layerStack.style.top = ((ch - h) / 2) + "px";
+      }
+      function syncLayers() {
+        if (!layerEls.length || !compVid) return;
+        const t = compVid.currentTime;
+        const playing = !compVid.paused;
+        for (const { def, el } of layerEls) {
+          const start = (def.startMs || 0) / 1000;
+          const end = (def.endMs || 0) / 1000;
+          const on = t >= start - 0.04 && t < end + 0.04;
+          el.style.opacity = on ? "1" : "0";
+          if (!on) { if (!el.paused) el.pause(); continue; }
+          const local = Math.max(0, t - start);
+          if (Math.abs(el.currentTime - local) > 0.12) {
+            try { el.currentTime = local; } catch {}
+          }
+          if (playing && el.paused) el.play().catch(() => {});
+          if (!playing && !el.paused) el.pause();
+        }
+      }
+      if (compVid) {
+        compVid.addEventListener("loadedmetadata", fitLayerStack);
+        compVid.addEventListener("loadeddata", fitLayerStack);
+        compVid.addEventListener("timeupdate", syncLayers);
+        compVid.addEventListener("seeked", syncLayers);
+        compVid.addEventListener("pause", syncLayers);
+        window.addEventListener("resize", fitLayerStack);
+        (function layerLoop() {
+          if (compVid && !compVid.paused) syncLayers();
+          requestAnimationFrame(layerLoop);
+        })();
+        initLayers().catch(() => {});
       }
 
       // 尝试读取已有的 choreography.json（或内联演示数据）

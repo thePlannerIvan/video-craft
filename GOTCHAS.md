@@ -698,3 +698,32 @@ deletion from an accidental loss.
 - **现象**：给元素写 `style="transform: translateY(20px)"` 再用 GSAP 补间同一属性，lint 直接拒；根元素漏掉 `data-start="0"` 报 `root_composition_missing_data_start`。
 - **修正原则**：初始状态写在补间里（`gsap.fromTo(el, {y:20}, {y:0})`），CSS 只负责布局（`left`/`top`/尺寸）；根元素四件套 `data-composition-id` / `data-start` / `data-width` / `data-height` 一个都不能少。翻页这类「有意扫出画布」的动效要显式 `data-layout-allow-overflow`，否则每次 check 都报 info。
 - **证据**：《图拉斯创新》翻页 composition，`hyperframes check` 从 8 error + 2 info 到 **0 error / 0 issue**。
+
+## 49. PIL 的 rotate 是逆时针为正，CSS 的 rotate 是顺时针为正
+
+- **module**：任何「逐帧渲染器改写成 HTML/CSS」的移植 ｜ **状态**：已复现
+- **现象**：把作者的逐帧动效按同一组数字搬进 GSAP 后，卡的位置、尺寸、alpha 边界全部对上（位移互相关最佳值 dx=dy=0，边界行 1124 vs 1123），**但图案整体不对**——看起来像「同一张图被放大了」。落定帧逐像素差 52.9，而 alpha 只差 0.26。
+- **原因**：同一个角度值在两侧方向相反。`Image.rotate(θ)` 逆时针为正；CSS `rotate(θ)` 顺时针为正。旋转后的外接矩形对 ±θ 是对称的，所以**边界与覆盖率都对得上，只有内容反了**——这正是它难查的原因。
+- **判据**：拿一张卡单独试两个符号，实测 PIL `rot=-14.245°` 时 CSS 必须写 `+14.245°`（逐像素差 **0.94** vs 不取反的 **26.38**）。移植前先做这个单卡双向对照，别等整帧对比。
+- **修正原则**：移植时统一 `cssRot = deg => -deg`，位移、角度、抖动全走它。
+
+## 50. composition 缺 viewport meta 会让浏览器整体缩放页面
+
+- **module**：HyperFrames composition 骨架 ｜ **状态**：已复现
+- **现象**：同一份 HTML，正品卡（`<img>` 未设宽高、按自然尺寸渲染）逐像素吻合，而卡片（`width:100%`）看起来被放大约 1.3 倍。
+- **原因**：`<head>` 里漏了 `<meta name="viewport" content="width=…, height=…" />`。没有它，浏览器按默认视口（约 980px）布局再把整页缩放去适配，于是「显式像素尺寸」的元素全被比例放大。正品卡因为按图片自然尺寸渲染、又恰好落在一个被缩放的容器里，容易被误判为「没问题」。
+- **修正原则**：`data-width` / `data-height` 之外，**viewport meta 必须同步写上同样的尺寸**。这是最小骨架的一部分，不是可选项。
+
+## 51. lint 会把运行期 `if` 当成「补间一定存在」
+
+- **module**：`hyperframes check` 的 `overlapping_gsap_tweens` ｜ **状态**：已复现
+- **现象**：写 `if (SPEC.hold > 0) { tl.to(g, …) }` 时，`hold = 0` 的组也被报「autoAlpha 补间在 0.00–0.26s 重叠」；连**根本没有该元素**的组（`genuine: null`）也照报。
+- **原因**：lint 静态读时间轴，不求解 `SPEC` 的取值，按最坏情况假设补间存在。
+- **修正原则**：这类条件要在**生成期**决定——生成器直接决定写不写这一段（含元素本身的块），而不是留一个运行期分支。修完 `hyperframes check` 从「2 warning」到 **0 error / 0 warning**。
+
+## 52. 编码产物不要直接写进云同步目录
+
+- **module**：`visual/scripts/encode_transparent.py`、`helpers/preview_layers.py` ｜ **状态**：已复现
+- **现象**：把 VP9/MOV 直接编码到 OneDrive 上的目标路径，长任务跑到一半报 `Error writing trailer: Operation timed out` / `Error closing file`，**留下 0 字节文件**（五层里坏了两层），而命令看上去只是「慢」。
+- **原因**：与第 5、46 条同源：云同步目录对长时间连续写入不稳。
+- **修正原则**：**先编码到本地 /tmp，成功后再 move 进目标目录**。`encode_sequence()` 与 `preview_layers.export_one()` 现在都这么做；凡是「跑几十秒以上的写盘」都该按这条自查。

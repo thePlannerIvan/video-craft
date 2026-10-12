@@ -14,8 +14,10 @@ two of them, deliberately:
   * `.webm` — VP9 + alpha, the only alpha carrier a browser can composite, so the
     review page can stack the layer over the cut and seek it without any film render.
 
-Both come from one render pass over the same composition, so preview and delivery
-cannot drift apart.
+Both come from ONE capture: the composition is rendered once to a PNG sequence and both
+carriers are encoded from those frames, so preview and delivery cannot drift apart. The
+MOV is PNG-in-MOV — lossless RGBA with real alpha, matching the overlays it replaces —
+rather than a ProRes/YUV round trip.
 
 Usage:
     python3 helpers/render_layer.py <composition_dir> -o <out_stem> \\
@@ -29,10 +31,11 @@ import json
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "visual" / "scripts"))
-from encode_transparent import verify_alpha  # noqa: E402
+from encode_transparent import encode_sequence  # noqa: E402
 
 FORMATS = ("mov", "webm")
 
@@ -66,20 +69,28 @@ def render(composition_dir: Path, out_stem: Path, *, variables: dict | None = No
     out_stem.parent.mkdir(parents=True, exist_ok=True)
 
     results = []
-    for fmt in formats:
-        target = out_stem.with_suffix("." + fmt)
-        cmd = base + ["render", ".", "--format", fmt, "--fps", str(fps),
-                      "-o", str(target)]
+    # Capture once. Rendering per format re-runs the browser for every carrier — slower,
+    # and a chance for the two to drift; the PNG sequence is also the lossless source
+    # both encoders want. encode_sequence() verifies the alpha plane itself.
+    with tempfile.TemporaryDirectory(prefix="vc_layer_") as tmp:
+        seq = Path(tmp) / "frames"
+        cmd = base + ["render", ".", "--format", "png-sequence", "--fps", str(fps),
+                      "-o", str(seq)]
         if variables:
             cmd += ["--variables", json.dumps(variables)]
         _run(cmd, composition_dir, quiet)
-        if not target.is_file():
-            raise SystemExit(f"✗ 渲染没有产出 {target}")
-        # An "alpha" layer that came back opaque is worse than no layer: it would
-        # composite as a black card over the speaker. verify_alpha reads the plane.
-        verify_alpha(target)
-        results.append({"format": fmt, "file": str(target),
-                        "size_mb": round(target.stat().st_size / 1e6, 2)})
+        frames = sorted(seq.glob("*.png"))
+        if not frames:
+            raise SystemExit(f"✗ 渲染没有产出 PNG 帧：{seq}")
+
+        for fmt in formats:
+            target = out_stem.with_suffix("." + fmt)
+            record = encode_sequence(seq, target,
+                                     codec="png" if fmt == "mov" else "webm",
+                                     fps=fps, quiet=True)
+            results.append({"format": fmt, "file": str(target),
+                            "frames": record["frames"],
+                            "size_mb": round(record["size_mb"], 2)})
     return results
 
 

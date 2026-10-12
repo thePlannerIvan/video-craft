@@ -78,9 +78,14 @@ python3 "<craft>/helpers/render_layer.py" "<composition>" -o "<层主干名>" \
     --variables '{"set":"bolt"}'                          # HTML composition → MOV + WebM
 ```
 
-**动效的源是 composition，不是那段视频。** `render_layer.py` 一次渲染出两份载体：`.mov`
-给 ffmpeg 合成成片，`.webm`（VP9+alpha）给浏览器——后者是审阅页唯一能自己合成的带 alpha
-载体。两者同一次渲染，所以预览与交付不可能各走各的。已存在的视频层补 WebM 用
+**动效的源是 composition，不是那段视频。** `render_layer.py` **capture 一次**、再由
+`encode_transparent.encode_sequence()` 编出两份载体：`.mov`（PNG-in-MOV，无损 RGBA，给 ffmpeg
+合成成片）与 `.webm`（VP9+alpha，给浏览器——审阅页唯一能自己合成的带 alpha 载体）。同一次
+capture，所以预览与交付不可能各走各的；分格式各渲一遍既慢又给了两者漂移的机会。
+
+移植既有逐帧动效时注意第 49 条（PIL 与 CSS 旋转方向相反）与第 50 条（viewport meta 不能漏）。
+
+编码一律**先写本地再搬入**目标目录（第 52 条）。已存在的视频层补 WebM 用
 `preview_layers.py`；新做的层直接从 HTML 出。
 
 `duration_plan.py` 写的记录带 `"projected": true`。它**可以**支撑字幕、时间脊柱与审阅页，

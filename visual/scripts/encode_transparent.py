@@ -113,6 +113,55 @@ def _alpha_range(path: Path) -> tuple[float, float]:
     return min(out), max(out)
 
 
+def encode_sequence(png_dir: Path, out: Path, *, codec: str = "png",
+                    fps: int = 30, quiet: bool = False) -> dict:
+    """PNG 序列 → 带 alpha 的载体。返回 {pix_fmt, size_mb, duration_s, frames}。
+
+    抽成函数是为了让一次渲染能出多种载体：capture 一次、编码几次，两条载体就不可能
+    各走各的。CLI 与 render_layer.py 走同一条路径。
+    """
+    png_dir = Path(png_dir).resolve()
+    frames = sorted(png_dir.glob("*.png"))
+    if not frames:
+        raise SystemExit(f"✗ 没有 PNG 帧：{png_dir}")
+    if codec not in CODECS:
+        raise SystemExit(f"✗ 不支持的编码 {codec}；可选 {sorted(CODECS)}")
+    out = Path(out).resolve()
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        # copy to a canonical img_%05d.png naming: the concat demuxer drops
+        # frames from image inputs on ffmpeg 8.1.2 (30 pngs -> 4 frames),
+        # image2 with a zero-padded pattern is the reliable path
+        seq = Path(tmp) / "seq"
+        seq.mkdir()
+        for i, f in enumerate(frames):
+            shutil.copy2(f, seq / f"img_{i:05d}.png")
+        # Encode into LOCAL disk, then move the finished file in. Writing a long
+        # encode straight into a cloud-synced workspace dies partway with
+        # "Error writing trailer: Operation timed out" and leaves a 0-byte file
+        # (observed on the 5-layer 图拉斯 set: two of five came back empty).
+        staging = Path(tmp) / out.name
+        run(["ffmpeg", "-y", "-loglevel", "error", "-framerate", str(fps),
+             "-i", str(seq / "img_%05d.png")] + CODECS[codec] + [str(staging)])
+        out.unlink(missing_ok=True)
+        shutil.move(str(staging), str(out))
+
+    pix, _, _ = verify_alpha(out)
+    info = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration,size",
+         "-of", "default=noprint_wrappers=1", str(out)],
+        capture_output=True, text=True).stdout
+    d = dict(line.split("=", 1) for line in info.splitlines() if "=" in line)
+    size_mb = int(d.get("size", 0)) / 1e6
+    dur = float(d.get("duration", 0))
+    if not quiet:
+        print(f"→ {out}  ({codec}, {pix}, {fps}fps, {_fmt_seconds(dur)}, "
+              f"{size_mb:.1f} MB, {len(frames)} frames")
+    return {"pix_fmt": pix, "size_mb": size_mb, "duration_s": dur,
+            "frames": len(frames)}
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="PNG sequence → alpha MOV overlay")
     ap.add_argument("png_dir", type=Path)
@@ -124,34 +173,8 @@ def main() -> None:
     ap.add_argument("--fps", type=int, default=30)
     args = ap.parse_args()
 
-    png_dir = args.png_dir.resolve()
-    frames = sorted(png_dir.glob("*.png"))
-    if not frames:
-        sys.exit(f"no *.png frames in {png_dir}")
-    out = args.output.resolve()
-    out.parent.mkdir(parents=True, exist_ok=True)
-
-    with tempfile.TemporaryDirectory() as tmp:
-        # copy to a canonical img_%05d.png naming: the concat demuxer drops
-        # frames from image inputs on ffmpeg 8.1.2 (30 pngs -> 4 frames),
-        # image2 with a zero-padded pattern is the reliable path
-        seq = Path(tmp) / "seq"
-        seq.mkdir()
-        for i, f in enumerate(frames):
-            shutil.copy2(f, seq / f"img_{i:05d}.png")
-        run(["ffmpeg", "-y", "-loglevel", "error", "-framerate", str(args.fps),
-             "-i", str(seq / "img_%05d.png")] + CODECS[args.codec] + [str(out)])
-
-    pix, _, _ = verify_alpha(out)
-    info = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration,size",
-         "-of", "default=noprint_wrappers=1", str(out)],
-        capture_output=True, text=True).stdout
-    d = dict(line.split("=", 1) for line in info.splitlines() if "=" in line)
-    size_mb = int(d.get("size", 0)) / 1e6
-    dur = float(d.get("duration", 0))
-    print(f"→ {out}  ({args.codec}, {pix}, {args.fps}fps, {_fmt_seconds(dur)}, "
-          f"{size_mb:.1f} MB, {len(frames)} frames)")
+    encode_sequence(args.png_dir, args.output, codec=args.codec,
+                    fps=args.fps)
 
 
 if __name__ == "__main__":

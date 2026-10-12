@@ -77,6 +77,54 @@ class RenderLayerContractTests(unittest.TestCase):
             render_layer.shutil.which = original
 
 
+class OneCaptureTwoCarriersTests(unittest.TestCase):
+    """The composition must be captured ONCE, then encoded per carrier.
+
+    Rendering per format re-runs the browser for every carrier: slower, and a chance
+    for the two to drift apart — which would defeat the whole point of exporting both
+    from one source. (It also used to mean the "one render pass" claim in the module
+    docstring was simply false.)
+    """
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self._tmp.name)
+        (self.dir / "index.html").write_text("<html></html>", encoding="utf-8")
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def test_the_browser_runs_once_for_both_carriers(self):
+        calls: list[list[str]] = []
+        encodes: list[tuple[str, str]] = []
+
+        def fake_run(cmd, cwd, quiet):
+            calls.append(list(cmd))
+            target = Path(cmd[cmd.index("-o") + 1])
+            target.mkdir(parents=True, exist_ok=True)
+            (target / "0001.png").write_bytes(b"png")
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        def fake_encode(seq, out, *, codec="png", fps=30, quiet=False):
+            encodes.append((codec, str(out)))
+            Path(out).write_bytes(b"x")
+            return {"pix_fmt": "rgba", "size_mb": 0.1, "duration_s": 1.0, "frames": 1}
+
+        original_run, original_encode = render_layer._run, render_layer.encode_sequence
+        render_layer._run, render_layer.encode_sequence = fake_run, fake_encode
+        try:
+            results = render_layer.render(
+                self.dir, self.dir / "out", check=False, quiet=True)
+        finally:
+            render_layer._run, render_layer.encode_sequence = original_run, original_encode
+
+        renders = [c for c in calls if "render" in c]
+        self.assertEqual(len(renders), 1, renders)
+        self.assertIn("png-sequence", renders[0])
+        self.assertEqual([c for c, _ in encodes], ["png", "webm"])
+        self.assertEqual(len(results), 2)
+
+
 class ReviewMediaModeTests(unittest.TestCase):
     """A declared base switches the console to live layer compositing."""
 

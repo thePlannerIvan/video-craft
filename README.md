@@ -94,7 +94,7 @@ PLANNERS_MODULES_REF=main   <你的命令>     # 钉在某个分支上
 **用户装一个 Skill** —— 用 Skills CLI，它会把条目放进各 agent 的技能目录：
 
 ```bash
-npx skills add https://github.com/thePlannerIvan/<Skill 名> --skill <Skill 名>
+npx skills add https://github.com/thePlannerIvan/video-craft --skill video-craft
 ```
 
 **Skill 自己抓一个公共模组（内部依赖）** —— 用 `git clone`，落在库外的单一安装根：
@@ -216,3 +216,7 @@ PYTHONPATH=..:../helpers ../.venv/bin/python -m unittest test_themes test_svg_pa
 需要私有部署、风格/主题库适配、定制交付质检、闭源商业授权或内部培训，见 `COMMERCIAL.md`。
 
 由阿祖不看 TVC 创建与维护 · https://demyth.info · Lawyif@163.com。授权和归属详见 `LICENSE`、`NOTICE`、`TRADEMARK.md`；安全说明见 `SECURITY.md`。
+
+## 在 DSH 中使用
+
+在 Planners Form 设置中安装本 Skill；回到对话后使用 `video-craft` 调用，审阅页面由 Skill 在流程需要时打开。Planners Form 安装 Skill 与公共审阅依赖；视频渲染所需的 FFmpeg、Python 包及可选引擎仍按 [install.md](install.md) 准备。API 凭据由使用者自行配置，不随仓库分发。

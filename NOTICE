@@ -24,7 +24,8 @@ diverges. Both upstream copies are preserved read-only under `archive/`.
   Contributed the time spine, the compositor, the caption chain, and delivery
   verification. Its MIT license text is preserved verbatim at
   `archive/video-use/LICENSE`.
-- `web-video-presentation` (from `github.com/ConardLi/garden-skills`) —
+- `web-video-presentation` (from `github.com/ConardLi/garden-skills`) — MIT;
+  the upstream license is preserved in `THIRD_PARTY_NOTICES.md`.
   contributed the visual-layer authoring surface, alpha encoding, and the visual
   review loop.
 

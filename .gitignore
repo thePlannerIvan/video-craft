@@ -103,3 +103,6 @@ project.md
 .scratch/
 tmp/
 *.tmp
+
+# Local npm cache
+.npmcache/

@@ -284,6 +284,7 @@ python3 "<craft>/helpers/state_fingerprint.py" capture "<project>"   # 交付自
 - 可执行命令与产物目录：`references/tools.md`
 - 上游交接与责任边界：`references/content-to-production.md`
 - 视觉时间绑定：`references/visual-timeline.md`
+- **卡点对齐（词在第几秒）：`helpers/align.py`** —— 优先真实词级时间戳（`edit/transcripts/*.json`），命中不到才退回比例估算并标注 `estimated`。**卡点不要手算比例**：`edit/caption_words.json` 的字时间是段内插值，是假的
 - 字幕契约：`references/caption-article-first.md`
 - SVG 动效契约：`references/svg-animation-contract.md`
 - 合成与渲染：`references/composition-craft.md`、`references/visual-rendering.md`

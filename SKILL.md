@@ -214,6 +214,8 @@ python3 "<craft>/helpers/build_review.py" "<project>" --mode auto
 python3 "<craft>/helpers/review_surface.py" "<project>" --surface-only
 ```
 
+改这一页之前先读 `references/review-ui.md`（审阅页硬约定：媒体从哪来、舞台模式、字幕层、层合成）。这三处**历史上反复返工**，撞到先对照 `GOTCHAS.md` #39 / #44 / #53，别当成新问题重新设计。
+
 页面结构固定为：左侧单元导航；中央当前单元 / 视频 / SVG 舞台；底部细时间轨与分句卡点；右侧上部历史、下部“反馈给 Agent”。
 
 **页面工具**：播放、1x / 2x / 4x、上一屏 / 下一屏、字幕开关、分句卡点、动效模板 / 焦点 / 速度 / 角度、点选文字或元素、框选批注、攒批。
@@ -250,9 +252,15 @@ python3 "<craft>/helpers/review_inbox.py" "<project>"
 ### 10. 核验与交付
 
 ```bash
+python3 "<craft>/helpers/check_parity.py" "<project>"
 python3 "<craft>/helpers/verify_delivery.py" "<edit>" --video "<final-video>"
 python3 "<craft>/helpers/export_deliverables.py" "<project>"
+python3 "<craft>/helpers/state_fingerprint.py" capture "<project>"   # 交付自带来源指纹
 ```
+
+`check_parity.py` 先跑：它断言 spec（`choreography.json`）里的每个效果 kind 在 composition 与审阅页两条路径都有实现、每个 selector 在目标页面上真的命中元素。这两类失配**不会让 `hyperframes check` 失败、也不会让页面报错**，只会让某一步静默不演 —— 交付前必须过。
+
+**渲染前与出交付前各跑一次 `state_fingerprint.py verify`**：它把交付与**当前**工程态逐项比对（composition、`choreography.json`、各页 store revision、音轨、字幕、成品哈希），不一致即判**交付过期**并拒绝继续 —— 渲染前跑是拒绝从过期工程态渲出成品，交付前跑是拒绝发过期成品。工程态的渲染与预览一律落 `edit/_engineering/`，**不进 `edit/` 根**，免得被当成当前底片（GOTCHAS #56）。
 
 核验实际成片，不核验预览假象：声音、首 / 中 / 尾画面、字幕、关键动效、alpha、画幅、帧率、时长和交付文件名。交付中明确：有声 / 无声、透明 / 不透明、字幕烧录 / 外挂，以及仍未完成的事项。
 
@@ -279,7 +287,7 @@ python3 "<craft>/helpers/export_deliverables.py" "<project>"
 - 字幕契约：`references/caption-article-first.md`
 - SVG 动效契约：`references/svg-animation-contract.md`
 - 合成与渲染：`references/composition-craft.md`、`references/visual-rendering.md`
-- 审阅桥与收件：`references/review-ui.md`、`$planners-review-core`
+- **审阅页硬约定（改审阅页前必读）**：`references/review-ui.md`；桥、宿主与收件：`$planners-review-core`
 - 维护与已知陷阱：`GOTCHAS.md`、`references/architecture.md`
 
 ## 自检

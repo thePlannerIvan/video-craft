@@ -751,3 +751,14 @@ deletion from an accidental loss.
 - **原因**：三处相互叠加。① `state.currentScreenObj = st` 只写在「扬声器视频可见且没有 SVG」那条分支里，而很多项目根本没有扬声器轨 → 变量恒为 null，而按钮处理开头就是 `if (!... || !state.currentScreenObj) return;`。② `startGlobalPlayback()` 只 play 扬声器轨，没 play 成片播放器。③ `switchToScreen()` 更新了选中态却没同步成片播放头。
 - **修正原则**：**「当前屏」就是选中的那一屏，无条件赋值**；舞台只有一个播放器时，播放/暂停/换屏都必须驱动它。判定这类问题不要靠肉眼看截图——用 CDP 驱动真实点击，断言 `state.currentScreenObj` 与 `video.currentTime` 的实际变化（实测：`hook-001 → hook-002(t=10.29) → hook-003(t=18.25) → 回 hook-002`，播放后 t 持续推进）。
 - **证据**：《图拉斯创新》审阅页，修前 `sel:null` / `paused:true`，修后如上。
+
+## 56. 工程态与交付态的切分只做了一条轴 → 交付过期无人发现
+
+- **module**：`helpers/export_deliverables.py`、`helpers/verify_delivery.py`、项目的 `edit/` 与 `成品/` ｜ **状态**：已复现
+- **现象**：交付出去的成片与工程态不一致，**没有任何检查发现** —— 本轮是靠人工抽帧看 181s 才发现"交付的是旧页面"。同批还有：提前渲的 `edit/visual.mp4` 静默躺在 `edit/` 里（随时会被当成当前底片，需手工删）；`beat-06` 的箭头修正被下一次 `ppt_pipeline export` 覆盖回旧版，交付层同样无感。
+- **原因**：切分只做了**一条轴** —— `duration_plan.py` 的 `projected` 记录（`references/tools.md`「免渲染的工程态」），`verify_delivery.py` 只认真实渲染、`_edl.render_record` 默认跳过 projected。这条轴是对的，但另外三条没有切：
+  1. **介质**：审阅用的「活舞台」与交付用的「渲染成片」（与 #44 同根源）；
+  2. **来源版本**：这份交付是从哪一版工程态（composition / 各页 store revision / 导出快照）渲出来的；
+  3. **产物归属**：哪些文件属于工程态（可丢、可重算，不得留在 `edit/` 冒充底片）。
+- **修正原则**：**交付必须自带来源指纹**。`export_deliverables.py` 写 `成品/delivery.json`，记录 composition、`choreography.json`、各页 store revision、音轨、字幕的 sha256 与真实渲染记录；`verify_delivery.py` 断言指纹与**当前**工程态一致，不一致即判**交付过期**并拒绝出交付。工程态渲染/预览一律落 `edit/_engineering/`（或显式标注非底片），不进 `edit/` 根。
+- **证据**：`05-VideoProject/sparkling-video`：交付后抽帧才发现旧页面；`edit/visual.mp4` 手工删除；beat-06 箭头两次被导出覆盖（一次因为直改 `_internal/02_svg_source` 未入库）。

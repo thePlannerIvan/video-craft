@@ -1,3 +1,19 @@
+# 当前播放接缝（2026-10-14）
+
+| 模块 | 唯一责任 | 接口与不做什么 |
+|---|---|---|
+| EDL / 逐字预览 | 剪辑取舍、源媒体定位 | 保留原工具；不依赖动画或预渲整片 |
+| HyperFrames 官方 player/runtime | 时间、媒体、clip 显隐、缩放、倍速 | 原生 play/pause/seek/playbackRate；Craft 不另造时钟 |
+| live_stage.py | 编译服务生命周期 | 项目 → 已验的编译路由；不驱动画面 |
+| live_preview.py | 不透明宿主的工程传输 | 编译路由 + 项目 → HTML/素材清单/hash；严格包含性与本机来源；不渲染、不编排动画 |
+| build_review.py | 审阅快照 | 内联官方 player，记录版本/hash，加入工程 watch；不修改生产源 |
+| review-page-template.html | 导航、字幕、批注、编辑请求 | 连接官方 player 与 review-core；工程路径不启用旧计时器 |
+| planners-review-core | 文件与反馈传输 | 原有桥和宿主不改，不理解视频 |
+
+退役：审阅页对 GSAP 的自造 liveStage 消息控制；工程预览直接嵌 localhost 的方式；每次改动画必渲透明载体的默认流程。旧 SVG 编辑、外部透明层、已有成片和逐字剪辑仍有真实调用者，保留兼容，不以删功能换简化。旧 composition-embed-bridge 文件只为既有工程保留，工程传输阶段移除它，避免形成第二个时钟。
+
+以下为各既有模块与上游契约的详细说明；与实时播放有关的责任以本节为准。
+
 # 架构：模块、接口、缝
 
 这份文件给**改它的人**读：每个 module 拥有什么、接口是什么、不做什么、动了会牵连谁。
@@ -120,6 +136,9 @@
 
 | module | 拥有什么 | 接口 | 不做什么 |
 |---|---|---|---|
+| `helpers/live_stage.py` | **活舞台的唯一主人**：为 `<project>/composition` 起 HyperFrames 预览服务，给出**可嵌入的裸 composition 路由**，并把地址写进 `edit/_engineering/live-stage.json`；`--status/--stop/--json` | `live_stage.py <project> [--port N] [--status] [--stop] [--json]`；退出码 0 起好·2 没有 composition·3 服务没起来 | 不渲任何帧；不改 composition；不管审阅页 —— 页面只消费它给出的地址 |
+| `helpers/studio_notes.py` | **studio 意见的唯一落盘路径**：起只监听回环的收集器，把 composition 钩子截到的文本追加进 `edit/_engineering/studio-notes.jsonl`；`--tail/--clear/--stop` | `studio_notes.py <project> [--port 4319] [--tail N] [--json] [--clear] [--stop]` | 不解析 studio 的 prompt 格式（原样存，格式属于 HyperFrames，会变）；不判断意见是什么意思 |
+| `helpers/check_review_template.py` | **审阅页模板的静态护栏**：七条不变量（舞台选择函数保住参数／可交互 id 都挂了事件／默认舞台最不挑数据／`readText` 都 optional／字幕不退回整屏／点一屏即播／没有空壳自定义元素）；`--prove` 逐条把历史缺陷打回去自证不空洞 | `check_review_template.py [--template PATH] [--json] [--prove]` | **不证明页面能跑**。它钉的是这七类机械缺陷不会静默回来；新的**类**仍然要人撞到。别把绿灯读成「审阅页已验证」 |
 | `helpers/build_review.py` | **一键构建统一审阅契约与控制台**：聚合剪接决策、演示动画与字幕资产，自适应匹配三大任务形态并生成 `review/review_data.json` 与 `review/index.html` | `build_review.py <project_or_edit_dir> [--mode auto/composite/speaker_only/animation_only]` | 不启动服务；不修改源素材 |
 | `helpers/serve_review.py` | **公共审阅宿主的兼容入口**：先构建页面，再把 `review-surface.json` 交给 `planners-review-core`；Range、桥接、反馈、草稿与唤醒都由公共宿主负责 | `serve_review.py <project> [--port N] [--open]` | 不维护私有 HTTP 服务；不修改时间轴 |
 | `helpers/export_video.py` | **统一成片导出深模块**：全自动化导出四大交付规格（composite, animation, speaker, split），内置 `/tmp` 云盘锁沙盒渲染、时序隐藏样式注入与单行药丸防折行保护 | `export_video.py <project> --mode {composite,animation,speaker,split} [--out-dir 成品]` | 不做粗剪决策（严格忠实于 EDL 与 timeline 实测数据） |
@@ -136,7 +155,8 @@
 
 | module | 拥有什么 | 接口 | 不做什么 |
 |---|---|---|---|
-| `visual/scripts/generate-composition.py` | **组成品骨架的唯一生产者**：一个 step 一个 clip、主题 token 内联进 `:root`、声音元素、时间轴提示；`--verify` 的时间／尺寸／**父级穿越**闸门 | `generate-composition.py <project> [--theme] [--layout] [--audio] [--verify]` | 不实现每个 clip 的视觉（那是 agent 写进 HTML）；**不写 `package.json`** |
+| `visual/scripts/generate-composition.py` | **组成品骨架的唯一生产者**：一个 step 一个 clip、主题 token 内联进 `:root`、声音元素、时间轴提示；**声明了 `mediaClips` 的屏**（录屏/实拍）改发 `<video class="clip">` 并带 `data-media-start` —— 于是 composition 就是画面轨的**唯一源**，审阅与交付是同一份；随包拷 GSAP 与嵌入桥进 `composition/assets/`；`--verify` 的时间／尺寸／**父级穿越**闸门 | `generate-composition.py <project> [--theme] [--layout] [--audio] [--media-box x,y,w,h] [--verify]` | 不实现每个 clip 的视觉（那是 agent 写进 HTML）；**不写 `package.json`**；不替项目决定录屏落在哪 —— 落位由 `--media-box` 给 |
+| `visual/assets/composition-embed-bridge.js` | **composition 自己的控制面**：被 iframe 时接 postMessage（`hello/seek/play/pause` → `ready/time`），让审阅页能演活的工程态。审阅页在不透明源 iframe 里够不着子页 DOM，这是唯一通道 | 由生成器拷进 `composition/assets/`；`window.__kwEmbedBridge` 幂等标记 | 非嵌入路径**一个字节都不影响**（`window.parent === window` 时第一行返回）；渲染时没人给它发消息 |
 | `visual/scripts/import_svg_page.py` | **画面页与动画层之间的唯一适配器**：逐字内联、只改图片 href 前缀、边界解析、`--audit`（可指名性 + 跨页 id 碰撞）、`--prove`（往返未改坏） | `import_svg_page.py <project> [--pages] [--audit/--prove/--emit]` | **不改页面标记**、不改 id、不保证 composition 能渲染（那是 `hyperframes check`） |
 | `visual/scripts/check_themes.py` | 主题库的判据：`theme.json` 可解析、必填 token、`var()` 链解析得掉、对比度、圆角刻度一致、无死节奏 token | `check_themes.py [themes_dir] [--json]` | 不判断风格好不好；不改主题文件 |
 | `visual/scripts/encode_transparent.py` | 透明层的编码（PNG 序列 → MOV） | `encode_transparent.py <png_dir> -o <out> [--codec] [--fps]` | 不验证透明（那是 `check_alpha.py`） |
@@ -241,6 +261,21 @@
 - **产出者 → 判据**：`render.py` 产像素，`verify_av.py` 判轨与尾，`verify_delivery.py` 判交付副本。
   **写的人不当法官**是故意的。
 - **人 → 机器**：审阅页把作者的意见绑到当时的版本（反馈 JSONL + 旧版本留底）。
+
+### 3.6 审阅页 ↔ 活 composition（跨源，只能 postMessage）
+
+审阅页跑在 `sandbox="allow-scripts"` 的**不透明源** iframe 里（GOTCHA #53），拿不到被嵌入 composition 的 DOM，`contentWindow` 一碰就跨源。所以这条缝只有 postMessage，而且协议必须**随 composition 走**：它是那份文件自己的控制面，也只有它在场才知道自己的时间轴。真缝 —— 消费者是两个（审阅页、将来的任何驱动方）。
+
+地址不自己拼：`live_stage.py` 探出来（studio 的 hash 路由不可嵌；裸路由只出现在 studio 自己的 bundle 里），并用「响应体里有没有注入的 GSAP shim」证明它真的是 composition —— 这台服务器对未知路径一律回 200 + SPA，看状态码什么都证明不了。
+
+### 3.7 studio 的意见回传（同源钩子 → 本地收集器）
+
+studio 的「Describe a change to the agent」只调 `navigator.clipboard.writeText`，不写任何文件。
+我们不改 HyperFrames：studio 把 composition 装在 `<hyperframes-player>` 的 shadow iframe 里，
+而那个 iframe 带 `allow-same-origin`（**在跑着的 studio 上实测过**），所以 composition ——
+**它是我们的文件** —— 与 studio 同源，能包住父页的 `writeText`：剪贴板照旧写，同时 POST 给
+`studio_notes.py`。钩子必须在**内联脚本**里（player 路由会剥掉所有 `src=` 脚本），并且并进
+动画那一块（runtime 把内联脚本拼成一个大脚本执行，单独那段排在动画之后，前面一抛错就轮不到它）。
 
 ## 4. 与相邻 Skill 的关系
 
@@ -383,12 +418,24 @@
 哪天真要把 `package.json` 收进本 Skill（由 `scaffold.sh` 在 init 之后补钩子，并让 alpha 变体也走 npm），
 那是一次**边界变更**，要先在这里登记。
 
+### 5.5 画面轨的唯一源：`composition/`
+
+- **唯一源**：`composition/`（含录屏 `<video>`）。审阅页演的是它的**活播放**，交付是它的**一次渲染** —— 同一份东西，不是两份。
+- **谁不构成源**：任何 draft 渲染、审阅副本、`_engineering/` 里的中间视频。它们可以存在，但**不得**被声明成页面或交付的输入（`review/media.json` 声明 `compositeVideo` 指向渲染物时，活舞台掉线就会给出一个过期的画面）。
+- **改一处要动**：`timeline/timeline.json`（步与 `mediaClips`）→ `generate-composition.py` → `build_review.py`。落位（比如左侧留白给人物轨的 `620,0,1300,1080`）由 `--media-box` 给，不写死在生成器里。
+- **旁白算不算 composition 的一部分**：算 —— 审阅时**必须能听见**，否则没法判音画同步。但交付的**画面轨是无声的**（声音归人物轨），所以渲染画面轨时要显式去掉音轨（`-an`）。生成器的 `--audio` 就是给这个用的；没有它 studio 与活舞台都是哑的（那条 `warn: no <audio> element` 一直在提醒）。
+- **已踩过**：composition 用旧的 shifted 时间轴打过补丁，而时间轴已改成对齐版 —— composition 过期 3 秒，**没有任何检查发现**。这是第 56 条 GOTCHA 的第二条轴（来源版本），目前仍靠人。
+
 ## 7. 退役
 
 | 已退役的东西 | 现在的状态 | 为什么这样处理 |
 |---|---|---|
 | `archive/web-video-presentation/` | 整份封存在 `archive/`，**只读** | 它是 v1 的视觉层创作面（React 章节、`base.css`、模板库、审阅环），v2 的组成品与主题都从这里长出来。**不删**：`upstream-diff.md` 的每一条「故意偏离了什么」都要能回指到它；主题的圆角刻度、装饰层写法也是从它的 `base.css` 抄回来的。删掉等于把「为什么是现在这样」的证据删掉 |
 | `archive/video-use/` | 整份封存在 `archive/`，**只读** | 它是时间脊柱、合成器、字幕链、交付校验的来源。**不删**：`GOTCHAS.md` 里若干条的现场在它里面；`upstream-diff.md` 记着吸收到哪个 commit。**唯一一处例外**：`helpers/doubao_asr_file.js` 里内联的豆包凭据字面量已脱敏为环境变量（2026-09-26 安全修复，理由见 `upstream-diff.md`）；除此之外逐字节冻结 |
+| `tests/test_interactive_ui.py` | 已删除 | 它不是 unittest（没有 `TestCase`），硬编码 `127.0.0.1:8776`，引用的 `#view-player-btn`／`#view-svg-btn` 在模板里已 0 次，且 `playwright` 没装 —— 整个模块导入即失败，把 `unittest discover` 直接拖成 ERROR。它测的元素已经不存在，装上 playwright 也会崩 |
+| 模板里的 `<hyperframes-player id="player">` | 已删除 | 声明了却没有任何地方 `customElements.define` 或使用它（空壳）。它让人以为「活舞台已经有了」，真实情况是位置留着、里面是空的。活舞台现在是真的：`#live-stage-wrap` + `composition-embed-bridge.js` |
+| CDN 的 GSAP（`cdn.jsdelivr.net/.../gsap.min.js`） | 改为随包 `visual/assets/vendor/gsap-3.14.2.min.js`，生成器拷进 `composition/assets/` | 渲染不该依赖网络；审阅页跑在信任围栏里，外链会被打回。版本写进文件名以便追溯 |
+| `tests/test_snapshot_input.py` 里按路径加载隔壁 Skill 模块 | 补上它自己的 `scripts/` 到 `sys.path` | 不补就 `No module named 'canvas_frame'`，整个模块被跳过而无人发现 —— 自检于是常年带着一个 ERROR |
 | `archive/parse-srt.py` 与 `timecode-map.json` 那条路 | 被 `timeline_derive.py` 取代 | 重新解析 SRT 会丢掉 EDL 本来就知道的东西；退役是在**逐字节相同的组成品骨架**上验收的 |
 | `archive/web-video-presentation` 的 `evals/` 与其他 v1 副本 | 随旧体系一起封存 | 运行路径上不再有消费者 |
 | 旧解释器口径：`uv sync`、`<skill>/.venv`、`uv run` | **已从 `SKILL.md` / `README.md` / `install.md` / `review-ui.md` / `themes.md` 清掉** | 本机没有 `uv`，那个 venv 是空的；统一用 `02-skills-library/.venv/bin/python`（3.9.6）。旧句子的残留会让人照着一个跑不了的命令做 |

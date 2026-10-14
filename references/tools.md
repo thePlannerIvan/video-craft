@@ -1,3 +1,13 @@
+## 免渲染审阅入口
+
+- `live_stage.py <project> --json`：启动/复用 HyperFrames 编译服务。
+- `build_review.py <project> --mode auto --slices off`：编译工程预览、内联对应官方 player 和素材清单。
+- `live_preview.py`：上项内部使用的纯传输模块；`compile_preview(project, stage_url)` 返回 HTML、素材映射和 sourceHash。
+- `review_surface.py <project> --surface-only`：把 surface 交 DSH；无插件时去掉该选项。
+- `edl_preview_build.py <edit>`：按源媒体即时预览当前 EDL。
+
+编辑后重建上述相应审阅页，无需先渲整片。旧媒体交付与转码工具保留如下。
+
 # 工具调用手册
 
 按任务选入口，不逐个跑完。本页的 `<craft>`、`<idea>`、`<ppt>`、`<core>` 分别替换为对应 Skill 的绝对根目录；`<project>`、`<edit>`、`<pages>` 是项目、剪辑目录与 PPT Hell 画面项目。Python 用安装时确认的解释器；每条 Python 命令都可将 `python3` 换为该解释器。扩展参数用该命令的 `--help`，不读实现。
@@ -67,16 +77,35 @@ python3 "<craft>/helpers/edl_edit.py" "<edit>" --restore "<起秒>,<止秒>=<期
 ## 免渲染的工程态（先审后渲）
 
 渲染不再是「能开始干活」的前提。段时长可以解析算出来，覆盖层可以有浏览器可合成的载体，
-于是剪辑、字幕、时间脊柱、审阅都先跑起来，确认后才渲染。
+**画面可以直接演活的 composition**，于是剪辑、字幕、时间脊柱、审阅都先跑起来，确认后才渲染。
+
+审阅台的首选舞台是**活的 composition**：`live_stage.py` 起 HyperFrames 预览服务并给出可嵌入地址，
+`build_review.py` 把它写进 `media.liveStage`，页面 iframe 进去直接演。零渲染、零等待，改一行动效
+刷新即变 —— 这一条见 `SKILL.md`「两个态」与 `GOTCHAS.md` 第 57–59 条。
 
 ```bash
+python3 "<craft>/helpers/live_stage.py" "<project>"       # 起服务 → 打印可嵌入地址（--stop 停）
 python3 "<craft>/helpers/duration_plan.py" "<edit>"       # 解析预演（frame-quantised, projected）
 python3 "<craft>/helpers/review_copy.py" "<成片>"         # 保留时间与原生分辨率的审阅副本
 python3 "<craft>/helpers/review_slices.py" "<project>"    # 按步切片，页面只取当前窗口
 python3 "<craft>/helpers/preview_layers.py" "<edit>"      # 已有 alpha 层补一份 WebM(VP9+alpha)
+python3 "<craft>/helpers/check_review_template.py"        # 审阅页模板的静态不变量
+python3 "<craft>/helpers/studio_notes.py" "<project>"     # 收集 studio 里写的意见 → jsonl
+python3 "<craft>/helpers/studio_notes.py" "<project>" --tail 20   # 读回来
 python3 "<craft>/helpers/render_layer.py" "<composition>" -o "<层主干名>" \
     --variables '{"set":"bolt"}'                          # HTML composition → MOV + WebM
 ```
+
+**studio 的意见要收成文件。** studio 的「Describe a change to the agent」只把一句写好的
+prompt 放进**剪贴板**（`navigator.clipboard.writeText`）—— 你不粘回对话，它就没了。
+`studio_notes.py` 起一个只监听回环的收集器；composition 里那段钩子（由生成器随包内联）
+与 studio **同源**，所以它能包住 studio 的 `writeText`：剪贴板照旧，同时把内容 POST 进
+`edit/_engineering/studio-notes.jsonl`。落盘之后用 `--tail` 读，别让作者当传话筒。
+
+`live_stage.py` 封着三件必须由确定性工具承担的事，别在会话里手搓：沙盒下 `hyperframes preview`
+写 `~/.local/state` 会 EPERM 而**静默不起**（它把 `XDG_STATE_HOME` 指到项目内）；studio 的 hash 路由
+不可嵌入，要换成裸路由 `/api/projects/<id>/preview/comp/index.html`；以及那条路由必须**验内容**而不是
+验状态码 —— 这台服务器对未知路径一律回 200 + SPA。
 
 **动效的源是 composition，不是那段视频。** `render_layer.py` **capture 一次**、再由
 `encode_transparent.encode_sequence()` 编出两份载体：`.mov`（PNG-in-MOV，无损 RGBA，给 ffmpeg

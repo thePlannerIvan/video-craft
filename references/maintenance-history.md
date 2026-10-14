@@ -200,3 +200,29 @@ sha256 `796ff3f2…` → 按文档那一步用新模板重生成（`15418868…`
 视觉审阅和剪辑审阅仍然是两个业务页面与两份反馈形状，这是有意保留的产品边界：视觉面承载画面/节奏/动效反馈，剪辑面承载词级取舍与 `selections.json`。它们共享 `review-surface/2.0.0` 的宿主接缝，但不互相嵌套，也不把两种反馈强行翻译成同一份记录。
 
 仍需在后续真实项目中持续观察的事项是时间轴文件落点（`edit/timeline/` 与项目根 `timeline/` 的历史兼容）以及复杂页面的人工审阅深度；它们不是本次公共宿主收口的阻塞项。
+
+## 2026-10-14 · 工程态成为默认，审阅页有了执行中的护栏
+
+**为什么改**：真实项目上连撞三件事。① 作者明确要「审阅时都是工程状态，快和灵活；确认之后才完整渲染」，而 Skill 里这条只写在第五步的一句话里，读起来像是渲染之前的建议，不是整个运行的模式。② 审阅台连着三轮坏在同一个文件上，六类缺陷一起出货，而 `tests/` 里两个浏览器测试**一个都没在跑**。③ 画面轨的源在 composition 与「事后用 ffmpeg 拼」之间摇摆，于是有了两份真相源。
+
+**做了什么**
+
+- **两个态提成贯穿态**：`SKILL.md` 新增「两个态：工程态与交付态」一节（活 composition 直接演 / 才渲染），并把两个审阅面的顺序（先剪点后画面）写进入口。`references/tools.md` 的「免渲染的工程态」补上活舞台的入口。
+- **活舞台落地**：新增 `helpers/live_stage.py`（唯一主人：起预览服务、绕开沙盒、pin 住裸路由并验内容）与 `visual/assets/composition-embed-bridge.js`（composition 自己的 postMessage 控制面，非嵌入时零影响）。`build_review.py` 写 `media.liveStage`（并验服务此刻还活着）；审阅页模板新增 `#live-stage-wrap` 与客户端，舞台按「活 composition → 合成成片 → 静态页」选择。
+- **护栏落地**：新增 `helpers/check_review_template.py`（七条静态不变量，每条配 `--prove` 自证不空洞）与 `tests/` 里对应的 unittest；新增 `tests/test_composition_embed_bridge.py`（6 例纯逻辑协议测试，不需要浏览器）。六个缺陷先 R̶E̶D̶ 后 GREEN 地修掉。
+- **画面轨唯一源**：`generate-composition.py` 支持时间轴的 `mediaClips` —— 录屏段改发 `<video class="clip">` 带 `data-media-start`，取代「渲染完再用 ffmpeg 拼一遍」；GSAP 与嵌入桥随包拷进 `composition/assets/`（去掉 CDN）。
+- **自检转绿**：删死测试、修跨 Skill 依赖，`unittest discover` 从 326（2 ERROR / 5 skip）到 344 全 OK。
+
+**删掉了什么**：`tests/test_interactive_ui.py`（不是 unittest、引用已删按钮、导入即崩）；模板里的空壳 `<hyperframes-player>`；CDN GSAP。逐条见 `architecture.md` §7 退役。项目侧的 `tools/patch_review_page.py` 与 `make_review_carrier.py` 也随之删除 —— 它们的存在本身就是缺陷的症状。
+
+**仍然记账**（下一轮）：无口播视觉槽在这套契约里还不成立（字幕要求 EDL 每段有词、`timeline_derive` 的 step 必须由 cue 组成）；`check_edl` 对「删字」这类合法编辑永远亮红；`apply_selection.py` 会留下纯标点的碎片段，与 `srt_export.py` 的「一段一块」硬约束冲突；时间轴的步长是 cue 派生的（比媒体窗口窄一个片头静音），要不要统一基准需要一次决定。
+
+
+## 2026-10-14：先工程预览，再最终输出
+
+保留 EDL、语义字幕、实测时长、交付核验和既有媒体兼容路径。新工程预览由官方 HyperFrames player/runtime 接管，review-core 传工程快照与资产，消除跨不透明源 localhost 加载和自造 GSAP 播放控制。播放速度、单屏定位、字幕和反馈时间使用同一时钟；页面降低导航密度、集中播放工具。删除旧 liveStage 消息客户端，未删除仍有调用者的 SVG 编辑与外部视频层功能。
+
+
+逐字预览不再按文件名自动选旧成片；默认按 EDL 读取源素材，只有显式 `--rendered-preview` 才对照渲染结果。回归测试覆盖旧 final.mp4 存在时的源时间与速度映射。
+
+本轮隔离项目验收：358 项 unittest（5 项环境限定测试跳过），另跑 sandbox/local 两套真实浏览器检查，各 9 项；906 词口播源预览的播放、2 倍速、下一刀通过；改 composition 后构建快照确实变化；公共 core 的 59 项 JS 与 11 项 Python 检查通过。浏览器使用空音频输出设备验证解码和时钟，未代替人工听音。Mac 锁屏，DSH 原生窗口未直接验收，sandbox 测试只证明其桥与 opaque iframe 契约。通用 Skill lint 的 17 个路径报告与基线相同，均因截取嵌套路径/跨 Skill 引用而误报；未为消除报告而移动有效模块。

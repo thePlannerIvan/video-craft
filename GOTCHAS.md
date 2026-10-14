@@ -762,3 +762,88 @@ deletion from an accidental loss.
   3. **产物归属**：哪些文件属于工程态（可丢、可重算，不得留在 `edit/` 冒充底片）。
 - **修正原则**：**交付必须自带来源指纹**。`export_deliverables.py` 写 `成品/delivery.json`，记录 composition、`choreography.json`、各页 store revision、音轨、字幕的 sha256 与真实渲染记录；`verify_delivery.py` 断言指纹与**当前**工程态一致，不一致即判**交付过期**并拒绝出交付。工程态渲染/预览一律落 `edit/_engineering/`（或显式标注非底片），不进 `edit/` 根。
 - **证据**：`05-VideoProject/sparkling-video`：交付后抽帧才发现旧页面；`edit/visual.mp4` 手工删除；beat-06 箭头两次被导出覆盖（一次因为直改 `_internal/02_svg_source` 未入库）。
+
+## 57. 审阅页的护栏是两具尸体 —— 不跑的测试等于没有测试
+
+- **module**：`tests/`、`visual/assets/review-page-template.html` ｜ **状态**：已复现
+- **现象**：同一个模板文件连着返工三轮，六类缺陷一起出货，作者一个个手撞出来。而 `tests/` 里**本来就有**两个浏览器测试。
+- **原因**：`test_interactive_ui.py` **根本不是 unittest**（没有 `TestCase`），硬编码 `127.0.0.1:8776`，引用的 `#view-player-btn`／`#view-svg-btn` 在模板里已经是 0 次，并且 `playwright` 没装 —— 整个模块导入即失败，`unittest discover` 直接把它算成 ERROR。`test_review_browser.py` 是 opt-in（`VIDEO_CRAFT_BROWSER_TESTS=1`）且同样要 playwright，它自己的 docstring 还写着「**不覆盖**：播放器」。于是舞台这一块零执行护栏。自检常年带着 2 个 ERROR、5 个 skip 在跑，没人看。
+- **修正原则**：**默认自检必须全绿，否则护栏等于装饰。** 死测试删掉（它测的元素已经不存在）；跨 Skill 按路径加载的测试要把它自己的 `scripts/` 放上 `sys.path`（否则 `No module named 'canvas_frame'` 让整个模块静默消失）。修完之后默认自检 326(2 ERROR) → 344 全 OK。
+- **证据**：`test_interactive_ui` 的 `ModuleNotFoundError: No module named 'playwright'`；`test_snapshot_input` 的 `No module named 'canvas_frame'`。
+
+## 58. 舞台选择函数改写了自己的参数 → 页面永远开在错的舞台上
+
+- **module**：`visual/assets/review-page-template.html::setStageViewMode()` ｜ **状态**：已复现
+- **现象**：项目没有合成成片，审阅台打开却是一张「预览 · 合成成片尚未导出」的空占位；唯一写着「返回动效舞台」的按钮点了没反应。**动效舞台永远打不开。**
+- **原因**：两个缺陷叠加。① 函数体第一行写死 `mode = "composite";`，把调用方传进来的参数丢掉 —— 连初始化那句 `setStageViewMode("svg")` 也变成切到合成台；而标记里 `#svg-stage-wrap` 带 `hidden`、`#composite-player-wrap` 不带，于是默认就停在空合成台上。② `#btn-back-to-stage` 在模板里出现 1 次，只有标记、没有监听（外加一条已过时的注释声称「初始可见性已在标记里给对」）。
+- **修正原则**：**标记给的默认舞台必须是「最不挑数据」的那块**（有分屏就能画的 SVG 舞台），初始化末尾再按项目数据提升到活 composition／合成成片；参数就是参数，不许在函数里改写。删 UI 元素时同时收口它的挂载点（第 54 条的同一条命）。
+- **证据**：`check_review_template.py` 的 S1／S2／S3 三条不变量；把缺陷打回去逐条响。
+
+## 59. 字幕退回「整屏字幕」+ 圆角药丸 = 一个圆盖住画面
+
+- **module**：`visual/assets/review-page-template.html::updateStageSubtitle()` ｜ **状态**：已复现
+- **现象**：舞台上出现一个巨大的椭圆，里面是整段文字，把画面整个盖住。
+- **原因**：游标落在两句之间的空档（或时间轴还在 0 点、没到第一句）时匹配不到 cue，代码退回 `st.caption` —— 那是**整屏所有句子的拼接**。而药丸是 `border-radius: 9999px`，一整段文字塞进去就被撑成一个椭圆。
+- **修正原则**：**有字幕契约时不存在这条退路**：匹配不到就什么都不显示。药丸再加一条 `max-width` 封顶，防任何超长串重演。同理，**点一屏只 `seek` 不 `play`**（舞台还停在静态页上）得到的是一张静止帧 —— 用户动作驱动的换屏必须 `play()`，而切舞台、拖进度条的 `seek` 不该自己开始播放。
+- **证据**：`check_review_template.py` 的 S5／S6；S6 只查分屏点击处理函数那一段，因为前三处 seek 是正当的。
+
+## 60. `hyperframes preview` 在沙箱下静默不起，而且它的路由只能验内容
+
+- **module**：`helpers/live_stage.py` ｜ **状态**：已复现
+- **现象**：`hyperframes preview --background` 退出后 `--status` 说没有后台预览；日志里也没有明显报错。
+- **原因**：① 它把状态写在 `~/.local/state/hyperframes`，`workspace-write` 沙箱下这个 mkdir 直接 `EPERM`，预览就没起来。② studio 的地址是 `#/project/<id>` 这种 hash 路由，嵌不了；可嵌入的裸路由是 `/api/projects/<id>/preview/comp/index.html`，而它只出现在 studio 自己的 JS bundle 里。③ 那台服务器对**未知路径一律回 200 + SPA**，所以状态码什么都证明不了。
+- **修正原则**：确定性下沉成一个工具：把 `XDG_STATE_HOME` 指到项目内；pin 住裸路由并**验响应体**（stage 过的 composition 会带注入的 `data-hf-gsap-fallback` shim 与 `<base>`）；`--status/--stop/--json` 齐备。这条别在会话里手搓。
+- **证据**：`EPERM: operation not permitted, mkdir '~/.local/state/hyperframes/previews'`；裸路由 119263B 带 shim，`/anything` 也回 200。
+
+## 61. composition 用旧时间轴打过补丁 → 过期 3 秒，无人发现
+
+- **module**：`visual/scripts/generate-composition.py`、`timeline/timeline.json` ｜ **状态**：已复现
+- **现象**：时间轴从「+3s 平移」改成「与 EDL 对齐」之后，composition 里的 `__CUES__`／`__SPANS__` 还是按旧版打的：`step-open` 的区间停在 14.42s，而时间轴已经说 11.42s。动画锚点整体偏 3 秒。**没有任何检查报错**，`build_review` 还给出一个看起来很一致的页面。
+- **原因**：这是第 56 条「工程态/交付态切分只做了一条轴」的第二条轴（**来源版本**）。生成器只管骨架，注入 cue 表是另一步；时间轴一变，注入物就过期，而两者之间没有闸门。
+- **修正原则**：**画面轨的唯一源是 `composition/`**，而它的输入是时间轴 —— 时间轴一动就重跑生成＋注入；`generate-composition.py --verify` 的核对要覆盖 `mediaClips` 与逐片时间，别只数 clip 个数。
+- **证据**：旧 `__SPANS__.step-open=[0.0,14.42]` vs 新时间轴 `0–11.42`；重跑后逐屏一致。
+
+## 62. 静态检查的两个假阳：对正确代码报红，训练出来的只是忽略
+
+- **module**：`helpers/check_review_template.py` ｜ **状态**：已复现
+- **现象**：第一版两条检查对着**正确代码**报红：S2 把工具栏那三个按钮判成死的（它们是 `data-stage-tool` + 一个委托监听，正当写法）；S6 把三处「同步播放头」判成缺陷（切舞台、拖进度条本就不该自动播放）。
+- **原因**：判据抓的是「形状」而不是「出问题的那一段」。宽到把正确代码也罩进去的检查，和永远绿的检查一样没用 —— 区别只是它更快地被忽略。
+- **修正原则**：每条检查都要能说出**它只对哪一种缺陷响**；S6 因此收窄到只查分屏点击处理函数那一段。并且每条检查必须配一份自证（`--prove`：把历史缺陷从干净基线打回去，检查必须响），否则它可能就是一条永远不会失败的判据（第 30 条）。
+- **证据**：收窄前后的两次实跑；`--prove` 七条全响。
+
+## 63. studio 会缓存 composition —— 改了源，你要硬刷新它
+
+- **module**：`hyperframes preview`（studio） ｜ **状态**：已复现
+- **现象**：改完 composition（加音频、加钩子、改区间），studio 里还是旧的一版：画面不动、没声音、Lint 计数不变。作者会以为"动画没有"，而实际是**他在看几小时前那份**。
+- **原因**：studio 号称"改了自动重载"，但 composition 的响应带 HTTP 缓存。用 CDP 打开时必须 `Network.setCacheDisabled` 才能拿到新的一版；只用 `--status` 看服务活着，完全看不出来。
+- **修正原则**：**改了 composition 之后，让作者硬刷新（Cmd+Shift+R）**；判断"服务是不是旧实例"不能只看端口，要看响应内容（`grep` 一下新加的东西在不在）。诊断一律用 CDP 取真实 DOM，不要用截图猜。
+- **证据**：同一台服务器、同一个 URL，缓存开时 `__kwStudioHook` 不存在、关掉后 `{"installed":true}`。
+
+## 64. studio 的 player 路由剥掉所有 `src=` 脚本，并把内联脚本拼成一个大脚本
+
+- **module**：`hyperframes preview` 的 player 路由、`visual/scripts/generate-composition.py` ｜ **状态**：已复现
+- **现象**：给 composition 加一个 `<script src="assets/xxx.js">` 的钩子，在 studio 里**永远不执行**；同一份文件在 `/preview/comp/index.html` 那条路由上是好的。
+- **原因**：两件事叠加。① player 路由只留一个 `src=` 脚本（它自己的 `/api/runtime.js`，GSAP 由它提供），composition 自己声明的 `src=` 脚本全被剥掉 —— 实测 player 文档里的 script 标签只剩 runtime。② runtime 把**内联**脚本拼成一个大脚本执行；我们的钩子虽然内联了，却排在动画那段之后，而它前面一段抛了错，于是永远轮不到它（`hasTimelines: true` 但 `__kwStudioHook: undefined`）。
+- **修正原则**：要在 studio 里执行的代码**必须内联**，并且**并进那段已经证明会执行的块**（这里是动画层），不要指望它自己独立跑。反过来，审阅页要用的东西（嵌入桥）走 `src=` 是对的 —— 那条路由不剥。
+- **证据**：`grep -o '<script[^>]*src=' player.html` 只有 runtime 一条；钩子文本在文档里（`hasHookText: true`）而全局变量 undefined；并入动画块后 `{"installed":true,"sent":1}`。
+
+## 65. 「第几个脚本」不能当锚点，「第一个内联 script」尤其不能
+
+- **module**：组装 composition 的注入步骤 ｜ **状态**：已复现
+- **现象**：往 composition 头部加了一个内联配置脚本之后，那个"把生成器骨架脚本换成 cue 表 + 动画"的步骤**把配置脚本整块替换掉了**：meta 没了、钩子读不到收集器地址，而页面其他地方一切正常。
+- **原因**：注入步骤的兜底锚点是"第一个不含 `src` 的 `<script>`"（`SCRIPT_RE`）。这是一个**位置锚点**，任何新增的内联脚本都会把它抢走。位置锚点在多人/多步改动的文件里天生不稳。
+- **修正原则**：锚点锚在**内容**上（这里是"那个注册 `window.__timelines` 的脚本"），或者用不会被当成脚本的东西传配置（`<meta>` 而不是内联 `<script>`）。凡是"取第 n 个"的锚点，都要问一句：谁还能往前面插东西？
+- **证据**：加配置脚本后 `grep -c kw-studio-notes` 从 1 变 0；改成内容锚点 + meta 后稳定。
+
+
+## 66. GSAP 握手不证明 HyperFrames 播放正常
+
+旧桥只 seek/play GSAP，runtime 仍拥有 clip 显隐与媒体。真实 keywords 工程在旧路由中多屏同时可见；官方 player 接管后只显示目标屏。审阅用官方 player，不复制动画引擎。验收同时检查画面、声音、录屏和时间，不用 ready 消息替代。
+
+## 67. 不透明源访问 loopback 和跨帧 blob 都可能被拦
+
+浏览器报 `ERR_BLOCKED_BY_LOCAL_NETWORK_ACCESS_CHECKS`，脚本没有 pageerror，但嵌入舞台无法加载。用 review-core 传编译工程与资产；player 用 srcdoc。父帧的 `blob:null` 也不能在另一个不透明子帧读取，必须转换为可传递的资产载体。测试不得关闭本机网络访问安全检查来制造通过。
+
+## 68. 编译路由的 base 不是 HTML 路径的父目录
+
+`/preview/comp/index.html` 的 `<base>` 是 `/preview/`。按 HTML 路径拼 `assets/gsap.js` 会拿到 SPA HTML，内联后报 Unexpected token。项目脚本按 composition 本地根读取并核对包含性；runtime 用已验证的同源接口读取，HTML 伪装脚本必须拒绝。

@@ -193,7 +193,7 @@
       white-space: nowrap;
     }
     .step.chapter-header .step-id { color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
-    .step-caption { font-size: 12px; color: var(--text); margin-top: 3px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .step-caption { font-size: 13px; color: var(--text); margin-top: 3px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
     .step-meta { font-size: 10.5px; color: var(--text-muted); margin-top: 2px; }
     .step-badge {
       font-size: 10px;
@@ -280,7 +280,6 @@
       flex: 0 0 auto;
       box-shadow: 0 10px 28px rgba(0,0,0,0.45);
     }
-    hyperframes-player { display: block; width: 100%; height: 100%; }
     #svg-stage-wrap {
       position: absolute;
       inset: 0;
@@ -357,6 +356,8 @@
       transition: opacity 0.15s ease, transform 0.15s ease;
     }
     #canvas-caption-layer[hidden] { display: none; }
+    /* 药丸是 border-radius:9999px：任何超长字符串都会把它撑成椭圆，封个顶 */
+    #canvas-caption-layer { max-width: min(86%, 900px); }
     #canvas-caption-text {
       font-size: clamp(13px, 1.7vw, 19px);
       font-weight: 700;
@@ -365,8 +366,8 @@
       text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
     }
 
-    /* 成片与逐字剪辑内嵌容器 */
-    #composite-player-wrap, #verbatim-iframe-wrap {
+    /* 活 composition / 成片 / 逐字剪辑的内嵌容器 */
+    #live-stage-wrap, #composite-player-wrap, #verbatim-iframe-wrap {
       position: absolute;
       inset: 0;
       width: 100%;
@@ -374,7 +375,13 @@
       background: #000;
       z-index: 5;
     }
-    #composite-player-wrap[hidden], #verbatim-iframe-wrap[hidden] { display: none; }
+    #live-stage-wrap[hidden], #composite-player-wrap[hidden], #verbatim-iframe-wrap[hidden] { display: none; }
+    #live-stage-frame { width: 100%; height: 100%; border: 0; display: block; background: #000; }
+    #live-stage-note {
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      font-size: 14px; font-weight: 700; color: var(--text); text-align: center; padding: 24px;
+    }
+    #live-stage-note[hidden] { display: none; }
     #composite-video-player {
       width: 100%;
       height: 100%;
@@ -1152,6 +1159,63 @@
       .feedback { padding: 12px; }
       .choreo-deck { max-height: 220px; }
     }
+
+    /* Quiet review workspace; semantic aliases all resolve to shared DSH tokens. */
+    .layout { grid-template-columns: 224px minmax(0, 1fr) 300px; }
+    .topbar { min-height: 52px; padding: 10px 18px; }
+    .panel-head { padding: 12px 14px; font-size: 12px; }
+    .center-stage { padding: 16px; gap: 12px; }
+    .canvas-toolbar { padding: 0 0 8px; flex-wrap: wrap; gap: 8px; }
+    .tool-btn, .transport-btn { font-weight: 500; border-radius: 6px; }
+    .step { border: 1px solid transparent; border-radius: 6px; margin: 2px 8px; padding: 10px; }
+    .step:not(.active) { background: transparent; }
+    .step.active { background: var(--dsw-alias-interactive-bg-hover-accent); color: var(--text); }
+    .step.active .step-caption { color: var(--text); }
+    .transport-btn:not(.primary), .reload { background: var(--bg-card); color: var(--text-secondary); border-color: var(--border); }
+    .step-badge { background: var(--dsw-alias-interactive-bg-hover-accent); }
+    .step-caption { font-size: 13px; line-height: 1.6; -webkit-line-clamp: 2; }
+    .step:not(.chapter-header) > .step-meta { display: none; }
+    .step.active > .step-meta { display: block; font-size: 11px; }
+    .step-id { flex-wrap: wrap; font-size: 12px; color: var(--text-muted); }
+    .step-id > span:first-child { min-width: 65px; }
+    .chapter-header .step-id { display: none; }
+    h1 #project-name { color: var(--text-muted); font-weight: 400; }
+    #mode-badge { display: none; }
+    .step-meta, .transport-time { color: var(--text-muted); font-weight: 500; font-size: 11px; }
+    .chapter-head { padding: 16px 16px 8px; }
+    .global-transport-bar { border: 0; padding: 8px 0; gap: 8px; background: transparent; }
+    .history-box { min-height: 72px; max-height: 32vh; flex: 0 1 auto; padding: 12px; }
+    .canvas-toolbar::before { content: none; }
+    .canvas-toolbar { justify-content: space-between; }
+    .feedback::before { content: "添加意见"; }
+    .feedback { flex: 1; }
+    .tool-btn, .transport-btn, .feedback select, .feedback textarea { font-size: 13px; }
+    .feedback { padding: 14px; }
+    .feedback textarea { min-height: 100px; }
+    .mode-note { font-size: 11px; line-height: 1.6; }
+    #connection-label { font-size: 11px; }
+    #canvas-caption-layer { z-index: 12; pointer-events: none; bottom: 6%; border-radius: 5px; padding: 3px 10px; box-shadow: none; }
+    #canvas-caption-text { border: 0; border-radius: 4px; padding: 5px 12px; font-size: clamp(14px, 1.25vw, 22px); }
+    #annotation-overlay { z-index: 15; }
+    #live-stage-note { background: var(--bg-panel); z-index: 10; }
+    body[data-stage="live"] #btn-focus-toggle { display: none; }
+    .player-box > .hint { display: none; }
+    @media (max-width: 1100px) {
+      .layout { grid-template-columns: 170px minmax(0, 1fr); }
+      .side-right { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; }
+      .side-right > .panel-head { grid-column: 1 / -1; }
+    }
+    @media (max-width: 700px) {
+      .layout { display: flex; flex-direction: column; height: auto; }
+      .side-left { max-height: 155px; }
+      .steps { display: flex; overflow: auto; }
+      .step { min-width: 180px; }
+      .center-stage { padding: 12px; }
+      .side-right { display: flex; flex-direction: column; }
+      .history-box { max-height: 180px; }
+      .canvas-toolbar { justify-content: flex-start; }
+      .global-transport-bar { flex-wrap: wrap; }
+    }
   </style>
 </head>
 <body>
@@ -1190,7 +1254,7 @@
           <button type="button" class="tool-btn" id="btn-show-all" title="展示本屏最终完整态">最终完整态</button>
           <div class="tool-sep"></div>
           <button type="button" class="tool-btn" id="btn-focus-toggle" title="切换焦点聚光灯">聚光灯: 开</button>
-          <button type="button" class="tool-btn" id="btn-speed-toggle" title="切换 0.5x 慢动作">速度: 1.0x</button>
+          
         </div>
       </div>
 
@@ -1208,23 +1272,19 @@
       </div>
 
       <div class="player-box" id="player-box">
-        <hyperframes-player id="player" style="display:none;"></hyperframes-player>
 
-        <!-- 这里原本是两个舞台二选一。现在只有成片预览一个舞台（见 setStageViewMode）；
-             SVG 舞台只在项目真的声明了分屏时才有内容，默认隐藏。 -->
-        <div id="svg-stage-wrap" hidden>
+        <!-- 标记给的默认舞台是 SVG 舞台：它最不挑数据（有分屏就能画），
+             所以任何项目打开都不会停在空占位上。初始化末尾再按项目数据提升到
+             活 composition 或合成成片（见 setStageViewMode 的调用点）。 -->
+        <div id="svg-stage-wrap">
           <video id="stage-speaker-video" playsinline hidden></video>
           <div id="speaker-time-pill" hidden>🔊 00:00.0</div>
           <div id="svg-stage-host"></div>
-          <!-- 悬浮单行药丸字幕 -->
-          <div id="canvas-caption-layer" hidden>
-            <span id="canvas-caption-text"></span>
-          </div>
-          <div id="annotation-overlay"></div>
+
         </div>
 
-        <!-- 最终合成成片预览 -->
-        <div id="composite-player-wrap">
+        <!-- 最终合成成片预览（没有成片时初始化会退回 SVG 舞台） -->
+        <div id="composite-player-wrap" hidden>
           <video id="composite-video-player" controls playsinline></video>
           <div id="layer-stack" hidden aria-hidden="true"></div>
           <div id="composite-empty-placeholder" hidden>
@@ -1234,11 +1294,24 @@
           </div>
         </div>
 
+        <!-- 活 composition 舞台：审阅页直接演工程态的源，不是任何渲染产物。
+             页面在不透明源 iframe 里，进不去子页，靠 postMessage 驱动
+             （composition 自带 visual/assets/composition-embed-bridge.js）。 -->
+        <div id="live-stage-wrap" hidden>
+          <hyperframes-player id="live-stage-frame" aria-label="视频预览"></hyperframes-player>
+          <div id="live-stage-note" hidden></div>
+        </div>
+
         <!-- 剪辑选择是独立审阅面，不嵌入第二份桥。 -->
         <div id="verbatim-iframe-wrap" hidden>
           <p id="edl-open-state" role="status">正在打开剪辑审阅…</p>
         </div>
-        <div class="hint">暂停在出问题的画面 → 在右侧列表里选中对应的一屏 → 填反馈 → 点「保存反馈」。</div>
+          <!-- 悬浮单行药丸字幕 -->
+          <div id="canvas-caption-layer" hidden>
+            <span id="canvas-caption-text"></span>
+          </div>
+          <div id="annotation-overlay"></div>
+        <div class="hint">暂停画面即可批注；空格播放 / 暂停，方括号切换分屏。</div>
       </div>
 
       <!-- 全局视听播放与时间轴 Scrubber 控制条 -->
@@ -1254,6 +1327,7 @@
             <div class="timeline-markers" id="timeline-markers"></div>
           </div>
         </div>
+        <button type="button" class="tool-btn" id="btn-speed-toggle" title="播放速度：0.5、1、1.5、2、4 倍">1×</button>
         <button type="button" class="tool-btn active" id="btn-toggle-subtitles" title="切换画面底部字幕显示">字幕: 开</button>
       </div>
 
@@ -1294,11 +1368,11 @@
         </div>
         <p class="mode-note" id="mode-note"></p>
         <select id="fb-type">
-          <option value="visual">visual · 画面版式与视觉</option>
-          <option value="animation">animation · 动效原语与镜头</option>
-          <option value="timing">timing · 节奏与词级卡点</option>
-          <option value="copy">copy · 上屏文字与花字</option>
-          <option value="asset">asset · 素材与证据图</option>
+          <option value="visual">画面与版式</option>
+          <option value="animation">动画与镜头</option>
+          <option value="timing">节奏与卡点</option>
+          <option value="copy">文字</option>
+          <option value="asset">素材</option>
         </select>
         <textarea id="fb-text" placeholder="整片看完总想说的一点…（不针对某一屏）"></textarea>
         <div id="stale-note" hidden></div>
@@ -2411,19 +2485,98 @@
       });
     }
 
-    /* ---- 舞台视图切换（动效舞台 vs 最终合成预览 vs 逐字剪辑） ---- */
-    let stageViewMode = "svg"; // 'svg' | 'composite' | 'verbatim'
+    /* Official player owns the clock, media, visibility and scaling. */
+    const liveStage = (() => {
+      const player = document.getElementById("live-stage-frame");
+      const note = document.getElementById("live-stage-note");
+      let clock = null, attachedUrl = null, pendingSeek = null, pendingPlay = false;
+      let watchdog = null, stopAt = null;
+      function explain(text) { note.textContent = text; note.hidden = false; }
+      function report() {
+        if (!player.ready) return;
+        if (stopAt !== null && player.currentTime >= stopAt) {
+          const end = stopAt; stopAt = null; player.seek(end); player.pause();
+        }
+        if (clock) clock(player.currentTime * 1000, player.paused);
+      }
+      player.addEventListener("ready", () => {
+        clearTimeout(watchdog); note.hidden = true;
+        if (pendingSeek !== null) { player.seek(pendingSeek); pendingSeek = null; }
+        if (pendingPlay) { pendingPlay = false; player.play(); }
+        report();
+      });
+      ["timeupdate", "play", "pause", "ended"].forEach(name => player.addEventListener(name, report));
+      ["playbackerror", "runtimeprotocolerror"].forEach(name => player.addEventListener(name, () => {
+        explain("播放未能继续，请刷新预览后重试。你的反馈草稿会保留。");
+      }));
+      return {
+        get ready() { return !!player.ready; },
+        get durationMs() { return (player.duration || 0) * 1000; },
+        get currentMs() { return (player.currentTime || 0) * 1000; },
+        setClock(fn) { clock = fn; },
+        async attach(url) {
+          if (!url || attachedUrl === url || !review) return;
+          attachedUrl = url;
+          try {
+            if (!customElements.get("hyperframes-player")) throw new Error("播放器未加载");
+            const composition = window.__REVIEW_DATA__?.media?.liveStage?.composition;
+            if (!composition?.html) throw new Error("缺少工程预览，请重新构建");
+            explain("正在加载画面与声音…");
+            let source = composition.html;
+            for (const [token, rel] of Object.entries(composition.assets || {})) {
+              // Each sandboxed child has its own opaque origin; a parent's
+              // blob:null URL cannot be used by the player's iframe.
+              const assetUrl = await review.asset(rel);
+              const blob = await (await fetch(assetUrl)).blob();
+              const dataUrl = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = () => reject(new Error("素材读取失败：" + rel));
+                reader.readAsDataURL(blob);
+              });
+              source = source.split(token).join(dataUrl);
+            }
+            player.setAttribute("srcdoc", source);
+          } catch (error) {
+            attachedUrl = null;
+            explain("预览加载失败：" + error.message + "。反馈草稿仍然保留。");
+          }
+        },
+        seek(sec) {
+          stopAt = null; pendingPlay = false;
+          if (player.ready) { player.seek(sec); report(); } else pendingSeek = sec;
+        },
+        play() { if (player.ready) player.play(); else pendingPlay = true; },
+        pause() { pendingPlay = false; if (player.ready) player.pause(); },
+        rate(value) { player.playbackRate = value; },
+        range(start, end) { this.seek(start); stopAt = end; this.play(); },
+        hello() {},
+        explain,
+        watchdog() {
+          clearTimeout(watchdog);
+          if (!player.ready) watchdog = setTimeout(() => {
+            if (!player.ready) explain("预览暂时无法连接。请确认预览服务正在运行，再刷新页面。");
+          }, 8000);
+        }
+      };
+    })();
+
+    /* ---- 舞台视图切换（动效舞台 / 活 composition / 合成成片 / 逐字剪辑） ---- */
+    let stageViewMode = "svg"; // 'svg' | 'live' | 'composite' | 'verbatim'
     function setStageViewMode(mode) {
-      // 只有一个舞台。原先「视听动效舞台 / 最终合成预览 / 逐字剪辑」三选一，在没有 SVG
-      // 分屏的项目里前两块长得一模一样，作者看不出为什么要分。剪辑审阅本来就是**独立
-      // 审阅面**，现在由顶栏一个按钮打开，不再冒充播放器的一种模式。
-      mode = "composite";
+      // 舞台按「这个项目有什么数据」选：活 composition 优先，其次合成成片，最后静态页。
+      // 原模板在这里写死 `mode = "composite"`，把调用方传进来的选择丢掉了 ——
+      // 连初始化那句 setStageViewMode("svg") 也变成切到合成台，而合成台在没有成片时
+      // 只是一张空占位。参数就是参数，不许改写。
+      if (stageViewMode === "live" && mode !== "live") liveStage.pause();
       stageViewMode = mode;
+      document.body.dataset.stage = mode;
 
       document.body.classList.toggle("workspace-verbatim", mode === "verbatim");
       document.body.classList.toggle("workspace-composite", mode === "composite");
 
       const svgWrap = document.getElementById("svg-stage-wrap");
+      const liveWrap = document.getElementById("live-stage-wrap");
       const compWrap = document.getElementById("composite-player-wrap");
       const verbWrap = document.getElementById("verbatim-iframe-wrap");
       const compVid = document.getElementById("composite-video-player");
@@ -2431,6 +2584,7 @@
       const spkVid = document.getElementById("stage-speaker-video");
 
       if (svgWrap) svgWrap.hidden = (mode !== "svg");
+      if (liveWrap) liveWrap.hidden = (mode !== "live");
       if (compWrap) compWrap.hidden = (mode !== "composite");
       if (verbWrap) verbWrap.hidden = (mode !== "verbatim");
 
@@ -2453,6 +2607,19 @@
           compVid.style.display = "none";
           if (compEmpty) compEmpty.hidden = false;
         }
+      } else if (mode === "live") {
+        // 活舞台不自己起播：这里是「切到这一块」，播不播由播放键和点屏决定。
+        if (spkVid && !spkVid.paused) { try { spkVid.pause(); } catch {} }
+        if (compVid && !compVid.paused) { try { compVid.pause(); } catch {} }
+        pauseGlobalPlayback();
+        const live = window.__REVIEW_DATA__?.media?.liveStage;
+        if (live && live.url) {
+          liveStage.attach(live.url);
+          liveStage.hello();
+          liveStage.watchdog(live.url);
+        } else {
+          liveStage.explain("这个项目没有可播的活 composition：先跑 helpers/live_stage.py 把预览服务起起来。");
+        }
       } else if (mode === "verbatim") {
         if (spkVid && !spkVid.paused) {
           try { spkVid.pause(); } catch {}
@@ -2474,8 +2641,11 @@
         }
       }
     }
-    // 舞台切换按钮已移除（只留一个播放器）；初始可见性已在标记里给对，不在这里调
-    // setStageViewMode —— 它在顶层会碰到还没初始化的 let（TDZ），页面整个挂掉。
+    // 初始可见性由标记给默认、初始化末尾按数据提升，不在这里顶层调
+    // setStageViewMode —— 它会碰到还没初始化的 let（TDZ），页面整个挂掉。
+    // 「返回动效舞台」原先没有任何监听，点了没反应；补上。
+    const backToStageBtn = document.getElementById("btn-back-to-stage");
+    if (backToStageBtn) backToStageBtn.addEventListener("click", () => setStageViewMode("svg"));
 
     const toggleCuesBtn = document.getElementById("btn-toggle-cues");
     if (toggleCuesBtn) {
@@ -2499,11 +2669,15 @@
       }
       let matchedText = "";
       const captions = (window.__REVIEW_DATA__ && window.__REVIEW_DATA__.captions) || [];
-      if (captions.length > 0 && curTimeSec !== undefined && curTimeSec !== null) {
-        const found = captions.find(c => curTimeSec >= c.start && curTimeSec <= c.end + 0.08);
-        if (found) matchedText = found.text;
-      }
-      if (!matchedText && st) {
+      if (captions.length > 0) {
+        // 有字幕契约就只显示游标所在的那一句。落空 —— 句间空档，或时间轴还在 0 点、
+        // 没到第一句 —— 就什么都不显示。绝不退回 st.caption：那是整屏所有句子的拼接，
+        // 塞进 border-radius:9999px 的药丸会把它撑成一个巨大椭圆盖住整个舞台。
+        const t = (curTimeSec === undefined || curTimeSec === null) ? 0 : curTimeSec;
+        const found = captions.find(c => t >= c.start && t <= c.end + 0.08);
+        matchedText = found ? found.text : "";
+      } else if (st) {
+        // 项目根本没有字幕契约时，整屏字幕才是唯一线索
         matchedText = st.caption || "";
       }
       if (matchedText) {
@@ -2520,7 +2694,7 @@
         showSubtitles = !showSubtitles;
         subToggleBtn.textContent = showSubtitles ? "字幕: 开" : "字幕: 关";
         subToggleBtn.classList.toggle("active", showSubtitles);
-        const curT = (document.getElementById("stage-speaker-video")?.currentTime) || (state.currentScreenObj ? (state.currentScreenObj.startMs || 0) / 1000 : 0);
+        const curT = (stageViewMode === "live" ? liveStage.currentMs / 1000 : document.getElementById("stage-speaker-video")?.currentTime) || (state.currentScreenObj ? (state.currentScreenObj.startMs || 0) / 1000 : 0);
         updateStageSubtitle(state.currentScreenObj, curT);
       });
     }
@@ -2541,6 +2715,24 @@
         timeDisp.textContent = `${fmt(timeMs)} / ${fmt(tot)}`;
       }
     }
+
+    // 活舞台的唯一时钟：bridge 每 200ms 报一次 time，进度条、字幕、当前屏都由它走。
+    liveStage.setClock((ms, paused) => {
+      if (stageViewMode !== "live") return;
+      updateScrubberDisplay(ms);
+      const active = allScreensList.find(s => ms >= s.startMs && ms < s.endMs);
+      if (active && state.currentScreenObj?.id !== active.id) switchToScreen(active, false);
+      if (state.currentScreenObj) updateStageSubtitle(state.currentScreenObj, ms / 1000);
+      const isPlaying = !paused;
+      if (isGlobalPlaying !== isPlaying) {
+        isGlobalPlaying = isPlaying;
+        const playBtn = document.getElementById("btn-global-play");
+        if (playBtn) {
+          playBtn.textContent = isPlaying ? "⏸ 暂停" : "播放";
+          playBtn.classList.toggle("primary", !isPlaying);
+        }
+      }
+    });
 
     function renderScrubberMarkers() {
       const markersBox = document.getElementById("timeline-markers");
@@ -2571,6 +2763,7 @@
       document.getElementById("fb-step").textContent = st.id;
 
       await loadScreenSvg(st, seekVideo);
+      if (seekVideo && stageViewMode === "live") liveStage.seek((st.startMs || 0) / 1000);
 
       // 换屏必须把画面也带过去。原先只更新了选中态与左侧高亮，成片播放头不动 ——
       // 「上一屏 / 下一屏」看起来就像什么都没发生。
@@ -2595,6 +2788,7 @@
       if (compVid && compVid.getAttribute("src")) {
         try { compVid.currentTime = targetSec; } catch {}
       }
+      if (stageViewMode === "live") liveStage.seek(targetSec);
 
       // 寻找对应的 Screen
       const targetScreen = allScreensList.find(s => targetMs >= s.startMs && targetMs < s.endMs) || allScreensList[0];
@@ -2635,6 +2829,7 @@
     }
 
     function startGlobalPlayback() {
+      if (stageViewMode === "live") { clearPlaySequence(); liveStage.play(); return; }
       const spkVid = document.getElementById("stage-speaker-video");
       const playBtn = document.getElementById("btn-global-play");
       isGlobalPlaying = true;
@@ -2657,6 +2852,7 @@
           if (p && typeof p.catch === "function") p.catch(() => {});
         } catch {}
       }
+      if (stageViewMode === "live") liveStage.play();
       if (state.currentScreenObj) {
         const svgEl = document.querySelector("#svg-stage-host > svg");
         if (svgEl) {
@@ -2676,6 +2872,7 @@
       if (compVid && !compVid.paused) {
         try { compVid.pause(); } catch {}
       }
+      if (stageViewMode === "live") liveStage.pause();
       clearPlaySequence();
     }
 
@@ -2755,6 +2952,7 @@
       // 这条分支里赋值，而很多项目根本没有扬声器轨 —— 于是 currentScreenObj 永远是
       // null，「上一屏 / 下一屏」和全局播放全都没反应。
       state.currentScreenObj = st;
+      renderAnnotationsOverlay();
       let svgText = null;
 
       // 1. 优先从页面内联字典读（原型展示或离线打包时注入）
@@ -2770,7 +2968,7 @@
       if (!svgText && hasSvg && review && typeof review.readText === "function") {
         for (const cand of [`input/scenes/${pageKey}.svg`, `composition/pages/${pageKey}.svg`]) {
           try {
-            const t = await review.readText(cand);
+            const t = await review.readText(cand, { optional: true });
             if (t && t.includes("<svg")) { svgText = t; break; }
           } catch {}
         }
@@ -2786,7 +2984,7 @@
         return;
       }
 
-      setStageViewMode("svg");
+      if (stageViewMode !== "live") setStageViewMode("svg");
       host.innerHTML = sanitizeSvgForInline(svgText);
       const svgEl = host.querySelector("svg");
       if (!svgEl) return;
@@ -2821,7 +3019,7 @@
         } catch {}
       }
       updateStageSubtitle(st, curT);
-      updateScrubberDisplay(st.startMs || 0);
+      if (stageViewMode !== "live" || seekVideo) updateScrubberDisplay(st.startMs || 0);
 
       renderChoreoDeck(st, svgEl, info.items);
       wireSvgElementInteraction(svgEl);
@@ -2843,6 +3041,13 @@
     }
 
     function playWithSpeakerOrTimers(st, svgEl, startStepNum = null, isGlobal = false) {
+      if (stageViewMode === "live" && st) {
+        const cue = startStepNum === null ? null : st.cues?.[Math.max(0, startStepNum - 1)];
+        const start = (st.startMs || 0) / 1000 + (cue?.relStartSec || 0);
+        if (isGlobal) { liveStage.seek(start); liveStage.play(); }
+        else liveStage.range(start, ((st.startMs || 0) + st.durationMs) / 1000);
+        return;
+      }
       if (!st || !svgEl) return;
       clearPlaySequence();
       const items = window.VideoCraftAnimEngine.inspect(svgEl);
@@ -3085,11 +3290,19 @@
     /* ---- 舞台工具栏按钮事件（连播、完整态、焦点聚光灯、慢放、模式切换） ---- */
     document.getElementById("btn-play-screen").addEventListener("click", () => {
       const svgEl = document.querySelector("#svg-stage-host > svg");
-      if (!svgEl || !state.currentScreenObj) return;
+      if (!state.currentScreenObj) return;
+      if (stageViewMode === "live") {
+        const st = state.currentScreenObj;
+        liveStage.range(st.startMs / 1000, st.endMs / 1000); return;
+      }
+      if (!svgEl) return;
       playWithSpeakerOrTimers(state.currentScreenObj, svgEl, null);
     });
 
     document.getElementById("btn-show-all").addEventListener("click", () => {
+      if (stageViewMode === "live" && state.currentScreenObj) {
+        liveStage.seek(Math.max(state.currentScreenObj.startMs / 1000, state.currentScreenObj.endMs / 1000 - 0.04)); return;
+      }
       const svgEl = document.querySelector("#svg-stage-host > svg");
       if (!svgEl) return;
       clearPlaySequence();
@@ -3109,21 +3322,28 @@
       }
     });
 
+    let playbackRate = 1;
     document.getElementById("btn-speed-toggle").addEventListener("click", (e) => {
-      const cur = window.VideoCraftAnimEngine.getSpeedMultiplier();
-      const next = cur === 1 ? 2 : 1;
-      window.VideoCraftAnimEngine.setSpeedMultiplier(next);
-      e.currentTarget.textContent = next === 2 ? "速度: 0.5x" : "速度: 1.0x";
-      const svgEl = document.querySelector("#svg-stage-host > svg");
-      if (svgEl) {
-        window.VideoCraftAnimEngine.setStep(svgEl, state.activeSvgStep || 1, true, { focusMode: state.focusMode });
-      }
+      const rates = [1, 1.5, 2, 4, 0.5];
+      playbackRate = rates[(rates.indexOf(playbackRate) + 1) % rates.length];
+      liveStage.rate(playbackRate);
+      document.querySelectorAll("video").forEach(v => { v.playbackRate = playbackRate; });
+      window.VideoCraftAnimEngine.setSpeedMultiplier(1 / playbackRate);
+      e.currentTarget.textContent = playbackRate + "×";
+      e.currentTarget.setAttribute("aria-label", "播放速度 " + playbackRate + " 倍");
     });
 
     /* ---- 舞台交互模式切换（动效导演 / 点选元素微调 / 画布框选批注） ---- */
     document.querySelectorAll("[data-stage-tool]").forEach(btn => {
       btn.addEventListener("click", () => {
         state.stageTool = btn.getAttribute("data-stage-tool");
+        pauseGlobalPlayback();
+        if (state.stageTool === "select") {
+          setStageViewMode("svg");
+          noteStaleFree("正在调整静态源稿；提交后由 Agent 应用到工程。");
+        } else if (window.__REVIEW_DATA__?.media?.liveStage) {
+          setStageViewMode("live");
+        }
         document.querySelectorAll("[data-stage-tool]").forEach(b => b.classList.toggle("active", b === btn));
         const anno = document.getElementById("annotation-overlay");
         anno.classList.toggle("drawing", state.stageTool === "box");
@@ -3297,7 +3517,7 @@
       // 尝试加载增强审阅契约 review/review_data.json 并同步生产模式
       if (review && typeof review.readText === "function" && !window.__REVIEW_DATA__) {
         try {
-          const revText = await review.readText("review/review_data.json");
+          const revText = await review.readText("review/review_data.json", { optional: true });
           if (revText) window.__REVIEW_DATA__ = JSON.parse(revText);
         } catch {}
       }
@@ -3421,7 +3641,7 @@
         state.choreoOverrides = window.__INLINE_CHOREO__.screens;
       } else if (review && typeof review.readText === "function") {
         try {
-          const choreoDoc = JSON.parse(await review.readText(CHOREO_REL));
+          const choreoDoc = JSON.parse(await review.readText(CHOREO_REL, { optional: true }));
           if (choreoDoc && choreoDoc.screens) {
             state.choreoOverrides = choreoDoc.screens;
           }
@@ -3482,8 +3702,32 @@
               const svgEl = document.querySelector("#svg-stage-host > svg");
               if (svgEl) playWithSpeakerOrTimers(st, svgEl, null, false);
             }
-            if (compVid && compVid.getAttribute("src")) {
-              try { compVid.currentTime = st.startMs / 1000; } catch {}
+            const live = window.__REVIEW_DATA__?.media?.liveStage;
+            if (live && live.url) {
+              // 活 composition：切到活舞台、跳到这一屏起点、播起来。这就是
+              // 「工程态审阅」—— 没有渲染、没有等待，演的正是工程态的源。
+              setStageViewMode("live");
+              liveStage.seek((st.startMs || 0) / 1000);
+              liveStage.play();
+            } else if (compVid && compVid.getAttribute("src")) {
+              // 点一屏就是审这一屏：切到成片舞台、跳到这一屏起点、播到这一屏结束为止。
+              // 原来只 seek 不 play，舞台又还停在静态 SVG 页上 —— 点下去是一张静止帧。
+              const from = (st.startMs || 0) / 1000;
+              const till = (st.endMs || 0) / 1000;
+              setStageViewMode("composite");
+              try { compVid.currentTime = from; } catch {}
+              if (typeof compVid.__stopAtStepEnd === "function") {
+                compVid.removeEventListener("timeupdate", compVid.__stopAtStepEnd);
+              }
+              compVid.__stopAtStepEnd = () => {
+                if (compVid.currentTime >= till) {
+                  compVid.pause();
+                  compVid.removeEventListener("timeupdate", compVid.__stopAtStepEnd);
+                  compVid.__stopAtStepEnd = null;
+                }
+              };
+              compVid.addEventListener("timeupdate", compVid.__stopAtStepEnd);
+              compVid.play();
             }
           });
           if (!firstStepData) {
@@ -3521,7 +3765,7 @@
       if (timelineFingerprint === null) { timelineFingerprint = fingerprint(data); return; }
       if (fingerprint(data) === timelineFingerprint) {
         try {
-          const next = JSON.parse(await review.readText("review/review_data.json"));
+          const next = JSON.parse(await review.readText("review/review_data.json", { optional: true }));
           if (next && typeof next === "object") {
             // Host notifications also cover media/SVG files, which cannot be
             // verified by comparing only the timeline document. A snapshot
@@ -3548,7 +3792,7 @@
 
     async function collectRecords() {
       try {
-        const text = await review.readText(submissionsRel);
+        const text = await review.readText(submissionsRel, { optional: true });
         if (text) {
           const doc = JSON.parse(text);
           if (doc && Array.isArray(doc.records)) return doc.records;
@@ -3569,7 +3813,7 @@
         batchId: "review-" + new Date().toISOString().slice(0, 10) + "-1",
         createdAt: new Date().toISOString(),
         snapshot: window.__REVIEW_DATA__?.snapshot || loadedTimelineId,
-        playbackTimeMs: Math.round((document.getElementById("composite-video-player").currentTime ||
+        playbackTimeMs: stageViewMode === "live" ? Math.round(liveStage.currentMs) : Math.round((document.getElementById("composite-video-player").currentTime ||
           document.getElementById("stage-speaker-video").currentTime || 0) * 1000),
       };
       if (fbMode === "overall") {
@@ -3577,8 +3821,18 @@
       }
       const active = document.querySelector(".step.active .step-caption");
       return {
+        unitId: state.currentScreenObj?.unitId || window.__REVIEW_DATA__?.binding?.units?.find(u => u.sourceId === state.step && u.chapterId === state.chapter)?.unitId || null,
         chapterId: state.chapter,
         stepId: state.step,
+        animationAnchor: (() => {
+          const t = common.playbackTimeMs / 1000;
+          const cues = state.currentScreenObj?.cues || (window.__REVIEW_DATA__?.captions || [])
+            .filter(c => c.startMs >= (state.currentScreenObj?.startMs || 0) && c.startMs < (state.currentScreenObj?.endMs || 0))
+            .map(c => ({ relStartSec: c.start - (state.currentScreenObj?.startMs || 0) / 1000 }));
+          let index = -1;
+          cues.forEach((c, i) => { if (t >= (state.currentScreenObj.startMs || 0) / 1000 + (c.relStartSec || 0)) index = i; });
+          return { stepId: state.step, cueIndex: index < 0 ? null : index, timeMs: common.playbackTimeMs };
+        })(),
         stepIndex: state.stepIndex,
         caption: active ? active.textContent : "",
         durationMs: state.durationMs,
@@ -3608,6 +3862,7 @@
       await review.write(doc);
     }
 
+    document.getElementById("fb-text").addEventListener("focus", pauseGlobalPlayback);
     let saving = false;
     async function save() {
       if (saving) return;
@@ -3650,7 +3905,7 @@
         } catch (err) {
           wakeNote = `；通知没送出去（${err.message}），请回对话说一声`;
         }
-        label(`已写入 ${submissionsRel}（本批 ${records.length} 条）${hhmmss} · 收件后进 ${landsIn}${wakeNote}`, "ok");
+        label(`已写入 · ${hhmmss} · 本批 ${records.length} 条${wakeNote}`, "ok");
         if (staleNoted) noteStaleFree("这一条是在时间轴已变的提示下提交的（见上）。", { withReload: true });
         document.getElementById("fb-text").value = "";
         await clearDraft();
@@ -3685,6 +3940,25 @@
       }
     });
 
+    /* ---- 舞台提升：与初始化成败无关 ----
+     * 这一段原先挂在初始化 IIFE 的最后一句。前面任何一句 await 抛错，它就永远不执行，
+     * 页面静静停在标记给的静态 SVG 舞台上 —— 而且看门狗也不会响（attach 根本没被调用）。
+     * 舞台该显示什么只取决于**数据**，不取决于初始化跑没跑完，所以它独立执行一次；
+     * 初始化的问题另行走 noteStaleFree，页面不再无声无息。 */
+    function promoteStage() {
+      if (stageViewMode !== "svg") return;          // 已经提升过就别再动
+      const liveMedia = window.__REVIEW_DATA__ && window.__REVIEW_DATA__.media
+        ? window.__REVIEW_DATA__.media.liveStage : null;
+      if (liveMedia && liveMedia.url) {
+        setStageViewMode("live");                   // 活 composition 优先：工程态的直接体现
+      } else if (window.__REVIEW_DATA__?.mode === "speaker_only"
+                 || window.__REVIEW_DATA__?.media?.compositeVideo) {
+        setStageViewMode("composite");
+      }
+      // 都没有：留在标记给的默认（SVG 静态页），不假装能播
+    }
+    promoteStage();
+
     (async () => {
       if (!window.ReviewBridge) {
         label("没有加载到审阅桥：这个页面必须由审阅宿主打开（DSH 侧栏，或 planners-review-core 的 serve-review.mjs）。把这一行发回对话", "error");
@@ -3697,10 +3971,12 @@
         return;
       }
 
+      const live = window.__REVIEW_DATA__?.media?.liveStage;
+      if (live) { await liveStage.attach(live.url); liveStage.watchdog(); }
       submissionsRel = await resolveSubmissionsRel();
       setMode("overall");
       document.getElementById("fb-save").disabled = false;
-      label(`已连接审阅宿主（${review.transport}）· 每条反馈先落 ${submissionsRel}`, "ok");
+      label("已连接 · 草稿可恢复", "ok");
       if (typeof review.on === "function") {
         review.on("changed", () => { onHostChanged(); });
       }
@@ -3714,10 +3990,16 @@
         if (target) target.click();
         state.pendingDraftStep = null;
       }
-      if (window.__REVIEW_DATA__?.mode === "speaker_only" || window.__REVIEW_DATA__?.media?.compositeVideo) {
-        setStageViewMode("composite");
-      }
-    })();
+      promoteStage();
+    })().catch((err) => {
+      // 初始化失败必须看得见。它原先是一条静默的未处理 rejection：分屏清单少几屏、
+      // 舞台停在静态页、看门狗也不响 —— 全都看不出原因（第 33 条的同一条命）。
+      try {
+        noteStaleFree("审阅页初始化中途失败：" + (err && err.message ? err.message : String(err))
+          + " —— 清单与舞台可能不完整；把这句话发回对话，别对着半张页面提意见。");
+      } catch (e) { /* 连提示都写不出去也不能再抛 */ }
+      if (window.console) console.error("review-init-failed", err);
+    });
   </script>
 </body>
 </html>

@@ -25,7 +25,14 @@ def load(path, name):
 
 generator = load(SCRIPTS / 'generate-composition.py', 'snapshot_generator')
 review = load(SKILL / 'helpers/build_review.py', 'snapshot_review')
-store = load(SKILL.parent / 'planners-ppt-hell/scripts/workbench_store.py', 'adapter_fixture_store')
+
+# workbench_store.py 住在隔壁 Skill 里，并且自己 `from canvas_frame import …`：
+# 按路径加载它，就必须把**它自己的** scripts/ 放上 sys.path，否则连 unittest 都收不到
+# 这个文件（症状就是自检里一条 ModuleNotFoundError，整个模块被跳过而没人发现）。
+PPT_HELL_SCRIPTS = SKILL.parent / 'planners-ppt-hell/scripts'
+if str(PPT_HELL_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(PPT_HELL_SCRIPTS))
+store = load(PPT_HELL_SCRIPTS / 'workbench_store.py', 'adapter_fixture_store')
 
 
 class SnapshotTests(unittest.TestCase):

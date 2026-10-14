@@ -858,11 +858,13 @@ class ReviewPageTemplateTests(unittest.TestCase):
         self.assertIn('if (!draft) return;', self.html)
 
     def test_the_page_does_not_send_people_left_for_something_on_the_right(self):
-        """播放器提示曾说"选中左侧对应 step"，而 step 列表在右栏。"""
+        """提示不依赖会随窄栏布局变化的左右方位。"""
         start = html_start = self.html.index('class="hint"')
         hint = self.html[start:self.html.index("</div>", start)]
-        self.assertIn("右侧列表", hint)
+        self.assertIn("暂停", hint)
+        self.assertIn("批注", hint)
         self.assertNotIn("左侧对应", hint)
+        self.assertNotIn("右侧列表", hint)
 
     def test_page_reads_the_submission_path_from_the_surface(self):
         """提交文件由 surface 声明，页面读回来 —— 不在页面里再抄一份会漂移的路径。"""

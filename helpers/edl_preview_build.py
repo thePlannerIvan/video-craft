@@ -19,23 +19,25 @@ import subprocess
 import sys
 from pathlib import Path
 
-if any(a in ("-h", "--help") for a in sys.argv[1:]):
-    print(__doc__)
-    print("Usage: edl_preview_build.py <edit_dir>")
-    sys.exit(0)
+import argparse
 
-EDIT = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else Path.cwd().resolve()
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("edit_dir", nargs="?", default=".")
+parser.add_argument("--rendered-preview", type=Path,
+                    help="Explicit rendered comparison file, relative to edit_dir")
+args = parser.parse_args()
+EDIT = Path(args.edit_dir).resolve()
 
 edl = json.load(open(EDIT / "edl.json", encoding="utf-8"))
 SRC_MAP = {k: (EDIT / v).resolve() if not Path(v).is_absolute() else Path(v).resolve()
            for k, v in edl["sources"].items()}
 total = round(sum((r["end"] - r["start"]) / r.get("speed", 1.0) for r in edl["ranges"]), 2)
 
-PREVIEW_VIDEO = next(
-    (EDIT / n for n in ("final.mp4", "preview.mp4", "screen_final.mp4", "final_master.mp4")
-     if (EDIT / n).exists()),
-    None,
-)
+PREVIEW_VIDEO = None
+if args.rendered_preview is not None:
+    PREVIEW_VIDEO = (EDIT / args.rendered_preview).resolve()
+    if not PREVIEW_VIDEO.is_relative_to(EDIT) or not PREVIEW_VIDEO.is_file():
+        parser.error("--rendered-preview must be an existing file inside edit_dir")
 USE_RENDERED = PREVIEW_VIDEO is not None
 PREVIEW_KEY = "__PREVIEW__"
 

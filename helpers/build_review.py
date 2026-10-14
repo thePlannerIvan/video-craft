@@ -178,6 +178,48 @@ def _resolve_media_entry(entry, project_root: Path, edit_dir: Path) -> str | Non
     return None
 
 
+LIVE_STAGE_STATE = "edit/_engineering/live-stage.json"
+
+
+def _server_alive(url: str, timeout: float = 1.5) -> bool:
+    import urllib.error
+    import urllib.request
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            return 200 <= resp.status < 400
+    except (urllib.error.URLError, OSError):
+        return False
+
+
+def _resolve_live_stage(project_root: Path, notes: list) -> dict | None:
+    """The live composition stage — the engineering state, played, with no render.
+
+    `live_stage.py` already proved the address is the bare composition route (the
+    studio's own 200-for-anything SPA makes a status code worthless). What is left
+    to check here is that the server is **alive right now**: the state file very
+    easily outlives the session that wrote it, and pointing the page at a dead
+    address costs the author an iframe that never loads with no explanation.
+    """
+    state = project_root / LIVE_STAGE_STATE
+    if not state.is_file():
+        return None
+    try:
+        doc = json.loads(state.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        notes.append(f"{LIVE_STAGE_STATE} 读不出来 —— 这一次不进活舞台，"
+                     "重跑 helpers/live_stage.py <project> 可重建")
+        return None
+    url, server = doc.get("stageUrl"), doc.get("serverUrl")
+    if not (doc.get("ok") and url and server):
+        return None
+    if not _server_alive(server):
+        notes.append(f"活舞台服务 {server} 现在没有响应（{LIVE_STAGE_STATE} 是上一次会话留下的）"
+                     "—— 页面会退回静态舞台或合成成片。要看活的 composition，"
+                     "先跑 helpers/live_stage.py <project>")
+        return None
+    return {"url": url, "serverUrl": server, "projectId": doc.get("projectId")}
+
+
 def resolve_review_media(project_root: Path, edit_dir: Path, *,
                          allow_review_copy: bool = True,
                          max_mb: float = DEFAULT_REVIEW_COPY_MB) -> tuple[dict, list[str]]:
@@ -213,6 +255,12 @@ def resolve_review_media(project_root: Path, edit_dir: Path, *,
     media: dict[str, str | None] = {k: None for k in _MEDIA_GUESSES}
     media["transcriptSurface"] = None
     media["layersBaked"] = True
+
+    # 活 composition：审阅时直接演工程态的源，不渲任何东西。入口由
+    # helpers/live_stage.py 起服务时写进 edit/_engineering/live-stage.json；
+    # 这里只验证它**现在还活着**——状态文件很容易是上一条会话留下的，
+    # 指过去只会让页面挂一个连不上的 iframe。
+    media["liveStage"] = _resolve_live_stage(project_root, notes)
 
     if declared_at is not None and declared:
         for key in _MEDIA_GUESSES:
@@ -701,6 +749,9 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
             "speakerVideo": speaker_video_rel,
             "previewVideo": preview_video_rel,
             "compositeVideo": composite_video_rel,
+            # 活 composition 的入口（审阅页据此直接演工程态的源）。这份白名单是手写的，
+            # 新字段不会自己进来 —— 加字段时这里和 resolve_review_media 要同时改。
+            "liveStage": media.get("liveStage"),
             "transcriptSurface": (os.path.relpath(edit_dir / "edl_review_surface.json", project_root)
                                   if transcript_rel else None),
             "guideAudio": guide_audio_rel,
@@ -730,10 +781,44 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
     return review_data
 
 
+def player_bundle():
+    """Use the installed CLI's matching official player, inline for opaque hosts."""
+    import hashlib
+    import shutil
+    executable = shutil.which("hyperframes")
+    if not executable:
+        raise ValueError("Live preview requires the installed HyperFrames CLI/player")
+    package = Path(executable).resolve().parent.parent
+    bundle = package / "dist/hyperframes-player.global.js"
+    metadata = json.loads((package / "package.json").read_text(encoding="utf-8"))
+    source = bundle.read_text(encoding="utf-8")
+    if "hyperframes-player" not in source:
+        raise ValueError("Invalid HyperFrames player bundle")
+    return source, {"version": metadata["version"], "sha256": hashlib.sha256(source.encode()).hexdigest()}
+
+
 def write_review_files(project_root: Path, review_data: dict) -> tuple[Path, Path]:
     """生成 review/review_data.json 与 review/index.html。"""
     review_dir = project_root / "review"
     review_dir.mkdir(parents=True, exist_ok=True)
+
+    player_script = ""
+    if review_data.get("media", {}).get("liveStage"):
+        from live_preview import compile_preview
+        live = review_data["media"]["liveStage"]
+        live["composition"] = compile_preview(project_root, live["url"])
+        review_data["snapshot"] = hashlib.sha256((review_data["snapshot"] + live["composition"]["sourceHash"]).encode()).hexdigest()[:20]
+        existing = {item["path"] for item in review_data["sourceManifest"]}
+        for path in sorted((project_root / "composition").rglob("*")):
+            if path.is_file() and not any(part in {"node_modules", ".hyperframes", "renders", ".git"} for part in path.parts):
+                rel = path.relative_to(project_root).as_posix()
+                if rel not in existing and (path.suffix in {".html", ".js", ".css", ".json"} or rel in live["composition"]["assets"].values()):
+                    review_data["sourceManifest"].append(snapshot_file(path, project_root))
+        source, provenance = player_bundle()
+        review_data["media"]["liveStage"]["player"] = provenance
+        # An HTML parser ends script blocks even inside JavaScript string literals.
+        source = source.replace("</script", "<\\/script")
+        player_script = '<script id="hyperframes-player-runtime">' + source + '</script>\n'
 
     # 1. 写入 review_data.json
     data_path = review_dir / "review_data.json"
@@ -763,7 +848,7 @@ def write_review_files(project_root: Path, review_data: dict) -> tuple[Path, Pat
         "  </script>\n"
     )
     if "</head>" in template_content:
-        template_content = template_content.replace("</head>", f"{inline_script}</head>", 1)
+        template_content = template_content.replace("</head>", f"{inline_script}{player_script}</head>", 1)
 
     index_path.write_text(template_content, encoding="utf-8")
 

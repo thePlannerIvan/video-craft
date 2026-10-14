@@ -20,12 +20,35 @@ Video Craft 把已经确定的内容做成可播放、可审阅、可返修的�
 
 念稿确认仍回 `video-idea-system`；静态画面审阅仍回 `planners-ppt-hell`。不要用 Craft 的两个面替代上游决定。
 
+两个面的顺序是**先剪点、后画面**：逐字剪辑面定"说什么、留哪句"，确认之后才做动效与合成面。剪点一动，画面锚点、字幕、composition 全部要重出，反过来做就是白做。
+
+## 工程预览与最终交付
+
+默认先做可修改的工程。**剪辑选择由 EDL 表达，动画由 composition 表达；两者都不靠反复渲染 MP4 才能审阅。**
+
+| 工作 | 时间与画面的主人 | 什么时候渲染 |
+|---|---|---|
+| 纯口播删词、气口、改字 | 逐字剪辑面按 EDL 映射源媒体 | 剪点确认后的正式底片 |
+| SVG 动画、录屏、口播配画面 | HyperFrames 官方播放器播放 composition；播放、定位、倍速、媒体同步和 clip 显隐都交给它 | 画面确认后的最终输出 |
+| 已有合成片返修 / 外部透明层 | 保留已有媒体审阅与叠层工具 | 必要的外部素材转换或最终合成 |
+
+`live_stage.py` 启动 HyperFrames 编译服务；`build_review.py` 将编译后的工程、官方播放器和素材清单装进审阅快照。浏览器通过 review-core 取素材，在官方播放器内部播放，**不从 DSH 的不透明 iframe 访问本机 HTTP 舞台**。改源后重新 build、刷新即可看，不渲视频。快照中记录播放器版本与工程哈希；不能把旧快照说成热更新。
+
+声音清理、VFR 转 CFR 或浏览器不支持的媒体转码属于素材准备，可以做并缓存；它们不应变成每次修改动画都重跑的前置。工程预览不冒充最终音画验收。实测时长、字幕锁、来源指纹与正式交付核验继续保留。
+
+### 验收判据
+
+- 改剪点后源媒体预览采用新 EDL；改动效后重建审阅采用新 composition，无需先渲整片。
+- DSH 沙箱和公共本地宿主均能显示、定位、连续播放、调速；声音、录屏与字幕对应同一播放头。
+- 分屏、动画时间、批注、草稿、正式提交和收件都能追溯到当前快照。黑屏提示、握手成功、静态截图均不等于播放验收。
+- 交付仍核验真实文件；未完成的宿主实测明确列出，不能用单元测试数量替代。
+
 ## 入口判断
 
 | 输入 | 入口 | 不要跳过 |
 |---|---|---|
 | 内容包，没有录音 | 接手并写制作方案；可做 `planned` 预演 | 不把估时当成实测时间，不生成假字幕 |
-| 原始视频或录音，需要取舍 | 转写 → EDL → 逐字剪辑面 → 正式底片 | 不直接手改成片后再猜字幕时间 |
+| 原始视频或录音，需要取舍 | 转写 → EDL → 源媒体逐字预览 → 确认后输出 | 不直接手改成片后再猜字幕时间 |
 | 已剪音频 + SRT + SVG | 核版本 → 导入 SVG → 对齐时间 → 动效与合成 | SRT 只能标为 `srt-import`，不能冒充 EDL 实测 |
 | 已有项目或返修反馈 | 读项目依据和收件回执 → 只重建受影响部分 | 不在旧审阅页上继续写新反馈 |
 
@@ -117,22 +140,22 @@ DSH 有 `review_open` 时，把返回的 **surface 绝对路径**交给 `review_
 
 **工具与反馈边界**：播放器、时间轨、选词、改字、停顿数值属于页面工具；整片备注和“请 Agent 应用剪点”属于反馈。页面写 `selections.json`，Agent 收件后才运行 `apply_selection.py`。
 
-**完成标准**：提交文件真实写入；没有桥时页面明确显示未连接；Agent 先读取提交再应用选择；应用后重新渲染并重建下游产物。
+**完成标准**：提交文件真实写入；没有桥时页面明确显示未连接；Agent 先读取提交再应用选择；应用后重建逐字预览；需要视觉制作时更新工程时间轴和字幕，最终输出时再做实测核验。
 
-### 5. 正式底片与字幕
+### 5. 工程时间与字幕；确认后输出底片
 
 **渲染不是「能开始干活」的前提。** 想让作者先看到东西，先出工程态：
 
 ```bash
 python3 "<craft>/helpers/duration_plan.py" "<edit>"     # 解析预演（帧量化，projected）
-python3 "<craft>/helpers/preview_layers.py" "<edit>"    # 每个 alpha 层一份 WebM(VP9+alpha)
+# 已有外部透明视频层才需要 preview_layers.py；HyperFrames 动画直接预览工程。
 ```
 
 `projected` 记录可以支撑第 6 步的时间脊柱、字幕和审阅页，但**不是交付证据**——
 `_edl.render_record` 默认跳过它，`verify_delivery.py` 永远拿真实文件对真实渲染。
 交付前仍必须走下面这条渲染路径并重建字幕。
 
-正式底片使用会记录实测段时长的渲染路径：
+剪点确认且需要正式底片时，使用会记录实测段时长的渲染路径；这不是开始制作画面的前置：
 
 ```bash
 python3 "<craft>/helpers/render.py" "<edit>/edl.json" -o "<edit>/cut.mp4" --preview --no-subtitles
@@ -184,7 +207,7 @@ python3 "<craft>/helpers/import_srt_timeline.py" "<project>" \
 
 静态 SVG 必须来自第 1 步导入的项目内副本。沿用 `data-step`、`data-anim`、元素 `id` 和画面原有尺寸；不要把页面截图当成可编辑 SVG。
 
-- HyperFrames：读 `$hyperframes`。整片走 `visual/scripts/generate-composition.py`；单层动效写一份 composition，再用 `helpers/render_layer.py` 一次渲出两份载体（`.mov` 交付合成、`.webm` 预览叠层），跑之前先 `hyperframes check`。
+- HyperFrames：读 `$hyperframes`。整片走 `visual/scripts/generate-composition.py`；单层动效也先在 composition 中预览。只有最终合成需要独立透明视频，才用 `helpers/render_layer.py` 输出 `.mov`；兼容旧媒体叠层面时可同时输出 `.webm`。预览与渲染前先 `hyperframes check`。
   **动效的源是 composition，不是那段视频**：层要能改、能预览，才谈得上「先审后渲」。
 - Manim：只有严密数学或技术动画才调用 `$manim-video`。
 - 自定义逐帧：读 `references/frame-animation-pipeline.md`。
@@ -198,41 +221,23 @@ python3 "<craft>/helpers/import_srt_timeline.py" "<project>" \
 
 ### 8. 动效与合成审阅
 
-审阅媒体从哪来是显式声明的，不按文件名猜：`<project>/review/media.json`。缺这份文件时
-会退回按名字猜并在输出里明说。复合片超过 80MB 时自动出一份**保留时间与原生分辨率**的
-审阅副本（侧栏传整份文件，263MB 的主片不该整份交给它）；超过 200MB 且没有切片时会建议
-改用本地宿主。
-
-页面还能**自己合成覆盖层**：`media.layers[].previewFile`（WebM VP9+alpha，浏览器唯一能
-合成的带 alpha 载体）让层直接叠在成片上，所以改一层不必重渲整片；`media.slices` 让页面
-只加载当前步的窗口，而不是整片。没有可合成载体的层会明说，不假装。
-
-构建统一数据和审阅面：
+先读 `references/review-ui.md`。通常调用：
 
 ```bash
-python3 "<craft>/helpers/build_review.py" "<project>" --mode auto
+python3 "<craft>/helpers/live_stage.py" "<project>" --json
+python3 "<craft>/helpers/build_review.py" "<project>" --mode auto --slices off
 python3 "<craft>/helpers/review_surface.py" "<project>" --surface-only
 ```
 
-改这一页之前先读 `references/review-ui.md`（审阅页硬约定：媒体从哪来、舞台模式、字幕层、层合成）。这三处**历史上反复返工**，撞到先对照 `GOTCHAS.md` #39 / #44 / #53，别当成新问题重新设计。
+DSH 有 `review_open` 时传返回的 surface 绝对路径；没有时去掉 `--surface-only`，由 review-core 启动本地宿主。两种宿主使用同一份审阅页。
 
-页面结构固定为：左侧单元导航；中央当前单元 / 视频 / SVG 舞台；底部细时间轨与分句卡点；右侧上部历史、下部“反馈给 Agent”。
+官方播放器承担播放、暂停、拖动、倍速、单屏播放和屏末定位。字幕与反馈位置读取它的播放头；不要同时启动旧 SVG 定时器或隐藏视频。逐动画反馈以分屏、播放时间及对应分句锚点记录；框选批注先暂停。点选调整切换到静态源稿编辑，调整作为请求随反馈提交，返回预览后看当前真实工程，不能把未应用的草稿说成已生效。
 
-**页面工具**：播放、1x / 2x / 4x、上一屏 / 下一屏、字幕开关、分句卡点、动效模板 / 焦点 / 速度 / 角度、点选文字或元素、框选批注、攒批。
+`review/media.json` 显式声明已有成片、底片或透明视频层；这些兼容入口继续保留。工程含图片、声音或录屏时必须来自项目内资产；`live_preview.py` 拒绝外部资源和越界路径。桥传素材字节，播放器层使用可跨不透明源的媒体载体；不要把父帧的 `blob:null` URL 直接给子帧。大型源媒体先准备可播放的审阅代理，不要把数百 MB 原片反复传进侧栏。
 
-**页面反馈**：整片意见和当前 `unitId` 意见分开；工具改动先成为草稿，点击提交才调用 `review.write()`；需要 Agent 处理时才调用 `review.wake()`。
+`review.draft()` 保存草稿；`review.write()` 正式落提交文件；有待处理意见时再 `review.wake()`。真实回执成功后才报告已写入，通知结果与保存结果分别显示。页面不保存时不唤醒模型。改 composition、剪点、字幕或画面后重新 build review。
 
-**桥的调用语义**：
-
-- `ReviewBridge.connect()`：取得当前 surface 的连接；失败必须显示失败。
-- `review.asset(rel)`：`rel` 相对 surface 的 `dir`，不相对 HTML 当前目录猜路径。
-- `review.readText(rel)`：读取 JSON / 时间轴 / 当前提交文件。
-- `review.draft(payload)`：保存未提交草稿，不代表已提交，不触发收件。
-- `review.write(payload)`：正式提交；成功后才显示“已写入”。
-- `review.wake(payload)`：只负责通知 Agent 处理；通知未核对不能显示“已送达”。
-- `review.command(name, payload)`：只有 surface 声明并且宿主提供受限后端时才调用；不能把任意命令当成 command。
-
-**完成标准**：页面使用当前 `review_data.json`；资产可加载；每条提交能回到稳定 `unitId`；草稿、正式提交、唤醒和失败状态分别显示；不把页面打开或本地草稿当成用户批准。
+Studio 是可选的完整编辑入口，`studio_notes.py` 与 studio hook 保留其意见收集能力；DSH 内的结构化反馈直接走 review-core，不依赖剪贴板。
 
 ### 9. 收件、返修与重建
 
@@ -244,8 +249,8 @@ python3 "<craft>/helpers/review_inbox.py" "<project>"
 
 检查收据中的 `imported`、`skipped`、`rejected`。有 rejected 时先修复记录或重建快照，不能假装收件完成。
 
-- 逐字反馈：读 `selections.json`，运行 `apply_selection.py`，再渲染底片、重建字幕和时间轴。
-- 动效 / 合成反馈：读 `feedback/<chapterId>.jsonl` 和记录中的 `adjustments`，修改 composition / SVG 源，再重新 render。
+- 逐字反馈：读 `selections.json`，运行 `apply_selection.py`，重建逐字预览、工程字幕与时间轴；正式底片留到确认后输出。
+- 动效 / 合成反馈：读 `feedback/<chapterId>.jsonl` 和记录中的 `adjustments`，修改 composition / SVG 源，重新 build review 并刷新；确认后再 render。
 - 元素微调若要写回源 SVG，必须核对 source snapshot / version；源已改变时拒绝覆盖，交 Agent 决定如何合并。
 - 改变任何时间、页面或媒体绑定后，重新运行 `build_review.py`，让旧 snapshot 失效。
 
@@ -260,7 +265,7 @@ python3 "<craft>/helpers/state_fingerprint.py" capture "<project>"   # 交付自
 
 `check_parity.py` 先跑：它断言 spec（`choreography.json`）里的每个效果 kind 在 composition 与审阅页两条路径都有实现、每个 selector 在目标页面上真的命中元素。这两类失配**不会让 `hyperframes check` 失败、也不会让页面报错**，只会让某一步静默不演 —— 交付前必须过。
 
-**渲染前与出交付前各跑一次 `state_fingerprint.py verify`**：它把交付与**当前**工程态逐项比对（composition、`choreography.json`、各页 store revision、音轨、字幕、成品哈希），不一致即判**交付过期**并拒绝继续 —— 渲染前跑是拒绝从过期工程态渲出成品，交付前跑是拒绝发过期成品。工程态的渲染与预览一律落 `edit/_engineering/`，**不进 `edit/` 根**，免得被当成当前底片（GOTCHAS #56）。
+**已有交付先用 `state_fingerprint.py verify` 判断是否过期；改源后过期正是需要重新输出的信号，不拦住新渲染。** 重新输出并核验后 `capture` 新指纹，发送前再 `verify`，不一致就不能发送。工程态的渲染与预览一律落 `edit/_engineering/`，**不进 `edit/` 根**，免得被当成当前底片（GOTCHAS #56）。
 
 核验实际成片，不核验预览假象：声音、首 / 中 / 尾画面、字幕、关键动效、alpha、画幅、帧率、时长和交付文件名。交付中明确：有声 / 无声、透明 / 不透明、字幕烧录 / 外挂，以及仍未完成的事项。
 
@@ -296,9 +301,17 @@ python3 "<craft>/helpers/state_fingerprint.py" capture "<project>"   # 交付自
 从 Skill 根运行：
 
 ```bash
-PYTHONPATH=helpers python3 -m unittest discover -s tests -p 'test_*.py'
+PYTHONPATH=helpers python3 -m unittest discover -s tests -p 'test_*.py'   # 必须 0 error
+python3 helpers/check_review_template.py                                  # 审阅页七条静态不变量
+python3 helpers/check_review_template.py --prove                          # 证明那七条不是空洞判据
 node "<review-core>/evals/run.mjs"
 python3 -m unittest discover -s "<review-core>/evals" -p 'test_*.py'
 ```
 
-真实项目至少走一遍：`build_review → surface-only → 页面加载 → 提交带 unitId 的反馈 → review_inbox → 修改源 → 重新 build review`。只有这条链通过，才报告审阅接缝可用。
+第一条必须**全绿**，不是"大部分通过"。这个仓库的自检曾经常年带着两个 ERROR 在跑 —— `test_interactive_ui.py` 连 import 都失败（模块被删掉了）、`test_snapshot_input.py` 找不到隔壁 Skill 的模块而被静默跳过 —— 于是没人看结果，同一个审阅页文件连着返工三轮（GOTCHA #57）。有 skip 是允许的（浏览器用例需要 `VIDEO_CRAFT_BROWSER_TESTS=1` 与 playwright，见下），但 skip 必须写在案上，不能当成通过。
+
+`check_review_template.py` 是**静态**的：它钉住七类机械缺陷不会静默回来，**不证明页面能跑** —— 新的类仍然要人撞到。别把绿灯读成"审阅页已验证"。同样的道理，浏览器用例（`VIDEO_CRAFT_BROWSER_TESTS=1`）默认不跑，所以舞台的**握手**目前只由 `tests/test_composition_embed_bridge.py` 的协议测试间接保证。
+
+真实项目至少走一遍：`build_review → surface-only → 页面加载 → 提交带 unitId 的反馈 → review_inbox → 修改源 → 重新 build review`。只有这条链通过，才报告审阅接缝可用。审阅时画面走**工程态**（活 composition，见「两个态」）：先 `live_stage.py` 起服务，再 `build_review.py`。
+
+浏览器验收入口与覆盖边界见 `references/review-ui.md`；新增传输回归在 `tests/test_live_preview.py`。

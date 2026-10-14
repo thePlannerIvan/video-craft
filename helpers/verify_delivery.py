@@ -88,6 +88,59 @@ def measured_total(edit_dir: Path) -> tuple:
     return round(sum(float(x) for x in entry["durations"]), 3), tag, how
 
 
+
+def audio_fingerprint(path: Path) -> str:
+    """把第 0 条音轨解成 PCM 再哈希 —— 用于断言「多支成片共用同一条音轨」。
+
+    比对编码参数不够：码率/时长相同也可能来自两次不同处理。解到 PCM 再哈希才是同一条轨道。
+    """
+    import hashlib
+    import subprocess
+    p = subprocess.run(["ffmpeg", "-v", "error", "-i", str(path), "-map", "0:a:0",
+                        "-f", "s16le", "-ac", "2", "-ar", "48000", "-"],
+                       capture_output=True)
+    return hashlib.sha256(p.stdout).hexdigest() if p.returncode == 0 and p.stdout else ""
+
+
+def check_deliverable_specs(project: Path, deliver_dir: Path,
+                            hard: list, warn: list, report: dict) -> None:
+    """交付规格门禁：与源音轨的声道/采样率一致、成品之间等长、共用同一音轨。
+
+    为什么要有：本轮把 24 段音轨处理成了单声道（源是立体声）✗，而**没有任何检查发现** ——
+    声道布局这种东西在最终交付上是听得出、看不出的。
+    """
+    src = next(iter(sorted((project / "input").glob("audio*.*"))), None)
+    src_ch = src_rate = None
+    if src and src.is_file():
+        a = next((x for x in probe(src)["streams"] if x["codec_type"] == "audio"), None)
+        if a:
+            src_ch, src_rate = a.get("channels"), int(float(a.get("sample_rate") or 0))
+        report["source_audio"] = {"file": src.name, "channels": src_ch, "sample_rate": src_rate}
+
+    specs: dict = {}
+    for v in sorted(deliver_dir.glob("*.mp4")):
+        info = probe(v)
+        a = next((x for x in info["streams"] if x["codec_type"] == "audio"), None) or {}
+        specs[v.name] = {"duration_s": round(float(info["format"]["duration"]), 3),
+                         "channels": a.get("channels"),
+                         "sample_rate": int(float(a.get("sample_rate") or 0)),
+                         "audio_sha256": audio_fingerprint(v)[:16]}
+        if src_ch and a.get("channels") != src_ch:
+            hard.append(f"{v.name} 声道数 {a.get('channels')} != 源音轨 {src_ch} ——"
+                        f"处理音轨时不要改变声道布局（单声道化过就听不出来但已经是残次）")
+        if src_rate and int(float(a.get("sample_rate") or 0)) != src_rate:
+            warn.append(f"{v.name} 采样率 {a.get('sample_rate')} != 源 {src_rate}")
+    report["deliverables"] = specs
+
+    if len(specs) >= 2:
+        ds = [x["duration_s"] for x in specs.values()]
+        if max(ds) - min(ds) > 0.05:
+            hard.append(f"成品之间时长不一致：{ {k: v['duration_s'] for k, v in specs.items()} }")
+        hashes = {x["audio_sha256"] for x in specs.values() if x["audio_sha256"]}
+        if len(hashes) > 1:
+            hard.append("成品之间音轨不同 —— 多支成片必须共用同一条音轨")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("edit_dir", type=Path)
@@ -122,6 +175,9 @@ def main() -> int:
         print(f"  音频 {streams['audio']['codec_name']} {streams['audio']['channels']}ch")
     else:
         hard.append("成片没有音频流")
+
+    if args.deliver_dir:
+        check_deliverable_specs(edit_dir.parent, args.deliver_dir.resolve(), hard, warn, report)
 
     measured, tag, how = measured_total(edit_dir)
     if measured is not None:

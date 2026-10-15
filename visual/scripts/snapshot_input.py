@@ -131,7 +131,7 @@ class Snapshot:
 
     def binding(self) -> dict:
         return {'path': str(self.path), 'sha256': self.digest,
-                'snapshot_id': self.data['snapshot_id'],
+                'snapshot_id': self.data['snapshot_id'], 'order': list(self.order),
                 'upstream': self.data['upstream'], 'screens': self.fingerprints(),
                 'content_binding': self.data.get('content_binding'),
                 'content_deltas': {key: page.get('content_delta', []) for key, page in self.pages.items()},
@@ -210,8 +210,12 @@ def load_snapshot(path: Path) -> Snapshot:
     if not isinstance(declarations, list) or any(not isinstance(record, dict) for record in declarations):
         raise SnapshotError('Invalid original visual-plan screen declarations')
     declared = [record.get('screen_id', record.get('blueprint_id')) for record in declarations]
-    if len(set(declared)) != len(declared) or set(declared) != set(order):
-        raise SnapshotError('Snapshot screen identities differ from original visual plan')
+    if len(set(declared)) != len(declared):
+        raise SnapshotError('Duplicate original visual-plan screen identity')
+    delta = {'added': [key for key in order if key not in declared],
+             'removed': [key for key in declared if key not in order]}
+    if any(delta.values()) and (data.get('collection_delta') != delta or data['content_binding'] != 'changed_needs_check'):
+        raise SnapshotError('Snapshot screen identities differ from original visual plan without collection_delta')
     for name, value in upstream.items():
         if name.endswith('_snapshot') and name not in ('visual_plan_snapshot', 'script_snapshot'):
             checked_file(root, value, upstream.get(name[:-9] + '_sha256'))
@@ -268,7 +272,25 @@ def invalidation(previous: dict, current: Snapshot) -> dict:
     removed = sorted(set(old) - set(new))
     steps = [key for key in changed if old.get(key, {}).get('steps') != new[key]['steps']
              or old.get(key, {}).get('elements') != new[key]['elements']]
-    return {'static_screens': changed, 'animation_screens': steps, 'removed_screens': removed,
+    order_changed = bool(previous and previous.get('order') != current.order)
+    return {'order_changed': order_changed, 'timeline_needs_review': order_changed or bool(removed),
+            'static_screens': changed, 'animation_screens': steps, 'removed_screens': removed,
             'content_review_screens': [key for key in current.order if current.pages[key].get('content_delta')],
             'upstream_changed': bool(previous and previous.get('upstream') != current.data['upstream']),
             'audio_retimed': False, 'reverse_sync': False}
+
+
+def validate_timeline_order(timeline: dict, snapshot: Snapshot | None):
+    """Snapshot owns scene order; timing remains owned by the audio/timeline producer."""
+    if snapshot is None:
+        return
+    steps = [step for chapter in timeline.get('chapters', []) for step in chapter.get('steps', [])
+             if step.get('sourcePageKey')]
+    sequence = []
+    for step in sorted(steps, key=lambda step: step.get('startMs', 0)):
+        key = step['sourcePageKey']
+        if not sequence or sequence[-1] != key:
+            sequence.append(key)
+    if sequence != snapshot.order:
+        raise SnapshotError(f'timeline_order_changed: timeline uses {sequence}, snapshot requires {snapshot.order}. '
+                            'Rebuild scene timing from snapshot.order and align recorded audio before rendering.')

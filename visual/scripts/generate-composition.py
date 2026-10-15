@@ -71,6 +71,9 @@ def load_layout(project: Path) -> str:
     return layout if layout in LAYOUTS else DEFAULT_LAYOUT
 
 
+from snapshot_input import resolve_snapshot, validate_timeline_order
+
+
 def load_picture_pages(project: Path):
     """(page dir, package root) for the static SVG screens, or (None, None).
 
@@ -102,6 +105,7 @@ def generate(project: Path, theme_id: str, audio: Path | None,
     total_ms = timeline["totalDurationMs"]
     total_s = total_ms / 1000.0
     # Resolve the exact snapshot before any output or audio copy is written.
+    validate_timeline_order(timeline, resolve_snapshot(project))
     page_dir, asset_root = load_picture_pages(project)
     tokens = load_theme_tokens(theme_id)
 
@@ -352,6 +356,7 @@ AUDIO_RE = re.compile(r'<audio id="narration" data-start="([\d.]+)" data-duratio
 
 def verify(project: Path) -> int:
     timeline = json.loads((project / "timeline" / "timeline.json").read_text(encoding="utf-8"))
+    validate_timeline_order(timeline, resolve_snapshot(project))
     html_path = project / "composition" / "index.html"
     if not html_path.exists():
         print(f"x composition not found: {html_path}")

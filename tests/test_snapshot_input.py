@@ -9,8 +9,9 @@ from pathlib import Path
 
 SKILL = Path(__file__).resolve().parents[1]
 SCRIPTS = SKILL / 'visual/scripts'
+sys.path.insert(0, str(SKILL / "helpers"))
 sys.path.insert(0, str(SCRIPTS))
-from snapshot_input import SnapshotError, resolve_snapshot, sha256, asset_records
+from snapshot_input import SnapshotError, resolve_snapshot, sha256, asset_records, invalidation
 import import_svg_page as pages
 import auto_choreography as choreography
 
@@ -44,7 +45,7 @@ class SnapshotTests(unittest.TestCase):
         (self.project / 'timeline').mkdir(parents=True)
         timeline = {'fps': 30, 'totalDurationMs': 8000, 'chapters': [{'id': 'ch', 'steps': [
             {'id': key, 'sourcePageKey': key, 'startMs': start, 'durationMs': 4000, 'caption': 'original'}
-            for key, start in [('beat-01', 0), ('beat-02', 4000)]]}]}
+            for key, start in [('beat-02', 0), ('beat-01', 4000)]]}]}
         self.timeline = self.project / 'timeline/timeline.json'
         self.timeline.write_text(json.dumps(timeline))
         self.timeline_bytes = self.timeline.read_bytes()
@@ -116,6 +117,33 @@ class SnapshotTests(unittest.TestCase):
         manifest = json.loads((self.project / 'composition/pages/manifest.json').read_text())
         self.assertEqual(manifest['snapshot']['sha256'], resolve_snapshot(self.project).digest)
         self.assertEqual(self.timeline.read_bytes(), self.timeline_bytes)
+
+    def test_order_only_change_invalidates_timeline_and_rejects_stale_composition(self):
+        root, data = self.snapshot()
+        previous = resolve_snapshot(self.project).binding()
+        data['order'].reverse()
+        self.write_manifest(root, data)
+        current = resolve_snapshot(self.project)
+        result = invalidation(previous, current)
+        self.assertEqual(result['static_screens'], [])
+        self.assertTrue(result['order_changed'])
+        self.assertTrue(result['timeline_needs_review'])
+        with self.assertRaisesRegex(SnapshotError, 'timeline_order_changed'):
+            generator.generate(self.project, 'midnight-press', None)
+        self.assertFalse((self.project / 'composition/index.html').exists())
+
+    def test_explicit_collection_delta_accepts_removed_screen(self):
+        root, data = self.snapshot()
+        data['order'] = ['beat-02']
+        data['pages'] = [p for p in data['pages'] if p['page_key'] == 'beat-02']
+        data['collection_delta'] = {'added': [], 'removed': ['beat-01']}
+        data['content_binding'] = 'changed_needs_check'
+        self.write_manifest(root, data)
+        self.assertEqual(resolve_snapshot(self.project).order, ['beat-02'])
+        data['collection_delta']['removed'] = []
+        self.write_manifest(root, data)
+        with self.assertRaisesRegex(SnapshotError, 'collection_delta'):
+            resolve_snapshot(self.project)
 
     def test_all_consumers_reject_mutated_svg_even_with_legacy_fallback(self):
         root, _ = self.snapshot()
@@ -283,6 +311,34 @@ class SnapshotTests(unittest.TestCase):
                 f'<image href="../../{"nested.svg" if nested else "image.png"}"/><g id="{key}-step" data-step="1">'
                 f'<text id="{key}-text">original</text></g></svg>')
         return ppt, live_asset
+
+    def test_store_reorder_and_collection_reach_video_consumers(self):
+        ppt, _ = self.actual_store_project()
+        result = store.commit(ppt, {'op':'order','operation_id':'drag_order',
+            'base_order':['beat-01','beat-02'],'order':['beat-02','beat-01']}, browser=True)
+        self.assertTrue(result['ok'])
+        frozen = store.snapshot(ppt, 'video')
+        (self.project / '.pages').write_text(frozen['path'])
+        directory, _ = pages.resolve_pages(self.project)
+        self.assertEqual(pages.list_pages(directory), ['beat-02','beat-01'])
+        generator.generate(self.project, 'midnight-press', None)
+        candidate = ppt / 'extra.svg'
+        candidate.write_text('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080"><text>Extra</text></svg>')
+        added = store.commit(ppt, {'op':'add_page','operation_id':'add_extra',
+            'candidate':str(candidate),'page':{'page_key':'extra','title':'Extra'},
+            'base_order':['beat-02','beat-01']})
+        self.assertTrue(added['ok'])
+        removed = store.commit(ppt, {'op':'delete_page','operation_id':'delete_beat',
+            'page_key':'beat-01','base_revision':store.get_page(ppt,'beat-01')['revision'],
+            'base_order':['beat-02','beat-01','extra']})
+        self.assertTrue(removed['ok'])
+        frozen = store.snapshot(ppt, 'video')
+        (self.project / '.pages').write_text(frozen['path'])
+        parsed = resolve_snapshot(self.project)
+        self.assertEqual(parsed.order, ['beat-02','extra'])
+        self.assertEqual(parsed.data['collection_delta'], {'added':['extra'],'removed':['beat-01']})
+        with self.assertRaisesRegex(SnapshotError, 'timeline_order_changed'):
+            generator.generate(self.project, 'midnight-press', None)
 
     def test_actual_store_snapshot_with_text_change_and_byte_pinned_image(self):
         ppt, live_asset = self.actual_store_project()

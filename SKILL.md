@@ -75,7 +75,7 @@ python3 "<craft>/visual/scripts/snapshot_input.py" "<project>" --audit
 拿到 PPT Hell snapshot 后导入项目内资产：
 
 ```bash
-python3 "<craft>/visual/scripts/import_svg_page.py" "<project>" --pages "<ppt-project>" --audit --prove --emit --json
+python3 "<craft>/visual/scripts/import_svg_page.py" "<project>" --pages "<snapshot.json绝对路径>" --audit --prove --emit --json
 ```
 
 **输入**：上游交接包、作者决定、脚本、visual-plan、snapshot、SVG、素材。

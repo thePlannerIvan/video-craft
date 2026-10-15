@@ -235,3 +235,10 @@ sha256 `796ff3f2…` → 按文档那一步用新模板重生成（`15418868…`
 ## 2026-10-15 · HyperFrames 成为新工程唯一运行时
 
 旧记录中提到的 `VideoCraftAnimEngine.registerGsapTimeline()` 属于历史兼容实现，不再是新 HyperFrames composition 的主时间轴方案。新工程由官方 player/runtime 拥有时间、媒体和 clip 显隐；`VideoCraftAnimEngine` 只在旧 SVG 审阅路径中保留。需要即时参数控件时，composition 必须实现 `references/hyperframes-review-adapter.md` 的可选适配器；否则统一走反馈、改源、重建审阅。
+
+## 2026-10-15 · 页序与页面集合的快照交接
+
+| 做了什么 | 为什么 | 影响了哪些 module | 删了什么 |
+|---|---|---|---|
+| 快照 binding 增加 `order`；invalidation 增加 `order_changed` / `timeline_needs_review`，合成前校验时间线页序 | PPT 拖动顺序必须真正传递到视频生产；已有录音时间绑定不能被静默重排 | `visual/scripts/snapshot_input.py`、`visual/scripts/generate-composition.py`、`SKILL.md` | 把实时 PPT 项目目录当作视频输入的模糊示例 |
+| 原 visual-plan 与工作台集合不一致时要求显式 `collection_delta` 与内容复核 | 新增/删除页需要显式承接，避免下游误把旧脚本当成完整页面集合 | `snapshot_input.py` | 集合变化的隐式接受 |

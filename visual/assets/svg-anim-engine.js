@@ -1,4 +1,7 @@
 /**
+ * LEGACY SVG REVIEW COMPATIBILITY ONLY.
+ * New HyperFrames compositions own their timeline and do not call this engine.
+ *
  * VideoCraftAnimEngine v4 — Camera Rig, Focus Spotlight & Product UI Choreography Engine
  *
  * Upgrades v3 ("static poster step-by-step appear") to v4 ("Camera + Spotlight + 12 Primitives + Sub-cue Sync"):
@@ -19,9 +22,10 @@
  *   4. Per-step Choreography Overrides (`setChoreography(svgRoot, map)`):
  *      Allows runtime/review-page tweaking of `{ anim, camera, dimPrev, subDelayMs, startSec }` with 0ms rebuild.
  *
- * Dual-mode deterministic execution:
- *   - Browser live preview (WAAPI): `VideoCraftAnimEngine.setStep(svgRoot, stepIndex, true, options)`
- *   - HyperFrames render (GSAP):    `VideoCraftAnimEngine.registerGsapTimeline(gsap, tl, svgRoot, stepConfigMap)`
+ * Legacy SVG execution:
+ *   - Browser review preview (WAAPI): `VideoCraftAnimEngine.setStep(svgRoot, stepIndex, true, options)`
+ *   - Historical composition integration is retained only for old projects; new HyperFrames
+ *     compositions must own their seek-safe timeline and official-player integration.
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {

@@ -230,3 +230,8 @@ sha256 `796ff3f2…` → 按文档那一步用新模板重生成（`15418868…`
 ## 2026-10-15 · 审阅页反馈卡与工程动效抽屉边界
 
 移除反馈卡和状态提示左侧的装饰色条，改用 token 边界、轻阴影和更宽内边距，降低侧栏的视觉噪声。分步动效抽屉保留旧 SVG 的参数微调能力；HyperFrames 工程预览下改为明确说明播放器已接管分步显示，并隐藏会产生第二套时钟的静态参数行。新工程仍通过本屏连播、最终态、定位和倍速控制审阅；原语、镜头和子延迟回到 composition 的 `choreography.json` 修改后重建。
+
+
+## 2026-10-15 · HyperFrames 成为新工程唯一运行时
+
+旧记录中提到的 `VideoCraftAnimEngine.registerGsapTimeline()` 属于历史兼容实现，不再是新 HyperFrames composition 的主时间轴方案。新工程由官方 player/runtime 拥有时间、媒体和 clip 显隐；`VideoCraftAnimEngine` 只在旧 SVG 审阅路径中保留。需要即时参数控件时，composition 必须实现 `references/hyperframes-review-adapter.md` 的可选适配器；否则统一走反馈、改源、重建审阅。

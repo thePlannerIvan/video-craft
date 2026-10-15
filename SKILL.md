@@ -32,7 +32,7 @@ Video Craft 把已经确定的内容做成可播放、可审阅、可返修的�
 | SVG 动画、录屏、口播配画面 | HyperFrames 官方播放器播放 composition；播放、定位、倍速、媒体同步和 clip 显隐都交给它 | 画面确认后的最终输出 |
 | 已有合成片返修 / 外部透明层 | 保留已有媒体审阅与叠层工具 | 必要的外部素材转换或最终合成 |
 
-`live_stage.py` 启动 HyperFrames 编译服务；`build_review.py` 将编译后的工程、官方播放器和素材清单装进审阅快照。浏览器通过 review-core 取素材，在官方播放器内部播放，**不从 DSH 的不透明 iframe 访问本机 HTTP 舞台**。改源后重新 build、刷新即可看，不渲视频。快照中记录播放器版本与工程哈希；不能把旧快照说成热更新。
+`live_stage.py` 启动 HyperFrames 编译服务；`build_review.py` 将编译后的工程、官方播放器和素材清单装进审阅快照。新工程只让 HyperFrames 拥有播放与动效时钟；旧 `VideoCraftAnimEngine` 仅作为旧 SVG 审阅兼容路径保留。浏览器通过 review-core 取素材，在官方播放器内部播放，**不从 DSH 的不透明 iframe 访问本机 HTTP 舞台**。改源后重新 build、刷新即可看，不渲视频。没有 HyperFrames 审阅适配器时，动画参数通过反馈交给模型修改源工程；有适配器时也只能修改 composition 明确声明的参数。快照中记录播放器版本与工程哈希；不能把旧快照说成热更新。
 
 声音清理、VFR 转 CFR 或浏览器不支持的媒体转码属于素材准备，可以做并缓存；它们不应变成每次修改动画都重跑的前置。工程预览不冒充最终音画验收。实测时长、字幕锁、来源指纹与正式交付核验继续保留。
 
@@ -221,7 +221,7 @@ python3 "<craft>/helpers/import_srt_timeline.py" "<project>" \
 
 ### 8. 动效与合成审阅
 
-先读 `references/review-ui.md`。通常调用：
+先读 `references/review-ui.md` 与 `references/hyperframes-review-adapter.md`。通常调用：
 
 ```bash
 python3 "<craft>/helpers/live_stage.py" "<project>" --json
@@ -293,7 +293,7 @@ python3 "<craft>/helpers/state_fingerprint.py" capture "<project>"   # 交付自
 - 字幕契约：`references/caption-article-first.md`
 - SVG 动效契约：`references/svg-animation-contract.md`
 - 合成与渲染：`references/composition-craft.md`、`references/visual-rendering.md`
-- **审阅页硬约定（改审阅页前必读）**：`references/review-ui.md`；桥、宿主与收件：`$planners-review-core`
+- **审阅页硬约定（改审阅页前必读）**：`references/review-ui.md`、`references/hyperframes-review-adapter.md`；桥、宿主与收件：`$planners-review-core`
 - 维护与已知陷阱：`GOTCHAS.md`、`references/architecture.md`
 
 ## 自检

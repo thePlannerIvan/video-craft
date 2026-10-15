@@ -6,6 +6,7 @@
 | HyperFrames 官方 player/runtime | 时间、媒体、clip 显隐、缩放、倍速 | 原生 play/pause/seek/playbackRate；Craft 不另造时钟 |
 | live_stage.py | 编译服务生命周期 | 项目 → 已验的编译路由；不驱动画面 |
 | live_preview.py | 不透明宿主的工程传输 | 编译路由 + 项目 → HTML/素材清单/hash；严格包含性与本机来源；不渲染、不编排动画 |
+| references/hyperframes-review-adapter.md | 新 HyperFrames 工程的审阅控制契约 | 可选 `VideoCraftReviewAdapter`；只暴露 composition 声明的参数，不拥有播放时间 |
 | build_review.py | 审阅快照 | 内联官方 player，记录版本/hash，加入工程 watch；不修改生产源 |
 | review-page-template.html | 导航、字幕、批注、编辑请求 | 连接官方 player 与 review-core；工程路径不启用旧计时器 |
 | planners-review-core | 文件与反馈传输 | 原有桥和宿主不改，不理解视频 |
@@ -78,7 +79,7 @@
 | `references/media-first.md` | 真实证据 / 复刻 / 示意 / 创作的身份区分 | 选素材时读 | 不允许把修辞包装成实测证明 |
 | `references/visual-timeline.md` | **时间脊柱的派生**：`timeline.json` 的输入、Step 分组规则、Checkpoint 只确认版面与节奏 | 第 8 步读；`timeline_derive.py` 是它的可执行形态 | 不重新解析 SRT；不重选主题 |
 | `references/composition-craft.md` | 视觉层怎么落地：`composition/index.html` 的硬规则、字体度量、**画面页来自 planners-ppt-hell 时的动画交接** | 第 9 步读 | 字段语义不在它这里（`composition-facts-contract.md`）；预埋子元素动效配方在 `svg-animation-contract.md` |
-| `references/svg-animation-contract.md` | **`planners-ppt-hell` → `video-craft` 的声明式 SVG 预埋动效契约**：5 条 SVG 分组与几何硬性规则、8 种复合子元素分阶段动效原语（`data-anim` + `.anim-*` 子选择器）、GSAP/WAAPI 双模式接线规范 | 做画面预埋动效与第 9 步绑实测时间轴时共读；`visual/assets/svg-anim-engine.js` 是它的可执行形态 | 不写口播实测毫秒数（制作前不知道时长，只预埋相对 `data-step` 顺序与微时序差） |
+| `references/svg-animation-contract.md` | **`planners-ppt-hell` → `video-craft` 的声明式 SVG 预埋动效契约**：5 条 SVG 分组与几何硬性规则、8 种复合子元素分阶段动效原语（`data-anim` + `.anim-*` 子选择器）、GSAP/WAAPI 双模式接线规范 | 做画面预埋动效与第 9 步绑实测时间轴时共读；`visual/assets/svg-anim-engine.js` 是旧 SVG 兼容路径的可执行形态；HyperFrames 新工程读自己的 composition 配置 | 不写口播实测毫秒数（制作前不知道时长，只预埋相对 `data-step` 顺序与微时序差） |
 | `references/composition-facts-contract.md` | **`composite`／`personWindow`／`captionSafe` 三个键的字段契约**（键名、取值域、默认、谁填谁读、缺了怎样） | 做画面那一步与第 9 步都按它写/读 | 只写已实现的键；不设计新字段 |
 | `references/themes.md` | **风格库的契约**：谁读它、必填 token、圆角刻度、可选性格覆盖与装饰层、创作新主题的步骤 | 选/换主题时读；`check_themes.py` 是它的可执行形态 | 不写章节 CSS（那是章节自由）；不复制 token 到别处 |
 | `references/review-ui.md` | 视觉审阅页的约定、反馈 schema、三条硬约定、**与另一套审阅面的交棒条件** | 第 6、10 步读 | 不合并两套审阅面 |
@@ -148,8 +149,8 @@
 | `helpers/review_surface.py` | 视觉审阅面**这份 surface 的内容**（业务）：`surface_document`；建文档 → 交给公共件落盘 + 校验；`open_review` 里的缺件前置与 `--surface-only` | `review_surface.py <project> [--port] [--no-open] [--surface-only]` | **不实现宿主生命周期** —— 写/校验/起/判活/停都在 `planners-review-core/scripts/lib/review_host.py`（唯一一份）；不解释反馈形状 |
 | `helpers/lib/planners_modules.py` | **找**公共模组（发布后按名字找兄弟目录）—— 只管解析路径，生命周期不在这里 | 被 `review_surface.py` 用来定位 `planners-review-core` | 不实现任何审阅或宿主逻辑 |
 | `helpers/review_inbox.py` | **收件**：把 surface 声明的那一份提交文件翻译成 `feedback/<chapterId>.jsonl` 的追加（按内容哈希去重） | `review_inbox.py <project> [--dry-run]` | 不改本 Skill 的反馈形状去迁就宿主 |
-| `visual/assets/review-page-template.html` | **统一视听审阅控制台模板**：自适应三大生产形态（复合双通道、纯口播、纯动画），支持实时视听播放与逐幕/逐字拆解双视图，内联动效引擎 | 拷成 `<project>/review/index.html` | 不含项目私有数据 |
-| `visual/assets/svg-anim-engine.js` | **声明式 SVG 预埋动效的复合子元素驱动器**（UMD：同时支持浏览器预演 `setStep()` WAAPI 与 HyperFrames 确定性 `registerGsapTimeline()`） | `VideoCraftAnimEngine.registerGsapTimeline(tl, svgRoot, stepOffsets)` ／ `VideoCraftAnimEngine.setStep(svgRoot, step, prevStep)` | 不改 SVG DOM 结构；不猜测未声明 `data-anim` 的元素 |
+| `visual/assets/review-page-template.html` | **统一视听审阅控制台模板**：HyperFrames 是新工程的唯一播放运行时；旧 SVG 才启用兼容动效引擎；页面承载播放、字幕、批注、反馈与重建提示 | 拷成 `<project>/review/index.html` | 不含项目私有数据；不在 HyperFrames 模式复制第二个时钟 |
+| `visual/assets/svg-anim-engine.js` | **旧 SVG 审阅兼容驱动器**：在静态 SVG 舞台上即时预演 Step、原语、镜头与子延迟 | `VideoCraftAnimEngine.setStep(svgRoot, step, prevStep)` ／ `setChoreography(svgRoot, map)` | 不进入新 HyperFrames composition 的主时钟；不直接控制官方 player |
 
 ### 视觉层（`visual/`）
 

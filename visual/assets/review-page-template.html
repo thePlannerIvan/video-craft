@@ -1414,7 +1414,7 @@
     </aside>
   </div>
 
-  <!-- 内联 VideoCraftAnimEngine v4：确保在任何宿主（含无外网/插件沙箱）下 100% 零依赖可用 -->
+  <!-- 旧 SVG 兼容引擎：只在静态 SVG 舞台使用；HyperFrames 工程走官方 player -->
   <script>
 /**
  * VideoCraftAnimEngine v4 — Camera Rig, Focus Spotlight & Product UI Choreography Engine
@@ -1437,9 +1437,9 @@
  *   4. Per-step Choreography Overrides (`setChoreography(svgRoot, map)`):
  *      Allows runtime/review-page tweaking of `{ anim, camera, dimPrev, subDelayMs, startSec }` with 0ms rebuild.
  *
- * Dual-mode deterministic execution:
- *   - Browser live preview (WAAPI): `VideoCraftAnimEngine.setStep(svgRoot, stepIndex, true, options)`
- *   - HyperFrames render (GSAP):    `VideoCraftAnimEngine.registerGsapTimeline(gsap, tl, svgRoot, stepConfigMap)`
+ * Legacy SVG execution only:
+ *   - Browser review preview (WAAPI): `VideoCraftAnimEngine.setStep(svgRoot, stepIndex, true, options)`
+ *   - New HyperFrames compositions own their seek-safe timeline and do not call this engine.
  */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) {

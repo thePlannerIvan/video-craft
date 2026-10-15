@@ -59,12 +59,10 @@
 
 ---
 
-## 三、在 `video-craft` 中的自动编排与驱动方式
+## 三、在 `video-craft` 中的适用边界
 
-1. **自动派生分步动效与词级卡点（`visual/scripts/auto_choreography.py`）**：
-   - 运行 `python3 visual/scripts/auto_choreography.py <project>`，自动扫描每屏 SVG 的 `[data-step]` 结构与 `timeline/timeline.json` 的实测分句（`cues`），按句意与图形结构选配上述 12 种原语、计算词级触发偏置 `relStartSec`，生成 `<project>/timeline/choreography.json`。
-2. **预演 / 审阅 / 独立交互页直接调用 `visual/assets/svg-anim-engine.js`**：
-   - `visual/assets/review-page-template.html` 已内联 v4 引擎，支持在审阅页一键切换「⚡ 分步动效舞台」（零外部进程依赖，直接同步播放口播与分步 SVG 动效，支持点选改字、切换原语、调整卡点）与「🎬 合成成片预览」。
-3. **HyperFrames `composition/index.html` 主时间轴（`window.__timelines["main"]`）确定性渲染**：
-   - 调用 `VideoCraftAnimEngine.registerGsapTimeline(tl, clipElement, stepTimings)`，按实测口播 `stepStartSec` 注册确定性的 GSAP tween。
+这份契约服务于旧 SVG 审阅兼容路径，以及仍然需要静态 SVG 预演的项目。`visual/assets/svg-anim-engine.js` 可以在页面里即时切换 Step、原语、镜头和子延迟；这些调整会进入反馈记录，不能被当成已经修改了源工程。
 
+新 HyperFrames composition 不再调用 `VideoCraftAnimEngine.registerGsapTimeline()` 作为主时间轴驱动器。HyperFrames 自己拥有 composition 的时间、媒体和 clip 显隐。需要让新工程支持点选式动效调整时，应实现 [`hyperframes-review-adapter.md`](hyperframes-review-adapter.md) 中的可选审阅适配器；没有适配器就走反馈 → 修改 composition / `choreography.json` → 重建审阅。
+
+`data-step`、`data-anim` 和语义子选择器仍可作为画面结构契约，帮助生成 composition 或旧 SVG 兼容层，但不能据此推断审阅页可以直接操作 HyperFrames 的子 iframe DOM。

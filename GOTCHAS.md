@@ -565,7 +565,7 @@ deletion from an accidental loss.
 | **已经修好的环境与脚手架** | 它是一次性事实，不是行为。留着只会让人以为还要处理 | 本机没有 `uv`、`<skill>/.venv` 是空壳、Python 下限被写成 3.10、`install.md` 里的 `uv sync`——统一解释器之后全部失效，见 `maintenance-history.md` |
 | **别的 Skill 的问题** | 记在这里会被当成我们的待办；它的 owner 在那边 | `planners-ppt-hell` 的模板库锁层、`init` 的 `--assets` 路径口径、`validate_svg_layout.py` 把出画布降级成 info、两套审阅面不能互操作（作者已裁定不合并） |
 | **作者已裁定接受的设计** | 它已经是一个决定，不是待修的缺陷。重复登记等于每轮重新讨论一次 | 两个审阅面不合并；`--assets` 与契约引用必须全等；审阅服务端口被占就报错退出；重渲会改变已交付文件的字节（见 #24 的 accepted consequence） |
-| **一次运行的偶发失败** | 没有稳定复现路径的偶发失败只写现象是噪音。要收就先做一次可复现的（见 #5 的两次记录） | 「这次 ffmpeg 卡住了」而没有复现步骤 |
+| **一次运行的偶发失败** | 没有稳定复现路径的偶发失败只写现象是噪音。要收就先做一次可复现的（见 #5 的两次记录）。**边界：由默认值稳定复现的资源事故不属于这一类**——只要用了那个默认值、在那台机器上就必然发生，它是「会稳定导致错误的具体行为」，收进正文（见 #69） | 「这次 ffmpeg 卡住了」而没有复现步骤 |
 | **可以从代码/文档一眼查到的事实** | 缓存不是记忆。文件里写着的，指针就够了 | 某个脚本的 CLI 参数、某个目录的形状、某条判据的阈值 |
 | **同一根因的第二张脸** | 根因合并成一条；另一张脸在正文里当实例写，不另立条目 | 坏段「静默少一段」与「未捕获崩溃」是同一条 #25；`--prove` 绿灯与「composition 渲染不出来」不是两件事，是 #6 的一个实例 |
 
@@ -760,7 +760,7 @@ deletion from an accidental loss.
   1. **介质**：审阅用的「活舞台」与交付用的「渲染成片」（与 #44 同根源）；
   2. **来源版本**：这份交付是从哪一版工程态（composition / 各页 store revision / 导出快照）渲出来的；
   3. **产物归属**：哪些文件属于工程态（可丢、可重算，不得留在 `edit/` 冒充底片）。
-- **修正原则**：**交付必须自带来源指纹**。`export_deliverables.py` 写 `成品/delivery.json`，记录 composition、`choreography.json`、各页 store revision、音轨、字幕的 sha256 与真实渲染记录；`verify_delivery.py` 断言指纹与**当前**工程态一致，不一致即判**交付过期**并拒绝出交付。工程态渲染/预览一律落 `edit/_engineering/`（或显式标注非底片），不进 `edit/` 根。
+- **修正原则**：**交付必须自带来源指纹**。写它的是 `helpers/state_fingerprint.py capture`（默认落 `成品/delivery.json`），记录 composition、`choreography.json`、各页 store revision、音轨、字幕的 sha256 与真实渲染记录；`export_deliverables.py` 只做逐件 `shutil.copy2`，**不写任何指纹文件**，交付不会自动带上指纹。`verify_delivery.py` / `state_fingerprint.py verify` 断言指纹与**当前**工程态一致，不一致即判**交付过期**并拒绝出交付。工程态渲染/预览一律落 `edit/_engineering/`（或显式标注非底片），不进 `edit/` 根。
 - **证据**：`05-VideoProject/sparkling-video`：交付后抽帧才发现旧页面；`edit/visual.mp4` 手工删除；beat-06 箭头两次被导出覆盖（一次因为直改 `_internal/02_svg_source` 未入库）。
 
 ## 57. 审阅页的护栏是两具尸体 —— 不跑的测试等于没有测试
@@ -847,3 +847,11 @@ deletion from an accidental loss.
 ## 68. 编译路由的 base 不是 HTML 路径的父目录
 
 `/preview/comp/index.html` 的 `<base>` 是 `/preview/`。按 HTML 路径拼 `assets/gsap.js` 会拿到 SPA HTML，内联后报 Unexpected token。项目脚本按 composition 本地根读取并核对包含性；runtime 用已验证的同源接口读取，HTML 伪装脚本必须拒绝。
+
+## 69. `hyperframes render --workers auto` 按核数开满 Chrome → 小内存机器被 swap 打崩
+
+- **module**：`references/visual-rendering.md` + `helpers/check_render_env.py` + `SKILL.md` ｜ **状态**：已复现
+- **现象**：渲染参数留默认 `--workers auto` 时，`hyperframes render` 按 CPU 核数开满 Chrome 工作进程；核数多于内存预算的机器在渲染中途被拖垮。
+- **原因**：`auto` 只看核数，**不看内存**。每个 Chrome 工作进程约占 1.5 GB，6 核就把 8 GB 机器的内存吃穿——这是默认值的稳定后果，不是偶发：换一台同规格机器、用同一条命令必然重演。而文档此前只写「default auto」，全文零资源警告。
+- **修正原则**：渲染前先跑 `python3 "<craft>/helpers/check_render_env.py" "<project>/composition"`——它报 RAM、可用内存与 swap，并直接打印这台机器能带得起的 `--workers` 值（两个上限取低：总内存 ÷ 1.5、可用内存 ÷ 1.5，且不超过核数；8 GB 机器上因此 ≤ 2），照它给的值传，不要自己按核数推。**默认从 `--workers 1` 起**；要加并发，先拿 3–5 秒短片段试。审阅期用工程态（`live_stage.py` + `build_review.py`，零渲染），不要拿「先渲一版看看」当开工动作。
+- **证据**：9394 帧 / 1920×1080 / 8 GB RAM / 6 核 → 6 个 Chrome 进程 → swap 用满 8.2 GB → 系统崩溃。

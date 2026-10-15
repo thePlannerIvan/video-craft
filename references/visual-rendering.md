@@ -1,13 +1,15 @@
-# Rendering (Phase 5)
+# Rendering (delivery state)
 
-The deliverable is a rendered MP4 from the HyperFrames composition —
-no screen recording. Deterministic: the same composition always
-produces the same video, and a re-render after a visual fix takes
-~30 seconds instead of a full screen-recording pass.
+`composition/` is the **single source** of the picture track. Review runs on the
+live composition — `live_stage.py` serves it, `build_review.py` packs the
+snapshot, the official player plays it; no frames are rendered for a review
+round. The delivery render happens **once**, after both review surfaces are
+confirmed. Deterministic: the same composition always produces the same video,
+so that one render is reproducible — no screen recording anywhere in the flow.
 
 ## Prerequisites
 
-- Phase 4 Timing Lock passed: `python3 visual/scripts/generate-composition.py <project> --verify` exits 0
+- `references/timing-lock.md` passed: `python3 visual/scripts/generate-composition.py <project> --verify` exits 0
 - All `feedback/*.jsonl` open items resolved or explicitly accepted
 
 ## Render
@@ -62,8 +64,19 @@ the nine things `doctor` reports are version / node / memory / disk / frames cac
 Useful variants (see `npx hyperframes render --help`):
 
 - `--fps 24|30|60` — match the source audio's native rate if needed
-- `--workers N` — parallel render (default auto)
+- `--workers N` — parallel render (default `auto`, i.e. one worker per core)
 - `--resolution portrait` — upscale capture to 1080x1920 (aspect must match)
+
+> ⚠ **`--workers auto` is the dangerous default.** It opens one Chrome worker per
+> core, and each worker carries roughly 1.5 GB of decoded frames. Measured: 9394
+> frames at 1920×1080, 6 cores, 8 GB RAM → 6 Chrome processes → swap filled to
+> 8.2 GB → the machine crashed. **Start at `--workers 1`.** To raise it, render a
+> 3–5 second slice first, then take the lower of `floor(total GB ÷ 1.5)`,
+> `floor(available GB ÷ 1.5)` and the core count (on that 8 GB machine the answer
+> is ≤ 2); when the memory budget is unknown, stay at 1.
+> `helpers/check_render_env.py` reports RAM, available memory and swap, and prints
+> the `--workers` value this machine can carry — pass that number instead of
+> deriving your own.
 
 > ⚠ Output paths must be SPACE-FREE. Rendering to a path containing
 > spaces (e.g. `renders/04-XHS 笔记.mp4`) fails — hyperframes compresses
@@ -96,6 +109,10 @@ python3 <path-to-skill>/visual/scripts/encode_transparent.py /tmp/alpha-frames \
 - `--no-low-memory-mode` is REQUIRED — the low-memory screenshot-capture
   path drops alpha even for alpha-needing compositions (drawElement
   capture preserves it)
+- Because it raises the memory ceiling on purpose, **never point it at the whole
+  film first**: render a 3–5 second slice to prove the alpha survives, then
+  widen. Keep `--workers` at the low end while doing it (see the `--workers`
+  note above).
 - Match `--fps` with the render's fps; overlays must also match the
   base footage's frame rate when composited
 - **Hand every alpha layer to `helpers/check_alpha.py` before it leaves your
@@ -111,7 +128,7 @@ python3 <path-to-skill>/visual/scripts/encode_transparent.py /tmp/alpha-frames \
 python3 <path-to-skill>/helpers/check_alpha.py renders/overlay.mov   # exit 0 = 透明真的在
 ```
 
-## Verify before showing the user
+## Verify the render (delivery)
 
 ```bash
 ffprobe -v error -show_entries format=duration \
@@ -130,13 +147,22 @@ Also eyeball 2-3 midpoints via `npx hyperframes snapshot --at <t1,t2>`
 and hand the frames to the user — the agent may be text-only, the
 user always sees the pixels.
 
-## Acceptance
+## Acceptance (engineering state)
 
-Show the user the rendered MP4. Ask one question: ship it, or fix
-specific steps? On "fix": edit `composition/index.html`, re-run
-`npm run check`, re-render (~30s), re-verify, show again.
+Acceptance happens **before any render**, on the live composition:
+`live_stage.py` serves the HyperFrames preview, `build_review.py` packs the
+review snapshot, and the author watches the real composition in the official
+player, screen by screen. Ask one question: ship it, or fix specific steps?
+On "fix": edit `composition/index.html`, re-run `npm run check`, **rebuild the
+review** (`build_review.py`) and show it again — no re-render.
 
-Log the render (duration, size, version) in `project.md`.
+Only after the author has confirmed **both** review surfaces (the word-level cut
+surface and the motion/composition surface) does a single real render happen.
+Delivery verification (`verify_delivery.py`) then checks the actual film file.
+
+## Delivery
+
+Render once, then log the render (duration, size, version) in `project.md`.
 
 ## Audio
 

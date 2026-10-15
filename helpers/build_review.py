@@ -734,6 +734,7 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
                 existing[key] = overlay_unit[key]
         existing["overlayChapterId"] = overlay_unit.get("chapterId")
     binding_units = list(by_unit.values())
+    media_sizes = audit_media_sizes(project_root, media, scene_assets)
     review_data = {
         "version": "2.0.0",
         "project": project_root.name,
@@ -759,6 +760,11 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
             "layersBaked": media.get("layersBaked", True),
             "slices": media.get("slices"),
             "hostAdvice": media.get("hostAdvice"),
+            # What each channel actually costs the page to fetch. The review host
+            # transfers whole files (it does not stream), so this is load time and
+            # peak memory, not trivia — and it is the only place the page can see
+            # it before it commits to downloading.
+            "sizes": media_sizes,
         },
         "buildId": review_build_id(project_root, edit_dir),
         # How the media above was decided: explicit media.json, guessed filenames,
@@ -797,6 +803,140 @@ def player_bundle():
     return source, {"version": metadata["version"], "sha256": hashlib.sha256(source.encode()).hexdigest()}
 
 
+# The live stage's asset budget. `review-page-template.html` turns every entry in
+# `liveStage.composition.assets` into a base64 data URL inside the player's srcdoc
+# (a parent's `blob:null` URL is unusable from the player's own opaque-origin
+# iframe, so that conversion is forced). The map's TOTAL size — not the
+# composition's — is therefore what the review page must chew through before
+# `hyperframes-player` reports ready, against an 8-second watchdog.
+#
+# Measured 2026-10-15 on a 313s project: 19.0 MB of media became a 25.4 MB srcdoc,
+# the watchdog fired, and the stage showed "预览暂时无法连接。请确认预览服务正在运行"
+# while the page's data, bridge and sidebars all worked — the message blamed a
+# service that was fine. Fitted with review copies the same project is 6.5 MB and
+# loads. Anything over the per-asset budget becomes a review copy: same duration,
+# same native pixels, higher CRF; audio sidecars drop to mono.
+LIVE_STAGE_ASSET_MB = 4.0
+# Ceiling for the whole map, so many small assets cannot add up to the same jam.
+LIVE_STAGE_TOTAL_MB = 12.0
+LIVE_STAGE_PROXY_DIR = "review/proxies"
+
+# Above this, a media entry stops being a page asset and becomes a hazard. The
+# review host hands whole files to the page: measured 1.19 GB (a talking-head
+# master named as `speakerVideo`) would be read by the host process, transferred
+# by structured clone and held as a Blob — three copies of 1.19 GB, unconditionally,
+# because the page attaches that element on init regardless of which stage the
+# reviewer is looking at. The visual review has no use for the master anyway.
+MEDIA_WARN_MB = 200.0
+
+
+def audit_media_sizes(project_root: Path, media: dict, scene_assets: dict) -> dict:
+    """{rel: {mb, oversized}} for every file the review page will fetch.
+
+    Every channel at once on purpose: the declared media, the per-screen SVG
+    pictures and the alpha layers all travel the same unbounded path, and auditing
+    them one at a time is how one of them ends up uncovered.
+    """
+    rels = [media.get(key) for key in
+            ("speakerVideo", "previewVideo", "compositeVideo", "guideAudio")]
+    # `svgAssets` is {page_key: {href: rel}} — two levels, so flatten one.
+    for hrefs in (scene_assets or {}).values():
+        if isinstance(hrefs, dict):
+            rels += list(hrefs.values())
+        else:
+            rels.append(hrefs)
+    rels += [layer.get("previewFile") for layer in (media.get("layers") or [])
+             if isinstance(layer, dict)]
+    sizes = {}
+    for rel in rels:
+        if not isinstance(rel, str) or not rel or rel in sizes:
+            continue
+        path = project_root / rel
+        if not path.is_file():
+            continue
+        mb = path.stat().st_size / 1e6
+        sizes[rel] = {"mb": round(mb, 1), "oversized": mb > MEDIA_WARN_MB}
+    return sizes
+
+
+def fit_live_stage_assets(project_root: Path, review_data: dict) -> None:
+    """Swap over-budget live-stage assets for review copies, in place.
+
+    Mutates `liveStage.composition.assets`, appends to `mediaNotes`, and registers
+    each proxy in `sourceManifest`. That last part is not bookkeeping: the review
+    host serves what the surface watches, so a proxy that is not in the manifest
+    is a 404 on the page even though the file sits right there — which turns a
+    size problem into a "media unreadable" problem.
+    """
+    import review_copy
+
+    live = review_data.get("media", {}).get("liveStage") or {}
+    composition = live.get("composition") or {}
+    assets = composition.get("assets") or {}
+    if not assets:
+        return
+    notes = review_data.setdefault("mediaNotes", [])
+    project_root = project_root.resolve()
+    proxy_dir = project_root / LIVE_STAGE_PROXY_DIR
+    known = {item["path"] for item in review_data.get("sourceManifest", [])}
+    budget_bytes = LIVE_STAGE_ASSET_MB * 1_000_000
+    total = 0
+    fittings = []
+
+    for token, rel in list(assets.items()):
+        src = project_root / rel
+        if not src.is_file():
+            continue
+        if src.stat().st_size > budget_bytes:
+            proxy_dir.mkdir(parents=True, exist_ok=True)
+            out = proxy_dir / (src.stem + ".review" + src.suffix)
+            # Reuse a fresh proxy: re-encoding an 11 MB screen track on every
+            # rebuild would make iterating on the composition slower than the
+            # render it exists to avoid.
+            fresh = (out.is_file() and out.stat().st_mtime >= src.stat().st_mtime
+                     and out.stat().st_size <= budget_bytes)
+            record = None
+            if not fresh:
+                try:
+                    # gop=None on purpose: nothing slices this copy, and forcing a
+                    # keyframe per second took the same CRF 29 encode from 2.6 MB
+                    # to 10.0 MB. `review_slices` output keeps the default gop.
+                    record = review_copy.make(src, out, max_mb=LIVE_STAGE_ASSET_MB,
+                                              gop=None)
+                except SystemExit as exc:
+                    notes.append(f"活舞台资产 {rel} 压不进预算，保持原样：{exc}")
+                    total += src.stat().st_size
+                    continue
+            if record is None or record.get("action") == "made":
+                new_rel = out.resolve().relative_to(project_root).as_posix()
+                assets[token] = new_rel
+                src = out
+                fittings.append((rel, new_rel, src.stat().st_size,
+                                 True if record is None else record.get("underBudget", True)))
+                if new_rel not in known:
+                    review_data["sourceManifest"].append(
+                        snapshot_file(out, project_root))
+                    known.add(new_rel)
+        total += src.stat().st_size
+
+    composition["assetBytes"] = total
+    # The page scales its watchdog off this instead of a fixed 8s, which was only
+    # ever right for a small map.
+    live["budgetMs"] = int(8000 + max(0.0, total / 1e6 - 4.0) * 1500)
+
+    if fittings:
+        for old, new, size, under in fittings:
+            note = (f"活舞台资产 {Path(old).name} → 审阅副本 "
+                    f"{size / 1e6:.1f}MB（{new}，时长与原生像素不变）")
+            if not under:
+                note += f"；⚠ 仍超 {LIVE_STAGE_ASSET_MB:.0f}MB 单件预算，页面仍会整份搬"
+            notes.append(note)
+    if total > LIVE_STAGE_TOTAL_MB * 1_000_000:
+        notes.append(f"活舞台资产合计仍有 {total / 1e6:.1f}MB > "
+                     f"{LIVE_STAGE_TOTAL_MB:.0f}MB：审阅页首次加载会明显变慢，"
+                     f"考虑减少同屏资产或先切片")
+
+
 def write_review_files(project_root: Path, review_data: dict) -> tuple[Path, Path]:
     """生成 review/review_data.json 与 review/index.html。"""
     review_dir = project_root / "review"
@@ -807,6 +947,9 @@ def write_review_files(project_root: Path, review_data: dict) -> tuple[Path, Pat
         from live_preview import compile_preview
         live = review_data["media"]["liveStage"]
         live["composition"] = compile_preview(project_root, live["url"])
+        # Budget the map before it reaches the page: an over-budget map is an
+        # 8-second watchdog expiry that reports itself as a dead preview service.
+        fit_live_stage_assets(project_root, review_data)
         review_data["snapshot"] = hashlib.sha256((review_data["snapshot"] + live["composition"]["sourceHash"]).encode()).hexdigest()[:20]
         existing = {item["path"] for item in review_data["sourceManifest"]}
         for path in sorted((project_root / "composition").rglob("*")):

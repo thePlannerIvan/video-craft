@@ -1,7 +1,7 @@
 # Timing Lock (v2)
 
 Timing Lock verifies the composition is a faithful render of the SRT
-timeline before anything gets rendered.
+timeline **before anything gets rendered**.
 
 ## Required Checks
 

@@ -31,7 +31,9 @@ encoded; it prints that it is unverified, and delivery still requires a real ren
 (`_edl.render_record` ignores projected records by default). `caption_words.json` records which
 timeline it was built on; cues off the EDL's nominal Σ(end−start) are up to a
 second early, so a visual step placed on them lands before its own narration. If
-the guard fires, render first, then re-run `srt_export.py --prepare --lock --build`.
+the guard fires, run `duration_plan.py` first to get the projected record, then
+re-run `srt_export.py --prepare --lock --build`; only delivery verification needs
+a real render.
 
 Optional:
 - `edit/timeline/grouping.json` — the per-beat visual decision (`visualModel` /
@@ -132,8 +134,10 @@ grouping and regenerate.
 ## Checkpoint
 
 Stop after `grouping.json`, `timeline.json` and `storyboard.md` exist, and review
-**at the pixels** rather than in prose: build 2–3 representative steps for real,
-render them, and let the user settle **the layout and the rhythm** in one pass.
+**at the pixels** rather than in prose: build 2–3 representative steps into the
+composition and open them with `live_stage.py` + `build_review.py`, and let the
+user settle **the layout and the rhythm** in one pass. Only when that route has no
+composition to play (hand-drawn frame-by-frame) do you render those slices.
 The theme was already decided when the picture was made (`themes.md`), so it is
 not re-picked here. A written storyboard asks the user to imagine the thing they
 are being asked to approve.

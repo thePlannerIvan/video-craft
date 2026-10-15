@@ -48,6 +48,24 @@ CAPTIONS_NAME = "captions.json"
 WORDS_NAME = "caption_words.json"
 EDIT_DEFAULT = "edl.json"
 
+# The ONLY step keys this module may drop. Everything else a grouping step
+# declares belongs to `generate-composition.py` and passes through untouched.
+#
+# Why this is an exclusion set and not a whitelist: the step dict used to list
+# exactly the keys the generator was believed to read. That list drifted, and it
+# dropped `mediaClips` + `mediaBox` — the whole picture track — while
+# `generate-composition.py --verify` still reported success, because verify counts
+# N videos when `mediaClips` exists and 1 section when it does not. A composition
+# with no media at all therefore looked exactly like a composition with no media
+# declared. An exclusion set cannot drift that way: forgetting to list a key
+# passes it through, which is the safe direction.
+OWNED_STEP_KEYS = frozenset({
+    # recomputed from the cue binding
+    "id", "chapterId", "chapterTitle", "step",
+    "startMs", "endMs", "durationMs", "caption",
+    "cueIndices", "srtIndices", "cueRange", "segments", "wordCount", "sourceRange",
+})
+
 
 def _fail(message: str) -> None:
     raise SystemExit(f"timeline derive error: {message}")
@@ -222,6 +240,14 @@ def build_timeline(entries: list[dict], grouping: dict) -> tuple[dict, dict]:
                 "personWindow": step.get("personWindow"),
                 "captionSafe": step.get("captionSafe"),
             }
+            # Everything else the grouping declared passes through to the
+            # generator. Deliberately after the literal above, so keys that are
+            # already present keep their position and old timelines stay
+            # byte-identical; only genuinely new keys (`mediaClips`, `mediaBox`,
+            # whatever the next generator version reads) are appended.
+            for author_key, author_value in step.items():
+                if author_key not in OWNED_STEP_KEYS and author_key not in item:
+                    item[author_key] = author_value
             steps.append(item)
             durations.append(item["durationMs"])
         chapters.append({"id": chapter_id, "title": title, "steps": steps})

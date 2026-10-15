@@ -47,10 +47,9 @@ python3 "<craft>/helpers/transcribe.py" "<原始视频>" --edit-dir "<edit>" --a
 python3 "<craft>/helpers/transcribe_batch.py" "<素材目录>" --edit-dir "<edit>" --workers 4
 python3 "<craft>/helpers/pack_transcripts.py" --edit-dir "<edit>"
 python3 "<craft>/helpers/check_edl.py" "<edit>" --max-pause 0.8
-python3 "<craft>/helpers/render.py" "<edit>/edl.json" -o "<edit>/cut.mp4" --preview --no-subtitles
 ```
 
-转写会读取缓存；云端后端会上传声音并可能收费，先沿用作者已授权配置。离线选 `--backend mlx`。多音轨先核声音，`--audio-track` 是从零起的音轨索引。EDL 字段及多轨合成见 [composition-craft](composition-craft.md)。`render.py` 是记录实测时长的正式路径；`render_cut.py <edl> -o <mp4> --quality draft` 只作快预览，不替代实测记录。
+转写会读取缓存；云端后端会上传声音并可能收费，先沿用作者已授权配置。离线选 `--backend mlx`。多音轨先核声音，`--audio-track` 是从零起的音轨索引。EDL 字段及多轨合成见 [composition-craft](composition-craft.md)。`render_cut.py <edl> -o <mp4> --quality draft` 只作快预览，不记录实测时长，不替代正式渲染路径（见「渲染、核验、包装」）。
 
 按时间区间改词，并断言实际文字：
 
@@ -86,7 +85,10 @@ python3 "<craft>/helpers/edl_edit.py" "<edit>" --restore "<起秒>,<止秒>=<期
 ```bash
 python3 "<craft>/helpers/live_stage.py" "<project>"       # 起服务 → 打印可嵌入地址（--stop 停）
 python3 "<craft>/helpers/duration_plan.py" "<edit>"       # 解析预演（frame-quantised, projected）
-python3 "<craft>/helpers/review_copy.py" "<成片>"         # 保留时间与原生分辨率的审阅副本
+python3 "<craft>/helpers/review_copy.py" "<成片>"         # 审阅副本：保留时间与原生分辨率
+python3 "<craft>/helpers/review_copy.py" "<旁轨.m4a>"     # 纯音频也吃：降单声道
+python3 "<craft>/helpers/review_copy.py" "<成片>" --gop 0 # 不切片的副本别锁每秒关键帧（体积差 4 倍）
+# 活舞台的代理由 build_review.py 自动生成到 review/proxies/，不需要手工跑上面这两条
 python3 "<craft>/helpers/review_slices.py" "<project>"    # 按步切片，页面只取当前窗口
 python3 "<craft>/helpers/preview_layers.py" "<edit>"      # 已有 alpha 层补一份 WebM(VP9+alpha)
 python3 "<craft>/helpers/check_review_template.py"        # 审阅页模板的静态不变量
@@ -178,9 +180,22 @@ scaffold 只用于新 composition，不在已有制作源上重复 init。生成
 
 ## 渲染、核验、包装
 
+**前置条件，缺一不渲**：剪点已确认；动效 / 合成审阅已确认；`check_render_env.py` 退 0；已有交付时 `state_fingerprint.py verify` 须通过（新交付没有指纹，verify 不适用，也不拦新渲染）。
+渲染前先过 [timing-lock](timing-lock.md)：`generate-composition.py --verify` 退 0，且 `feedback/*.jsonl` 的未决项已清或显式接受。
+
+工程态底片预览（`--preview` 产物属于工程态，落 `_engineering/`；`edit/cut.mp4` 这个正式底片名只留给确认后的交付态渲染）：
+
+```bash
+python3 "<craft>/helpers/render.py" "<edit>/edl.json" -o "<edit>/_engineering/cut.mp4" --preview --no-subtitles
+```
+
 ```bash
 python3 "<craft>/helpers/check_render_env.py" "<project>/composition"
+python3 "<craft>/helpers/check_render_env.py" "<project>/composition" --json   # {ok, workers, memory}
 ```
+
+`--json` 里的 `workers` 就是这台机器该用的 `--workers` 值（按总内存、可用内存与核数三者取低算出）。
+不要凭核数自己推：`--workers auto` 是按核数开满 Chrome，8GB 机器上它开 6 个、把 swap 打满并带走了系统（见 `GOTCHAS.md` #69）。
 
 在 `<project>/composition` 作为工作目录分别执行 `npm run check`、`npm run render`；实际命令/输出以项目 `package.json` 为准。透明路线、PNG 序列编码、Alpha 选择见 [visual-rendering](visual-rendering.md)，调用示例：
 

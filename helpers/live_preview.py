@@ -31,6 +31,16 @@ class CompositionTransport(HTMLParser):
         self.stage_url = stage_url
         self.fetch = fetch
         self.out, self.assets = [], {}
+        # Byte accounting for the live stage's asset map. The review page turns
+        # every entry into a base64 data URL inside the player's srcdoc, so the
+        # map's total size — not the composition's — is what the page has to chew
+        # through before `hyperframes-player` can report ready. Measured: ~19 MB
+        # of media (25 MB once base64) blew an 8-second watchdog and the stage
+        # showed "预览暂时无法连接" while every other part of the page worked.
+        # Reporting is this module's job; deciding what to do about it (a review
+        # proxy) belongs to build_review.py.
+        self.asset_bytes = 0
+        self.asset_sizes: dict = {}
         self.skip_script = False
         self.in_style = False
         self.scripts = set()
@@ -51,11 +61,13 @@ class CompositionTransport(HTMLParser):
         if not path.is_relative_to(self.project / 'composition') or not path.is_file():
             raise ValueError('Missing or escaping composition asset: ' + value)
         rel = path.relative_to(self.project).as_posix()
+        self.asset_sizes[rel] = path.stat().st_size
         for token, existing in self.assets.items():
             if existing == rel:
                 return token
         token = '__VC_ASSET_' + str(len(self.assets)) + '__'
         self.assets[token] = rel
+        self.asset_bytes += self.asset_sizes[rel]
         return token
 
     def css(self, text):
@@ -141,4 +153,7 @@ def compile_preview(project, stage_url, fetch=fetch_local):
         digest.update(rel.encode())
         with (Path(project) / rel).open('rb') as media:
             for chunk in iter(lambda: media.read(1024 * 1024), b''): digest.update(chunk)
-    return {'html': compiled, 'assets': transport.assets, 'sourceHash': digest.hexdigest()}
+    return {'html': compiled, 'assets': transport.assets,
+            'assetBytes': transport.asset_bytes,
+            'assetSizes': transport.asset_sizes,
+            'sourceHash': digest.hexdigest()}

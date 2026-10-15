@@ -13,6 +13,7 @@ missing — `init` would replace the generated one.
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 import tempfile
 import unittest
@@ -107,6 +108,79 @@ class RenderEnvTests(unittest.TestCase):
         ok, message = env_check.probe_writable(Path.home() / ".cache" / "hyperframes")
         if not ok:
             self.assertIn("not writable", message)
+
+
+def _memory(total=None, available=None, swap_used=None, swap_total=None, cores=6):
+    return {
+        "totalGb": total, "availableGb": available,
+        "swapUsedGb": swap_used, "swapTotalGb": swap_total, "cores": cores,
+        "suggestedWorkers": env_check.suggest_workers(total, available, cores),
+        "minFreeGb": env_check.MIN_FREE_GB, "workerRamGb": env_check.WORKER_RAM_GB,
+    }
+
+
+class RenderMemoryBudgetTests(unittest.TestCase):
+    """The machine check — the one whose failure takes a system down, not a render.
+
+    Measured 2026-10-15: 8 GB RAM / 6 cores, 9394 frames of 1920×1080,
+    `--workers auto` opened 6 Chrome processes, swap went to 8.2 GB used and the
+    machine went down. `auto` is one Chrome per core, so the number the machine
+    can carry has to be computed, not defaulted.
+    """
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+        self.cache = self.root / "writable-cache"
+        self.cache.mkdir()
+        original = env_check.node_major
+        env_check.node_major = lambda: 22
+        self.addCleanup(setattr, env_check, "node_major", original)
+
+    def run_with(self, memory):
+        code, lines = env_check.check(
+            None,
+            {"HOME": str(self.root), env_check.FONT_CACHE_VAR: str(self.cache)},
+            memory)
+        return code, "\n".join(lines)
+
+    def test_workers_are_bounded_by_ram_free_memory_and_cores(self):
+        self.assertEqual(env_check.suggest_workers(8.0, 5.0, 6), 3, "free memory binds")
+        self.assertEqual(env_check.suggest_workers(64.0, 32.0, 6), 6, "cores bind")
+        self.assertEqual(env_check.suggest_workers(8.0, None, 6), 5, "total RAM binds")
+        self.assertEqual(env_check.suggest_workers(None, None, None), 1, "unknown -> one")
+
+    def test_workers_never_drop_to_zero(self):
+        """A slow render beats a dead machine: one worker is always allowed."""
+        self.assertEqual(env_check.suggest_workers(0.5, 0.1, 6), 1)
+
+    def test_the_crash_that_motivated_this_is_refused(self):
+        code, output = self.run_with(_memory(8.0, 1.7, 1.8, 3.0, 6))
+        self.assertEqual(code, 1)
+        self.assertIn("only 1.7 GB available", output)
+        self.assertIn("auto` opens one Chrome per core = 6", output)
+        self.assertIn("the system went down", output)
+        self.assertIn("--workers 1", output)
+
+    def test_a_healthy_machine_passes_and_names_the_number(self):
+        code, output = self.run_with(_memory(32.0, 20.0, 0.0, 4.0, 8))
+        self.assertEqual(code, 0)
+        self.assertIn("memory: 32.0 GB total, 20.0 GB available", output)
+        self.assertIn("pass --workers 8", output)
+
+    def test_an_unreadable_platform_does_not_block_the_render(self):
+        """Not knowing must not fail the check; it must downgrade to one worker."""
+        code, output = self.run_with(_memory(None, None, None, None, None))
+        self.assertEqual(code, 0)
+        self.assertIn("unreadable", output)
+        self.assertIn("--workers 1", output)
+
+    def test_the_report_stays_json_serialisable_for_callers(self):
+        report = env_check.memory_report()
+        json.dumps(report)
+        self.assertIn("suggestedWorkers", report)
+        self.assertGreaterEqual(report["suggestedWorkers"], 1)
 
 
 if __name__ == "__main__":

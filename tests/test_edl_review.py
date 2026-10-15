@@ -81,24 +81,69 @@ def biggest_real_project():
     return chosen
 
 
+def _must_materialise(project: Path) -> set:
+    """The few paths THIS module touches directly: `edl.json` and its sources.
+
+    `edl.json` because `make_work_copy` reads and rewrites it here; the sources
+    because the HTTP Range assertions measure the real byte ranges of real media,
+    and a silently absent one would fail them for the wrong reason.
+
+    Deliberately NOT "everything under edit/": a real project's `edit/` also holds
+    the previous run's outputs (`verify/*.png` stills and the like), and on a
+    cloud-backed workspace those are placeholders that cannot be materialised at
+    all — `os.link` and `shutil.copy2` both raise TimeoutError. Tolerating them is
+    safe because the preview build below is the real arbiter: if a skipped file
+    was in fact needed, the build fails and says which file it could not read.
+    """
+    must = set()
+    edit = project / "edit"
+    try:
+        must.add((edit / "edl.json").relative_to(project))
+        doc = json.loads((edit / "edl.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return must
+    for value in (doc.get("sources") or {}).values():
+        source = Path(value)
+        source = source if source.is_absolute() else (edit / source)
+        try:
+            must.add(source.resolve().relative_to(project.resolve()))
+        except ValueError:
+            pass
+    return must
+
+
 def make_work_copy(project: Path, into: Path) -> Path:
     """把真项目硬链接成副本：小文件复制、`.mp4` 只 `link`（同 inode，不占空间、也不用等）。
 
     **不能用符号链接**：宿主对静态文件做 realpath 包含性校验，指向根外的软链会被（正确地）404。
     硬链接的路径就在根里，所以既省空间又照常能 Range。
+
+    拷贝是**尽力而为**的：`_must_materialise` 之外的文件物化不了就跳过并记账，不让一个与本次
+    审阅无关的云盘占位文件把闸门判死。必需文件失败仍然直接抛出。
     """
     target = into / project.name
     target.mkdir(parents=True)
+    must = _must_materialise(project)
+    skipped = []
     for src in project.rglob("*"):
         if not src.is_file():
             continue
         rel = src.relative_to(project)
         dest = target / rel
         dest.parent.mkdir(parents=True, exist_ok=True)
-        if src.suffix.lower() in (".mp4", ".mov", ".m4v"):
-            os.link(src, dest)
-        else:
-            shutil.copy2(src, dest)
+        try:
+            if src.suffix.lower() in (".mp4", ".mov", ".m4v"):
+                os.link(src, dest)
+            else:
+                shutil.copy2(src, dest)
+        except OSError:
+            if rel in must:
+                raise
+            skipped.append(rel)
+    if skipped:
+        print(f"  （{len(skipped)} 个与本次审阅无关的文件无法物化，已跳过："
+              f"{', '.join(str(p) for p in skipped[:3])}"
+              f"{' …' if len(skipped) > 3 else ''}）")
     # 副本里 edl.json 的素材路径指回**真项目**的绝对路径 → 公共根会被拉到工作区顶上。
     # 改写成"从剪辑目录到副本里那份素材"的相对路径（副本与原项目同一套布局，所以这个相对
     # 路径一模一样）。**不许压平成 `../<文件名>`**：真项目会把素材放在子目录里

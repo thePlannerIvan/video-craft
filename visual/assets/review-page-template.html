@@ -2520,7 +2520,7 @@
       const player = document.getElementById("live-stage-frame");
       const note = document.getElementById("live-stage-note");
       let clock = null, attachedUrl = null, pendingSeek = null, pendingPlay = false;
-      let watchdog = null, stopAt = null;
+      let watchdog = null, stopAt = null, loading = false;
       function explain(text) { note.textContent = text; note.hidden = false; }
       function report() {
         if (!player.ready) return;
@@ -2530,7 +2530,7 @@
         if (clock) clock(player.currentTime * 1000, player.paused);
       }
       player.addEventListener("ready", () => {
-        clearTimeout(watchdog); note.hidden = true;
+        clearTimeout(watchdog); note.hidden = true; loading = false;
         if (pendingSeek !== null) { player.seek(pendingSeek); pendingSeek = null; }
         if (pendingPlay) { pendingPlay = false; player.play(); }
         report();
@@ -2551,9 +2551,19 @@
             if (!customElements.get("hyperframes-player")) throw new Error("播放器未加载");
             const composition = window.__REVIEW_DATA__?.media?.liveStage?.composition;
             if (!composition?.html) throw new Error("缺少工程预览，请重新构建");
-            explain("正在加载画面与声音…");
+            const entries = Object.entries(composition.assets || {});
+            const totalMb = entries.reduce(
+              (sum, [, rel]) => sum + ((composition.assetSizes || {})[rel] || 0), 0) / 1e6;
+            // The conversion below is serial and there was no progress otherwise,
+            // so a big asset map looked exactly like a hung page for as long as
+            // the watchdog took to fire.
+            loading = true;
+            explain(totalMb > 1
+              ? `正在解码素材 0/${entries.length}…（共约 ${totalMb.toFixed(1)} MB，首次较久）`
+              : "正在加载画面与声音…");
             let source = composition.html;
-            for (const [token, rel] of Object.entries(composition.assets || {})) {
+            let done = 0;
+            for (const [token, rel] of entries) {
               // Each sandboxed child has its own opaque origin; a parent's
               // blob:null URL cannot be used by the player's iframe.
               const assetUrl = await review.asset(rel);
@@ -2565,10 +2575,17 @@
                 reader.readAsDataURL(blob);
               });
               source = source.split(token).join(dataUrl);
+              done += 1;
+              if (done < entries.length) {
+                explain(`正在解码素材 ${done}/${entries.length}…`
+                        + `（共约 ${totalMb.toFixed(1)} MB，首次较久）`);
+              }
             }
+            explain("素材已解码，正在启动播放器…");
             player.setAttribute("srcdoc", source);
           } catch (error) {
             attachedUrl = null;
+            loading = false;
             explain("预览加载失败：" + error.message + "。反馈草稿仍然保留。");
           }
         },
@@ -2582,11 +2599,27 @@
         range(start, end) { this.seek(start); stopAt = end; this.play(); },
         hello() {},
         explain,
-        watchdog() {
+        watchdog(budgetMs) {
           clearTimeout(watchdog);
-          if (!player.ready) watchdog = setTimeout(() => {
-            if (!player.ready) explain("预览暂时无法连接。请确认预览服务正在运行，再刷新页面。");
-          }, 8000);
+          if (player.ready) return;
+          // The budget scales with what there is to decode. A fixed 8s was only
+          // ever right for a small asset map: a 25 MB srcdoc blew it, and the one
+          // sentence it printed ("确认预览服务正在运行") named the single thing
+          // that was in fact fine.
+          const declared = window.__REVIEW_DATA__?.media?.liveStage?.budgetMs;
+          const budget = Number.isFinite(budgetMs) && budgetMs > 0
+            ? budgetMs : (Number(declared) > 0 ? Number(declared) : 8000);
+          watchdog = setTimeout(() => {
+            if (player.ready) return;
+            if (!review) {
+              explain("审阅宿主没有回应，页面还没连上审阅桥。刷新页面重试；反馈草稿会保留。");
+            } else if (loading) {
+              explain("素材仍在解码 —— 体积较大时首次会久一点。若长时间停在这里，"
+                      + "重新 build review 让活舞台资产走审阅副本。");
+            } else {
+              explain("预览暂时无法启动。先确认 live_stage.py 起的预览服务在运行，再刷新页面。");
+            }
+          }, budget);
         }
       };
     })();
@@ -2658,7 +2691,13 @@
         if (live && live.url) {
           liveStage.attach(live.url);
           liveStage.hello();
-          liveStage.watchdog(live.url);
+          // Arm the timer only once a load has actually begun. `promoteStage()`
+          // runs before `ReviewBridge.connect()`, so on the first pass through
+          // here `attach` is a deliberate no-op (`!review` guard) — yet the old
+          // code started an 8s clock anyway and then blamed the preview service
+          // for a host that had merely not answered yet. The init path below
+          // re-attaches and times the real load.
+          if (review) liveStage.watchdog(live.url);
         } else {
           liveStage.explain("这个项目没有可播的活 composition：先跑 helpers/live_stage.py 把预览服务起起来。");
         }
@@ -3580,10 +3619,22 @@
       }
 
       // 如果配置了真实口播视频，挂载到左侧口播区
+      // The host hands whole files to this page, so an oversized channel is a hang
+      // rather than a slow load. Measured: a real project named a 1.19 GB
+      // talking-head master as `speakerVideo`, and this block attached it on init
+      // regardless of which stage the reviewer wanted — three copies of 1.19 GB
+      // (host read, structured clone, Blob) before any picture appeared.
+      const sizesOf = (rel) => (rel && window.__REVIEW_DATA__?.media?.sizes?.[rel]) || null;
       const spkVid = document.getElementById("stage-speaker-video");
       const spkPill = document.getElementById("speaker-time-pill");
       const spkUrl = data.speakerVideoUrl || window.__SPEAKER_VIDEO_URL__ || window.__REVIEW_DATA__?.media?.guideAudio;
-      if (spkVid && spkUrl) {
+      const spkSize = spkUrl ? sizesOf(spkUrl) : null;
+      if (spkVid && spkUrl && spkSize && spkSize.oversized) {
+        spkVid.hidden = true;
+        if (spkPill) spkPill.hidden = true;
+        label(`口播轨 ${spkSize.mb.toFixed(0)} MB，不在侧栏播放 —— 给它做审阅副本，`
+              + `或改用 review-core 本地宿主。`);
+      } else if (spkVid && spkUrl) {
         const ready = await attachMedia(spkVid, spkUrl);
         spkVid.hidden = !ready;
         if (spkPill) spkPill.hidden = !ready;
@@ -3591,7 +3642,8 @@
       const compVid = document.getElementById("composite-video-player");
       const compUrl = data.compositeVideoUrl || window.__COMPOSITE_VIDEO_URL__ ||
         window.__REVIEW_DATA__?.media?.previewVideo || window.__SPEAKER_VIDEO_URL__;
-      if (compVid && compUrl) {
+      const compSize = compUrl ? sizesOf(compUrl) : null;
+      if (compVid && compUrl && (!compSize || !compSize.oversized)) {
         await attachMedia(compVid, compUrl);
       }
 

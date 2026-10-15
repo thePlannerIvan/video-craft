@@ -119,7 +119,7 @@ python3 "<craft>/helpers/audio_fix.py" "<media>" -o "<fixed.wav>" --target-lufs 
 
 **输出**：`transcripts/`、`takes_packed.md`、`edl.json`、必要时 `selections.json`。
 
-**下一消费者**：正式渲染、字幕、逐字审阅面。
+**下一消费者**：逐字剪辑审阅面；字幕与工程态时间脊柱可先行。正式底片渲染排在剪点确认之后（第 5 步），不排在审阅之前。
 
 **完成标准**：EDL 可检查；源文件、区间、速度、段落累计时间明确；没有把预览渲染当成正式底片。
 
@@ -155,11 +155,13 @@ python3 "<craft>/helpers/duration_plan.py" "<edit>"     # 解析预演（帧量�
 `_edl.render_record` 默认跳过它，`verify_delivery.py` 永远拿真实文件对真实渲染。
 交付前仍必须走下面这条渲染路径并重建字幕。
 
-剪点确认且需要正式底片时，使用会记录实测段时长的渲染路径；这不是开始制作画面的前置：
+剪点确认后，用会记录实测段时长的渲染路径先出工程态底片（`--preview`）；这既不是开始制作画面的前置，也不是交付底片：
 
 ```bash
-python3 "<craft>/helpers/render.py" "<edit>/edl.json" -o "<edit>/cut.mp4" --preview --no-subtitles
+python3 "<craft>/helpers/render.py" "<edit>/edl.json" -o "<edit>/_engineering/cut.mp4" --preview --no-subtitles
 ```
+
+`--preview` 产物属于工程态，一律落 `edit/_engineering/`；`edit/cut.mp4` 这个正式底片名只留给确认后的交付态渲染。
 
 字幕采用“全文校对 → 语义断句 → 锁定 → 生成”的顺序：
 
@@ -207,7 +209,7 @@ python3 "<craft>/helpers/import_srt_timeline.py" "<project>" \
 
 静态 SVG 必须来自第 1 步导入的项目内副本。沿用 `data-step`、`data-anim`、元素 `id` 和画面原有尺寸；不要把页面截图当成可编辑 SVG。
 
-- HyperFrames：读 `$hyperframes`。整片走 `visual/scripts/generate-composition.py`；单层动效也先在 composition 中预览。只有最终合成需要独立透明视频，才用 `helpers/render_layer.py` 输出 `.mov`；兼容旧媒体叠层面时可同时输出 `.webm`。预览与渲染前先 `hyperframes check`。
+- HyperFrames：读 `$hyperframes`。整片走 `visual/scripts/generate-composition.py`；单层动效也先在 composition 中预览。只有最终合成需要独立透明视频，才用 `helpers/render_layer.py` 输出 `.mov`；兼容旧媒体叠层面时可同时输出 `.webm`。预览与渲染前先 `hyperframes check`。**任何 `hyperframes render` 之前必须先跑 `python3 "<craft>/helpers/check_render_env.py" "<project>/composition"`** —— 它报 RAM、可用内存与建议的 `--workers` 值（默认从 1 起）；并先过 `references/timing-lock.md`：`--verify` 退 0，且 `feedback/*.jsonl` 的未决项已清或显式接受。缺一不渲。
   **动效的源是 composition，不是那段视频**：层要能改、能预览，才谈得上「先审后渲」。
 - Manim：只有严密数学或技术动画才调用 `$manim-video`。
 - 自定义逐帧：读 `references/frame-animation-pipeline.md`。
@@ -215,7 +217,7 @@ python3 "<craft>/helpers/import_srt_timeline.py" "<project>" \
 
 所有 overlay 在写入 EDL 前检查：画布尺寸、alpha、起止时间、父级 `unitId` 和输出路径。尺寸不匹配必须报错，不能静默跳过。
 
-**输出**：`composition/`、透明或整屏视觉层、合成预览和最终合成视频。
+**输出**：`composition/`、透明或整屏视觉层、工程态合成预览（活 composition，不渲帧）。最终合成视频属于**交付态**，只在第 10 步经两个审阅面确认后产出一次。
 
 **下一消费者**：动效与合成审阅面、交付核验。
 
@@ -233,7 +235,7 @@ DSH 有 `review_open` 时传返回的 surface 绝对路径；没有时去掉 `--
 
 官方播放器承担播放、暂停、拖动、倍速、单屏播放和屏末定位。字幕与反馈位置读取它的播放头；不要同时启动旧 SVG 定时器或隐藏视频。逐动画反馈以分屏、播放时间及对应分句锚点记录；框选批注先暂停。点选调整切换到静态源稿编辑，调整作为请求随反馈提交，返回预览后看当前真实工程，不能把未应用的草稿说成已生效。
 
-`review/media.json` 显式声明已有成片、底片或透明视频层；这些兼容入口继续保留。工程含图片、声音或录屏时必须来自项目内资产；`live_preview.py` 拒绝外部资源和越界路径。桥传素材字节，播放器层使用可跨不透明源的媒体载体；不要把父帧的 `blob:null` URL 直接给子帧。大型源媒体先准备可播放的审阅代理，不要把数百 MB 原片反复传进侧栏。
+`review/media.json` 显式声明已有成片、底片或透明视频层；这些兼容入口继续保留。工程含图片、声音或录屏时必须来自项目内资产；`live_preview.py` 拒绝外部资源和越界路径。桥传素材字节，播放器层使用可跨不透明源的媒体载体；不要把父帧的 `blob:null` URL 直接给子帧。**活舞台的资产预算由 `build_review.py` 自动做**：`liveStage.composition.assets` 里超过 `LIVE_STAGE_ASSET_MB`（4MB）的会被换成 `review/proxies/` 下的审阅副本（时长与原生像素不变，画面不下采样），并把 `composition.assetBytes` 与 `liveStage.budgetMs` 写进快照 —— 页面按后者而不是写死的 8 秒算等待预算。`media.sizes` 逐通道标出 MB 与 `oversized`，页面对超大通道（例如 1.19GB 的口播母版）**拒绝下载**并说明原因，而不是把整份搬进侧栏。所以 agent 不需要手搓代理；看到「预览暂时无法连接」先查 `mediaNotes` 里有没有超预算记录，而不是先去查服务。
 
 `review.draft()` 保存草稿；`review.write()` 正式落提交文件；有待处理意见时再 `review.wake()`。真实回执成功后才报告已写入，通知结果与保存结果分别显示。页面不保存时不唤醒模型。改 composition、剪点、字幕或画面后重新 build review。
 
@@ -273,7 +275,7 @@ python3 "<craft>/helpers/state_fingerprint.py" capture "<project>"   # 交付自
 
 | 现象 | 处理 |
 |---|---|
-| segment duration 累积或 hash 不匹配 | 不手改字幕；重新渲染当前 EDL，再 `--build --check` |
+| segment duration 累积或 hash 不匹配 | 不手改字幕；先 `duration_plan.py "<edit>"` 拿 projected 记录继续做字幕与时间脊柱；只有交付核验（`verify_delivery.py`）必须真渲染 |
 | `--prepare` 会覆盖人工正文 | 先确认版本；只有确认 EDL / 转写已变时用 `--force-prepare`，之后重新放回人工正文 |
 | overlay 尺寸与画布不符 | 修正源尺寸或显式适配；禁止静默跳过 |
 | 审阅页媒体读不到 | 检查 `review.asset` 的相对 `dir` 路径和项目内资产副本，不改成猜相对路径 |
@@ -293,6 +295,7 @@ python3 "<craft>/helpers/state_fingerprint.py" capture "<project>"   # 交付自
 - 字幕契约：`references/caption-article-first.md`
 - SVG 动效契约：`references/svg-animation-contract.md`
 - 合成与渲染：`references/composition-craft.md`、`references/visual-rendering.md`
+- **渲染前闸门**：`references/timing-lock.md` —— `--verify` 退 0 且 `feedback/*.jsonl` 未决项已清或显式接受，才谈得上渲染；`helpers/check_render_env.py` 是环境判据
 - **审阅页硬约定（改审阅页前必读）**：`references/review-ui.md`、`references/hyperframes-review-adapter.md`；桥、宿主与收件：`$planners-review-core`
 - 维护与已知陷阱：`GOTCHAS.md`、`references/architecture.md`
 

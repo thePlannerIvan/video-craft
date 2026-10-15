@@ -48,6 +48,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from urllib.parse import unquote
 
 DEFAULT_PORT = 4317
 BOOT_TIMEOUT_S = 45.0
@@ -123,13 +124,45 @@ def fetch(url: str, timeout: float = 8.0) -> str:
         return resp.read().decode("utf-8", "replace")
 
 
-def prove_stage_route(server: str, pid: str) -> tuple[bool, str]:
-    """Ask the running server for the bare route; confirm it is the composition.
+ASSET_REF = re.compile(r'(?:src|href)\s*=\s*["\']([^"\']+)["\']')
+NOT_A_LOCAL_REF = ("#", "data:", "blob:", "//", "http://", "https://",
+                   "mailto:", "javascript:")
+
+
+def foreign_asset_refs(body: str, comp: Path) -> list:
+    """Composition-relative refs in the served body that do not exist here.
+
+    The shim check below proves the route is *a* staged composition. It does not
+    prove the body is THIS project's. Two projects whose directory is named
+    `composition` register under the same project id, and `hyperframes preview
+    --status` then reports whichever server answers first — on 2026-10-15 a
+    project was pointed at a different project's preview and the mismatch only
+    surfaced much later and much less clearly, as `Missing or escaping
+    composition asset: assets/pages/beat-01/…jpg` out of build_review.
+
+    An asset reference that this composition does not contain is that mistake,
+    caught at the source. A body with no relative refs proves nothing either way,
+    so it passes — this narrows the failure, it does not claim to be a checksum.
+    """
+    comp = comp.resolve()
+    missing = []
+    for ref in ASSET_REF.findall(body):
+        if not ref or ref.startswith(NOT_A_LOCAL_REF) or ref.startswith("/"):
+            continue
+        target = (comp / unquote(ref.split("?", 1)[0])).resolve()
+        if target.is_relative_to(comp) and not target.is_file():
+            missing.append(ref)
+    return missing
+
+
+def prove_stage_route(server: str, pid: str, comp: Path) -> tuple[bool, str]:
+    """Ask the running server for the bare route; confirm it is OUR composition.
 
     Status codes alone prove nothing — this server answers 200 with the studio
     SPA for unknown paths, so `/anything` looks fine. The route is only real when
     the body is the composition: the injected GSAP fallback shim plus a `<base>`
-    scoped to the route itself.
+    scoped to the route itself. And it is only OURS when the body's own asset
+    references resolve inside this project's composition directory.
     """
     url = server.rstrip("/") + STAGE_ROUTE.format(pid=pid)
     try:
@@ -140,6 +173,15 @@ def prove_stage_route(server: str, pid: str) -> tuple[bool, str]:
         return False, (f"{url} returned something that is not a staged composition "
                        f"({len(body)} bytes, no injected fallback shim) — the studio's "
                        f"route shape may have changed; re-derive it from the bundle")
+    missing = foreign_asset_refs(body, comp)
+    if missing:
+        sample = ", ".join(missing[:3])
+        return False, (
+            f"{url} 端上来的是**另一个工程**的 composition：它引用了本工程 "
+            f"{comp} 里不存在的 {len(missing)} 个资源（例如 {sample}）。"
+            f"\n  多半是机器上还有一个同名的 `composition` 工程占着同一个 project id，"
+            f"预览服务指向了它。先 `live_stage.py <project> --stop`，"
+            f"再确认没有别的预览服务占着同一端口。")
     return True, url
 
 
@@ -219,7 +261,7 @@ def main() -> int:
               file=sys.stderr)
         return 3
 
-    ok, stage = prove_stage_route(server, pid)
+    ok, stage = prove_stage_route(server, pid, comp)
     if not ok:
         shape = discover_route_shape(root, server)
         print(f"✗ {stage}" + (f"\n  bundle still advertises {shape}<name>" if shape else ""),

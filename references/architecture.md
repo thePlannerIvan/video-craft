@@ -4,10 +4,10 @@
 |---|---|---|
 | EDL / 逐字预览 | 剪辑取舍、源媒体定位 | 保留原工具；不依赖动画或预渲整片 |
 | HyperFrames 官方 player/runtime | 时间、媒体、clip 显隐、缩放、倍速 | 原生 play/pause/seek/playbackRate；Craft 不另造时钟 |
-| live_stage.py | 编译服务生命周期 | 项目 → 已验的编译路由；不驱动画面 |
-| live_preview.py | 不透明宿主的工程传输 | 编译路由 + 项目 → HTML/素材清单/hash；严格包含性与本机来源；不渲染、不编排动画 |
+| live_stage.py | 编译服务生命周期 | 项目 → **已验为本工程的**编译路由（响应体既要有注入的 GSAP shim，其引用的资源也要真在本工程 `composition/` 里；否则是机器上另一个同名 `composition` 占了同一个 project id）；不驱动画面 |
+| live_preview.py | 不透明宿主的工程传输 | 编译路由 + 项目 → HTML / 素材清单 / `assetBytes`+`assetSizes`（活舞台资产体积，供下游做预算）/ hash；严格包含性与本机来源；不渲染、不编排动画 |
 | references/hyperframes-review-adapter.md | 新 HyperFrames 工程的审阅控制契约 | 可选 `VideoCraftReviewAdapter`；只暴露 composition 声明的参数，不拥有播放时间 |
-| build_review.py | 审阅快照 | 内联官方 player，记录版本/hash，加入工程 watch；不修改生产源 |
+| build_review.py | 审阅快照 + **活舞台资产预算** | 内联官方 player，记录版本/hash，加入工程 watch；把超预算的活舞台资产换成审阅副本并写 `composition.assetBytes` 与 `liveStage.budgetMs`；`media.sizes` 让页面在下载前拦下过大通道；不修改生产源 |
 | review-page-template.html | 导航、字幕、批注、编辑请求 | 连接官方 player 与 review-core；工程路径不启用旧计时器 |
 | planners-review-core | 文件与反馈传输 | 原有桥和宿主不改，不理解视频 |
 
@@ -106,7 +106,7 @@
 | `helpers/verify_av.py` | 渲染文件的轨与尾（响度吃掉结尾字、多机位偏移） | `verify_av.py --tracks a.mp4 b.mp4 ／ --tails a.mp4 ／ --pair face.mp4 base.mp4 ／ --all a.mp4 b.mp4` | 不检查交付副本（那是 `verify_delivery`） |
 | `helpers/verify_delivery.py` | **交付副本**：与工作区逐字节、时长对渲染记录、字幕尾 | `verify_delivery.py <edit_dir> [--video] [--deliver-dir]` | 不看源素材 |
 | `helpers/check_script_hash.py` | `script.md` 与内容契约的 `script_hash` 是否相符 | `check_script_hash.py <项目目录> ／ --script --plan`；退 0／1／2 | 不改任何文件；核不了时**不报成功** |
-| `helpers/check_render_env.py` | 渲染环境：字体缓存可写、Node ≥ 22、composition 在 | `check_render_env.py [composition]` | 不渲染；不检查 HyperFrames 的其它 `HYPERFRAMES_*` |
+| `helpers/check_render_env.py` | 渲染环境：字体缓存可写、Node ≥ 22、composition 在；**并发预算** —— 读总内存／可用内存／swap，`suggest_workers()` 按「总内存÷`WORKER_RAM_GB`、可用内存÷`WORKER_RAM_GB`、核数」三者取低算出这台机器带得起的 `--workers`，可用内存 < `MIN_FREE_GB` 时退非零（`--workers auto` 是按核数开满 Chrome 的那个默认值） | `check_render_env.py [composition] [--json]`（`--json` 出 `{ok, workers, memory}` 给调用方直接消费） | 不渲染；不检查 HyperFrames 的其它 `HYPERFRAMES_*`；**不替 agent 决定要不要渲** —— 它只报这台机器能不能渲、该用几个 worker |
 
 ### 生产者（`helpers/` 里写盘的那些）
 
@@ -137,10 +137,11 @@
 
 | module | 拥有什么 | 接口 | 不做什么 |
 |---|---|---|---|
-| `helpers/live_stage.py` | **活舞台的唯一主人**：为 `<project>/composition` 起 HyperFrames 预览服务，给出**可嵌入的裸 composition 路由**，并把地址写进 `edit/_engineering/live-stage.json`；`--status/--stop/--json` | `live_stage.py <project> [--port N] [--status] [--stop] [--json]`；退出码 0 起好·2 没有 composition·3 服务没起来 | 不渲任何帧；不改 composition；不管审阅页 —— 页面只消费它给出的地址 |
+| `helpers/live_stage.py` | **活舞台的唯一主人**：为 `<project>/composition` 起 HyperFrames 预览服务，给出**可嵌入的裸 composition 路由**，并把地址写进 `edit/_engineering/live-stage.json`；路由的**双重证明**是「响应体有注入的 GSAP shim」**且**「它引用的资源真在本工程 `composition/` 里」——只验前者会认证到机器上另一个同名 `composition` 工程；`--status/--stop/--json` | `live_stage.py <project> [--port N] [--status] [--stop] [--json]`；退出码 0 起好·2 没有 composition·3 服务没起来或**不是本工程的** | 不渲任何帧；不改 composition；不管审阅页 —— 页面只消费它给出的地址 |
 | `helpers/studio_notes.py` | **studio 意见的唯一落盘路径**：起只监听回环的收集器，把 composition 钩子截到的文本追加进 `edit/_engineering/studio-notes.jsonl`；`--tail/--clear/--stop` | `studio_notes.py <project> [--port 4319] [--tail N] [--json] [--clear] [--stop]` | 不解析 studio 的 prompt 格式（原样存，格式属于 HyperFrames，会变）；不判断意见是什么意思 |
-| `helpers/check_review_template.py` | **审阅页模板的静态护栏**：七条不变量（舞台选择函数保住参数／可交互 id 都挂了事件／默认舞台最不挑数据／`readText` 都 optional／字幕不退回整屏／点一屏即播／没有空壳自定义元素）；`--prove` 逐条把历史缺陷打回去自证不空洞 | `check_review_template.py [--template PATH] [--json] [--prove]` | **不证明页面能跑**。它钉的是这七类机械缺陷不会静默回来；新的**类**仍然要人撞到。别把绿灯读成「审阅页已验证」 |
-| `helpers/build_review.py` | **一键构建统一审阅契约与控制台**：聚合剪接决策、演示动画与字幕资产，自适应匹配三大任务形态并生成 `review/review_data.json` 与 `review/index.html` | `build_review.py <project_or_edit_dir> [--mode auto/composite/speaker_only/animation_only]` | 不启动服务；不修改源素材 |
+| `helpers/check_review_template.py` | **审阅页模板的静态护栏**：八条不变量（S1 舞台选择函数保住参数／S2 可交互 id 都挂了事件／S3 默认舞台最不挑数据／S4 `readText` 都 optional／S5 字幕不退回整屏／S6 点一屏即播／S7 没有空壳自定义元素／S8 舞台提升不依赖初始化成败）；`--prove` 逐条把历史缺陷打回去自证不空洞 | `check_review_template.py [--template PATH] [--json] [--prove]` | **不证明页面能跑**。它钉的是这八类机械缺陷不会静默回来；新的**类**仍然要人撞到。别把绿灯读成「审阅页已验证」 |
+| `helpers/build_review.py` | **一键构建统一审阅契约与控制台**：聚合剪接决策、演示动画与字幕资产，自适应匹配三大任务形态并生成 `review/review_data.json` 与 `review/index.html`；**活舞台资产预算的唯一主人** —— `fit_live_stage_assets()` 把超 `LIVE_STAGE_ASSET_MB`(4MB) 的 `liveStage.composition.assets` 换成 `review/proxies/<stem>.review.<ext>` 审阅副本（时长与原生像素不变）并登记进 `sourceManifest`，写 `composition.assetBytes` 与 `liveStage.budgetMs`；`audit_media_sizes()` 写 `media.sizes`（每通道 MB + `oversized`），页面据此在下载前拦下过大通道 | `build_review.py <project_or_edit_dir> [--mode auto/composite/speaker_only/animation_only] [--slices on/off/auto] [--no-review-copy]` | 不启动服务；不修改源素材；**不下采样审阅副本**（像素正是被审的东西）；代理不进 `edit/` 根 |
+| `helpers/review_copy.py` | **审阅副本的唯一生产者**：同一条命令吃片子与**纯音频旁轨**；视频保原生像素、音频降单声道；断言「分辨率不变、时长不变、**结果确实变小了**」 | `review_copy.py <src> [--out] [--max-mb] [--crf] [--audio-kbps] [--gop N] [--force] [--json]`；`make()` 返回 `{size_mb, underBudget, kind, …}` | 不覆盖源片；不静默降采样。`--gop`**只给会被 `-c copy` 切片的副本**（`review_slices.py`）：每秒关键帧在屏幕轨上把同一个 CRF 29 从 2.6MB 抬到 10.0MB，不切片的副本传 `--gop 0` |
 | `helpers/serve_review.py` | **公共审阅宿主的兼容入口**：先构建页面，再把 `review-surface.json` 交给 `planners-review-core`；Range、桥接、反馈、草稿与唤醒都由公共宿主负责 | `serve_review.py <project> [--port N] [--open]` | 不维护私有 HTTP 服务；不修改时间轴 |
 | `helpers/export_video.py` | **统一成片导出深模块**：全自动化导出四大交付规格（composite, animation, speaker, split），内置 `/tmp` 云盘锁沙盒渲染、时序隐藏样式注入与单行药丸防折行保护 | `export_video.py <project> --mode {composite,animation,speaker,split} [--out-dir 成品]` | 不做粗剪决策（严格忠实于 EDL 与 timeline 实测数据） |
 | `helpers/edl_preview_build.py` | 剪辑审阅页的 HTML（逐段取舍 + 逐字 + 时间轴），数据**构建时内联**（兼容保留） | `edl_preview_build.py <edit_dir>` | 不收集决定；页里的注入点由公共宿主替换 |
@@ -267,7 +268,7 @@
 
 审阅页跑在 `sandbox="allow-scripts"` 的**不透明源** iframe 里（GOTCHA #53），拿不到被嵌入 composition 的 DOM，`contentWindow` 一碰就跨源。所以这条缝只有 postMessage，而且协议必须**随 composition 走**：它是那份文件自己的控制面，也只有它在场才知道自己的时间轴。真缝 —— 消费者是两个（审阅页、将来的任何驱动方）。
 
-地址不自己拼：`live_stage.py` 探出来（studio 的 hash 路由不可嵌；裸路由只出现在 studio 自己的 bundle 里），并用「响应体里有没有注入的 GSAP shim」证明它真的是 composition —— 这台服务器对未知路径一律回 200 + SPA，看状态码什么都证明不了。
+地址不自己拼：`live_stage.py` 探出来（studio 的 hash 路由不可嵌；裸路由只出现在 studio 自己的 bundle 里）。证明分两层：**「响应体里有没有注入的 GSAP shim」证明它是 composition**（这台服务器对未知路径一律回 200 + SPA，看状态码什么都证明不了）；**「它引用的资源是否真在本工程 `composition/` 里」证明它是本工程的** —— 机器上两个同名 `composition` 会注册成同一个 project id，`--status` 报的是先应答的那一台，只验第一层就会把别人的工程认证成自己的（2026-10-15 撞上过一次：错误晚到 `build_review` 才以 `Missing or escaping composition asset: assets/pages/beat-01/….jpg` 冒出来）。
 
 ### 3.7 studio 的意见回传（同源钩子 → 本地收集器）
 
@@ -396,9 +397,10 @@ studio 的「Describe a change to the agent」只调 `navigator.clipboard.writeT
 
 | 要动 | 为什么 |
 |---|---|
-| `helpers/check_render_env.py` | 环境判据的唯一处（字体缓存真的写一个探针文件、Node ≥ 22、composition 在） |
-| `SKILL.md` 的 Setup 与第 9 步完成标准 | 它是**流程里的一步**，所以要在流程里可见 |
+| `helpers/check_render_env.py` | 环境判据的唯一处（字体缓存真的写一个探针文件、Node ≥ 22、composition 在、**RAM / 可用内存 / swap 与建议的 `--workers`**）。`--workers auto` 按核数开满 Chrome，是本 Skill 里唯一一个「失败会带走整台机器而不是一次渲染」的默认值，所以这台机器的判据在这里，不在文档里 |
+| `SKILL.md` 第 7 步的 HyperFrames 说明 | 它是**流程里的一步**，所以要在流程里可见 |
 | `references/visual-rendering.md` 的 Render 节 | 渲染的人读那里 |
+| `references/tools.md` 的渲染节 | 渲染的人从那里照着跑 |
 | `install.md` 的冷启动提醒 | 装机器的人读那里 |
 | `tests/test_render_env.py` | 它的回归 |
 
@@ -415,7 +417,7 @@ studio 的「Describe a change to the agent」只调 `navigator.clipboard.writeT
    而那正是本 Skill 反复在治的那种「一个绿灯不等于另一个性质成立」；
 3. 再跑一次 `hyperframes init`（或 `hyperframes upgrade`）会把它悄悄冲掉。
 
-所以：**写成必须跑的一步**，在 Setup、第 9 步完成标准、`visual-rendering.md` 与 `install.md` 四处点名。
+所以：**写成必须跑的一步**，在 `SKILL.md` 第 7 步、`references/visual-rendering.md`、`references/tools.md` 的渲染节与 `install.md` 四处点名。
 哪天真要把 `package.json` 收进本 Skill（由 `scaffold.sh` 在 init 之后补钩子，并让 alpha 变体也走 npm），
 那是一次**边界变更**，要先在这里登记。
 

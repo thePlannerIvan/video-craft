@@ -638,6 +638,29 @@
       gap: 8px;
     }
     .choreo-controls { display: flex; align-items: center; gap: 6px; }
+    .choreo-live-note {
+      display: flex;
+      align-items: flex-start;
+      gap: 9px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      background: color-mix(in srgb, var(--blue) 7%, var(--bg-card));
+      color: var(--text-secondary);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+    .choreo-live-note strong { color: var(--text); }
+    .choreo-live-dot {
+      flex: 0 0 7px;
+      width: 7px;
+      height: 7px;
+      margin-top: 6px;
+      border-radius: 50%;
+      background: var(--blue);
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--blue) 16%, transparent);
+    }
+    .choreo-live-note[hidden] { display: none; }
     /* 口播词级胶囊条（默认收起，按需展开） */
     .cue-pills-bar {
       display: flex;
@@ -769,10 +792,12 @@
     /* 用 token，而不是硬编码深色 + !important —— 那是这一栏看起来「突兀、不像这一页」的
        原因：它连明色主题下都维持深底。 */
     .fb-card {
-      padding: 9px 12px;
+      padding: 11px 14px;
       background: var(--bg-card);
       border: 1px solid var(--border);
-      border-left: 3px solid var(--blue);
+      border-left: 1px solid var(--border);
+      border-radius: 10px;
+      box-shadow: 0 3px 12px rgba(0, 0, 0, 0.08);
       border-radius: 8px;
       font-size: 12px;
       line-height: 1.45;
@@ -780,8 +805,8 @@
       margin-bottom: 8px;
     }
     .fb-card.overall-card {
-      border-left-color: var(--amber);
-      background: var(--bg-card-hover);
+      border-color: color-mix(in srgb, var(--amber) 38%, var(--border));
+      background: color-mix(in srgb, var(--amber) 7%, var(--bg-card-hover));
     }
     .fb-card-head {
       display: flex;
@@ -938,8 +963,8 @@
       color: var(--text);
       background: var(--bg-card-hover);
       border: 1px solid var(--border-strong);
-      border-left: 3px solid var(--amber);
-      border-radius: 6px;
+      border-left: 1px solid var(--border-strong);
+      border-radius: 8px;
       padding: 7px 10px;
     }
     #stale-note[hidden] { display: none; }
@@ -1116,10 +1141,11 @@
     .feedback::before {
       content: "反馈给 Agent";
       display: block;
-      color: var(--text-muted);
+      color: var(--text-secondary);
       font-size: 11px;
       font-weight: 700;
-      margin-bottom: 9px;
+      letter-spacing: 0.02em;
+      margin-bottom: 5px;
     }
     textarea, input, select { background: var(--bg-input) !important; color: var(--text) !important; border-color: var(--border-strong) !important; }
     textarea:focus, input:focus, select:focus { border-color: var(--dsw-static-deepseek-500) !important; outline: 2px solid var(--dsw-static-deepseek-100); }
@@ -1341,6 +1367,10 @@
           <div class="choreo-controls">
             <button type="button" class="tool-btn" id="btn-toggle-cues" style="padding:2px 8px;font-size:11px;">分句卡点微调</button>
           </div>
+        </div>
+        <div class="choreo-live-note" id="choreo-live-note" hidden>
+          <span class="choreo-live-dot" aria-hidden="true"></span>
+          <span><strong>HyperFrames 工程预览</strong> 正在接管分步显示。这里可连播本屏、定位最终态和调节倍速；原语、镜头和子延迟请在 composition 的 choreography.json 调整后重新构建审阅。</span>
         </div>
         <!-- 口播词级触发胶囊条（默认折叠，点击按钮展开） -->
         <div class="cue-pills-bar" id="cue-pills-bar" hidden>
@@ -2563,6 +2593,17 @@
 
     /* ---- 舞台视图切换（动效舞台 / 活 composition / 合成成片 / 逐字剪辑） ---- */
     let stageViewMode = "svg"; // 'svg' | 'live' | 'composite' | 'verbatim'
+    function updateChoreoDeckMode(mode) {
+      const liveNote = document.getElementById("choreo-live-note");
+      const rows = document.getElementById("step-choreo-rows");
+      const cues = document.getElementById("cue-pills-bar");
+      const isLive = mode === "live";
+      if (liveNote) liveNote.hidden = !isLive;
+      if (rows) rows.hidden = isLive;
+      if (cues && isLive) cues.hidden = true;
+      const toggle = document.getElementById("advanced-toggle");
+      if (toggle) toggle.textContent = isLive ? "工程动效" : "分步动效";
+    }
     function setStageViewMode(mode) {
       // 舞台按「这个项目有什么数据」选：活 composition 优先，其次合成成片，最后静态页。
       // 原模板在这里写死 `mode = "composite"`，把调用方传进来的选择丢掉了 ——
@@ -2571,6 +2612,7 @@
       if (stageViewMode === "live" && mode !== "live") liveStage.pause();
       stageViewMode = mode;
       document.body.dataset.stage = mode;
+      updateChoreoDeckMode(mode);
 
       document.body.classList.toggle("workspace-verbatim", mode === "verbatim");
       document.body.classList.toggle("workspace-composite", mode === "composite");

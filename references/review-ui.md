@@ -116,3 +116,7 @@ python3 "<craft>/helpers/apply_selection.py" "<project>/edit"
 ```
 
 它直接消费 `edit/selections.json` 并修改 EDL。随后重建逐字预览、工程字幕和时间绑定；确认后渲染正式底片；剪辑页的整体备注由 wake 回到对话，不混进 selections 的机器区间。
+
+### 分步动效抽屉的边界
+
+「分步动效」仍然保留，用于没有活 HyperFrames composition 的旧 SVG 审阅面：可以逐个 Step 试听，切换预埋原语、镜头焦点、子动作延迟和口播分句卡点，并把调整写入反馈记录。新工程进入 HyperFrames 官方播放器后，播放器拥有 clip 显隐和时间轴；抽屉会明确显示“HyperFrames 工程预览”，只保留本屏连播、最终态、定位和倍速等播放器控制，不在页面里伪造一套会与工程时钟分叉的动画参数编辑器。要调整新工程的原语、镜头或子延迟，应改 composition 的 `choreography.json`，重新构建审阅，再提交反馈。

@@ -748,8 +748,17 @@ class ReviewPageTemplateTests(unittest.TestCase):
         self.assertIn('data-mode="step"', self.html)
         # 默认落在「整片意见」：刚打开什么都没选时，不需要先点任何东西
         self.assertIn('setMode("overall")', self.html)
-        # 整片那条的记录形状：带 phase、**不带**单位字段
-        self.assertIn('return { phase: "overall", ...stale, ...common };', self.html)
+        # 整片那条的记录形状：带 phase、**不带**单位字段。
+        # 判据看的是整片那个分支返回了什么，而不是钉死整行源码 ——
+        # 原先 assertIn 的是字面源码，给整片记录补一个合法字段（adjustments，
+        # 2026-10-16 修的静默丢改动）就会把它弄红，而它想守的契约其实没被破坏。
+        branch_start = self.html.index('if (fbMode === "overall")')
+        branch = self.html[branch_start:self.html.index(
+            "const active = document.querySelector", branch_start)]
+        self.assertIn('phase: "overall"', branch)
+        for field in ("unitId", "chapterId", "stepId", "stepIndex", "caption", "durationMs"):
+            with self.subTest(unit_field=field):
+                self.assertNotIn(f"{field}:", branch)
         self.assertNotIn('stepId: null', self.html)
         self.assertNotIn('stepId: ""', self.html)
 

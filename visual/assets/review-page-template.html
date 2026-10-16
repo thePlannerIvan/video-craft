@@ -3394,8 +3394,9 @@
       state.focusMode = state.focusMode === "spotlight" ? "accumulate" : "spotlight";
       e.currentTarget.textContent = state.focusMode === "spotlight" ? "聚光灯: 开" : "聚光灯: 关";
       if (state.step) {
-        if (!state.choreoOverrides[state.step]) state.choreoOverrides[state.step] = { steps: {} };
-        state.choreoOverrides[state.step].focusMode = state.focusMode;
+        const k = adjustKey();
+        if (!state.choreoOverrides[k]) state.choreoOverrides[k] = { steps: {} };
+        state.choreoOverrides[k].focusMode = state.focusMode;
       }
       const svgEl = document.querySelector("#svg-stage-host > svg");
       if (svgEl) {
@@ -3504,8 +3505,37 @@
       fbText.focus();
     });
 
+    /* 调整项的归属键 —— **单一出处**。
+       2026-10-16 修的缺陷：写入侧用过两个不同的兜底键（改字 `|| "global"`、
+       框选批注 `|| "overall"`），而读取侧（提交记录那三行）一律用裸 `state.step`。
+       没选中步时（`if (state.step)` 证明它可为空，见 btn-focus-toggle 那处守卫）
+       写入落到没人读的键上 → 作者在画布上改的字被**静默丢弃**，而「保存反馈」看着是成功的。
+       现在写入与读取都走这一个函数，键域不可能再分叉。 */
+    const UNSCOPED = "global";
+    const adjustKey = () => state.step || UNSCOPED;
+
+    /* 提交时要带上的调整项。
+       2026-10-16 修的真实缺陷（作者在画布上改的字被静默丢弃）有两层：
+         ① 写入侧用过两个不同的兜底键（改字 `|| "global"`、框选批注 `|| "overall"`），
+            读取侧一律用裸 `state.step` —— 没选屏时写进没人读的键；
+         ② **「整片」记录根本没有 adjustments 字段**（`{ phase: "overall", ...common }`），
+            所以不选屏时做的画面微调，键对不对都进不了载荷。
+       作者的路径正是：先在画布上改字（此时没选屏）→ 再点一屏提交 → 改动永远丢失，
+       而「保存反馈」看着是成功的。
+       现在：未定范围的微调在**任何**提交里都跟着走，不再有静默丢弃的路径。 */
+    function collectAdjustments() {
+      const k = adjustKey();
+      const un = k === UNSCOPED ? null : UNSCOPED;
+      const merge = (a, b) => (a || []).concat(b || []);
+      return {
+        choreography: state.choreoOverrides[k] || (un ? state.choreoOverrides[un] : null) || null,
+        svg_edits: merge(state.svgEdits[k], un ? state.svgEdits[un] : null),
+        annotations: merge(state.annotations[k], un ? state.annotations[un] : null),
+      };
+    }
+
     function recordSvgEdit(kind, val) {
-      const sid = state.step || "global";
+      const sid = adjustKey();
       if (!state.svgEdits[sid]) state.svgEdits[sid] = [];
       state.svgEdits[sid].push({
         kind,
@@ -3538,7 +3568,7 @@
       const hPct = Math.max(6, Math.round(Math.abs(endY - dragBoxStart.y)));
       dragBoxStart = null;
 
-      const sid = state.step || "overall";
+      const sid = adjustKey();
       if (!state.annotations[sid]) state.annotations[sid] = [];
       const idx = state.annotations[sid].length + 1;
       state.annotations[sid].push({ idx, xPct, yPct, wPct, hPct });
@@ -3552,7 +3582,7 @@
 
     function renderAnnotationsOverlay() {
       annoOverlay.replaceChildren();
-      const sid = state.step || "overall";
+      const sid = adjustKey();
       const list = state.annotations[sid] || [];
       list.forEach(b => {
         const div = document.createElement("div");
@@ -3911,7 +3941,9 @@
           document.getElementById("stage-speaker-video").currentTime || 0) * 1000),
       };
       if (fbMode === "overall") {
-        return { phase: "overall", ...stale, ...common };
+        // adjustments 是**所有**记录都要带的字段：整片意见同样可能伴随画布微调，
+        // 少了它，不选屏时做的改动就没有出口（2026-10-16 的实际事故）。
+        return { phase: "overall", ...stale, ...common, adjustments: collectAdjustments() };
       }
       const active = document.querySelector(".step.active .step-caption");
       return {
@@ -3932,11 +3964,7 @@
         durationMs: state.durationMs,
         ...stale,
         ...common,
-        adjustments: {
-          choreography: state.choreoOverrides[state.step] || null,
-          svg_edits: state.svgEdits[state.step] || [],
-          annotations: state.annotations[state.step] || [],
-        },
+        adjustments: collectAdjustments(),
       };
     }
 
@@ -3970,7 +3998,8 @@
       }
       let text = document.getElementById("fb-text").value.trim();
       // 如果用户在舞台上调了动效原语或改了元素文字，但没手敲评论，自动生成结构化调整说明
-      if (!text && fbMode === "step" && state.step && (state.choreoOverrides[state.step] || state.svgEdits[state.step])) {
+      if (!text && fbMode === "step" && state.step &&
+          (state.choreoOverrides[adjustKey()] || state.svgEdits[adjustKey()])) {
         text = `[舞台微调已记录] 更新了 ${state.step} 的动效编排与元素属性`;
       }
       if (!text) { label("先写一点反馈再保存", "dirty"); return; }

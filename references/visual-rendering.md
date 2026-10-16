@@ -37,8 +37,43 @@ npm. So the check is a step you run, and this line is where it is required.
 ```bash
 cd <project>/composition
 npm run check        # 0 errors required before rendering
-npm run render       # → renders/<project>_<timestamp>.mp4
+npm run render -- --workers <N>   # → renders/<project>_<timestamp>.mp4
 ```
+
+**命令里必须带上 `--workers`。** `npm run render` 的默认值是 `hyperframes render` 自己的默认，
+也就是粗体的 `auto`（按核数开满 Chrome，见下面第 70 行的警告）。把 `check_render_env.py --json`
+报的 `workers` 传进去：
+
+```bash
+W=$(python3 <craft>/helpers/check_render_env.py <project>/composition --json \
+      | python3 -c 'import json,sys; print(json.load(sys.stdin)["workers"])')
+npx hyperframes render --workers "$W" -o /tmp/<name>.mp4 --resolution landscape -f 30 -q delivery
+```
+
+### 首次渲染的 `compile` 是冷启动，别把它当成「渲不动」
+
+`hyperframes render` 的账单里 `compile` 与 `capture` 是两笔，而**第一笔是一次性的**：
+
+| | compile | capture | 合计 |
+|---|---|---|---|
+| 冷缓存（227 帧） | **24m 44.8s** | 18.3s | 25m 5s |
+| 暖缓存（641 帧） | **0.1s** | 38.6s | **40.2s** |
+| 暖缓存整片（9342 帧 / 311s） | 5m 23.1s | 8m 37.4s | 14m 11.6s |
+
+抓帧本身只要 **0.06 秒/帧**；一次「跑了三分钟没有任何输出」的渲染，其实还卡在 compile 里，
+不是渲不动。缓存落在外层（`XDG_CACHE_HOME`，或默认 `~/.cache/hyperframes`）；在沙箱里每次
+重定向 cache 都会重付一次那二十多分钟。
+
+所以：**交付渲染前先渲一个 3–5 秒的短片段把缓存焐热**，然后再渲整片。别因为一次冷启动的
+长等待就判定「这台机器渲不了」而改去手工搭 ffmpeg 分叉 —— 那等于用一条不可复现的路径
+换掉十几分钟的等待。
+
+### `snapshot` 不能用来抓帧序列
+
+`snapshot` 每帧都要重起一次浏览器，实测约 **85 秒/帧**；`render` 是 0.06 秒/帧。要抓帧序列
+（做对比图、抽帧检查）用 `render`，需要逐帧文件就用 `--format png-sequence`。
+`references/composition-craft.md`、`timing-lock.md` 与本文件下文推荐 `snapshot` 的地方，
+指的是**抓少量关键帧做视觉核对**，不是批量抓帧。
 
 ### Font cache in a restricted environment
 

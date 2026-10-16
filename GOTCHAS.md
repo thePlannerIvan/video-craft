@@ -289,7 +289,7 @@ render; it is only a name collision.
 
 ### 21. A silent visual leg makes `verify_delivery.py` fail, by design
 
-**module**：helpers/verify_delivery.py + SKILL.md 第 11 步　｜　**状态**：已复现
+**module**：helpers/verify_delivery.py + SKILL.md 第 10 步　｜　**状态**：已复现
 
 `verify_delivery.py` requires an audio stream. In multi-leg delivery the voiceover
 rides the person leg only and **the visual leg is silent on purpose**, so it
@@ -571,6 +571,8 @@ deletion from an accidental loss.
 
 ## 35. 出口与内容不许取决于"恰恰会失败的那件事"（R11）
 
+**module**：`visual/assets/review-page-template.html`（页头刷新与草稿放回）　｜　**状态**：已升级
+
 **页面必须能刷新自己，而且入口不许藏在告警里。** 两个真实例子，都是"入口/内容的存在取决于
 一个条件，而那个条件在需要它的时候恰好不成立"：
 
@@ -589,12 +591,16 @@ deletion from an accidental loss.
 
 ## 36. 测量工具在测量自己
 
+**module**：验证方法本身（跨 module）　｜　**状态**：已升级
+
 查"还有没有残留进程"时用了 `pgrep -f "serve-review.mjs"` —— 它**匹配到了自己所在的 shell 管道**，
 于是报了一个不存在的泄漏。同一族还有：拿 `grep` 找 `grep`、拿进程名过滤时把过滤命令自己算进去。
 **修法**：让模式匹配不到自己，例如 `pgrep -f "[s]erve-review"`（字符类把字面量拆开），
 或者先取到输出再用代码判断。**报之前先问一句：这个信号有没有可能是测量动作自己产生的。**
 
 ## 37. 想要"写沙盒"就**硬链接**，别用软链 —— 宿主会（正确地）拒绝
+
+**module**：`tests/` 的端到端写沙盒　｜　**状态**：已升级
 
 **场景**：要对一个**真项目**做端到端验收，但不能写坏它（素材 0.5–2 GB）。做法是照原样复制一份
 到 `/tmp`、只把大素材**链接**过去。
@@ -610,6 +616,8 @@ deletion from an accidental loss.
 
 ## 38. 浏览器用例：**一个类共用一个浏览器**，而且失败也要关
 
+**module**：`tests/` 的浏览器用例夹具　｜　**状态**：已升级
+
 一条反面对照在**全量跑**时偶发过一次 ERROR（单独跑、连跑两次都过）。根因是结构性的而不是"运气"：
 
 - 一类里**每个用例各起一次** Chromium，而这个 fixture 还压着 2 GB 硬链接项目 + 一个真宿主；
@@ -622,11 +630,13 @@ deletion from an accidental loss.
 
 ## 39. 交付审阅页必须启动 HTTP 审阅宿主，绝不能直接 open 本地 file:// 路径
 
+**module**：`helpers/edl_review_surface.py` ＋ 公共 review-core 宿主　｜　**状态**：已升级（已确立为铁律，机制在 review-core 宿主那一侧）。
+
+
 - **现象**：向作者展示 `edl_preview.html` 粗剪工作台时，若直接使用 `open edl_preview.html`（`file://` 协议），页面顶部的审阅桥占位符 `{{REVIEW_BRIDGE}}` 未被宿主动态注入，且现代浏览器出于跨源与安全限制禁止 `file://` 下的 `<video>` 加载上层目录素材或发起 Byte-Range 视频分段流请求，导致画面黑屏、视频无法加载、审阅桥显示未连接。
 - **原因**：`edl_preview.html` 架构设计假定通过 `edl_review_surface.py` 启动本地 HTTP 宿主提供服务（serve root 为素材与剪辑目录的公共根，且在传输 HTML 时由 `serve-review.mjs` 动态将 `{{REVIEW_BRIDGE}}` 替换为审阅桥通信脚本）。如果只执行了 `--surface-only` 或试图绕过服务器直接用浏览器打开本地静态 HTML，破坏了这一架构前提。
 - **行为修正**：凡需给作者呈现审阅页面（无论是粗剪工作台还是视觉审阅），绝不直接 `open file://` 静态文件，必须运行 `edl_review_surface.py <edit_dir>`（或对应的审阅启动脚本）启动/复用 HTTP 宿主，并使用返回的 `http://127.0.0.1:<port>/...` 地址在浏览器中打开。
 - **证据**：2026-10-02 在《Research与Wayfinder调研》实录剪辑中，误用 `open edit/edl_preview.html`，导致作者端显示 `{{REVIEW_BRIDGE}}` 占位符且视频播放器黑屏无法播放；改为启动 `edl_review_surface.py` 并打开 HTTP URL 后立即恢复全功能播放与剪辑。
-- **状态**：已记录，已确立为铁律。
 
 ## 40. SVG 空间布局平移 (Layout Transform) 与 WAAPI 动效平移冲突覆盖
 
@@ -694,7 +704,7 @@ deletion from an accidental loss.
 
 ## 48. composition 里 CSS 初始 transform 与 GSAP 补间会互相抢
 
-- **module**：`hyperframes` 的 lint（`gsap_css_transform_conflict`、`root_composition_missing_data_start`） ｜ **状态**：已确认
+- **module**：`hyperframes` 的 lint（`gsap_css_transform_conflict`、`root_composition_missing_data_start`） ｜ **状态**：已复现
 - **现象**：给元素写 `style="transform: translateY(20px)"` 再用 GSAP 补间同一属性，lint 直接拒；根元素漏掉 `data-start="0"` 报 `root_composition_missing_data_start`。
 - **修正原则**：初始状态写在补间里（`gsap.fromTo(el, {y:20}, {y:0})`），CSS 只负责布局（`left`/`top`/尺寸）；根元素四件套 `data-composition-id` / `data-start` / `data-width` / `data-height` 一个都不能少。翻页这类「有意扫出画布」的动效要显式 `data-layout-allow-overflow`，否则每次 check 都报 info。
 - **证据**：《图拉斯创新》翻页 composition，`hyperframes check` 从 8 error + 2 info 到 **0 error / 0 issue**。
@@ -838,13 +848,19 @@ deletion from an accidental loss.
 
 ## 66. GSAP 握手不证明 HyperFrames 播放正常
 
+**module**：`visual/assets/review-page-template.html` 的活舞台接管　｜　**状态**：已升级
+
 旧桥只 seek/play GSAP，runtime 仍拥有 clip 显隐与媒体。真实 keywords 工程在旧路由中多屏同时可见；官方 player 接管后只显示目标屏。审阅用官方 player，不复制动画引擎。验收同时检查画面、声音、录屏和时间，不用 ready 消息替代。
 
 ## 67. 不透明源访问 loopback 和跨帧 blob 都可能被拦
 
+**module**：`helpers/build_review.py` 的资产传递　｜　**状态**：已升级
+
 浏览器报 `ERR_BLOCKED_BY_LOCAL_NETWORK_ACCESS_CHECKS`，脚本没有 pageerror，但嵌入舞台无法加载。用 review-core 传编译工程与资产；player 用 srcdoc。父帧的 `blob:null` 也不能在另一个不透明子帧读取，必须转换为可传递的资产载体。测试不得关闭本机网络访问安全检查来制造通过。
 
 ## 68. 编译路由的 base 不是 HTML 路径的父目录
+
+**module**：`helpers/live_preview.py` 的编译路由　｜　**状态**：已升级
 
 `/preview/comp/index.html` 的 `<base>` 是 `/preview/`。按 HTML 路径拼 `assets/gsap.js` 会拿到 SPA HTML，内联后报 Unexpected token。项目脚本按 composition 本地根读取并核对包含性；runtime 用已验证的同源接口读取，HTML 伪装脚本必须拒绝。
 
@@ -855,3 +871,36 @@ deletion from an accidental loss.
 - **原因**：`auto` 只看核数，**不看内存**。每个 Chrome 工作进程约占 1.5 GB，6 核就把 8 GB 机器的内存吃穿——这是默认值的稳定后果，不是偶发：换一台同规格机器、用同一条命令必然重演。而文档此前只写「default auto」，全文零资源警告。
 - **修正原则**：渲染前先跑 `python3 "<craft>/helpers/check_render_env.py" "<project>/composition"`——它报 RAM、可用内存与 swap，并直接打印这台机器能带得起的 `--workers` 值（两个上限取低：总内存 ÷ 1.5、可用内存 ÷ 1.5，且不超过核数；8 GB 机器上因此 ≤ 2），照它给的值传，不要自己按核数推。**默认从 `--workers 1` 起**；要加并发，先拿 3–5 秒短片段试。审阅期用工程态（`live_stage.py` + `build_review.py`，零渲染），不要拿「先渲一版看看」当开工动作。
 - **证据**：9394 帧 / 1920×1080 / 8 GB RAM / 6 核 → 6 个 Chrome 进程 → swap 用满 8.2 GB → 系统崩溃。
+
+## 70. 首次渲染的 compile 是冷启动（约 25 分钟），会被误判成「这台机器渲不动」
+
+- **module**：`references/visual-rendering.md` 的 Render 节 ｜ **状态**：已复现
+- **现象**：`hyperframes render` 跑三分钟、零输出、没有任何进度，于是判定「整片渲染不可能」，转去手工搭 ffmpeg 分叉。
+- **原因**：渲染账单里 `compile` 与 `capture` 是两笔，**第一笔一次性且极贵**。实测冷缓存 227 帧 `compile 24m 44.8s` + `capture 18.3s`；同一台机器暖缓存 641 帧 `compile 0.1s` + `capture 38.6s`。抓帧只要 0.06 秒/帧——整片 9342 帧的 capture 是 8m 37.4s，剩下全是 compile。缓存落在外层（`XDG_CACHE_HOME`，或默认 `~/.cache/hyperframes`）；沙箱里每次重定向 cache 都会重付那二十多分钟。
+- **修正原则**：**交付渲染前先渲一个 3–5 秒短片段把缓存焐热**，再渲整片。一次冷启动的长等待不构成「渲不动」的证据；以它为理由改走手工 ffmpeg 分叉，是拿一条不可复现的路径换十几分钟。
+- **证据**：同一工程同一命令——冷 `25m 5s` vs 暖 `40.2s`；整片暖缓存 `14m 11.6s`（`compile 5m 23.1s` + `capture 8m 37.4s` + `assemble 6.2s`）。
+
+## 71. 合成给「每一步」发一个媒体 clip，而各步不首尾相接 → 成片里成段黑帧
+
+- **module**：`visual/scripts/generate-composition.py` + `helpers/verify_delivery.py` ｜ **状态**：已复现
+- **现象**：成片在每次「切换」的位置出现黑帧。实测一份 311s 的片子里 37 处步间空隙、合计 12.51s（占 4.0%），`blackdetect` 扫出 39 段；而字幕门、静音门、时长门**全部通过**——是作者肉眼看片发现的。
+- **原因**：生成器给每一步发一个时长正好等于该步时长的媒体 clip，而步与步之间并不相接（`timeline_derive.py` 的 step 边界取自首/末 cue，它自己的注释就写着 cue 之间有 0.2–0.7s 的真空隙）。空隙里画面区没有内容，渲染出来就是黑。对**连续**素材（录屏、长镜头）尤其致命：源本来一直在，是排版把它切出了洞。
+- **修正原则**：连续素材用**一条贯穿全片的媒体 clip**，不要按步骤切；被上层不透明 clip（画面页、截图）覆盖的窗口不必挖洞。判据落在 `verify_delivery.py` 的 `--max-black`：**累计纯黑秒数预算**（默认 2.0s）而不是「有黑帧即失败」——深色设计的片子天然含近黑帧，逐帧判黑会做成恒真告警。报出的黑段要能区分「源素材当时就是黑的」（正常）与「本该有画面却是黑的」（缺陷）。
+- **证据**：修复前 `37 段 / 13.10s` → 失败；改成一条连续 clip 后 `2 段 / 1.03s` → 通过，且那两段的**源素材亮度本身就是 0.03**（内容黑，非缺陷）。
+
+## 72. `segment_durations.json` 的键是输出文件名的 stem，渲到非权威名会静默留下旧记录
+
+- **module**：`helpers/render.py` + `helpers/srt_export.py` ｜ **状态**：已复现
+- **现象**：渲到 `person_master.new.mp4` 后，`segment_durations.json` 里多了一个 `person_master.new` 键，**旧的 `person_master` 键原样留着**（指向去重前的 EDL，长 1.77s）。下游解析到哪一条，取决于各自的挑选规则。
+- **原因**：`blob[clips_tag] = {...}` 而 `clips_tag = out_path.stem`——键由输出名决定，没有「这个键是不是权威名」的校验。更麻烦的是**两个读者算法不一致**：`_edl.py` 取最后一条匹配，`srt_export.py` 取第一条；当两条记录哈希相同（EDL 没变、只重渲）时二者会指向不同时间。
+- **修正原则**：要交付就渲到权威名（`person_master.mp4` / `final.mp4`）；`render.py` 现在会在检测到「还有指向别的 EDL 的记录」时把冲突键打印出来。改 EDL 重渲后，顺手清掉过期键。
+- **证据**：`person_master`(311.366665, digest `13f33481…`) 与 `person_master.pre-dedupe`(313.133332, digest `41b1d81b…`) 并存，相差 1.77s，无任何脚本报告矛盾。
+
+## 73. 交付副本与流水线产物是两份判据相反的东西（字幕空隙）
+
+- **module**：`helpers/srt_export.py` + `helpers/export_deliverables.py` ｜ **状态**：已复现
+- **现象**：`caption-modes.md` 规定了「导出前每个 cue 的 end 缩短 0.04s、空隙 ≥0.03s」，但代码零实现，每次交付都要手写一份后处理（实测一份 161 条的字幕有 22 处不合规）。
+- **原因**：这条规则**不能**落在 `--build` 的产出上——`subtitles.srt` 的契约是「每个 cue 的时间戳等于保留词的边界」，`check_article_srt` 逐条核对，就地改 end 会把那份契约弄假（实测直接把测试弄红）。它属于**交付边界**，也就是文档说的「交付前做空隙检查」。
+- **修正原则**：流水线产物忠实、可校验；交付副本可导入。规则实现在 `srt_export.py:apply_import_gaps`，由 `export_deliverables.py` 在写 `成品/*.srt` 时调用；交付命名用 `src=dst`（如 `subtitles.srt=04_字幕文件.srt`）一次说清，不再拷完手工改名。
+- **证据**：同一条 161 cue 的字幕——流水线产物 22 处 <0.03s（忠实），交付副本 0 处、min 0.040s、保底 0.300s。
+

@@ -261,13 +261,15 @@ python3 "<craft>/helpers/review_inbox.py" "<project>"
 ```bash
 python3 "<craft>/helpers/check_parity.py" "<project>"
 python3 "<craft>/helpers/verify_delivery.py" "<edit>" --video "<final-video>"
-python3 "<craft>/helpers/export_deliverables.py" "<project>"
+python3 "<craft>/helpers/export_deliverables.py" "<edit>" \
+    --out "<project>/成品" --videos "final.mp4=01_人物口播_成片.mp4" \
+    --srt   "subtitles.srt=04_字幕文件.srt"
 python3 "<craft>/helpers/state_fingerprint.py" capture "<project>"   # 交付自带来源指纹
 ```
 
 `check_parity.py` 先跑：它断言 spec（`choreography.json`）里的每个效果 kind 在 composition 与审阅页两条路径都有实现、每个 selector 在目标页面上真的命中元素。这两类失配**不会让 `hyperframes check` 失败、也不会让页面报错**，只会让某一步静默不演 —— 交付前必须过。
 
-**已有交付先用 `state_fingerprint.py verify` 判断是否过期；改源后过期正是需要重新输出的信号，不拦住新渲染。** 重新输出并核验后 `capture` 新指纹，发送前再 `verify`，不一致就不能发送。工程态的渲染与预览一律落 `edit/_engineering/`，**不进 `edit/` 根**，免得被当成当前底片（GOTCHAS #56）。
+**指纹不是渲染前置，是交付过期信号**：已有交付先跑 `state_fingerprint.py verify` 判断是否过期；改源后过期正是**需要重新输出**的信号，不拦住新渲染，只拦住**发送**。 重新输出并核验后 `capture` 新指纹，发送前再 `verify`，不一致就不能发送。工程态的渲染与预览一律落 `edit/_engineering/`，**不进 `edit/` 根**，免得被当成当前底片（GOTCHAS #56）。
 
 核验实际成片，不核验预览假象：声音、首 / 中 / 尾画面、字幕、关键动效、alpha、画幅、帧率、时长和交付文件名。交付中明确：有声 / 无声、透明 / 不透明、字幕烧录 / 外挂，以及仍未完成的事项。
 
@@ -305,15 +307,17 @@ python3 "<craft>/helpers/state_fingerprint.py" capture "<project>"   # 交付自
 
 ```bash
 PYTHONPATH=helpers python3 -m unittest discover -s tests -p 'test_*.py'   # 必须 0 error
-python3 helpers/check_review_template.py                                  # 审阅页七条静态不变量
-python3 helpers/check_review_template.py --prove                          # 证明那七条不是空洞判据
+python3 helpers/check_review_template.py                                  # 审阅页九条静态不变量
+python3 helpers/check_review_template.py --prove                          # 证明那九条不是空洞判据
+# 静态质检用 planning-before-create-skill 的 scripts/lint_skill.py（全库唯一一份），要 0 error
+python3 -m json.tool evals/evals.json >/dev/null && echo "evals 合法"     # 本 Skill 的语义验收用例（见 evals/）
 node "<review-core>/evals/run.mjs"
 python3 -m unittest discover -s "<review-core>/evals" -p 'test_*.py'
 ```
 
-第一条必须**全绿**，不是"大部分通过"。这个仓库的自检曾经常年带着两个 ERROR 在跑 —— `test_interactive_ui.py` 连 import 都失败（模块被删掉了）、`test_snapshot_input.py` 找不到隔壁 Skill 的模块而被静默跳过 —— 于是没人看结果，同一个审阅页文件连着返工三轮（GOTCHA #57）。有 skip 是允许的（浏览器用例需要 `VIDEO_CRAFT_BROWSER_TESTS=1` 与 playwright，见下），但 skip 必须写在案上，不能当成通过。
+第一条必须**全绿**，不是"大部分通过"。这个仓库的自检曾经常年带着两个 ERROR 在跑 —— `test_interactive_ui.py` 连 import 都失败（模块被删掉了）、`test_snapshot_input.py` 找不到隔壁 Skill 的模块而被静默跳过 —— 于是没人看结果，同一个审阅页文件连着返工三轮（GOTCHA #57）。有 skip 是允许的（缺 ffmpeg / node / playwright 时相关用例会自己跳过），但 skip 必须写在案上，不能当成通过。
 
-`check_review_template.py` 是**静态**的：它钉住七类机械缺陷不会静默回来，**不证明页面能跑** —— 新的类仍然要人撞到。别把绿灯读成"审阅页已验证"。同样的道理，浏览器用例（`VIDEO_CRAFT_BROWSER_TESTS=1`）默认不跑，所以舞台的**握手**目前只由 `tests/test_composition_embed_bridge.py` 的协议测试间接保证。
+`check_review_template.py` 是**静态**的：它钉住九类机械缺陷不会静默回来，**不证明页面能跑** —— 新的类仍然要人撞到。别把绿灯读成"审阅页已验证"。浏览器用例现在**默认跑**（要跳过就设 `VIDEO_CRAFT_BROWSER_TESTS=0`）——它们曾经是 opt-in，于是长期被跳过、断言悄悄腐烂（作者丢过一次画布改字就撞在那条没人执行的路径上）。舞台的**握手**另有 `tests/test_composition_embed_bridge.py`的协议测试兜底。
 
 真实项目至少走一遍：`build_review → surface-only → 页面加载 → 提交带 unitId 的反馈 → review_inbox → 修改源 → 重新 build review`。只有这条链通过，才报告审阅接缝可用。审阅时画面走**工程态**（活 composition，见「两个态」）：先 `live_stage.py` 起服务，再 `build_review.py`。
 

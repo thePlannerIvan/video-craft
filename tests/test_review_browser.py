@@ -76,8 +76,11 @@ def have_playwright():
         return False
 
 
-@unittest.skipUnless(os.environ.get("VIDEO_CRAFT_BROWSER_TESTS") == "1",
-                     "set VIDEO_CRAFT_BROWSER_TESTS=1 for local browser/interface smoke")
+# 2026-10-16 由 opt-in 改为 opt-out：这几条是唯一能抓「审阅页面写读键域不一致」
+# 这类缺陷的用例，默认跳过等于让它们永远不跑（作者丢过一次画布改字就是撞在这条
+# 未执行路径上）。装不上 playwright 时下面那条 skipUnless 仍会跳过。
+@unittest.skipIf(os.environ.get("VIDEO_CRAFT_BROWSER_TESTS") == "0",
+                    "set VIDEO_CRAFT_BROWSER_TESTS=0 to skip local browser/interface smoke")
 @unittest.skipUnless(have_playwright(), "needs playwright")
 class ReviewBrowserTests(unittest.TestCase):
     def setUp(self):
@@ -151,6 +154,29 @@ class ReviewBrowserTests(unittest.TestCase):
             page.wait_for_function(
                 "() => !document.getElementById('fb-save').disabled", timeout=15000)
             page.fill("#fb-text", "整片节奏偏慢，第三段可以再压一压")
+
+            # ③b 不选屏时，画布上的微调也必须进**同一条**记录。
+            #     2026-10-16 的缺陷：写入侧用 `state.step || "global"`（框选批注那处还用过
+            #     `|| "overall"`），读取侧一律用裸 `state.step` —— 没选屏时写入落进
+            #     没有任何读者的键，作者在画布上改的字被静默丢弃，而「保存反馈」看着是成功的。
+            #     这条是那次缺陷的**行为**判据；静态判据见 check_review_template.py 的 S9。
+            page.click("#tool-box")
+            # 直接在 overlay 上派发事件：page.mouse 的落点会冒泡到左边那一列 step 上，
+            # 于是页面切到「当前屏」，这次断言就测不到「不选屏」那条路了。
+            page.evaluate("""() => {
+                const ov = document.getElementById("annotation-overlay");
+                const r = ov.getBoundingClientRect();
+                const fire = (type, fx, fy) => ov.dispatchEvent(new MouseEvent(type, {
+                    clientX: r.left + r.width * fx, clientY: r.top + r.height * fy, bubbles: true }));
+                fire("mousedown", 0.30, 0.30);
+                fire("mouseup", 0.50, 0.50);
+            }""")
+            # 切工具会顺带切舞台、可能自动选中一屏；这里显式切回「整片意见」，
+            # 让这一条仍然走「不选屏提交」的路径。
+            page.click("#mode-overall")
+            page.wait_for_function(
+                "() => document.getElementById('mode-overall').classList.contains('active')")
+
             page.click("#fb-save")
             page.wait_for_function(
                 "() => /已写入/.test(document.getElementById('save-state').textContent)", timeout=15000)
@@ -163,6 +189,10 @@ class ReviewBrowserTests(unittest.TestCase):
             for field in ("chapterId", "stepId", "stepIndex", "caption", "durationMs"):
                 with self.subTest(field=field):
                     self.assertNotIn(field, overall[0])
+            # ③c 画布微调没有丢 —— 写读键域一致的判据
+            self.assertTrue(
+                overall[0]["adjustments"]["annotations"],
+                "没选屏时记录的画布微调没有进同一条记录 —— 写读键域又分叉了")
 
             # ④ **第二条路：选中某一屏 → 逐屏那条行为不变。**
             page.click(".step:nth-child(2)")           # chapter header 之后第一个 step
@@ -182,11 +212,17 @@ class ReviewBrowserTests(unittest.TestCase):
             self.assertEqual(record["chapterId"], "intro")
             self.assertEqual(record["stepId"], "intro-001")
             self.assertEqual(record["status"], "open")
-            # 记录形状 = review-ui.md 的 schema：页面产出的字段一个不多一个不少
-            self.assertEqual(set(record), {
-                "chapterId", "stepId", "stepIndex", "caption", "durationMs",
-                "type", "text", "status", "batchId", "createdAt", "snapshot",
-                "playbackTimeMs", "adjustments"})
+            # 记录必须**带上** review-ui.md 列出的每个契约字段。
+            # 原先这里断言「整集合相等」，即把一份硬编码字段表当成契约的缓存——
+            # 它被 env 门跳过的那段时间里页面加了 buildId/unitId/animationAnchor，
+            # 谁也没发现，门一开测试就红。review-ui.md 从未把记录声明成闭合集合
+            # （它列的是「反馈必须携带什么」，`:7` 还把 unitId/animationAnchor 写成载荷的一部分），
+            # 所以判据收回成该有的形状：契约字段一个不少。
+            for field in ("chapterId", "stepId", "stepIndex", "caption", "durationMs",
+                          "type", "text", "status", "batchId", "createdAt", "snapshot",
+                          "playbackTimeMs", "adjustments"):
+                with self.subTest(contract_field=field):
+                    self.assertIn(field, record)
             self.assertRegex(record["snapshot"], r"^[0-9a-f]{8,}$")
             self.assertIsInstance(record["playbackTimeMs"], int)
             self.assertEqual(set(record["adjustments"]), {
@@ -279,8 +315,17 @@ class ReviewBrowserTests(unittest.TestCase):
         overall_written = [json.loads(line) for line in overall_jsonl.read_text(encoding="utf-8").splitlines() if line.strip()]
         self.assertEqual(len(overall_written), 1)
         self.assertEqual(overall_written[0]["phase"], "overall")
-        self.assertEqual(set(overall_written[0]), {
-            "phase", "type", "text", "status", "batchId", "createdAt", "snapshot", "playbackTimeMs"})
+        # 判据收回成「契约字段必须在、单位字段必须不在」。
+        # 原先这里是整集合硬编码 —— 那是契约的一份缓存，页面合法地长了 buildId 与
+        # adjustments 之后就过时了；它被 env 门跳过的那段时间里没人发现。
+        for field in ("phase", "type", "text", "status", "batchId", "createdAt",
+                      "snapshot", "playbackTimeMs", "buildId", "adjustments"):
+            with self.subTest(contract_field=field):
+                self.assertIn(field, overall_written[0])
+        for field in ("unitId", "chapterId", "stepId", "stepIndex", "caption",
+                      "durationMs", "animationAnchor"):
+            with self.subTest(unit_field=field):
+                self.assertNotIn(field, overall_written[0])
 
         jsonl = self.project / "feedback" / "intro.jsonl"
         self.assertTrue(jsonl.is_file())

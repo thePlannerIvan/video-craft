@@ -28,25 +28,25 @@
 `video-craft` 稳定完成一件事：**把创意内容包或一批素材，做成一条经过核验的成片**——
 声音与画面怎么排、时间轴怎么定、字幕与花字怎么落、交付件怎么验。它不写稿、不画静态画面。
 
-从接包到成片走 11 步。权威版本是 `SKILL.md` 的「全片流程」表；这里标出**每一步落在哪个 module、落什么盘**：
+从接包到成片走 **10 步**。权威版本是 `SKILL.md` 的「全链流程」那一节（本节不另立判据，
+只标出**每一步落在哪个 module、落什么盘**）。步号与 `SKILL.md` 一一对应：
 
 | 步 | 落在哪个 module | 落盘的产物 |
 |---|---|---|
-| 1 承接与版本核对 | `references/content-to-production.md` + `helpers/check_script_hash.py` | `edit/project.md` |
-| 2 制作方案 | `references/content-to-production.md` + `references/visual-direction.md` | `production-plan.md` |
-| 3 准备声音与素材 | `helpers/transcribe*.py` / `pack_transcripts.py` | `edit/transcripts/`、`edit/takes_packed.md` |
-| 4 画面与节奏预演 | `references/creative-direction.md` + `references/capability-map.md` | `previs/`（标 planned） |
-| 5 剪接决策 | `helpers/render.py` 的缓存层 + `helpers/check_edl.py` | `edit/edl.json` |
-| 6 剪接审阅 | `helpers/edl_preview_build.py`（出页） + `helpers/edl_review_surface.py`（面上缝） | `edit/edl_preview.html` + `edit/selections.json` + 作者答复 |
-| 7 实测底片与语义字幕 | `helpers/render.py` + `srt_export.py` + `references/caption-article-first.md` | `edit/segment_durations.json`、`captions.json`、`caption_words.json` |
-| 8 绑定内容与实测时间 | `helpers/timeline_derive.py` + `references/visual-timeline.md` | `timeline/grouping.json`、`timeline/timeline.json`、`storyboard.md` |
-| 9 完成视觉与合成 | `visual/scripts/generate-composition.py`（+ `import_svg_page.py`、`check_themes.py`）、`helpers/render.py`、`references/composition-craft.md` | `composition/index.html` 或 `edit/overlays/`、`edit/base.mp4` |
-| 10 自检与创意兑现 | `check_motion.py` / `check_screen_text.py` / `check_caption_breaks.py` / `verify_av.py` | `edit/verify/`、`creative-check.md` |
-| 11 交付与核验 | `helpers/export_deliverables.py` + `verify_delivery.py` | `成品/` |
+| 1 接手与版本核对 | `helpers/check_script_hash.py` / `visual/scripts/snapshot_input.py` / `visual/scripts/import_svg_page.py` | `edit/project.md`、`composition/pages/manifest.json` |
+| 2 确定制作方案 | `references/content-to-production.md`（分界 owner）＋ `references/creative-direction.md` | `production-plan.md` |
+| 3 声音与剪辑 | `helpers/transcribe*.py` / `pack_transcripts.py` / `check_edl.py` / `apply_selection.py` / `audio_diag.py` / `audio_fix.py` | `edit/transcripts/`、`takes_packed.md`、`edit/edl.json` |
+| 4 逐字剪辑审阅 | `helpers/edl_preview_build.py`（出页）＋ `helpers/edl_review_surface.py`（面上缝） | `edit/edl_preview.html`、`edit/selections.json` |
+| 5 工程时间与字幕；确认后输出底片 | `helpers/duration_plan.py`（`projected` 工程态）＋ `helpers/render.py --preview` ＋ `helpers/srt_export.py` | `edit/segment_durations.json`、`caption*` 系列、`subtitles.srt` |
+| 6 建立唯一时间脊柱 | `helpers/timeline_derive.py`（唯一生产者）＋ `visual/scripts/align-visual-plan.py`、`import_srt_timeline.py`（外部 SRT 路径） | `timeline/grouping.json`、`timeline/timeline.json` |
+| 7 动效与合成 | `visual/scripts/generate-composition.py`（＋ `import_svg_page.py`、`auto_choreography.py`）、`helpers/render_layer.py` | `composition/`、透明或整屏视觉层 |
+| 8 动效与合成审阅 | `helpers/live_stage.py` ＋ `helpers/build_review.py` ＋ `helpers/review_surface.py`（`live_preview.py` 是其中的工程传输） | `review/review_data.json`、`review/index.html` |
+| 9 收件、返修与重建 | `helpers/review_inbox.py` ＋ `helpers/review_slices.py` | `feedback/*.jsonl`、重建后的审阅面 |
+| 10 核验与交付 | `helpers/check_parity.py` / `verify_delivery.py` / `export_deliverables.py` / `state_fingerprint.py` | `成品/`、`成品/delivery.json` |
 
-形状：**第 1–4 步不需要实测音频，第 5 步起需要**。所以没有录音时项目照走到第 4 步并出可审的样片；
-「等录音」停的是第 5 步往后，不是整个项目。这条分界是整条流程唯一的时间依赖，
-`content-to-production.md` 是它的 owner。
+形状：**第 1–4 步不需要实测音频；第 5 步起可以先出工程态（`projected` 解析预演），
+但交付证据必须是实测渲染**。没有录音时项目照走到第 4 步并出可审的样片；「等录音」停的是
+第 5 步**之后的交付态**，不是整条流程。`content-to-production.md` 是这条分界的 owner。
 
 ## 2. 模块表
 
@@ -56,7 +56,7 @@
 
 | module | 它是什么 | 拥有什么（唯一主人） | 接口 | 不做什么 |
 |---|---|---|---|---|
-| `SKILL.md` | 这个 Skill 的门面 | 11 步流程的全景与每步「一眼能不能看出没做完」、按当下需要的路由、机器保证 vs 判断的分界、两个入口 | 模型入口；frontmatter 的 `description` 是触发面 | 不写完整完成标准（那住在各 module 的文档里）、不复述子文档的规则、不定义字段语义 |
+| `SKILL.md` | 这个 Skill 的门面 | 10 步流程的全景与每步「一眼能不能看出没做完」、按当下需要的路由、机器保证 vs 判断的分界、两个入口 | 模型入口；frontmatter 的 `description` 是触发面 | 不写完整完成标准（那住在各 module 的文档里）、不复述子文档的规则、不定义字段语义 |
 | `references/architecture.md` | 本文件 | 模块边界与缝、两个真相源、动的后果、退役清单 | 改之前读 | 不重复各 module 的内容细节 |
 | `GOTCHAS.md` | **候选池** | 有证据、会稳定导致错误的行为候选；每条带 `module` 与状态（候选／已复现／已升级／已失效） | 按 module 聚类读；一条一个根因 | 不装已决定的升级（那是维护记录）；末尾那节写明**不收什么**及理由 |
 | `references/maintenance-history.md` | **已发生的升级** | 每次升级做了什么／为什么／影响哪些 module／删了什么；未决事项单独标出 | 升级时追加，新的一次记在上面 | 不是 CHANGELOG，不记发版 |
@@ -71,24 +71,24 @@
 | module | 拥有什么 | 接口 | 不做什么 |
 |---|---|---|---|
 | `references/content-to-production.md` | 承接阶段的产物与顺序（四件产物）、`script_hash` 两处核对口径、没有音频也要做完、「预演时间 vs 制作时间」两态。**完成标准的家是 `SKILL.md` 的 Process 步 1–4，这一份不另立判据** | 第 1–2 步读；第 3–4 步读它的顺序与产物表 | 不写具体剪法（`visual-direction.md`）、不定义契约字段（上游契约管） |
-| `references/video-story-handoff.md` | 上游内容包的接收口径：契约 5.0 的 `screens`／4.0 的 `blueprints`、Beat 对齐、`sourceBlueprintId` | 第 1、8 步读 | 不定义上游字段语义；不复述上游契约 |
+| `references/video-story-handoff.md` | 上游内容包的接收口径：契约 5.0 的 `screens`／4.0 的 `blueprints`、Beat 对齐、`sourceBlueprintId` | 第 1、6 步读 | 不定义上游字段语义；不复述上游契约 |
 | `references/creative-direction.md` | 接住意图、主动设计视听表达的主线 | 第 2 步读 | 不写画面语言细节（`visual-direction.md`） |
-| `references/capability-map.md` | 视听能力导航（按表达目的选，不按工具选） | 发想期与第 2、4 步读；Idea 也读它 | 不承诺运行依赖已安装 |
+| `references/capability-map.md` | 视听能力导航（按表达目的选，不按工具选） | 发想期与第 2 步读；Idea 也读它 | 不承诺运行依赖已安装 |
 | `references/visual-direction.md` | 画面与动画的对齐顺序、只讨论真正改变成片的分歧 | 第 2 步读；第 10 步的字闸门判断依据在它这里 | 不写实现（`composition-craft.md`） |
 | `references/preferences.md` | 作者偏好的最小记录与区分（本片要求 vs 可复用偏好） | 第 1 步起读 | 不把整份会话灌进上下文 |
 | `references/media-first.md` | 真实证据 / 复刻 / 示意 / 创作的身份区分 | 选素材时读 | 不允许把修辞包装成实测证明 |
-| `references/visual-timeline.md` | **时间脊柱的派生**：`timeline.json` 的输入、Step 分组规则、Checkpoint 只确认版面与节奏 | 第 8 步读；`timeline_derive.py` 是它的可执行形态 | 不重新解析 SRT；不重选主题 |
-| `references/composition-craft.md` | 视觉层怎么落地：`composition/index.html` 的硬规则、字体度量、**画面页来自 planners-ppt-hell 时的动画交接** | 第 9 步读 | 字段语义不在它这里（`composition-facts-contract.md`）；预埋子元素动效配方在 `svg-animation-contract.md` |
-| `references/svg-animation-contract.md` | **`planners-ppt-hell` → `video-craft` 的声明式 SVG 预埋动效契约**：5 条 SVG 分组与几何硬性规则、8 种复合子元素分阶段动效原语（`data-anim` + `.anim-*` 子选择器）、GSAP/WAAPI 双模式接线规范 | 做画面预埋动效与第 9 步绑实测时间轴时共读；`visual/assets/svg-anim-engine.js` 是旧 SVG 兼容路径的可执行形态；HyperFrames 新工程读自己的 composition 配置 | 不写口播实测毫秒数（制作前不知道时长，只预埋相对 `data-step` 顺序与微时序差） |
-| `references/composition-facts-contract.md` | **`composite`／`personWindow`／`captionSafe` 三个键的字段契约**（键名、取值域、默认、谁填谁读、缺了怎样） | 做画面那一步与第 9 步都按它写/读 | 只写已实现的键；不设计新字段 |
+| `references/visual-timeline.md` | **时间脊柱的派生**：`timeline.json` 的输入、Step 分组规则、Checkpoint 只确认版面与节奏 | 第 6 步读；`timeline_derive.py` 是它的可执行形态 | 不重新解析 SRT；不重选主题 |
+| `references/composition-craft.md` | 视觉层怎么落地：`composition/index.html` 的硬规则、字体度量、**画面页来自 planners-ppt-hell 时的动画交接** | 第 7 步读 | 字段语义不在它这里（`composition-facts-contract.md`）；预埋子元素动效配方在 `svg-animation-contract.md` |
+| `references/svg-animation-contract.md` | **`planners-ppt-hell` → `video-craft` 的声明式 SVG 预埋动效契约**：5 条 SVG 分组与几何硬性规则、8 种复合子元素分阶段动效原语（`data-anim` + `.anim-*` 子选择器）、GSAP/WAAPI 双模式接线规范 | 做画面预埋动效与第 7 步绑实测时间轴时共读；`visual/assets/svg-anim-engine.js` 是旧 SVG 兼容路径的可执行形态；HyperFrames 新工程读自己的 composition 配置 | 不写口播实测毫秒数（制作前不知道时长，只预埋相对 `data-step` 顺序与微时序差） |
+| `references/composition-facts-contract.md` | **`composite`／`personWindow`／`captionSafe` 三个键的字段契约**（键名、取值域、默认、谁填谁读、缺了怎样） | 做画面那一步与第 7 步都按它写/读 | 只写已实现的键；不设计新字段 |
 | `references/themes.md` | **风格库的契约**：谁读它、必填 token、圆角刻度、可选性格覆盖与装饰层、创作新主题的步骤 | 选/换主题时读；`check_themes.py` 是它的可执行形态 | 不写章节 CSS（那是章节自由）；不复制 token 到别处 |
-| `references/review-ui.md` | 视觉审阅页的约定、反馈 schema、三条硬约定、**与另一套审阅面的交棒条件** | 第 6、10 步读 | 不合并两套审阅面 |
-| `references/visual-rendering.md` | 渲染、透明层容器选择、渲染前预检与受限环境 | 第 9–10 步读 | 不写审阅页（`review-ui.md`） |
+| `references/review-ui.md` | 视觉审阅页的约定、反馈 schema、三条硬约定、**与另一套审阅面的交棒条件** | 第 4、8、10 步读 | 不合并两套审阅面 |
+| `references/visual-rendering.md` | 渲染、透明层容器选择、渲染前预检与受限环境 | 第 7、10 步读 | 不写审阅页（`review-ui.md`） |
 | `references/frame-animation-pipeline.md` | 自绘逐帧动画那条路线：slot 切分、帧数合同、性能配方、逐画面返修、多腿交付 | 走自绘渲染器时读 | 不是画风规定 |
-| `references/caption-article-first.md` | 中文语义字幕的完整规格（article → line plan → lock → build → check） | 第 7 步读；`srt_export.py` 是它的可执行形态 | 不与机械计时阶段交错 |
-| `references/caption-modes.md` | 字幕三模式与断句原则；模式必须在 Checkpoint 问一次 | 第 7 步前读 | 不默认内嵌 |
+| `references/caption-article-first.md` | 中文语义字幕的完整规格（article → line plan → lock → build → check） | 第 5 步读；`srt_export.py` 是它的可执行形态 | 不与机械计时阶段交错 |
+| `references/caption-modes.md` | 字幕三模式与断句原则；模式必须在 Checkpoint 问一次 | 第 5 步前读 | 不默认内嵌 |
 | `references/timing-lock.md` | 渲染前的 Timing Lock 检查清单 | 渲染前读 | 不替代 `check_overlay.py` |
-| `references/storyboard-format.md` | `storyboard.md` 的结构（`timeline.json` 的人读伴侣） | 第 8 步 Checkpoint 前读 | 不定义时间值 |
+| `references/storyboard-format.md` | `storyboard.md` 的结构（`timeline.json` 的人读伴侣） | 第 6 步 Checkpoint 前读 | 不定义时间值 |
 | `references/maintenance-history.md` | 见上（迭代落点） | — | — |
 
 ### 判据（`helpers/` 里带 `check_*` / `verify_*` 的那些）
@@ -107,6 +107,8 @@
 | `helpers/verify_delivery.py` | **交付副本**：与工作区逐字节、时长对渲染记录、字幕尾 | `verify_delivery.py <edit_dir> [--video] [--deliver-dir]` | 不看源素材 |
 | `helpers/check_script_hash.py` | `script.md` 与内容契约的 `script_hash` 是否相符 | `check_script_hash.py <项目目录> ／ --script --plan`；退 0／1／2 | 不改任何文件；核不了时**不报成功** |
 | `helpers/check_render_env.py` | 渲染环境：字体缓存可写、Node ≥ 22、composition 在；**并发预算** —— 读总内存／可用内存／swap，`suggest_workers()` 按「总内存÷`WORKER_RAM_GB`、可用内存÷`WORKER_RAM_GB`、核数」三者取低算出这台机器带得起的 `--workers`，可用内存 < `MIN_FREE_GB` 时退非零（`--workers auto` 是按核数开满 Chrome 的那个默认值） | `check_render_env.py [composition] [--json]`（`--json` 出 `{ok, workers, memory}` 给调用方直接消费） | 不渲染；不检查 HyperFrames 的其它 `HYPERFRAMES_*`；**不替 agent 决定要不要渲** —— 它只报这台机器能不能渲、该用几个 worker |
+| `helpers/check_parity.py` | **审阅面／合成面一致性检查**：三条断言全确定性，可进自检 | 「spec 里声明的效果在两条路径都有实现、selector 真的命中」这一判据 | `check_parity.py <project>` | 不管渲染；不替代 `hyperframes check` |
+| `helpers/state_fingerprint.py` | **工程态 ↔ 交付态的来源指纹**：让「这份交付是不是过期」变成可判定 | 「交付与当前工程态是否一致」这一判据；`capture`／`verify` 两个方向 | `state_fingerprint.py capture|verify <project> [-o 成品/delivery.json]` | **不是渲染前置**：过期是「需要重新输出」的信号，只拦发送 |
 
 ### 生产者（`helpers/` 里写盘的那些）
 
@@ -114,11 +116,11 @@
 |---|---|---|---|
 | `helpers/render.py` | **最终像素的唯一决定者**：逐段抽取（内容键缓存）、无损 concat、覆盖层与字幕合成、响度归一化；**`segment_durations.json` 的唯一写者**；每段读回校验与总长断言 | `render.py <edl.json> -o <out> [--preview/--draft/--no-cache/--no-subtitles/--no-loudnorm]` | 不判断内容；不决定要不要重渲 |
 | `helpers/render_cut.py` | 带 `speed` / `mute` 的 EDL 渲成单个 MP4 | `render_cut.py <edl.json> -o <out>` | 不走覆盖层合成 |
-| `helpers/timeline_derive.py` | **`timeline.json` 的唯一生产者**：EDL 实测 cue + `grouping.json` → 视觉步骤；拒绝非 `measured` 时间轴 | `timeline_derive.py <edit_dir> --grouping … --output-timeline … [--alignment] [--stats]` | 不重新解析 SRT；不做创作分组 |
+| `helpers/timeline_derive.py` | **`timeline.json` 的唯一生产者**：EDL 实测 cue + `grouping.json` → 视觉步骤。**接受两种来源**：`measured`（实测段时长）与 `projected`（解析预演，工程态可审、不可交付）；**交付路径**的 measured 硬要求由 `validate_measured_bindings` 把关，不是这里 | `timeline_derive.py <edit_dir> --grouping … --output-timeline … [--alignment] [--stats]` | 不重新解析 SRT；不做创作分组 |
 | `helpers/srt_export.py` | **输出时间轴 SRT 的唯一生产者**（article → line plan → lock → build → check）；`caption_words.json` 的写者 | `srt_export.py <edit_dir> --prepare／--lock／--build／--check` | 不认标称时间轴（渲染过期就拒） |
 | `helpers/export_deliverables.py` | 把成片与 SRT 拷进 `成品/` | `export_deliverables.py <edit_dir> --out <dir>` | 不校验（那是 `verify_delivery`） |
 | `helpers/edl_edit.py` | 脚本化改 EDL，每次删除必须带「时间区间=期望文本」 | `edl_edit.py <edit_dir> --delete …` | 不匹配就拒写；不猜词 |
-| `helpers/apply_selection.py` | 把作者的词/停顿选择应用回 EDL 并重渲 | `apply_selection.py <edit_dir> …` | 不代替作者做选择 |
+| `helpers/apply_selection.py` | 把作者的词/停顿选择应用回 EDL。**只改 EDL，不渲染** —— 正式底片排在确认之后（第 5 步），不在收件时就出 | `apply_selection.py <edit_dir> …` | 不代替作者做选择 |
 | `helpers/mirror_edl.py` | 从一条规范 EDL 派生另一机位的 EDL | `mirror_edl.py --offset …` | 符号定义在 `measure_offset.py` 那边 |
 | `helpers/measure_offset.py` | 多机位偏移的量法（`offset = face − screen`） | `measure_offset.py <screen> <face>` | 不加偏移（加的是 `mirror_edl`） |
 | `helpers/grade.py` | 调色预设与滤镜链 | 被 `render.py` 导入；也可单独调 | 不判断画面好不好 |
@@ -132,6 +134,10 @@
 | `helpers/pack_transcripts.py` | 把逐字稿打包成 `takes_packed.md`（主要阅读视图） | `pack_transcripts.py --edit-dir <edit_dir>` | 不改转写内容 |
 | `helpers/timeline_view.py` | 时间区间的胶片条 + 波形合成图 | `timeline_view.py <video> <start> <end> -o <png> [--n-frames]` | 不做判断 |
 | `helpers/clean_edit_dir.py` | 交付后的工作区清理（首次先呈清单） | `clean_edit_dir.py <edit_dir> [--apply --approve]` | 不删重建所需的最小集 |
+| `helpers/duration_plan.py` | **解析预演时间轴**：不渲一帧就把时间轴量化算出来 | `projected` 记录（工程态可审、不可交付） | `duration_plan.py <edit_dir>` | 不算交付证据；不替代实测渲染 |
+| `helpers/import_srt_timeline.py` | **外部 SRT 路径的时间脊柱**：只有剪好的音频与 SRT 时用 | 「这份 SRT 与这份内容契约完成了对齐」这一证明；写 `timeline/timeline.json` | `import_srt_timeline.py <project> --srt … --alignment …` | 不证明 EDL 实测；不重新解析语义 |
+| `helpers/align.py` | **卡点对齐**：把一个词／短句定位到输出时间轴的秒数 | 词 → 输出秒数的换算（`timeline` 与 `edit` 两侧共用） | 被 `timeline_derive.py` 等调用（库接口，非 CLI） | 不做创作分组；不写时间轴文件 |
+| `helpers/doubao_asr_file.js` | **豆包 SeedASR 整文件转写**：`transcribe.py --backend` 可选的第二条 ASR 路径 | 输出 Scribe 兼容的 `{words:[…]}` 词表 | `node doubao_asr_file.js <input.raw|wav> <out.json> <offsetSec>` | 不做对齐、不写 EDL |
 
 ### 审阅与导出面
 
@@ -139,7 +145,7 @@
 |---|---|---|---|
 | `helpers/live_stage.py` | **活舞台的唯一主人**：为 `<project>/composition` 起 HyperFrames 预览服务，给出**可嵌入的裸 composition 路由**，并把地址写进 `edit/_engineering/live-stage.json`；路由的**双重证明**是「响应体有注入的 GSAP shim」**且**「它引用的资源真在本工程 `composition/` 里」——只验前者会认证到机器上另一个同名 `composition` 工程；`--status/--stop/--json` | `live_stage.py <project> [--port N] [--status] [--stop] [--json]`；退出码 0 起好·2 没有 composition·3 服务没起来或**不是本工程的** | 不渲任何帧；不改 composition；不管审阅页 —— 页面只消费它给出的地址 |
 | `helpers/studio_notes.py` | **studio 意见的唯一落盘路径**：起只监听回环的收集器，把 composition 钩子截到的文本追加进 `edit/_engineering/studio-notes.jsonl`；`--tail/--clear/--stop` | `studio_notes.py <project> [--port 4319] [--tail N] [--json] [--clear] [--stop]` | 不解析 studio 的 prompt 格式（原样存，格式属于 HyperFrames，会变）；不判断意见是什么意思 |
-| `helpers/check_review_template.py` | **审阅页模板的静态护栏**：八条不变量（S1 舞台选择函数保住参数／S2 可交互 id 都挂了事件／S3 默认舞台最不挑数据／S4 `readText` 都 optional／S5 字幕不退回整屏／S6 点一屏即播／S7 没有空壳自定义元素／S8 舞台提升不依赖初始化成败）；`--prove` 逐条把历史缺陷打回去自证不空洞 | `check_review_template.py [--template PATH] [--json] [--prove]` | **不证明页面能跑**。它钉的是这八类机械缺陷不会静默回来；新的**类**仍然要人撞到。别把绿灯读成「审阅页已验证」 |
+| `helpers/check_review_template.py` | **审阅页模板的静态护栏**：九条不变量（S1 舞台选择函数保住参数／S2 可交互 id 都挂了事件／S3 默认舞台最不挑数据／S4 `readText` 都 optional／S5 字幕不退回整屏／S6 点一屏即播／S7 没有空壳自定义元素／S8 舞台提升不依赖初始化成败／**S9 调整项归属键只有一个出处**——写读键域分叉过一次，作者的画布改字被静默丢弃）；`--prove` 逐条把历史缺陷打回去自证不空洞 | `check_review_template.py [--template PATH] [--json] [--prove]` | **不证明页面能跑**。它钉的是这八类机械缺陷不会静默回来；新的**类**仍然要人撞到。别把绿灯读成「审阅页已验证」 |
 | `helpers/build_review.py` | **一键构建统一审阅契约与控制台**：聚合剪接决策、演示动画与字幕资产，自适应匹配三大任务形态并生成 `review/review_data.json` 与 `review/index.html`；**活舞台资产预算的唯一主人** —— `fit_live_stage_assets()` 把超 `LIVE_STAGE_ASSET_MB`(4MB) 的 `liveStage.composition.assets` 换成 `review/proxies/<stem>.review.<ext>` 审阅副本（时长与原生像素不变）并登记进 `sourceManifest`，写 `composition.assetBytes` 与 `liveStage.budgetMs`；`audit_media_sizes()` 写 `media.sizes`（每通道 MB + `oversized`），页面据此在下载前拦下过大通道 | `build_review.py <project_or_edit_dir> [--mode auto/composite/speaker_only/animation_only] [--slices on/off/auto] [--no-review-copy]` | 不启动服务；不修改源素材；**不下采样审阅副本**（像素正是被审的东西）；代理不进 `edit/` 根 |
 | `helpers/review_copy.py` | **审阅副本的唯一生产者**：同一条命令吃片子与**纯音频旁轨**；视频保原生像素、音频降单声道；断言「分辨率不变、时长不变、**结果确实变小了**」 | `review_copy.py <src> [--out] [--max-mb] [--crf] [--audio-kbps] [--gop N] [--force] [--json]`；`make()` 返回 `{size_mb, underBudget, kind, …}` | 不覆盖源片；不静默降采样。`--gop`**只给会被 `-c copy` 切片的副本**（`review_slices.py`）：每秒关键帧在屏幕轨上把同一个 CRF 29 从 2.6MB 抬到 10.0MB，不切片的副本传 `--gop 0` |
 | `helpers/serve_review.py` | **公共审阅宿主的兼容入口**：先构建页面，再把 `review-surface.json` 交给 `planners-review-core`；Range、桥接、反馈、草稿与唤醒都由公共宿主负责 | `serve_review.py <project> [--port N] [--open]` | 不维护私有 HTTP 服务；不修改时间轴 |
@@ -152,6 +158,9 @@
 | `helpers/review_inbox.py` | **收件**：把 surface 声明的那一份提交文件翻译成 `feedback/<chapterId>.jsonl` 的追加（按内容哈希去重） | `review_inbox.py <project> [--dry-run]` | 不改本 Skill 的反馈形状去迁就宿主 |
 | `visual/assets/review-page-template.html` | **统一视听审阅控制台模板**：HyperFrames 是新工程的唯一播放运行时；旧 SVG 才启用兼容动效引擎；页面承载播放、字幕、批注、反馈与重建提示 | 拷成 `<project>/review/index.html` | 不含项目私有数据；不在 HyperFrames 模式复制第二个时钟 |
 | `visual/assets/svg-anim-engine.js` | **旧 SVG 审阅兼容驱动器**：在静态 SVG 舞台上即时预演 Step、原语、镜头与子延迟 | `VideoCraftAnimEngine.setStep(svgRoot, step, prevStep)` ／ `setChoreography(svgRoot, map)` | 不进入新 HyperFrames composition 的主时钟；不直接控制官方 player |
+| `helpers/live_preview.py` | **把编译后的 composition 经 ReviewBridge 传进审阅页**（活舞台的工程传输） | 「不透明宿主下工程态怎么传」这一件事 | 被 `build_review.py`／活舞台调用（库接口） | 不做渲染；不提供 HTTP 服务（宿主归公共缝） |
+| `helpers/preview_layers.py` | **给 EDL 里每个 alpha 覆盖层导出一份浏览器可合成的孪生件** | 「层能在审阅页里实时看」这一能力 | `preview_layers.py …`（已有外部透明视频层时才需要） | 不替代 `render_layer.py` 的最终产物 |
+| `helpers/review_slices.py` | **把成片切成逐屏审阅片段**，让页面只加载一个窗口 | 审阅期按屏切片这条路径；`--slices` 的开关行为 | `review_slices.py …`（`build_review.py --slices` 会调） | 不改变时间轴；不生成交付件 |
 
 ### 视觉层（`visual/`）
 
@@ -166,6 +175,9 @@
 | `visual/scripts/scaffold.sh` | 立一个视觉层项目（`input/` `timeline/` `composition/` `.theme` `.layout`） | `scaffold.sh <target> [--theme] [--list-themes]` | **运行 `npx hyperframes init`**，那是 `package.json` 的来源；不生成画面 |
 | `visual/themes/<id>/tokens.css` | **风格库的唯一数据**：颜色、字型、圆角刻度、性格旋钮、装饰 | 被 `generate-composition.py` 内联；被 `planners-ppt-hell` 的视频路线翻成 SVG 属性 | 不写章节 CSS；不含时长/缓动（节奏只由 `mood` 承载） |
 | `visual/themes/<id>/theme.json` | 主题元数据（`id`／`mood`／`bestFor`／`preview`） | 被 `check_themes.py` 校验、被选主题时读 | 不写时长数值 |
+| `visual/scripts/render_layer.py` | **把 composition 渲成 alpha 层**（HTML-first 的覆盖层路径） | 最终要独立透明视频时才用的那条产出路径（`.mov`；兼容旧媒体叠层可同出 `.webm`） | `render_layer.py …` | 不是整片渲染（整片走 `generate-composition.py` + `hyperframes render`） |
+| `visual/scripts/auto_choreography.py` | **推导确定性的逐屏动画编排** | `timeline/choreography.json`（`check_parity.py` 的 spec 输入） | `auto_choreography.py <project>` | 不写 SVG 源；不决定视觉风格 |
+| `visual/scripts/snapshot_input.py` | **严格只读的 workbench snapshot 解析**（所有 SVG 消费者的唯一入口） | 「这份 snapshot 能不能用、边界在哪」这一判据 | `snapshot_input.py <project> --audit` | 不写项目内资产（那是 `import_svg_page.py`） |
 
 ### 数据、评测与历史
 
@@ -190,7 +202,7 @@
 
 ### depth 的三处对照
 
-- **深**：`SKILL.md` 的流程表——11 行后面是整条链的判断；`check_themes.py` 的接口只有
+- **深**：`SKILL.md` 的「全链流程」——10 步之后是整条链的判断；`check_themes.py` 的接口只有
   「跑一下、退非零」，后面是 `theme.json` 解析、`var()` 链、对比度、刻度一致、死 token 五类判据。
 - **深**：`import_svg_page.py` 的 `--prove` 只有两个字，后面是「只改哪一种属性、怎么自证、边界在哪」。
 - **浅（有意）**：`references/capability-map.md` 是按表达目的列的能力表，读的人要自己拼——所以
@@ -257,8 +269,10 @@
 ### 3.5 本 Skill 内部的缝
 
 - **EDL → 实测时长 → 字幕/时间轴**：`render.py` 写 `segment_durations.json`（含 EDL 哈希），
-  `srt_export.py` 与 `timeline_derive.py` 读它。标称时间轴上的 cue 最多早一秒，所以派生器**拒绝**非
-  `measured` 的时间轴。
+  `srt_export.py` 与 `timeline_derive.py` 读它。标称时间轴上的 cue 最多早一秒，所以派生器只认
+  `measured` 与 `projected` 两种来源；`projected`（解析预演）足以支撑工程态审阅与字幕，
+  **但不算交付证据**——`_edl.render_record` 默认跳过它，交付前必须按实测重渲并重建字幕。
+  把 `projected` 挡在门外的是**交付路径**（`validate_measured_bindings`），不是派生器本身。
 - **稿件 → 契约 → 画面**：上游的缝（3.1）。
 - **产出者 → 判据**：`render.py` 产像素，`verify_av.py` 判轨与尾，`verify_delivery.py` 判交付副本。
   **写的人不当法官**是故意的。
@@ -316,9 +330,9 @@ studio 的「Describe a change to the agent」只调 `navigator.clipboard.writeT
 - **一条已经踩过的坑**：文档写着 `--text-faint`「仍然要可读」，判据把它测出来却永不失败——
   「一个都没过」被显示成「0 failing」。现在两边说同一件事：提示/禁用档**没有数字底线**。
 
-### 5.3 `SKILL.md` 的流程表 ↔ 各 reference
+### 5.3 `SKILL.md` 的「全链流程」↔ 各 reference
 
-- `SKILL.md` 的流程表是**模块表的摘要**，写到「一眼能不能看出这一步没做完」为止：
+- `SKILL.md` 的「全链流程」是**模块表的摘要**，写到「一眼能不能看出这一步没做完」为止：
   这一步做什么、主要产物是什么、怎么一眼看出没做完。
 - **完整的完成标准只住在那个 module 自己的文档里**（第 1–4 步在 `content-to-production.md`，
   时间脊柱在 `visual-timeline.md`，画面在 `composition-craft.md`，字幕在 `caption-article-first.md`）。
@@ -336,6 +350,14 @@ studio 的「Describe a change to the agent」只调 `navigator.clipboard.writeT
   人只读 `grouping.json` 与 `storyboard.md`。**改时间要改 grouping 再重派生**，不许手改 clip 属性。
 - **为什么不合成一个文件**：一个是创作输入（会被反复改），一个是派生结果（必须与实测一致）。
   合成会让「改设计」和「改实测」共用一条路径，而后者是不许手改的。
+
+### 5.5 画面轨的唯一源：`composition/`
+
+- **唯一源**：`composition/`（含录屏 `<video>`）。审阅页演的是它的**活播放**，交付是它的**一次渲染** —— 同一份东西，不是两份。
+- **谁不构成源**：任何 draft 渲染、审阅副本、`_engineering/` 里的中间视频。它们可以存在，但**不得**被声明成页面或交付的输入（`review/media.json` 声明 `compositeVideo` 指向渲染物时，活舞台掉线就会给出一个过期的画面）。
+- **改一处要动**：`timeline/timeline.json`（步与 `mediaClips`）→ `generate-composition.py` → `build_review.py`。落位（比如左侧留白给人物轨的 `620,0,1300,1080`）由 `--media-box` 给，不写死在生成器里。
+- **旁白算不算 composition 的一部分**：算 —— 审阅时**必须能听见**，否则没法判音画同步。但交付的**画面轨是无声的**（声音归人物轨），所以渲染画面轨时要显式去掉音轨（`-an`）。生成器的 `--audio` 就是给这个用的；没有它 studio 与活舞台都是哑的（那条 `warn: no <audio> element` 一直在提醒）。
+- **已踩过**：composition 用旧的 shifted 时间轴打过补丁，而时间轴已改成对齐版 —— composition 过期 3 秒，**没有任何检查发现**。这是第 56 条 GOTCHA 的第二条轴（来源版本），目前仍靠人。
 
 ## 6. 动了 X 会牵连什么
 
@@ -385,7 +407,7 @@ studio 的「Describe a change to the agent」只调 `navigator.clipboard.writeT
 | `helpers/review_surface.py` 的 surface 声明与宿主身份判据 | `dir` 取项目根（页面在 `review/`，时间轴在 `timeline/`）；身份靠 `watch` 文件逐字节比对 |
 | `visual/assets/review-page-template.html` | 页面里的 `rel` 相对 `dir`（项目根），`base: '../'` 补页面与 `dir` 差的那一级；注入点是**裸着独占一行**的双花括号标记（不能放进 `src=""`，也不能塞进 `<script>` 里） |
 | `references/review-ui.md`（约定、反馈 schema、交棒表） | 语义的唯一处 |
-| `SKILL.md` 的 Layout 与第 6/10 步 | 让人找得到这两个目录 |
+| `SKILL.md` 的「文件与参考入口」与第 6/10 步 | 让人找得到这两个目录 |
 
 **牵连面**：`video-idea-system` 的念稿审阅页在 `<项目>/_idea/reviews/script/`，**两套不合并**。
 落点在它那边的 `references/architecture.md` 的「两个审阅面（故意不互操作）」一节、
@@ -421,14 +443,6 @@ studio 的「Describe a change to the agent」只调 `navigator.clipboard.writeT
 哪天真要把 `package.json` 收进本 Skill（由 `scaffold.sh` 在 init 之后补钩子，并让 alpha 变体也走 npm），
 那是一次**边界变更**，要先在这里登记。
 
-### 5.5 画面轨的唯一源：`composition/`
-
-- **唯一源**：`composition/`（含录屏 `<video>`）。审阅页演的是它的**活播放**，交付是它的**一次渲染** —— 同一份东西，不是两份。
-- **谁不构成源**：任何 draft 渲染、审阅副本、`_engineering/` 里的中间视频。它们可以存在，但**不得**被声明成页面或交付的输入（`review/media.json` 声明 `compositeVideo` 指向渲染物时，活舞台掉线就会给出一个过期的画面）。
-- **改一处要动**：`timeline/timeline.json`（步与 `mediaClips`）→ `generate-composition.py` → `build_review.py`。落位（比如左侧留白给人物轨的 `620,0,1300,1080`）由 `--media-box` 给，不写死在生成器里。
-- **旁白算不算 composition 的一部分**：算 —— 审阅时**必须能听见**，否则没法判音画同步。但交付的**画面轨是无声的**（声音归人物轨），所以渲染画面轨时要显式去掉音轨（`-an`）。生成器的 `--audio` 就是给这个用的；没有它 studio 与活舞台都是哑的（那条 `warn: no <audio> element` 一直在提醒）。
-- **已踩过**：composition 用旧的 shifted 时间轴打过补丁，而时间轴已改成对齐版 —— composition 过期 3 秒，**没有任何检查发现**。这是第 56 条 GOTCHA 的第二条轴（来源版本），目前仍靠人。
-
 ## 7. 退役
 
 | 已退役的东西 | 现在的状态 | 为什么这样处理 |
@@ -461,7 +475,7 @@ studio 的「Describe a change to the agent」只调 `navigator.clipboard.writeT
 
 ### 已知没量过的地方（登记在此）
 
-- **`edit/timeline/` 与 `<视觉层项目根>/timeline/` 的落点没有统一口径**：`SKILL.md` 的 Layout 把
+- **`edit/timeline/` 与 `<视觉层项目根>/timeline/` 的落点没有统一口径**：`SKILL.md` 的「文件与参考入口」把
   `grouping.json` 画在 `edit/timeline/` 下，而 `scaffold.sh` 把 `timeline/` 建在组成品项目根
   （`<target>/timeline/`）。两处同名、位置不同——`generate-composition.py` 只认后者（`<project>/timeline/timeline.json`）。
   真实项目里出现过两个目录分开的情况。**没有做删除测试**，也没统一，登记在这里等一次重构时量。

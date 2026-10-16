@@ -683,6 +683,20 @@ def extract_all_segments(
         "edl_sha256": edl_digest(edl_path) if edl_path else None,
         "fps": grid,
     }
+    # The key is the OUTPUT STEM, so rendering to a non-canonical name adds a key and
+    # leaves whatever the readers were told to prefer untouched. Measured: rendering
+    # to `person_master.new.mp4` wrote a `person_master.new` entry while the stale
+    # `person_master` entry (an older EDL, 1.77s longer) stayed put — and the readers
+    # kept resolving the old one. Silent, and it desynchronises captions by seconds.
+    # Say the conflicting key out loud instead of leaving it to be discovered.
+    conflicts = [k for k, v in blob.items()
+                 if k != clips_tag and isinstance(v, dict)
+                 and v.get("edl_sha256") and v["edl_sha256"] != blob[clips_tag]["edl_sha256"]]
+    if conflicts:
+        print(f"  ! segment_durations.json 里还有指向别的 EDL 的记录：{', '.join(sorted(conflicts))}")
+        print(f"    （本次写的是 '{clips_tag}'）—— 下游按 EDL 哈希挑选，但如果两条记录哈希相同"
+              f"（EDL 没变只重渲）不同读者会挑到不同的一条；要交付就渲到权威名 "
+              f"（person_master.mp4 / final.mp4），或清掉过期键")
     dur_file.write_text(json.dumps(blob, ensure_ascii=False, indent=1), encoding="utf-8")
 
     return seg_paths, vts

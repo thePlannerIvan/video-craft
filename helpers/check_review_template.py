@@ -3,17 +3,17 @@
 
 Why static, and what it is worth
 --------------------------------
-Six defects shipped together in `visual/assets/review-page-template.html` and the
+Several defects shipped together in `visual/assets/review-page-template.html` and the
 author found every one of them by hand, over three rounds, while two browser tests
 sat dead in `tests/` (one was not a unittest and referenced three deleted buttons,
-the other was opt-in and skipped for want of playwright). Every one of those six is
+the other was opt-in and skipped for want of playwright). Every one of those is
 a **fixed syntactic shape**, so each gets a deterministic check rather than a rule
 for a reviewer to remember.
 
-What this buys: the six cannot come back silently. What it does **not** buy: any
-proof that the page works. A new *kind* of stage defect still needs a human to hit
-it. Do not read a green run here as "the review page is verified" — `architecture.md`
-records that boundary where the next reader will look for it.
+What this buys: the recorded defects cannot come back silently. What it does **not**
+buy: any proof that the page works. A new *kind* of stage defect still needs a human
+to hit it. Do not read a green run here as "the review page is verified" —
+`architecture.md` records that boundary where the next reader will look for it.
 
 Checks
 ------
@@ -24,13 +24,15 @@ Checks
   S5  字幕不得在匹配不到当前句时退回"整屏字幕"
   S6  点一屏的分支里，seek 了成片播放器就必须把它播起来
   S7  标记里不得出现声明了却没人定义的自定义元素（空壳）
+  S8  舞台提升必须在初始化 IIFE 之外也被调用一次
+  S9  调整项的归属键只能有一个出处（写读键域不得分叉）
 
 Usage
 -----
     check_review_template.py                      # 查发布中的模板
     check_review_template.py --template PATH      # 查别处的一份
     check_review_template.py --json
-    check_review_template.py --prove              # 把七个历史缺陷打回去，证明每条检查真的会响
+    check_review_template.py --prove              # 把历史缺陷逐条打回去，证明每条检查真的会响
 
 Exit: 0 clean · 1 findings · 2 the template was not found.
 """
@@ -215,6 +217,40 @@ def s8_stage_promotion_survives_init_failure(html: str) -> list[str]:
                    "提升就永远不执行，页面停在静态舞台，看门狗也不会响")
     return out
 
+def s9_adjustment_key_has_one_source(html: str) -> list[str]:
+    """调整项的归属键只能有一个出处。
+
+    2026-10-16 修的真实缺陷：写入侧用过**两个不同的兜底键** —— 改字 `state.step || "global"`、
+    框选批注 `state.step || "overall"` —— 而提交记录那三行读取侧一律用裸 `state.step`。
+    没选中步时（`if (state.step)` 式守卫证明它可为空），写入落进**没有任何读者**的键：
+    作者在画布上改的字被静默丢弃，而「保存反馈」看起来是成功的。
+    当时唯一断言该字段的用例只断言"键存在"，且被 env 门跳过，所以没人发现。
+
+    判据：① 唯一的键函数存在；② 三张调整表不得再用裸 `state.step` 索引；
+          ③ 不得再就地写 `state.step || "…"` 形式的兜底键。
+    """
+    code = _strip_comments(html)
+    out: list[str] = []
+    if not re.search(r"(?:const|let|var|function)\s+adjustKey\b", code):
+        out.append("找不到唯一的调整项归属键函数 `adjustKey` —— 键域迟早再分叉")
+    for name in ("svgEdits", "choreoOverrides", "annotations"):
+        for m in re.finditer(rf"state\.{name}\[\s*state\.step\s*\]", code):
+            line = code[:m.start()].count("\n") + 1
+            out.append(f"state.{name}[state.step] 用裸键直接索引（第 {line} 行附近）—— "
+                       f"必须走 adjustKey()，否则没选中步时写入键与读取键不是同一个")
+    # 兜底键只允许出现在 adjustKey 的定义那一行（那就是唯一出处本身）。
+    m_def = re.search(r"(?:const|let|var|function)\s+adjustKey\b[^\n]*", code)
+    def_span = (m_def.start(), m_def.end()) if m_def else None
+    for m in re.finditer(r'state\.step\s*\|\|\s*"([^"]+)"', code):
+        if def_span and def_span[0] <= m.start() < def_span[1]:
+            continue          # 唯一出处的定义行，合法
+        # 行号按去注释后的文本算，只作定位用
+        line = code[:m.start()].count("\n") + 1
+        out.append(f'第 {line} 行附近（去注释后行号）又出现 `state.step || "{m.group(1)}"` '
+                   f"这种就地兜底键 —— 归属键只能由 adjustKey() 定义")
+    return out
+
+
 CHECKS = [
     ("S1", "舞台选择函数保住参数", s1_stage_function_keeps_its_argument),
     ("S2", "可交互 id 都挂了事件", s2_buttons_are_wired),
@@ -224,6 +260,7 @@ CHECKS = [
     ("S6", "点一屏即播", s6_step_click_plays),
     ("S7", "没有空壳自定义元素", s7_no_undeclared_custom_elements),
     ("S8", "舞台提升不依赖初始化成败", s8_stage_promotion_survives_init_failure),
+    ("S9", "调整项归属键只有一个出处", s9_adjustment_key_has_one_source),
 ]
 
 # 把历史缺陷原样打回去，证明每条检查真的会响（对着 GOTCHA #30「一个永远不会失败的判据」）。
@@ -281,8 +318,13 @@ def _proof_s8(h):
     return h[:i] + "\n" + h[i + len("\n    promoteStage();\n"):]
 
 
+def _proof_s9(h):
+    # 把写入侧换成另一个兜底键、读取侧换回裸键 —— 正是 2026-10-16 那个缺陷的形状
+    return h.replace('const sid = adjustKey();', 'const sid = state.step || "overall";', 1)
+
+
 PROOFS = {"S1": _proof_s1, "S2": _proof_s2, "S3": _proof_s3, "S4": _proof_s4,
-          "S5": _proof_s5, "S6": _proof_s6, "S7": _proof_s7, "S8": _proof_s8}
+          "S5": _proof_s5, "S6": _proof_s6, "S7": _proof_s7, "S8": _proof_s8, "S9": _proof_s9}
 
 
 def check_template(path: Path) -> dict:
@@ -299,7 +341,7 @@ def prove() -> int:
     """每条检查都必须能在被打回缺陷的副本上响起来。"""
     html = DEFAULT_TEMPLATE.read_text(encoding="utf-8")
     by_code = {code: fn for code, _t, fn in CHECKS}
-    print("反空洞自证：把七个历史缺陷逐个打回去，看对应检查是否响")
+    print(f"反空洞自证：把 {len(PROOFS)} 个历史缺陷逐个打回去，看对应检查是否响")
     vacuous = []
     for code, mutate in PROOFS.items():
         mutated = mutate(html)

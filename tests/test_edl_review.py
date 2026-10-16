@@ -339,8 +339,11 @@ class EdlPageContractCase(unittest.TestCase):
         self.assertIn("helpers/apply_selection.py", self.html, "门铃那句要说清下一步跑什么")
 
 
-@unittest.skipUnless(os.environ.get("VIDEO_CRAFT_BROWSER_TESTS") == "1",
-                     "set VIDEO_CRAFT_BROWSER_TESTS=1 for the browser cases")
+# 2026-10-16 由 opt-in 改为 opt-out：这几条是唯一能抓「审阅页面写读键域不一致」
+# 这类缺陷的用例，默认跳过等于让它们永远不跑（作者丢过一次画布改字就是撞在这条
+# 未执行路径上）。装不上 playwright 时下面那条 skipUnless 仍会跳过。
+@unittest.skipIf(os.environ.get("VIDEO_CRAFT_BROWSER_TESTS") == "0",
+                    "set VIDEO_CRAFT_BROWSER_TESTS=0 to skip the browser cases")
 @unittest.skipUnless(have_playwright(), "needs playwright")
 class EdlBrowserCase(unittest.TestCase):
     """浏览器：DOM 真的画出来 / 反面对照 / 保存 / 整体意见（真项目副本上跑）。"""

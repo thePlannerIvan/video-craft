@@ -10,14 +10,18 @@ Checks, in the order a failure would hurt:
      while every caption check still passed);
   3. no pure-silence interval is longer than the agreed pause budget
      (a cut or a leftover blank the viewer actually hears);
-  4. the first / middle / last frames are written out for human inspection —
+  4. the picture has no accumulated hole: total pure-black time stays inside the
+     `--max-black` budget — the one failure class where every other gate is green
+     and the viewer still sees a broken film (see `black_spans`);
+  5. the first / middle / last frames are written out for human inspection —
      a green schema is not a picture;
-  5. when a delivery directory is given, every copied artefact is byte-identical
+  6. when a delivery directory is given, every copied artefact is byte-identical
      to its working copy (two valid-looking SRTs in one project is a real trap).
 
 Usage:
   <venv>/python helpers/verify_delivery.py <edit_dir> \
-      [--video edit/final.mp4] [--deliver-dir 成品] [--max-pause 1.0] [--json]
+      [--video edit/final.mp4] [--deliver-dir 成品] [--max-pause 1.0] \
+      [--max-black 2.0] [--json]
 
 Exit code 1 when a HARD check fails.
 """
@@ -71,6 +75,35 @@ def silence_spans(path: Path, max_pause: float) -> list[tuple[float, float, floa
         if m and start is not None:
             spans.append((start, float(m.group(1)), float(m.group(2))))
             start = None
+    return spans
+
+
+def black_spans(path: Path, min_dur: float = 0.12,
+                pix_th: float = 0.02) -> list[tuple[float, float, float]]:
+    """成片里成段的纯黑画面：`(start, end, duration)`。
+
+    ## 为什么这道门必须存在
+
+    这是唯一一类「所有 schema 都绿、观众一眼就看出来坏了」的缺陷。实测踩到：
+    合成生成器给每个「步」单独发一个 `<video>` clip，长度正好等于该步时长，
+    而各步并不首尾相接——实测 37 处步间空隙、合计 12.51s（占成片 4.0%）里画面区
+    什么都没有，渲染出来就是切换过程中的黑帧。当时**字幕门、静音门、时长门全部通过**，
+    是作者肉眼看片发现的。
+
+    ## 判据是「总时长预算」而不是「有黑帧即失败」
+
+    深色设计的片子（例如蓝图底图本身就是近黑）天然含近黑帧，逐帧判黑会做成恒真告警。
+    所以：报出全部黑段，由 `--max-black` 给一个**累计秒数预算**超了才失败——
+    零散一两段（内容本身的瞬时黑场、源素材当时就是黑的）不触发，成片的空洞会触发。
+    """
+    out = subprocess.run(
+        ["ffmpeg", "-v", "info", "-i", str(path), "-vf",
+         f"blackdetect=d={min_dur}:pix_th={pix_th}", "-an", "-f", "null", "-bitexact", "-"],
+        capture_output=True, text=True).stderr
+    spans: list[tuple[float, float, float]] = []
+    for m in re.finditer(
+            r"black_start:(-?[\d.]+) black_end:(-?[\d.]+) black_duration:([\d.]+)", out):
+        spans.append((float(m.group(1)), float(m.group(2)), float(m.group(3))))
     return spans
 
 
@@ -147,6 +180,9 @@ def main() -> int:
     ap.add_argument("--video", type=Path, default=None)
     ap.add_argument("--deliver-dir", type=Path, default=None)
     ap.add_argument("--max-pause", type=float, default=1.0)
+    ap.add_argument("--max-black", type=float, default=2.0,
+                    help="成片里累计纯黑画面的秒数预算（超过即失败）。深色设计天然含近黑帧，"
+                         "所以给的是总量预算而不是「有黑帧即失败」；这一步抓的是成段的画面空洞。")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
@@ -216,6 +252,20 @@ def main() -> int:
     print(f"  纯静音 ≥{args.max_pause}s：{len(spans)} 段")
     for s, e, g in spans:
         hard.append(f"成片 {s:.2f}-{e:.2f}s 有 {g:.2f}s 纯静音，超过 {args.max_pause}s 预算")
+
+    blacks = black_spans(video)
+    total_black = sum(g for _, _, g in blacks)
+    report["black_spans"] = [[round(s, 2), round(e, 2), round(g, 2)] for s, e, g in blacks]
+    report["black_total_s"] = round(total_black, 2)
+    print(f"  纯黑画面 ≥0.12s：{len(blacks)} 段，合计 {total_black:.2f}s"
+          f"（预算 {args.max_black}s）")
+    if total_black > args.max_black:
+        worst = sorted(blacks, key=lambda x: -x[2])[:5]
+        detail = "；".join(f"{s:.2f}-{e:.2f}s({g:.2f}s)" for s, e, g in worst)
+        hard.append(
+            f"成片累计纯黑画面 {total_black:.2f}s，超过 {args.max_black}s 预算"
+            f"（{len(blacks)} 段，最长的几段：{detail}）——"
+            "排查合成里是否给每一步单独发了媒体 clip 而各步不首尾相接（空隙处无画面）")
 
     frames_dir = edit_dir / "verify" / "final_frames"
     frames_dir.mkdir(parents=True, exist_ok=True)

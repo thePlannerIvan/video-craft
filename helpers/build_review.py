@@ -191,7 +191,8 @@ def _server_alive(url: str, timeout: float = 1.5) -> bool:
         return False
 
 
-def _resolve_live_stage(project_root: Path, notes: list) -> dict | None:
+def _resolve_live_stage(project_root: Path, notes: list, *,
+                        expected: bool = False) -> dict | None:
     """The live composition stage — the engineering state, played, with no render.
 
     `live_stage.py` already proved the address is the bare composition route (the
@@ -202,6 +203,12 @@ def _resolve_live_stage(project_root: Path, notes: list) -> dict | None:
     """
     state = project_root / LIVE_STAGE_STATE
     if not state.is_file():
+        # 只有**本该有**活舞台的工程（有 composition）才值得为缺地址出声；
+        # 没有 composition 的工程本来就走静态舞台/成片，那不是降级。
+        if expected:
+            notes.append(f"没有 {LIVE_STAGE_STATE} —— 拿不到活舞台地址，"
+                         "这一次审的不是当前 composition。"
+                         "要工程态审阅就先跑 helpers/live_stage.py <project>")
         return None
     try:
         doc = json.loads(state.read_text(encoding="utf-8"))
@@ -211,6 +218,8 @@ def _resolve_live_stage(project_root: Path, notes: list) -> dict | None:
         return None
     url, server = doc.get("stageUrl"), doc.get("serverUrl")
     if not (doc.get("ok") and url and server):
+        notes.append(f"{LIVE_STAGE_STATE} 内容不完整（缺 ok/stageUrl/serverUrl）—— "
+                     "这一次不进活舞台，重跑 helpers/live_stage.py <project> 可重建")
         return None
     if not _server_alive(server):
         notes.append(f"活舞台服务 {server} 现在没有响应（{LIVE_STAGE_STATE} 是上一次会话留下的）"
@@ -260,7 +269,18 @@ def resolve_review_media(project_root: Path, edit_dir: Path, *,
     # helpers/live_stage.py 起服务时写进 edit/_engineering/live-stage.json；
     # 这里只验证它**现在还活着**——状态文件很容易是上一条会话留下的，
     # 指过去只会让页面挂一个连不上的 iframe。
-    media["liveStage"] = _resolve_live_stage(project_root, notes)
+    has_composition = (project_root / "composition" / "index.html").is_file()
+    media["liveStage"] = _resolve_live_stage(project_root, notes, expected=has_composition)
+
+    # 有 composition 却没有活舞台：降级本身可以接受，**无声**降级不行。
+    # 实测踩到：预览服务没起时跑 build_review，界面照样生成、watch 清单从 19 条缩到 10 条，
+    # 而且 review_data 里那一整段（含 player_bundle() 的内联）被跳过 —— 官方播放器根本没进页面，
+    # 只有一条 mediaNote 记着。作者对着一个「看起来正常、审的不是当前合成」的页面提意见。
+    if media["liveStage"] is None and has_composition:
+        notes.append("**这一版审阅没有活舞台**：页面会退回静态舞台/成片，审的不是当前 "
+                     "composition。要看工程态：先跑 helpers/live_stage.py <project>，再重建审阅。")
+        print("  ! 这个工程有 composition，但没有活舞台 —— 这一版审的不是当前合成，"
+              "先跑 helpers/live_stage.py 再重建（详见 review_data.json 的 mediaNotes）")
 
     if declared_at is not None and declared:
         for key in _MEDIA_GUESSES:

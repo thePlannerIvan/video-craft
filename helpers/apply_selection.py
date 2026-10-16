@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Apply user's word/gap selections to the EDL and re-render.
+"""Apply the author's word/gap selections to the EDL.
+
+**Only edits the EDL — it does not render.** The delivery master is produced at the
+"确认后输出底片" step, after the cuts are confirmed; rendering here used to happen and
+no longer does (the docstring said "and re-render" long after the code stopped).
 
 Reads selections.json (written by the word picker via POST /api/save):
   {"words": [{"src","start","end"}...],

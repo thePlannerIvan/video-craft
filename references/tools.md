@@ -80,7 +80,7 @@ python3 "<craft>/helpers/edl_edit.py" "<edit>" --restore "<起秒>,<止秒>=<期
 
 审阅台的首选舞台是**活的 composition**：`live_stage.py` 起 HyperFrames 预览服务并给出可嵌入地址，
 `build_review.py` 把它写进 `media.liveStage`，页面 iframe 进去直接演。零渲染、零等待，改一行动效
-刷新即变 —— 这一条见 `SKILL.md`「两个态」与 `GOTCHAS.md` 第 57–59 条。
+刷新即变 —— 这一条见 `SKILL.md`「工程预览与最终交付」与 `GOTCHAS.md` 第 57–59 条。
 
 ```bash
 python3 "<craft>/helpers/live_stage.py" "<project>"       # 起服务 → 打印可嵌入地址（--stop 停）
@@ -180,7 +180,9 @@ scaffold 只用于新 composition，不在已有制作源上重复 init。生成
 
 ## 渲染、核验、包装
 
-**前置条件，缺一不渲**：剪点已确认；动效 / 合成审阅已确认；`check_render_env.py` 退 0；已有交付时 `state_fingerprint.py verify` 须通过（新交付没有指纹，verify 不适用，也不拦新渲染）。
+**渲染前置条件（缺一不渲）**：剪点已确认；动效 / 合成审阅已确认；`check_render_env.py` 退 0。
+
+**指纹不是渲染前置，是交付过期信号**：已有交付时先跑 `state_fingerprint.py verify` 判断它有没有过期 —— 改源之后「过期」正是**需要重新输出**的信号，它不拦住新渲染。重新输出并核验后再 `capture` 新指纹，发送前再 `verify`，不一致就不能**发送**。与 `SKILL.md` 第 10 步是同一句。
 渲染前先过 [timing-lock](timing-lock.md)：`generate-composition.py --verify` 退 0，且 `feedback/*.jsonl` 的未决项已清或显式接受。
 
 工程态底片预览（`--preview` 产物属于工程态，落 `_engineering/`；`edit/cut.mp4` 这个正式底片名只留给确认后的交付态渲染）：

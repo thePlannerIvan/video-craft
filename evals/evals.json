@@ -16,5 +16,21 @@
       "把多个上游蓝图合并成跨 Beat 的总模型",
       "让一个 Visual Step 同时服务多个上游蓝图"
     ]
+  },
+  {
+    "id": "engineering-state-before-render",
+    "prompt": "素材和录音都齐了，先把片子做出来给我看。",
+    "must_do": [
+      "先确认剪点（EDL），把取舍写进 edl.json 而不是手改底片",
+      "在不渲一帧的前提下出工程态：duration_plan.py 的 projected 预演 + 活 composition 预览",
+      "把「工程态可审、交付态才是实测」这条分界讲清楚，并说明哪些产物还不算交付证据",
+      "剪点与动效确认后，才走渲染路径；渲染前先跑 check_render_env.py 拿 --workers"
+    ],
+    "must_not_do": [
+      "把渲染当成「能开始干活」的前提，一上来就整片渲",
+      "把 projected 预演当成交付证据",
+      "拿预览渲染冒充正式底片（正式底片只在确认后输出一次）",
+      "用 --workers auto（按核数开满 Chrome，小内存机器会被拖垮）"
+    ]
   }
 ]

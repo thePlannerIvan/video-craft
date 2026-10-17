@@ -17,7 +17,8 @@ python3 "<craft>/helpers/recompose_plan.py" init "<project>" \
 python3 "<craft>/helpers/recompose_plan.py" check "<project>"
 python3 "<craft>/helpers/recompose_plan.py" lines "<project>"
 
-python3 "<craft>/helpers/build_review.py" "<project>" --mode auto   # 右栏出现「逐字密度」
+python3 "<craft>/helpers/live_stage.py" "<project>" --composition "<composition>"  # 工程态，不渲染
+python3 "<craft>/helpers/build_review.py" "<project>" --mode auto             # 底部分段工作区
 python3 "<craft>/helpers/review_surface.py" "<project>" --surface-only
 python3 "<craft>/helpers/review_inbox.py" "<project>"               # 密度记录落到 feedback/density.jsonl
 ```

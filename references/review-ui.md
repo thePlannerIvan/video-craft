@@ -17,7 +17,7 @@ DSH tokens 仍来自 review-core，生成时内联。导航显示分屏标题、
 ## recompose 构建模式：逐字密度 dock
 
 `recompose.json` 存在时，`build_review.py` 把 `recompose/lines.json` 写进
-`review/review_data.json` 的 `density` 块，页面底部「分步动效」区变成「分段工作区」，默认「逐字密度」：
+`review/review_data.json` 的 `density` 块；页面重排为左侧窄 beat 列表、中间活 composition 预览、底部分段工作区，右栏收起。底部四 tab：逐句调整 / 整 beat 反馈 / 历史反馈 / 动效细节。逐句调整：
 
 - 单位是**口播逐字稿的行**（字幕 cue），不是 beat；beat 只是分组与批量入口。
 - 状态：`auto`（跟 `proposal`）/ `off`（字幕级，不要图）/ `still` / `light` / `full`。

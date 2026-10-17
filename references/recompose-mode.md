@@ -63,16 +63,24 @@ python3 "<craft>/helpers/recompose_plan.py" check "<project>"
 ### 3. 审阅：现有动效页 + 分段工作区
 
 ```bash
+# 工程态：起 composition 的活舞台（不渲染），再用同一份 URL 建审阅
+python3 "<craft>/helpers/live_stage.py" "<project>" --composition "<composition-dir>"
 python3 "<craft>/helpers/build_review.py" "<project>" --mode auto
 python3 "<craft>/helpers/review_surface.py" "<project>" --surface-only
 ```
 
 recompose 模式下，`build_review.py` 把 `recompose/lines.json` 写进
-`review/review_data.json` 的 `density` 块；页面底部的「分步动效」区变成「分段工作区」，默认「逐字密度」：
+`review/review_data.json` 的 `density` 块。页面重排为：左侧窄 beat 列表、中间大预览（默认活 composition，工程态、不渲染）、底部「分段工作区」；右栏收起。底部分四个 tab：
+
+- **逐句调整**：按口播逐字稿的行调密度；
+- **整 beat 反馈**：这个 beat 的整体意见；
+- **历史反馈**：读 `feedback/*.jsonl`；
+- **动效细节**：原来的分步动效，只在选中“有图”的句子时用。
 
 - **单位是口播逐字稿的行**，不是 beat。beat 只是分组标题与批量入口。
 - 每行状态：`auto`（跟模型建议）/ `off`（字幕级，不要图）/ `still`（单图）/ `light`（轻动）/ `full`（完整）。
 - 默认全部 `auto`；作者只改例外。改过的行数显示在顶部。
+- 左侧 beat 列表显示每个 beat 的调整数；点它切 beat 并定位。
 - 播放时当前行高亮；点行定位到那句；`0/1/2/3/a` 设状态。
 - 多选：单击、Shift 连选、Cmd/Ctrl 加选、按住拖过多行；批量条一次应用到所有选中句。
 - beat 标题可一键“全字幕 / 全完整”；「只看非自动」过滤；「撤销」回退上一次批量。

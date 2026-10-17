@@ -25,9 +25,10 @@ def fetch_local(url):
 
 
 class CompositionTransport(HTMLParser):
-    def __init__(self, project, stage_url, fetch=fetch_local):
+    def __init__(self, project, stage_url, fetch=fetch_local, composition_dir=None):
         super().__init__(convert_charrefs=False)
         self.project = Path(project).resolve()
+        self.composition = (Path(composition_dir) if composition_dir else self.project / "composition").resolve()
         self.stage_url = stage_url
         self.fetch = fetch
         self.out, self.assets = [], {}
@@ -57,8 +58,8 @@ class CompositionTransport(HTMLParser):
             if not parsed.path.startswith(prefix):
                 raise ValueError('Asset is outside the composition route')
             value = parsed.path[len(prefix):]
-        path = (self.project / 'composition' / unquote(urlparse(value).path)).resolve()
-        if not path.is_relative_to(self.project / 'composition') or not path.is_file():
+        path = (self.composition / unquote(urlparse(value).path)).resolve()
+        if not path.is_relative_to(self.composition) or not path.is_file():
             raise ValueError('Missing or escaping composition asset: ' + value)
         rel = path.relative_to(self.project).as_posix()
         self.asset_sizes[rel] = path.stat().st_size
@@ -90,8 +91,8 @@ class CompositionTransport(HTMLParser):
             if src.startswith('/'):
                 code = self.fetch(url)
             else:
-                local = (self.project / 'composition' / unquote(urlparse(src).path)).resolve()
-                if not local.is_relative_to(self.project / 'composition') or not local.is_file():
+                local = (self.composition / unquote(urlparse(src).path)).resolve()
+                if not local.is_relative_to(self.composition) or not local.is_file():
                     raise ValueError('Missing or escaping composition script: ' + src)
                 code = local.read_text(encoding='utf-8')
             if code.lstrip().lower().startswith(('<!doctype', '<html')):
@@ -101,12 +102,12 @@ class CompositionTransport(HTMLParser):
             return
         if tag == 'link' and values.get('rel') == 'stylesheet':
             href = values['href']
-            css_path = (self.project / 'composition' / unquote(urlparse(href).path)).resolve()
-            if urlparse(href).scheme or not css_path.is_relative_to(self.project / 'composition') or not css_path.is_file():
+            css_path = (self.composition / unquote(urlparse(href).path)).resolve()
+            if urlparse(href).scheme or not css_path.is_relative_to(self.composition) or not css_path.is_file():
                 raise ValueError('Stylesheet must be local to composition: ' + href)
             css = css_path.read_text(encoding='utf-8')
             css = re.sub(r'url\(\s*[\'"]?([^\)\'"\s]+)[\'"]?\s*\)',
-                         lambda m: 'url("' + (m[1] if m[1].startswith(('data:', '#')) else (css_path.parent / m[1]).relative_to(self.project / 'composition').as_posix()) + '")', css)
+                         lambda m: 'url("' + (m[1] if m[1].startswith(('data:', '#')) else (css_path.parent / m[1]).relative_to(self.composition).as_posix()) + '")', css)
             self.out.append('<style>' + self.css(css) + '</style>')
             return
         converted = []
@@ -141,11 +142,11 @@ class CompositionTransport(HTMLParser):
     def handle_decl(self, text): self.out.append('<!' + text + '>')
 
 
-def compile_preview(project, stage_url, fetch=fetch_local):
+def compile_preview(project, stage_url, fetch=fetch_local, composition_dir=None):
     source = fetch(stage_url)
     if 'data-hyperframes-preview-runtime' not in source or 'data-composition-id' not in source:
         raise ValueError('Preview route did not return a compiled composition')
-    transport = CompositionTransport(project, stage_url, fetch)
+    transport = CompositionTransport(project, stage_url, fetch, composition_dir=composition_dir)
     transport.feed(source)
     compiled = ''.join(transport.out)
     digest = hashlib.sha256(compiled.encode())

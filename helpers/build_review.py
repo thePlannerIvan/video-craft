@@ -227,7 +227,8 @@ def _resolve_live_stage(project_root: Path, notes: list, *,
                      "—— 页面会退回静态舞台或合成成片。要看活的 composition，"
                      "先跑 helpers/live_stage.py <project>")
         return None
-    return {"url": url, "serverUrl": server, "projectId": doc.get("projectId")}
+    return {"url": url, "serverUrl": server, "projectId": doc.get("projectId"),
+            "compositionDir": doc.get("composition") or "composition"}
 
 
 def resolve_review_media(project_root: Path, edit_dir: Path, *,
@@ -1026,13 +1027,15 @@ def write_review_files(project_root: Path, review_data: dict) -> tuple[Path, Pat
     if review_data.get("media", {}).get("liveStage"):
         from live_preview import compile_preview
         live = review_data["media"]["liveStage"]
-        live["composition"] = compile_preview(project_root, live["url"])
+        live["composition"] = compile_preview(
+            project_root, live["url"],
+            composition_dir=project_root / live.get("compositionDir", "composition"))
         # Budget the map before it reaches the page: an over-budget map is an
         # 8-second watchdog expiry that reports itself as a dead preview service.
         fit_live_stage_assets(project_root, review_data)
         review_data["snapshot"] = hashlib.sha256((review_data["snapshot"] + live["composition"]["sourceHash"]).encode()).hexdigest()[:20]
         existing = {item["path"] for item in review_data["sourceManifest"]}
-        for path in sorted((project_root / "composition").rglob("*")):
+        for path in sorted((project_root / live.get("compositionDir", "composition")).rglob("*")):
             if path.is_file() and not any(part in {"node_modules", ".hyperframes", "renders", ".git"} for part in path.parts):
                 rel = path.relative_to(project_root).as_posix()
                 if rel not in existing and (path.suffix in {".html", ".js", ".css", ".json"} or rel in live["composition"]["assets"].values()):

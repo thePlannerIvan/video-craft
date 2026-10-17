@@ -4128,61 +4128,102 @@
 
 
 <style id="density-style">
-  #density-panel{display:flex;flex-direction:column;gap:8px;padding:8px 2px 4px;min-height:0}
-  #density-panel[hidden]{display:none}
-  .seg-tabs{display:flex;align-items:center;gap:6px;padding:6px 2px 8px;border-bottom:1px solid var(--border)}
-  .seg-tabs button{border:1px solid var(--border);background:transparent;color:var(--text-secondary);font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;padding:4px 9px;cursor:pointer;border-radius:4px}
+  body.density-on{
+    --d-text:#1a1c20;--d-bg:#ffffff;--d-panel:#f5f6f8;--d-muted:#5f6672;
+    --d-border:#cfd3d9;--d-chip:#e9ecef;--d-mid-bg:#dfe3e8;--d-mid-fg:#1a1c20;--d-strong-bg:#111214;--d-strong-fg:#ffffff;
+  }
+  body.density-on[data-ds-dark-theme]{
+    --d-text:#eef0f6;--d-bg:#141720;--d-panel:#1b1f2b;--d-muted:#a3acc2;
+    --d-border:#3a4258;--d-chip:#232838;--d-mid-bg:#3a4258;--d-mid-fg:#eef0f6;--d-strong-bg:#ffffff;--d-strong-fg:#111214;
+  }
+  body.density-on .layout{grid-template-columns:190px minmax(0,1fr) !important}
+  body.density-on .side-left,body.density-on .side-right{display:none !important}
+  body.density-on .center-stage{padding:6px 12px 4px}
+  body.density-on .player-box{width:min(100%,calc(40vh * 16 / 9));height:40vh;margin:4px auto;aspect-ratio:auto}
+  body.density-on .choreo-deck{display:flex !important;flex:1 1 auto;max-height:48vh;min-height:300px;margin:4px 0 0}
+  body.density-on .choreo-deck{overflow:hidden}
+  #beat-rail{display:none;flex-direction:column;gap:2px;border-right:1px solid var(--border);background:var(--bg-panel);overflow:auto;padding:10px 8px}
+  body.density-on #beat-rail{display:flex}
+  .br-head{display:flex;justify-content:space-between;align-items:baseline;padding:2px 4px 8px;font-family:var(--font-mono);font-size:10px;letter-spacing:.1em;color:var(--text-muted)}
+  .br-beat{display:flex;flex-direction:column;gap:3px;padding:8px;border:1px solid transparent;border-left:2px solid transparent;cursor:pointer;border-radius:4px}
+  .br-beat:hover{background:var(--bg-card)}
+  .br-beat.active{border-left-color:var(--accent);background:var(--bg-card)}
+  .br-beat .bid{font-family:var(--font-mono);font-size:9px;color:var(--text-muted);letter-spacing:.06em}
+  .br-beat .bt{font-size:11px;line-height:1.4;color:var(--text);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .br-beat .bm{font-family:var(--font-mono);font-size:8px;color:var(--text-muted)}
+  .seg-tabs{display:flex;align-items:center;gap:5px;padding:4px 2px 7px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+  .seg-tabs button{border:1px solid var(--border);background:transparent;color:var(--text-secondary);font-family:var(--font-mono);font-size:10px;letter-spacing:.06em;padding:4px 8px;cursor:pointer;border-radius:4px}
   .seg-tabs button.active{background:var(--accent);border-color:var(--accent);color:#fff}
   .seg-tabs #seg-summary{margin-left:auto;font-family:var(--font-mono);font-size:10px;color:var(--text-muted)}
-  .dens-head{display:flex;flex-direction:column;gap:6px}
+  #density-panel,#fb-panel,#hist-panel{display:flex;flex-direction:column;gap:7px;min-height:0;flex:1 1 auto}
+  #density-panel[hidden],#fb-panel[hidden],#hist-panel[hidden],#choreo-detail[hidden]{display:none !important}
+  .dens-head{display:flex;flex-direction:column;gap:5px}
   .dens-beats{display:flex;gap:4px;flex-wrap:wrap}
   .dens-beats button{border:1px solid var(--border);background:transparent;color:var(--text-secondary);font-family:var(--font-mono);font-size:9px;padding:3px 6px;cursor:pointer;border-radius:3px;white-space:nowrap}
   .dens-beats button.active{border-color:var(--text);color:var(--text);background:var(--bg-card)}
   .dens-tools{display:flex;align-items:center;gap:12px;font-family:var(--font-mono);font-size:9px;color:var(--text-muted)}
   .dens-tools label{display:flex;align-items:center;gap:4px;cursor:pointer}
   .dens-tools #dens-count{margin-left:auto;color:var(--text-secondary)}
-  .dens-body{flex:1 1 auto;min-height:120px;max-height:30vh;overflow:auto;border:1px solid var(--border);background:var(--bg-input)}
-  .dline{display:grid;grid-template-columns:58px 1fr 82px;gap:8px;align-items:start;padding:5px 8px;border-left:2px solid transparent;cursor:pointer;user-select:none}
-  .dline:hover{background:rgba(255,255,255,.04)}
-  .dline.sel{border-left-color:var(--accent);background:rgba(228,61,30,.08)}
-  .dline.now{background:rgba(59,130,246,.10)}
+  .dens-selbar{display:flex;align-items:center;gap:5px;flex-wrap:wrap;padding:6px;background:var(--bg-card);border:1px solid var(--border)}
+  .dens-selbar #dens-sel-count{font-family:var(--font-mono);font-size:10px;color:var(--text);margin-right:4px}
+  .dens-selbar button{border:1px solid var(--d-border);background:var(--d-bg);color:var(--d-text);font-family:var(--font-mono);font-size:9px;padding:3px 7px;cursor:pointer;border-radius:3px}
+  .dens-selbar button:hover{border-color:var(--text)}
+  .dens-selbar .spacer{flex:1}
+  .dens-body{flex:1 1 auto;min-height:140px;overflow:auto;border:1px solid var(--border);background:var(--bg-input)}
+  .dline{display:grid;grid-template-columns:58px 1fr 86px;gap:8px;align-items:start;padding:5px 8px;border-left:2px solid transparent;cursor:pointer;user-select:none}
+  .dline:hover{background:var(--bg-card)}
+  .dline.sel{border-left-color:var(--accent);background:var(--accent-soft)}
+  .dline.now{background:var(--blue-soft)}
   .dline .lt{font-family:var(--font-mono);font-size:9px;color:var(--text-muted);padding-top:3px}
-  .dline .lx{font-size:12px;line-height:1.5;color:var(--text)}
+  .dline .lx{font-size:12px;line-height:1.5;color:var(--d-text)}
   .dline .lx .note{display:block;font-size:9px;color:var(--text-muted);font-style:italic}
-  .dline .chip{justify-self:end;font-family:var(--font-mono);font-size:9px;border:1px solid var(--border-strong);border-radius:99px;padding:2px 6px;color:var(--text-secondary);white-space:nowrap}
-  .dline[data-s="off"] .chip{border-style:dashed;color:#e07a5f}
-  .dline[data-s="still"] .chip{background:rgba(255,255,255,.10);color:var(--text)}
-  .dline[data-s="light"] .chip{background:rgba(255,255,255,.20);color:#fff}
-  .dline[data-s="full"] .chip{background:rgba(255,255,255,.34);color:#111}
-  .dens-foot{display:flex;flex-direction:column;gap:6px;padding-top:2px}
+  .dline .chip{justify-self:end;font-family:var(--font-mono);font-size:9px;border:1px solid var(--d-border);border-radius:99px;padding:2px 6px;white-space:nowrap;background:var(--d-chip);color:var(--d-text)}
+  .dline[data-s="off"] .chip{border-style:dashed;color:#c0563a;background:transparent}
+  .dline[data-s="still"] .chip{background:var(--d-chip);color:var(--d-text)}
+  .dline[data-s="light"] .chip{background:var(--d-mid-bg);color:var(--d-mid-fg);font-weight:700}
+  .dline[data-s="full"] .chip{background:var(--d-strong-bg);color:var(--d-strong-fg);font-weight:700}
+  .dens-foot{display:flex;flex-direction:column;gap:5px;padding-top:1px}
   .dens-sel{font-family:var(--font-mono);font-size:9px;color:var(--text-secondary);min-height:14px}
-  .dens-batch{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
-  .dens-batch button{border:1px solid var(--border);background:transparent;color:var(--text-secondary);font-family:var(--font-mono);font-size:9px;padding:3px 6px;cursor:pointer;border-radius:3px}
+  .dens-batch{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .dens-batch button{border:1px solid var(--d-border);background:transparent;color:var(--d-text);font-family:var(--font-mono);font-size:9px;padding:3px 6px;cursor:pointer;border-radius:3px}
   .dens-batch button:hover{color:var(--text);border-color:var(--text-muted)}
   .dens-batch #dens-submit{margin-left:auto;background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
   .dens-batch #dens-submit:disabled{opacity:.4;cursor:not-allowed}
-  .dens-batch #dens-note{flex:1 1 180px;min-width:140px;background:transparent;border:1px solid var(--border);color:var(--text);font-size:10px;padding:3px 6px;border-radius:3px;outline:none}
+  .dens-batch #dens-note{flex:1 1 160px;min-width:120px;background:transparent;border:1px solid var(--border);color:var(--text);font-size:10px;padding:4px 6px;border-radius:3px;outline:none}
   #dens-status{font-family:var(--font-mono);font-size:9px;line-height:1.6;color:var(--text-muted);min-height:20px}
-  #dens-status.err{color:#e07a5f}#dens-status.ok{color:#10b981}
-  body.density-on.workspace-composite .choreo-deck{display:flex !important;flex:1 1 auto;max-height:46vh;min-height:260px}
-  body.density-on.workspace-composite .player-box{width:min(calc(100% - 24px), calc(44vh * 16 / 9));height:44vh;margin:6px auto;aspect-ratio:auto}
-  body.density-on .choreo-deck{overflow:hidden}
-  body.density-on #density-panel{flex:1 1 auto;min-height:0}
-  body.density-on #dens-body{flex:1 1 auto;min-height:70px;max-height:none}
+  #dens-status.err,#fb-status.err{color:var(--accent)}
+  #dens-status.ok,#fb-status.ok{color:var(--green)}
+  #fb-panel{overflow:auto}
+  #fb-panel .fbh{font-size:13px;color:var(--text);font-weight:600}
+  #fb-panel .fbs{font-family:var(--font-mono);font-size:9px;color:var(--text-muted)}
+  #fb-kind{background:var(--bg-card);border:1px solid var(--border);color:var(--text);font-size:11px;padding:5px}
+  #fb-text{min-height:88px;background:var(--bg-input);border:1px solid var(--border);color:var(--text);font-size:12px;line-height:1.6;padding:8px;resize:vertical;outline:none}
+  #fb-save{border:1px solid var(--accent);background:var(--accent);color:#fff;font-family:var(--font-mono);font-size:10px;letter-spacing:.1em;padding:7px 10px;cursor:pointer;border-radius:3px;align-self:flex-start}
+  #fb-status{font-family:var(--font-mono);font-size:9px;color:var(--text-muted);min-height:20px}
+  #hist-panel .hist-tools{display:flex;align-items:center;gap:8px;font-family:var(--font-mono);font-size:9px;color:var(--text-muted)}
+  #hist-list{flex:1 1 auto;overflow:auto;border:1px solid var(--border);background:var(--bg-input)}
+  .hist-item{padding:7px 9px;border-bottom:1px solid var(--border);font-size:11px;line-height:1.55;color:var(--text)}
+  .hist-item .hm{font-family:var(--font-mono);font-size:8px;color:var(--text-muted);display:block;margin-bottom:2px}
+  .hist-empty{padding:12px;font-size:11px;color:var(--text-muted)}
 </style>
-
 <script>
-/* 逐字密度 dock：只存在于 recompose build mode；page 模式完全不注入。 */
 (function () {
   "use strict";
   const RD = window.__REVIEW_DATA__ || {};
   const D = RD.density || {};
   if (!D.enabled || !Array.isArray(D.beats)) return;
-  const deck = document.getElementById("choreo-deck");
-  if (!deck) return;
   document.body.classList.add("density-on");
+  const layout = document.querySelector(".layout");
+  const deck = document.getElementById("choreo-deck");
+  if (!layout || !deck) return;
 
-  // 把原有分步动效内容包进「动效细节」页，和「逐字密度」并列。
+  // 左栏：紧凑 beat 列表
+  const rail = document.createElement("aside");
+  rail.id = "beat-rail";
+  rail.innerHTML = '<div class="br-head"><span>BEATS</span><span id="br-count">8</span></div><div id="br-list"></div>';
+  layout.insertBefore(rail, layout.firstChild);
+
+  // 底部：原有分步动效包进「动效细节」，再加三个面板
   const detail = document.createElement("div");
   detail.id = "choreo-detail";
   while (deck.firstChild) detail.appendChild(deck.firstChild);
@@ -4190,14 +4231,16 @@
 
   const tabs = document.createElement("div");
   tabs.className = "seg-tabs";
-  tabs.innerHTML = '<button type="button" data-seg="density" class="active">逐字密度</button>'
+  tabs.innerHTML = '<button type="button" data-seg="density" class="active">逐句调整</button>'
+    + '<button type="button" data-seg="fb">整 beat 反馈</button>'
+    + '<button type="button" data-seg="hist">历史反馈</button>'
     + '<button type="button" data-seg="choreo">动效细节</button>'
     + '<span id="seg-summary"></span>';
   deck.insertBefore(tabs, detail);
 
-  const panel = document.createElement("div");
-  panel.id = "density-panel";
-  panel.innerHTML = `
+  const density = document.createElement("div");
+  density.id = "density-panel";
+  density.innerHTML = `
     <div class="dens-head">
       <div class="dens-beats" id="dens-beats"></div>
       <div class="dens-tools">
@@ -4206,25 +4249,48 @@
         <span id="dens-count">—</span>
       </div>
     </div>
+    <div class="dens-selbar">
+      <span id="dens-sel-count">已选 0 句</span>
+      <button type="button" id="dens-sel-all">全选本 beat</button>
+      <button type="button" id="dens-sel-clear">清除</button>
+      <span class="spacer"></span>
+      <button type="button" data-set="auto">自动</button>
+      <button type="button" data-set="off">字幕</button>
+      <button type="button" data-set="still">单图</button>
+      <button type="button" data-set="light">轻动</button>
+      <button type="button" data-set="full">完整</button>
+      <button type="button" id="dens-beat-all">整 beat</button>
+      <button type="button" id="dens-undo">撤销</button>
+    </div>
     <div class="dens-body" id="dens-body"></div>
     <div class="dens-foot">
-      <div class="dens-sel" id="dens-sel">未选择。单击一句；Shift 连选；Cmd/Ctrl 加选；按住拖过多行。</div>
+      <div class="dens-sel" id="dens-sel">单击一句；Shift 连选；Cmd/Ctrl 加选；按住拖过多行。</div>
       <div class="dens-batch">
-        <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-muted)">批量</span>
-        <button type="button" data-set="auto">自动</button>
-        <button type="button" data-set="off">字幕</button>
-        <button type="button" data-set="still">单图</button>
-        <button type="button" data-set="light">轻动</button>
-        <button type="button" data-set="full">完整</button>
-        <button type="button" id="dens-apply">应用到选中</button>
-        <button type="button" id="dens-beat-all">整个 beat</button>
-        <button type="button" id="dens-undo">撤销</button>
         <input id="dens-note" placeholder="备注（单选时可填）" />
         <button type="button" id="dens-submit">提交密度 / 唤醒模型</button>
       </div>
-      <div id="dens-status">看片拖选一段，点一个状态；不用逐句点。</div>
+      <div id="dens-status">看片拖选一段，点上方状态；不用逐句点。</div>
     </div>`;
-  deck.appendChild(panel);
+  deck.appendChild(density);
+
+  const fb = document.createElement("div");
+  fb.id = "fb-panel"; fb.hidden = true;
+  fb.innerHTML = `
+    <div class="fbh" id="fb-head">整 beat 反馈</div>
+    <div class="fbs" id="fb-sub">—</div>
+    <select id="fb-kind"><option value="visual">画面与版式</option><option value="animation">动画与镜头</option><option value="timing">节奏与卡点</option><option value="copy">文字</option><option value="asset">素材</option></select>
+    <textarea id="fb-text" placeholder="这个 beat 整体哪里不对？只针对这一 beat，不针对某一屏。"></textarea>
+    <button type="button" id="fb-save">保存整 beat 反馈</button>
+    <div id="fb-status">提交后会进 feedback/beat-xx.jsonl，并唤醒模型。</div>`;
+  deck.appendChild(fb);
+
+  const hist = document.createElement("div");
+  hist.id = "hist-panel"; hist.hidden = true;
+  hist.innerHTML = `
+    <div class="fbs" id="hist-head">历史反馈</div>
+    <div class="hist-tools"><span id="hist-count">—</span><button type="button" id="hist-refresh">刷新</button></div>
+    <div id="hist-list"><div class="hist-empty">点「刷新」读取 feedback/*.jsonl。</div></div>`;
+  deck.appendChild(hist);
 
   deck.hidden = false;
   const adv = document.getElementById("advanced-toggle");
@@ -4245,34 +4311,74 @@
   const setStatus = (t, k) => { status.textContent = t; status.className = k || ""; };
   const flat = () => state.flatMap(b => b.lines.map(l => ({ beat: b, line: l })));
   const lineById = id => flat().find(o => o.line.id === id);
-  const resolved = l => l.state === "auto" ? l.proposal : l.state;
   const labelOf = l => l.state === "auto" ? ("自动·" + LABEL[l.proposal]) : LABEL[l.state];
   const fmt = ms => { const s = Math.max(0, ms) / 1000; return String(Math.floor(s / 60)).padStart(2, "0") + ":" + (s % 60).toFixed(1).padStart(4, "0"); };
   const fmtShort = ms => { const s = Math.max(0, ms) / 1000; return String(Math.floor(s / 60)) + ":" + String(Math.floor(s % 60)).padStart(2, "0"); };
+  const firstStep = beatId => {
+    const ch = (RD.timeline?.chapters || []).find(c => c.id === beatId);
+    return ch && ch.steps && ch.steps[0] ? ch.steps[0].id : null;
+  };
 
   function tab(seg) {
     tabs.querySelectorAll("[data-seg]").forEach(b => b.classList.toggle("active", b.dataset.seg === seg));
-    panel.hidden = seg !== "density";
+    density.hidden = seg !== "density";
+    fb.hidden = seg !== "fb";
+    hist.hidden = seg !== "hist";
     detail.hidden = seg !== "choreo";
+    if (seg === "hist") loadHistory();
+    if (seg === "fb") renderFbHead();
   }
   tabs.addEventListener("click", e => { const b = e.target.closest("[data-seg]"); if (b) tab(b.dataset.seg); });
 
-  function renderBeats() {
-    const box = document.getElementById("dens-beats"); box.innerHTML = "";
+  function renderRail() {
+    const list = document.getElementById("br-list"); list.innerHTML = "";
     state.forEach((b, i) => {
       const changed = b.lines.filter(l => l.state !== "auto").length;
-      const btn = document.createElement("button");
-      btn.type = "button"; btn.dataset.beat = i;
-      btn.className = i === current ? "active" : "";
-      btn.textContent = b.id.replace(/^beat-/, "B") + " · " + (changed ? changed + "改" : b.lines.length + "句");
-      btn.title = b.title || "";
-      btn.addEventListener("click", () => { current = i; follow = false; document.getElementById("dens-follow").checked = false; render(); });
-      box.appendChild(btn);
+      const el = document.createElement("div");
+      el.className = "br-beat" + (i === current ? " active" : "");
+      el.innerHTML = '<span class="bid">' + b.id + '</span><span class="bt">' + (b.title || b.id) + '</span>'
+        + '<span class="bm">' + (changed ? changed + " 处调整" : b.lines.length + " 句") + '</span>';
+      el.addEventListener("click", () => selectBeat(i));
+      list.appendChild(el);
     });
+    document.getElementById("br-count").textContent = state.length;
+  }
+
+  function selectBeat(i) {
+    current = Math.max(0, Math.min(state.length - 1, i));
+    follow = false;
+    const f = document.getElementById("dens-follow"); if (f) f.checked = false;
+    selected.clear(); anchor = null; undo = null;
+    render();
+    const stepId = firstStep(state[current].id);
+    if (stepId) {
+      const step = [...document.querySelectorAll(".step")].find(el => el.dataset.stepId === stepId);
+      if (step) step.click();
+    }
   }
 
   function render() {
-    renderBeats();
+    renderRail();
+    const beat = state[current];
+    const chips = document.getElementById("dens-beats"); chips.innerHTML = "";
+    state.forEach((b, i) => {
+      const changed = b.lines.filter(l => l.state !== "auto").length;
+      const btn = document.createElement("button");
+      btn.type = "button"; btn.dataset.beat = i; btn.className = i === current ? "active" : "";
+      btn.textContent = b.id.replace(/^beat-/, "B") + " · " + (changed ? changed + " 改" : b.lines.length + " 句");
+      btn.title = b.title || "";
+      btn.addEventListener("click", () => selectBeat(i));
+      chips.appendChild(btn);
+    });
+    renderRows();
+    renderSelection();
+    const changedAll = flat().filter(o => o.line.state !== "auto").length;
+    document.getElementById("dens-count").textContent = flat().length + " 行 · 已改 " + changedAll;
+    document.getElementById("seg-summary").textContent = beat.id + " · " + beat.title;
+    renderFbHead();
+  }
+
+  function renderRows() {
     const beat = state[current];
     const rows = beat.lines.filter(l => !onlyChanged || l.state !== "auto" || l.note);
     body.innerHTML = "";
@@ -4292,37 +4398,33 @@
       row.addEventListener("mousedown", e => {
         if (e.button !== 0) return;
         e.preventDefault();
-        if ((e.shiftKey || shiftDown) && anchor != null) selectRange(anchor, idx, false);
+        if ((e.shiftKey || shiftDown) && anchor != null) selectRange(anchor, idx);
         else if (e.metaKey || e.ctrlKey || metaDown) { toggle(line.id); anchor = idx; }
-        else { selected = new Set([line.id]); anchor = idx; dragging = true; }
-        renderSelection(); seekTo(line.startMs);
+        else { selected = new Set([line.id]); anchor = idx; dragging = true; renderSelection(); }
+        seekTo(line.startMs);
       });
-      row.addEventListener("mouseenter", () => { if (dragging && anchor != null) selectRange(anchor, idx, false); });
-      row.addEventListener("dblclick", () => { seekTo(line.startMs); });
+      row.addEventListener("mouseenter", () => { if (dragging && anchor != null) selectRange(anchor, idx); });
       body.appendChild(row);
     });
-    if (!rows.length) body.innerHTML = '<div style="padding:12px;color:var(--text-muted);font-size:11px">这个 beat 没有非自动行。</div>';
-    renderSelection();
-    const changed = flat().filter(o => o.line.state !== "auto").length;
-    document.getElementById("dens-count").textContent = flat().length + " 行 · 已改 " + changed;
-    document.getElementById("seg-summary").textContent = beat.id + " · " + beat.title;
+    if (!rows.length) body.innerHTML = '<div class="hist-empty">这个 beat 没有非自动行。</div>';
   }
 
   function renderSelection() {
     const n = selected.size;
     const el = document.getElementById("dens-sel");
-    if (!n) { el.textContent = "未选择。单击一句；Shift 连选；Cmd/Ctrl 加选；按住拖过多行。"; note.value = ""; note.disabled = true; return; }
+    const cnt = document.getElementById("dens-sel-count");
+    cnt.textContent = "已选 " + n + " 句";
+    if (!n) { el.textContent = "单击一句；Shift 连选；Cmd/Ctrl 加选；按住拖过多行。"; note.value = ""; note.disabled = true; return; }
     const ids = [...selected]; const first = lineById(ids[0]), last = lineById(ids[ids.length - 1]);
-    el.textContent = "已选 " + n + " 句 · " + (first ? fmtShort(first.line.startMs) : "") + "–" + (last ? fmtShort(last.line.endMs) : "") + "（" + ids.slice(0, 3).join(", ") + (n > 3 ? " …" : "") + "）";
+    el.textContent = fmtShort(first ? first.line.startMs : 0) + "–" + fmtShort(last ? last.line.endMs : 0)
+      + " · " + ids.slice(0, 3).join(", ") + (n > 3 ? " …" : "");
     note.disabled = n !== 1;
     note.value = n === 1 && first ? (first.line.note || "") : "";
     body.querySelectorAll(".dline").forEach(row => row.classList.toggle("sel", selected.has(row.dataset.id)));
   }
 
-  function selectRange(a, b, replace) {
-    const beat = state[current];
-    const [lo, hi] = a < b ? [a, b] : [b, a];
-    if (replace) selected = new Set();
+  function selectRange(a, b) {
+    const beat = state[current]; const [lo, hi] = a < b ? [a, b] : [b, a];
     for (let i = lo; i <= hi; i++) if (beat.lines[i]) selected.add(beat.lines[i].id);
     renderSelection();
   }
@@ -4331,32 +4433,27 @@
     const i = STATES.indexOf(line.state);
     line.state = STATES[(i + 1) % STATES.length];
     selected = new Set([line.id]); anchor = state[current].lines.indexOf(line);
-    renderSelection(); render();
+    renderRows(); renderSelection();
   }
 
   function applyTo(targets, s) {
-    if (!targets.length) { setStatus("先选几行，或点「整个 beat」。", "err"); return; }
+    if (!targets.length) { setStatus("先选几行，或点「整 beat」。", "err"); return; }
     undo = targets.map(l => ({ id: l.id, state: l.state }));
     targets.forEach(l => { l.state = s; });
-    setStatus("已把 " + targets.length + " 句设为「" + LABEL[s] + "」。可继续拖选，或点提交。", "ok");
+    setStatus("已把 " + targets.length + " 句设为「" + LABEL[s] + "」。", "ok");
     render();
   }
-  document.querySelectorAll(".dens-batch [data-set]").forEach(btn => {
+  document.querySelectorAll(".dens-selbar [data-set]").forEach(btn => {
     btn.addEventListener("click", () => {
-      const targets = selected.size ? [...selected].map(lineById).filter(Boolean).map(o => o.line)
-        : state[current].lines.filter(l => selected.size === 0 && false);
+      const targets = [...selected].map(lineById).filter(Boolean).map(o => o.line);
       applyTo(targets, btn.dataset.set);
     });
   });
-  document.getElementById("dens-apply").addEventListener("click", () => {
-    const n = selected.size; if (!n) { setStatus("先在列表里拖选几句。", "err"); return; }
-    setStatus("已选 " + n + " 句；点上方状态按钮应用。", "ok");
+  document.getElementById("dens-sel-all").addEventListener("click", () => {
+    state[current].lines.forEach(l => selected.add(l.id)); renderSelection();
   });
-  document.getElementById("dens-beat-all").addEventListener("click", () => {
-    const s = prompt("整个 beat 设为：auto / off / still / light / full", "off");
-    if (!s || !STATES.includes(s)) { setStatus("取消或输入无效。", "err"); return; }
-    applyTo(state[current].lines, s);
-  });
+  document.getElementById("dens-sel-clear").addEventListener("click", () => { selected.clear(); renderSelection(); });
+  document.getElementById("dens-beat-all").addEventListener("click", () => applyTo(state[current].lines, "off"));
   document.getElementById("dens-undo").addEventListener("click", () => {
     if (!undo) { setStatus("没有可撤销的批量。", "err"); return; }
     undo.forEach(u => { const hit = lineById(u.id); if (hit) hit.line.state = u.state; });
@@ -4364,21 +4461,21 @@
   });
   note.addEventListener("input", () => {
     if (selected.size !== 1) return;
-    const hit = lineById([...selected][0]); if (hit) { hit.line.note = note.value; }
+    const hit = lineById([...selected][0]); if (hit) hit.line.note = note.value;
   });
   document.getElementById("dens-follow").addEventListener("change", e => { follow = e.target.checked; if (follow) tick(true); });
-  document.getElementById("dens-only").addEventListener("change", e => { onlyChanged = e.target.checked; render(); });
+  document.getElementById("dens-only").addEventListener("change", e => { onlyChanged = e.target.checked; renderRows(); renderSelection(); });
 
   function activeEl() {
-    const comp = document.getElementById("composite-video-player");
-    if (comp && comp.getAttribute("src") && !comp.closest("[hidden]")) return comp;
     const live = document.getElementById("live-stage-frame");
     if (live && live.ready) return live;
+    const comp = document.getElementById("composite-video-player");
+    if (comp && comp.getAttribute("src") && !comp.closest("[hidden]")) return comp;
     const spk = document.getElementById("stage-speaker-video");
     if (spk && spk.getAttribute("src") && !spk.hidden) return spk;
     return live || comp || spk || null;
   }
-  function playerMs() { const p = activeEl(); const t = p ? Number(p.currentTime) : 0; return Number.isFinite(t) ? t * 1000 : 0; }
+  function playerMs() { const p = activeEl(); if (!p) return 0; const t = Number(p.currentTime); return Number.isFinite(t) ? t * 1000 : 0; }
   function seekTo(ms) { const p = activeEl(); if (!p) return; try { if (typeof p.seek === "function") p.seek(ms / 1000); else p.currentTime = ms / 1000; } catch (e) {} }
   function tick(force) {
     const t = playerMs();
@@ -4386,20 +4483,17 @@
       const i = state.findIndex(b => t >= b.startMs && t < b.endMs);
       if (i >= 0 && i !== current) { current = i; render(); }
     }
-    const row = body.querySelector(".dline.now"); if (row) row.classList.remove("now");
     const beat = state[current]; if (!beat) return;
+    const row = body.querySelector(".dline.now"); if (row) row.classList.remove("now");
     const cur = beat.lines.find(l => t >= l.startMs && t < l.endMs);
     if (cur) { const el = body.querySelector('.dline[data-id="' + cur.id + '"]'); if (el) el.classList.add("now"); }
   }
-  function goCurrent() {
-    const p = activeEl(); if (!p) return;
-    const t = playerMs(); const i = state.findIndex(b => t >= b.startMs && t < b.endMs);
-    if (i >= 0) { current = i; render(); }
-    const beat = state[current]; const cur = beat.lines.find(l => t >= l.startMs && t < l.endMs);
-    if (cur) { selected = new Set([cur.id]); anchor = beat.lines.indexOf(cur); renderSelection(); seekTo(cur.startMs); }
-  }
-  document.getElementById("dens-submit").addEventListener("click", submit);
 
+  function renderFbHead() {
+    const beat = state[current];
+    document.getElementById("fb-head").textContent = "整 beat 反馈 · " + beat.id;
+    document.getElementById("fb-sub").textContent = beat.title + " · " + fmtShort(beat.startMs) + "–" + fmtShort(beat.endMs);
+  }
   async function ensureReview() {
     if (review) return review;
     if (!window.ReviewBridge) throw new Error("审阅桥未加载");
@@ -4415,7 +4509,7 @@
       if (!last || !Array.isArray(last.lines)) return;
       const by = new Map(last.lines.map(l => [l.id, l]));
       flat().forEach(o => { const hit = by.get(o.line.id); if (hit && STATES.includes(hit.state)) { o.line.state = hit.state; if (typeof hit.note === "string") o.line.note = hit.note; } });
-      render(); setStatus("已载入上一次提交的逐字密度。", "ok");
+      render();
     } catch (e) {}
   }
   async function submit() {
@@ -4431,30 +4525,94 @@
         lines: flat().map(o => ({ id: o.line.id, state: o.line.state, note: o.line.note || "" })) });
       doc.updated_at = new Date().toISOString();
       await r.write(doc);
-      setStatus("已写入提交文件，正在唤醒模型…", "ok");
+      setStatus("已写入，正在唤醒模型…", "ok");
       await r.wake({ unit: "逐字密度", text: "逐字密度已提交（" + flat().length + " 行）。先运行 video-craft/helpers/review_inbox.py <本项目绝对路径> 收件；按 recompose/lines.json 的 state/proposal 只改受影响的视觉段。" });
-      setStatus("已提交并唤醒。模型收件后只改受影响的句子。", "ok");
+      setStatus("已提交并唤醒。", "ok");
     } catch (e) { setStatus("提交失败：" + (e && e.message ? e.message : e), "err"); }
     finally { btn.disabled = false; }
   }
+  document.getElementById("dens-submit").addEventListener("click", submit);
+
+  async function saveFb() {
+    const text = document.getElementById("fb-text").value.trim();
+    const fbStatus = document.getElementById("fb-status");
+    if (!text) { fbStatus.textContent = "先写一点这个 beat 的反馈。"; fbStatus.className = "err"; return; }
+    const beat = state[current];
+    try {
+      const r = await ensureReview();
+      let doc = { contract_version: "video-craft-review-submissions/1.0.0", surface: "video-craft/visual", records: [] };
+      try { const t = await r.readText("review/review-submissions.json", { optional: true }); if (t) doc = JSON.parse(t); } catch (e) {}
+      if (!Array.isArray(doc.records)) doc.records = [];
+      const unit = (RD.binding?.units || []).find(u => u.chapterId === beat.id);
+      doc.records.push({
+        type: document.getElementById("fb-kind").value, text, status: "open",
+        createdAt: new Date().toISOString(), snapshot: RD.snapshot || null, buildId: RD.buildId || null,
+        chapterId: beat.id, stepId: firstStep(beat.id), unitId: unit ? unit.unitId : null,
+        playbackTimeMs: Math.round(playerMs()),
+      });
+      doc.updated_at = new Date().toISOString();
+      await r.write(doc);
+      document.getElementById("fb-text").value = "";
+      fbStatus.textContent = "已保存整 beat 反馈；模型收件后会处理。";
+      fbStatus.className = "ok";
+      await r.wake({ unit: beat.id, text: "收到 " + beat.id + " 的整 beat 反馈。运行 video-craft/helpers/review_inbox.py <本项目绝对路径> 收件。" });
+    } catch (e) { fbStatus.textContent = "保存失败：" + (e && e.message ? e.message : e); fbStatus.className = "err"; }
+  }
+  document.getElementById("fb-save").addEventListener("click", saveFb);
+
+  async function loadHistory() {
+    const list = document.getElementById("hist-list");
+    const beat = state[current];
+    list.innerHTML = '<div class="hist-empty">读取中…</div>';
+    try {
+      const r = await ensureReview();
+      const files = ["feedback/" + beat.id + ".jsonl", "feedback/density.jsonl"];
+      const entries = [];
+      for (const file of files) {
+        try {
+          const text = await r.readText(file, { optional: true });
+          if (!text) continue;
+          text.split(/\r?\n/).forEach(line => {
+            line = line.trim(); if (!line) return;
+            try { const rec = JSON.parse(line); entries.push({ file, rec }); } catch (e) {}
+          });
+        } catch (e) {}
+      }
+      entries.sort((a, b) => String(b.rec.createdAt || "").localeCompare(String(a.rec.createdAt || "")));
+      document.getElementById("hist-count").textContent = entries.length + " 条";
+      if (!entries.length) { list.innerHTML = '<div class="hist-empty">这个 beat 还没有历史反馈。</div>'; return; }
+      list.innerHTML = "";
+      entries.slice(0, 30).forEach(({ file, rec }) => {
+        const el = document.createElement("div");
+        el.className = "hist-item";
+        const when = (rec.createdAt || "").replace("T", " ").slice(0, 19);
+        const kind = rec.phase === "density" ? "密度" : (rec.type || "反馈");
+        const text = rec.phase === "density"
+          ? "密度：" + (rec.lines || []).filter(l => l.state !== "auto").length + " 句调整"
+          : (rec.text || "");
+        el.innerHTML = '<span class="hm">' + when + " · " + kind + " · " + file + '</span>' + escapeHtml(text);
+        list.appendChild(el);
+      });
+    } catch (e) { list.innerHTML = '<div class="hist-empty">读取失败：' + escapeHtml(e.message) + '</div>'; }
+  }
+  function escapeHtml(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+  document.getElementById("hist-refresh").addEventListener("click", loadHistory);
 
   document.addEventListener("mouseup", () => { dragging = false; });
   document.addEventListener("keydown", e => { if (e.key === "Shift") shiftDown = true; if (e.key === "Meta" || e.key === "Control") metaDown = true; }, true);
   document.addEventListener("keyup", e => { if (e.key === "Shift") shiftDown = false; if (e.key === "Meta" || e.key === "Control") metaDown = false; }, true);
   document.addEventListener("keydown", e => {
-    if (panel.hidden) return;
+    if (density.hidden) return;
     const tag = (e.target && e.target.tagName || "").toLowerCase();
     if (tag === "input" || tag === "textarea" || tag === "select") return;
     const map = { "0": "off", "1": "still", "2": "light", "3": "full", "a": "auto" };
-    if (map[e.key] && selected.size) {
-      const targets = [...selected].map(lineById).filter(Boolean).map(o => o.line);
-      applyTo(targets, map[e.key]); e.preventDefault();
-    } else if (e.key === "Escape") { selected.clear(); renderSelection(); }
+    if (map[e.key] && selected.size) { applyTo([...selected].map(lineById).filter(Boolean).map(o => o.line), map[e.key]); e.preventDefault(); }
+    else if (e.key === "Escape") { selected.clear(); renderSelection(); }
   });
 
   render();
   tab("density");
-  setInterval(() => { if (!panel.hidden) tick(); }, 350);
+  setInterval(() => { if (!density.hidden) tick(); }, 350);
   loadLast();
 })();
 </script>

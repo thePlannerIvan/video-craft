@@ -214,6 +214,8 @@ def stop(root: Path) -> int:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("project")
+    ap.add_argument("--composition", default="composition",
+                    help="composition directory inside the project (default: composition)")
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
     ap.add_argument("--status", action="store_true")
     ap.add_argument("--stop", action="store_true")
@@ -221,7 +223,10 @@ def main() -> int:
     args = ap.parse_args()
 
     root = project_root(args.project)
-    comp = root / "composition"
+    comp = (root / args.composition).resolve()
+    if root not in comp.parents and comp != root:
+        print(f"✗ --composition 必须在项目内：{comp}", file=sys.stderr)
+        return 2
     if not (comp / "index.html").is_file():
         print(f"✗ no composition/index.html under {comp}", file=sys.stderr)
         return 2
@@ -278,6 +283,7 @@ def main() -> int:
 
     payload = {"ok": True, "started": started, "serverUrl": server,
                "stageUrl": stage, "projectId": pid,
+               "composition": str(comp.relative_to(root)),
                "studioUrl": stated.get("studioUrl"), "pid": stated.get("pid"),
                "log": stated.get("log"), "port": args.port}
     state = root / STATE_FILE

@@ -63,7 +63,14 @@ def have_playwright():
 
 
 def biggest_real_project():
-    """四个真项目里素材最大的那个（Range 要在真大小的文件上验，不是在玩具上）。"""
+    """素材最大的那个真项目（Range 要在真大小的文件上验，不是在玩具上）。
+
+    Only COMPLETE projects qualify: a project whose `edl.json` names a source that
+    is no longer on disk (one real project lost its generated `edit/filled/*.mp4`)
+    makes a half-materialised fixture, and the page then cannot resolve that URL —
+    the fixture fails for a reason that has nothing to do with the transport this
+    module tests. A hole in the sources is that project's problem, not this test's.
+    """
     chosen = None
     for edl in sorted(REAL_PROJECTS.glob("*/edit/edl.json")):
         try:
@@ -71,12 +78,15 @@ def biggest_real_project():
         except (OSError, ValueError):
             continue
         total = 0
+        complete = True
         for value in (doc.get("sources") or {}).values():
             path = Path(value)
             path = path if path.is_absolute() else (edl.parent / path)
-            if path.is_file():
-                total += path.stat().st_size
-        if total and (chosen is None or total > chosen[1]):
+            if not path.is_file():
+                complete = False
+                break
+            total += path.stat().st_size
+        if complete and total and (chosen is None or total > chosen[1]):
             chosen = (edl.parent.parent, total)
     return chosen
 

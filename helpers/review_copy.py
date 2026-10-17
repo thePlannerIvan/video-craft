@@ -18,9 +18,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 DEFAULT_MAX_MB = 80.0
@@ -31,6 +33,11 @@ DEFAULT_AUDIO_KBPS = 128
 # 193 kbps stereo -> 48 kbps mono is inaudible for speech and saves ~75% of the
 # bytes, and bytes are what the review page pays for (base64 in the srcdoc).
 AUDIO_ONLY_KBPS = 48
+# A cloud-synced output path stalls ffmpeg's muxer intermittently (GOTCHA #5). The
+# encode is cheap and the failure is transient, so retry before giving up — a
+# failed copy used to leave a truncated file that build_review then reused forever.
+PROXY_ATTEMPTS = 3
+PROXY_RETRY_DELAY_S = 1.5
 # One keyframe per second. This is not a quality knob: review_slices.py cuts each
 # step out with `-c copy`, which can only start at a keyframe. At x264's default
 # keyframe interval (~8s here) a 6-second step came out with a 7.9s lead in front of
@@ -53,6 +60,27 @@ def _probe_media(path: Path) -> tuple[float, int, int]:
     stream = (blob.get("streams") or [{}])[0]
     duration = float((blob.get("format") or {}).get("duration") or 0.0)
     return duration, int(stream.get("width") or 0), int(stream.get("height") or 0)
+
+
+def media_duration(path: Path) -> float | None:
+    """Duration in seconds, or None when ffprobe cannot read the file.
+
+    Callers use this as a decodability test: a truncated encode (no moov atom)
+    returns None instead of raising, so "is this proxy still usable?" is one call.
+    """
+    try:
+        duration, _w, _h = _probe_media(path)
+    except (RuntimeError, OSError, ValueError):
+        return None
+    return duration
+
+
+def is_fresh_copy(path: Path, expect_duration: float, tolerance: float = 0.5) -> bool:
+    """True when `path` is a decodable copy of a source of `expect_duration`."""
+    duration = media_duration(path)
+    if duration is None or duration <= 0:
+        return False
+    return abs(duration - expect_duration) <= tolerance
 
 
 def needs_copy(src: Path, max_mb: float = DEFAULT_MAX_MB) -> bool:
@@ -98,6 +126,9 @@ def make(src: Path, out: Path | None = None, *, crf: int = DEFAULT_CRF,
     if shutil.which("ffmpeg") is None:
         raise SystemExit("✗ PATH 上没有 ffmpeg")
 
+    # Keep the real extension: ffmpeg infers the muxer from it, and ".part" alone
+    # is an unknown format ("Error initializing the muxer ... Invalid argument").
+    tmp = out.with_name(out.stem + ".part" + out.suffix)
     if has_video:
         # `gop` exists for copies that will be CUT with `-c copy`
         # (review_slices.py needs a keyframe at each step boundary). It is not
@@ -110,29 +141,48 @@ def make(src: Path, out: Path | None = None, *, crf: int = DEFAULT_CRF,
                "-c:v", "libx264", "-preset", "veryfast", "-crf", str(crf),
                *keyframes, "-pix_fmt", "yuv420p",
                "-c:a", "aac", "-b:a", f"{audio_kbps}k",
-               "-movflags", "+faststart", str(out)]
+               "-movflags", "+faststart", str(tmp)]
     else:
         # Audio sidecar: downmix and drop the bitrate. Nothing here is judged at
         # the pixel, so there is no reason to carry a stereo narration master.
         cmd = ["ffmpeg", "-v", "error", "-y", "-i", str(src),
                "-vn", "-ac", "1", "-c:a", "aac", "-b:a", f"{AUDIO_ONLY_KBPS}k",
-               "-movflags", "+faststart", str(out)]
-    proc = subprocess.run(cmd, capture_output=True)
-    if proc.returncode != 0:
+               "-movflags", "+faststart", str(tmp)]
+    tail = []
+    for attempt in range(1, PROXY_ATTEMPTS + 1):
+        proc = subprocess.run(cmd, capture_output=True)
+        if proc.returncode == 0:
+            break
         tail = proc.stderr.decode("utf-8", "replace").strip().splitlines()[-3:]
-        raise SystemExit("✗ 审阅副本编码失败：" + " / ".join(tail))
+        tmp.unlink(missing_ok=True)   # a partial encode must never survive
+        if attempt == PROXY_ATTEMPTS:
+            raise SystemExit("✗ 审阅副本编码失败（重试 %d 次）：" % PROXY_ATTEMPTS
+                             + " / ".join(tail))
+        delay = PROXY_RETRY_DELAY_S * attempt
+        print(f"  · 审阅副本编码失败（{tail[-1][:80] if tail else 'unknown'}），"
+              f"{delay:.1f}s 后重试（{attempt}/{PROXY_ATTEMPTS - 1}）")
+        time.sleep(delay)
 
-    out_duration, out_w, out_h = _probe_media(out)
-    if has_video and (out_w, out_h) != (width, height):
-        raise SystemExit(f"✗ 审阅副本改动了分辨率 {(width, height)} → {(out_w, out_h)}；"
-                         "审阅副本必须保持原生像素")
-    if abs(out_duration - duration) > 0.1:
-        raise SystemExit(f"✗ 审阅副本时长变了 {duration:.3f}s → {out_duration:.3f}s；"
-                         "审阅副本必须保留时间")
+    # Validate the temp file, not the destination: a muxer timeout leaves a
+    # truncated file with no moov atom, and a truncated file at the FINAL path
+    # gets judged "fresh" by build_review on the next rebuild (mtime + size look
+    # fine) and is then handed to the page as a silent no-audio copy.
+    try:
+        out_duration, out_w, out_h = _probe_media(tmp)
+        if has_video and (out_w, out_h) != (width, height):
+            raise SystemExit(f"✗ 审阅副本改动了分辨率 {(width, height)} → {(out_w, out_h)}；"
+                             "审阅副本必须保持原生像素")
+        if abs(out_duration - duration) > 0.1:
+            raise SystemExit(f"✗ 审阅副本时长变了 {duration:.3f}s → {out_duration:.3f}s；"
+                             "审阅副本必须保留时间")
+    except SystemExit:
+        tmp.unlink(missing_ok=True)
+        raise
 
-    out_bytes = out.stat().st_size
+    out_bytes = tmp.stat().st_size
     under_budget = out_bytes <= max_mb * 1_000_000
     if not under_budget and out_bytes >= src.stat().st_size:
+        tmp.unlink(missing_ok=True)
         # A copy that is no smaller than what it copies has achieved nothing, and
         # handing it over as a "审阅副本" would read as the problem being solved.
         # A copy that shrank but is still over budget is a different case: it did
@@ -142,6 +192,7 @@ def make(src: Path, out: Path | None = None, *, crf: int = DEFAULT_CRF,
             f"（上限 {max_mb:.0f}MB）。这份副本解决不了问题："
             f"提高 --crf、下调 --audio-kbps，或改用 --slices 只交付当前窗口。")
 
+    os.replace(tmp, out)   # atomic: the final path never holds a partial file
     return {"ok": True, "action": "made", "path": str(out),
             "bytes": out_bytes,
             "size_mb": round(out_bytes / 1_000_000, 1),

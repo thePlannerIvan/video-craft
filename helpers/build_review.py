@@ -913,9 +913,17 @@ def fit_live_stage_assets(project_root: Path, review_data: dict) -> None:
             # Reuse a fresh proxy: re-encoding an 11 MB screen track on every
             # rebuild would make iterating on the composition slower than the
             # render it exists to avoid.
+            # mtime + size are not enough: a muxer timeout leaves a truncated
+            # file that looks fresh forever, and the page then plays the film
+            # with no sound and no error (2026-10-17, the author heard a silent
+            # review). Decodability is the property that matters.
+            src_duration = review_copy.media_duration(src) or 0.0
             fresh = (out.is_file() and out.stat().st_mtime >= src.stat().st_mtime
-                     and out.stat().st_size <= budget_bytes)
+                     and out.stat().st_size <= budget_bytes
+                     and review_copy.is_fresh_copy(out, src_duration))
             record = None
+            if out.is_file() and not fresh and out.stat().st_mtime >= src.stat().st_mtime:
+                print(f"  ⚠ 审阅副本 {out.name} 读不出来，重建")
             if not fresh:
                 try:
                     # gop=None on purpose: nothing slices this copy, and forcing a
@@ -924,6 +932,9 @@ def fit_live_stage_assets(project_root: Path, review_data: dict) -> None:
                     record = review_copy.make(src, out, max_mb=LIVE_STAGE_ASSET_MB,
                                               gop=None)
                 except SystemExit as exc:
+                    # A half-written copy must not survive: the next build would
+                    # call it fresh by mtime and hand it over again.
+                    out.unlink(missing_ok=True)
                     notes.append(f"活舞台资产 {rel} 压不进预算，保持原样：{exc}")
                     total += src.stat().st_size
                     continue

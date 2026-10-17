@@ -132,6 +132,10 @@ python3 visual/scripts/import_svg_page.py <project> --page beat-01 --prove
 ### 动效加在外层
 
 `clipPath` / `stroke-dasharray` / `transform` 用在包住 `<svg>` 的包裹层上，页面本身保持原样。
+
+**页面自带的 `transform` 与 GSAP 互斥**：GSAP 第一次碰一个元素时把它的 `transform` 解析进自己的矩阵，之后每次补间都按自己的值重新写回 `transform` 属性 —— 页面上的 `translate(-40,16.5)` 在第一次 y/x/scale/rotation 补间时就没了，而且不报错。要么把静态位移/旋转挪到外层包裹层，要么这条元素只做不碰 transform 的补间（透明度、描边）。`check_motion_targets.py` 会把「页面声明了 transform 又被补间」的元素列出来。
+
+**量静态几何要在静态页面上量**：不要在被 GSAP 跑过的 composition 里量元素位置 —— 那时量到的是动画态（transform 已被改写、补间 from 值已生效），据此改页会把位移修反。量页面用 PPT Hell 的页面 PNG 或源 SVG 的 `getCTM`（未动画）。
 `planners-ppt-hell` 的 `svg_rules.md` 管的是**页面**，动画层在它之外，所以这条交接不需要放松页面规则。
 
 ### 每屏的合成事实从哪读

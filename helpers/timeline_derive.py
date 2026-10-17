@@ -180,7 +180,58 @@ def _normalize_indices(indices, *, step_label: str) -> list[int]:
     return sorted({int(i) for i in indices})
 
 
-def build_timeline(entries: list[dict], grouping: dict) -> tuple[dict, dict]:
+def _stretch_to_measured(chapters: list[dict], measured_total_ms: int) -> None:
+    """Pin the spine to the measured cut and close the cue gaps between steps.
+
+    Two defects share this fix, and both are invisible until something renders:
+
+    * the first cue starts at ~0.3s and the last cue ends before the audio does
+      (the cut has head/tail pads), so a cue-span total is SHORT by ~0.35s and
+      every clip after the first sits early;
+    * consecutive steps have a cue gap between them, so each clip ends before the
+      next begins — the film flashes black at the seam (2026-10-17: 7 segments,
+      3.40s, caught only after a full render by verify_delivery's black budget).
+
+    Steps stay a partition of the film: first step starts at 0, each step ends
+    where the next one starts, the last ends at the measured total.
+    """
+    steps = [st for ch in chapters for st in ch["steps"]]
+    if not steps:
+        return
+    steps[0]["startMs"] = 0
+    for cur, nxt in zip(steps, steps[1:]):
+        cur["endMs"] = nxt["startMs"]
+    steps[-1]["endMs"] = max(steps[-1]["endMs"], measured_total_ms)
+    for st in steps:
+        st["durationMs"] = st["endMs"] - st["startMs"]
+
+
+def _measured_total_ms(edit_dir: Path, edl_path: Path | None = None) -> int | None:
+    """Total of the MEASURED cut, or None when no render record matches this EDL."""
+    record = edit_dir / "segment_durations.json"
+    if not record.exists():
+        return None
+    try:
+        blob = json.loads(record.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    cut = blob.get("cut") if isinstance(blob, dict) else None
+    if not isinstance(cut, dict):
+        return None
+    total = cut.get("total_s")
+    if not isinstance(total, (int, float)) or total <= 0:
+        return None
+    edl_file = (edl_path or (edit_dir / EDIT_DEFAULT)).resolve()
+    digest = cut.get("edl_sha256")
+    if edl_file.exists() and digest:
+        from _edl import edl_digest  # same directory
+        if edl_digest(edl_file) != digest:
+            return None  # stale: the cut changed after that render
+    return int(round(float(total) * 1000))
+
+
+def build_timeline(entries: list[dict], grouping: dict,
+                   *, measured_total_ms: int | None = None) -> tuple[dict, dict]:
     """Same output as parse-srt.py's build_timeline, plus the EDL-side facts.
 
     Every numeric field and `caption` is computed identically, so a composition
@@ -252,6 +303,10 @@ def build_timeline(entries: list[dict], grouping: dict) -> tuple[dict, dict]:
             durations.append(item["durationMs"])
         chapters.append({"id": chapter_id, "title": title, "steps": steps})
         duration_map[chapter_id] = durations
+    if measured_total_ms:
+        _stretch_to_measured(chapters, int(measured_total_ms))
+        duration_map = {ch["id"]: [st["durationMs"] for st in ch["steps"]]
+                        for ch in chapters}
     first_start = chapters[0]["steps"][0]["startMs"] if chapters and chapters[0]["steps"] else 0
     last_end = chapters[-1]["steps"][-1]["endMs"] if chapters and chapters[-1]["steps"] else 0
     return {
@@ -339,6 +394,8 @@ def main() -> int:
 
     edit_dir = args.edit_dir.resolve()
     entries = derive_entries(edit_dir, edl_path=args.edl)
+    words_source = (_read_json(edit_dir / WORDS_NAME).get("timeline_source")
+                    if (edit_dir / WORDS_NAME).exists() else None)
 
     if args.entries_only:
         print(json.dumps(entries, ensure_ascii=False, indent=2))
@@ -355,7 +412,14 @@ def main() -> int:
         grouping = _read_json(args.grouping)
         if args.alignment:
             check_alignment(entries, grouping, _read_json(args.alignment))
-        timeline, durations = build_timeline(entries, grouping)
+        measured_total = None
+        if words_source == "measured":
+            measured_total = _measured_total_ms(edit_dir, args.edl)
+            if measured_total:
+                print(f"  · 时间脊柱按实测总长对齐：{measured_total / 1000:.3f}s，"
+                      "步骤首尾相接（不留章节空隙）")
+        timeline, durations = build_timeline(entries, grouping,
+                                             measured_total_ms=measured_total)
         if args.output_timeline:
             args.output_timeline.parent.mkdir(parents=True, exist_ok=True)
             args.output_timeline.write_text(

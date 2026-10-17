@@ -257,6 +257,32 @@ class BuildTimelineTests(unittest.TestCase):
         self.assertEqual(timeline["totalDurationMs"],
                          steps[-1]["endMs"] - steps[0]["startMs"])
 
+    def test_measured_total_pins_the_spine_and_closes_the_cue_gaps(self):
+        """The cue span is shorter than the measured cut, and steps do not touch.
+
+        Both defects render as: clips end before the next one starts (black flash
+        at every seam) and the tail is cut. 2026-10-17 cost a full render before
+        verify_delivery's black budget found them, so the spine is pinned to the
+        measured total up front.
+        """
+        entries = timeline_derive.derive_entries(self.edit)
+        grouping = {"chapters": [{"id": "g", "steps": [
+            {"cueIndices": [0, 1]}, {"cueIndices": [2, 3]}]}]}
+        cue_span, _ = timeline_derive.build_timeline(entries, grouping)
+        measured = cue_span["chapters"][0]["steps"][-1]["endMs"] + 400
+
+        timeline, durations = timeline_derive.build_timeline(
+            entries, grouping, measured_total_ms=measured)
+        steps = timeline["chapters"][0]["steps"]
+
+        self.assertEqual(steps[0]["startMs"], 0, "片头 pad 必须补上")
+        self.assertEqual(steps[0]["endMs"], steps[1]["startMs"], "步与步之间不能留缝")
+        self.assertEqual(steps[-1]["endMs"], measured, "片尾 pad 必须补上")
+        self.assertEqual(timeline["totalDurationMs"], measured)
+        self.assertEqual(durations["g"], [st["durationMs"] for st in steps])
+        for st in steps:
+            self.assertEqual(st["durationMs"], st["endMs"] - st["startMs"])
+
 
 if __name__ == "__main__":
     unittest.main()

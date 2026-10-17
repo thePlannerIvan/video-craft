@@ -139,5 +139,55 @@ class ReviewCopyTests(unittest.TestCase):
         self.assertTrue((self.dir / media["compositeVideo"]).is_file())
 
 
+@unittest.skipUnless(FFMPEG, "ffmpeg/ffprobe not installed")
+class ProxyIntegrityTests(unittest.TestCase):
+    """A truncated copy must never be judged fresh.
+
+    2026-10-17: a muxer timeout left a 524KB proxy with no moov atom at the final
+    path; build_review reused it by mtime, the page played the film with no sound,
+    and the author reported it as "声音丢了". Decodability is the property.
+    """
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self._tmp.name)
+        self.src = self._tone(self.dir / "narration.m4a", 2.0)
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    @staticmethod
+    def _tone(path: Path, seconds: float) -> Path:
+        subprocess.run(
+            ["ffmpeg", "-v", "error", "-y", "-f", "lavfi",
+             "-i", f"sine=frequency=440:duration={seconds}",
+             "-c:a", "aac", "-b:a", "64k", str(path)],
+            check=True, capture_output=True)
+        return path
+
+    def test_a_truncated_file_has_no_duration_and_is_not_fresh(self):
+        broken = self.dir / "broken.review.m4a"
+        data = self.src.read_bytes()
+        broken.write_bytes(data[: max(1, len(data) // 2)])
+        self.assertIsNone(review_copy.media_duration(broken))
+        self.assertFalse(review_copy.is_fresh_copy(broken, 2.0))
+
+    def test_a_real_copy_is_fresh_and_a_duration_mismatch_is_not(self):
+        duration = review_copy.media_duration(self.src)
+        self.assertIsNotNone(duration)
+        self.assertTrue(review_copy.is_fresh_copy(self.src, duration))
+        self.assertFalse(review_copy.is_fresh_copy(self.src, duration + 3.0))
+
+    def test_make_writes_atomically_and_leaves_no_part_file(self):
+        out = self.dir / "proxies" / "narration.review.m4a"
+        out.parent.mkdir()
+        record = review_copy.make(self.src, out, max_mb=0.001)
+        self.assertEqual(record["action"], "made")
+        self.assertTrue(out.is_file())
+        self.assertFalse(out.with_name(out.stem + ".part" + out.suffix).exists(),
+                         "编码中的临时文件必须改名到位，不能留在项目里")
+        self.assertIsNotNone(review_copy.media_duration(out))
+
+
 if __name__ == "__main__":
     unittest.main()

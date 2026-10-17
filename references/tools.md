@@ -207,6 +207,7 @@ python3 "<craft>/helpers/check_alpha.py" "<overlay.mov>" --json
 python3 "<craft>/helpers/check_overlay.py" "<edit>" --json
 python3 "<craft>/helpers/render.py" "<edit>/edl.json" -o "<edit>/final.mp4"
 python3 "<craft>/helpers/verify_av.py" "<edit>" --help
+python3 "<craft>/helpers/check_motion_targets.py" "<project>" --json   # 手写 GSAP 时间轴的门禁
 python3 "<craft>/helpers/check_motion.py" "<编码视频>" --json
 python3 "<craft>/helpers/check_screen_text.py" "<project>" --help
 python3 "<craft>/helpers/verify_delivery.py" "<edit>" --video "<实际成片>" --json

@@ -81,6 +81,9 @@ finished artefact into the project: symlink `edit/clips_<tag>` at a local dir an
 point `-o` at local disk, then copy `final.mp4` back. `/tmp` does not survive a
 reboot, so delete the dangling symlink before the next render.
 
+**2026-10-17：重试已落地**（`render.py`：`SEGMENT_ATTEMPTS = 4`、`SEGMENT_RETRY_DELAY_S = 1.5`，
+失败先删半截段再退避重试；测试里把延迟置 0）。整片渲染遇到 stall 仍优先走本机 staging。
+
 **2026-09-22, same failure, cheaper fix.** It hit a `render.py` segment extraction
 (exit 196) and later a per-shot frame/clip ffmpeg call; the identical command run
 by hand succeeded both times. **Wrap the project's own per-frame / per-clip ffmpeg
@@ -904,3 +907,10 @@ deletion from an accidental loss.
 - **修正原则**：流水线产物忠实、可校验；交付副本可导入。规则实现在 `srt_export.py:apply_import_gaps`，由 `export_deliverables.py` 在写 `成品/*.srt` 时调用；交付命名用 `src=dst`（如 `subtitles.srt=04_字幕文件.srt`）一次说清，不再拷完手工改名。
 - **证据**：同一条 161 cue 的字幕——流水线产物 22 处 <0.03s（忠实），交付副本 0 处、min 0.040s、保底 0.300s。
 
+## 74. 审阅副本坏了不报错：页面照播，只是没声
+
+- **module**：`helpers/review_copy.py` + `helpers/build_review.py` ｜ **状态**：已修
+- **现象**：作者听审阅页报「声音丢了」。磁盘上的 `review/proxies/audio.review.m4a` 只有 524KB、`moov atom` 缺失，ffprobe 报 Invalid data；页面照常加载、播放头照常走，只是静音，控制台也不报错。
+- **原因**：两个缺陷叠在一起。① `review_copy.make()` 直接把 ffmpeg 输出写到最终路径，云同步目录上 muxer 偶发超时会留下**半截文件**；② `build_review` 判断「代理还新鲜吗」只看 mtime + 大小，于是那个半截文件**永远被判新鲜**，每次重建都原样复用。
+- **修正原则**：编码到 `<stem>.part<ext>`（**必须保留真实扩展名**，否则 ffmpeg 报 `Error initializing the muxer ... Invalid argument`）→ ffprobe 校验时长 → `os.replace` 原子改名；`build_review` 判新鲜前再问一遍「这份文件解得开吗、时长对不对」（`review_copy.is_fresh_copy`），失败时删掉半截文件而不是留着。
+- **证据**：2026-10-17 一天内复发两次（第二次在重建审阅时被新加的校验当场拦住）；回归用例 `tests/test_review_media.py::ProxyIntegrityTests`（截断文件必须判 None/不新鲜、`make()` 不留 `.part`）。

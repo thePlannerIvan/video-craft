@@ -40,6 +40,7 @@ import json
 import math
 import re
 import subprocess
+import time
 from fractions import Fraction
 import sys
 from pathlib import Path
@@ -264,6 +265,12 @@ def detect_fps(video: Path) -> str:
 
 # Rates that are standards in their own right. A source reporting one of these is
 # telling the truth and must not be "corrected" to a nearby integer.
+# GOTCHA #5: a cloud-synced edit dir stalls the ffmpeg muxer intermittently
+# ("Operation timed out", exit 196). One flaky segment must not kill a render, so
+# each gets this many tries with a linear backoff before SegmentError.
+SEGMENT_ATTEMPTS = 4
+SEGMENT_RETRY_DELAY_S = 1.5
+
 STANDARD_RATES = {
     "24/1", "25/1", "30/1", "50/1", "60/1",
     "24000/1001", "30000/1001", "60000/1001",
@@ -640,21 +647,32 @@ def extract_all_segments(
         if is_auto:
             print(f"        grade: {seg_filter or '(none)'}")
         vt = None
-        for attempt in (1, 2):
+        # Cloud-synced project folders stall the ffmpeg muxer intermittently
+        # ("Operation timed out", exit 196); the identical command usually
+        # succeeds on a retry. GOTCHA #5 prescribes 4 tries with 1.5s x n
+        # backoff — two tries with no wait was not enough on 2026-10-17, where
+        # one segment failed twice and killed the whole render.
+        attempts = SEGMENT_ATTEMPTS
+        for attempt in range(1, attempts + 1):
             try:
                 extract_segment(src_path, start, duration, seg_filter, out_path,
                                 preview=preview, draft=draft, rate=out_rate, canvas=canvas)
                 vt = check_segment(out_path, tv, grid)
                 break
             except (SegmentError, subprocess.CalledProcessError) as exc:
-                if attempt == 2:
+                # A partial file would be re-judged "cached" by size/key later.
+                out_path.unlink(missing_ok=True)
+                if attempt == attempts:
                     raise SegmentError(
                         f"segment [{i:02d}] {src_name} {start:.2f}-{end:.2f} could not be "
-                        f"extracted twice in a row.\n"
+                        f"extracted after {attempts} attempts.\n"
                         f"  file:  {out_path}\n"
                         f"  asked: {tv:.3f}s\n"
                         f"  {exc}") from None
-                print(f"  [{i:02d}] unusable after extraction — extracting once more ({exc})")
+                delay = SEGMENT_RETRY_DELAY_S * attempt
+                print(f"  [{i:02d}] retry {attempt}/{attempts - 1} in {delay:.1f}s "
+                      f"— {exc}")
+                time.sleep(delay)
         cache_manifest[out_path.name] = key
         seg_paths.append(out_path)
         vts.append(vt)

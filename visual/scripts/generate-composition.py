@@ -409,6 +409,21 @@ def verify(project: Path) -> int:
         print(f"x clip count mismatch: html {len(found)} vs expected {want}")
         errors += 1
 
+    # Steps must partition the film. A gap between two steps means the outgoing
+    # clip ends before the next begins: the render flashes black at the seam, and
+    # nothing in the page or `hyperframes check` complains. Cue-derived steps had
+    # exactly this (2026-10-17: 7 seams, 3.40s of black) and it was only caught
+    # after a full render. timeline_derive stretches the steps to the measured
+    # cut; this asserts the spine actually did.
+    ordered_steps = [st for ch in timeline["chapters"] for st in ch["steps"]]
+    for cur, nxt in zip(ordered_steps, ordered_steps[1:]):
+        cur_end = cur["startMs"] + cur["durationMs"]
+        if abs(cur_end - nxt["startMs"]) > 50:
+            print(f"x timeline gap: {cur['id']} ends {cur_end / 1000:.3f}s but "
+                  f"{nxt['id']} starts {nxt['startMs'] / 1000:.3f}s "
+                  "— the film will flash black at this seam")
+            errors += 1
+
     total_s = timeline["totalDurationMs"] / 1000.0
     width, height = LAYOUTS[load_layout(project)]
     root_size = re.search(r'data-width="(\d+)" data-height="(\d+)"', html)

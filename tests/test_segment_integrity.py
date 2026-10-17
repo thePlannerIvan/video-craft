@@ -39,6 +39,10 @@ class SegmentIntegrityTests(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
+        # Retry backoff is real time; the tests assert the contract, not the wait.
+        self._delay = r.SEGMENT_RETRY_DELAY_S
+        r.SEGMENT_RETRY_DELAY_S = 0.0
+        self.addCleanup(setattr, r, "SEGMENT_RETRY_DELAY_S", self._delay)
         self.root = Path(self._tmp.name)
         self.edit = self.root / "edit"
         self.edit.mkdir()
@@ -114,8 +118,10 @@ class SegmentIntegrityTests(unittest.TestCase):
         message = str(caught.exception)
         self.assertIn("[00]", message, message)
         self.assertIn("seg_00_S1.mp4", message, message)
-        self.assertIn("twice in a row", message, message)
-        self.assertEqual(len(log), 2, "it must retry exactly once")
+        # GOTCHA #5: cloud-synced folders stall the muxer intermittently, so a
+        # segment gets 4 tries with backoff before the render gives up.
+        self.assertIn("after 4 attempts", message, message)
+        self.assertEqual(len(log), 4, "it must retry four times before failing")
         self.assertFalse((self.edit / "segment_durations.json").exists(),
                          "a failed render must not record a timeline")
 

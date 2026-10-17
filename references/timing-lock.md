@@ -13,6 +13,8 @@ timeline **before anything gets rendered**.
    whole timeline.
 3. `cd composition && npm run check` — 0 errors (lint/runtime/layout/
    motion/contrast).
+   Hand-authored GSAP timelines: `helpers/check_motion_targets.py <project>` exits 0 —
+   it catches selectors that no longer resolve and page `transform`s a tween rewrites.
 4. When the project has narration audio: `input/audio.mp3` exists and
    `ffprobe` duration ≥ SRT span.
 5. All `feedback/*.jsonl` open items are fixed or explicitly accepted.

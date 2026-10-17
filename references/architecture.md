@@ -33,7 +33,7 @@
 
 | 步 | 落在哪个 module | 落盘的产物 |
 |---|---|---|
-| 1 接手与版本核对 | `helpers/check_script_hash.py` / `visual/scripts/snapshot_input.py` / `visual/scripts/import_svg_page.py` | `edit/project.md`、`composition/pages/manifest.json` |
+| 1 接手与版本核对 | `helpers/check_script_hash.py` / `visual/scripts/import_svg_page.py`（`snapshot_input.py` 是它调用的库） | `edit/project.md`、`composition/pages/manifest.json` |
 | 2 确定制作方案 | `references/content-to-production.md`（分界 owner）＋ `references/creative-direction.md` | `production-plan.md` |
 | 3 声音与剪辑 | `helpers/transcribe*.py` / `pack_transcripts.py` / `check_edl.py` / `apply_selection.py` / `audio_diag.py` / `audio_fix.py` | `edit/transcripts/`、`takes_packed.md`、`edit/edl.json` |
 | 4 逐字剪辑审阅 | `helpers/edl_preview_build.py`（出页）＋ `helpers/edl_review_surface.py`（面上缝） | `edit/edl_preview.html`、`edit/selections.json` |
@@ -107,6 +107,7 @@
 | `helpers/verify_delivery.py` | **交付副本**：与工作区逐字节、时长对渲染记录、字幕尾 | `verify_delivery.py <edit_dir> [--video] [--deliver-dir]` | 不看源素材 |
 | `helpers/check_script_hash.py` | `script.md` 与内容契约的 `script_hash` 是否相符 | `check_script_hash.py <项目目录> ／ --script --plan`；退 0／1／2 | 不改任何文件；核不了时**不报成功** |
 | `helpers/check_render_env.py` | 渲染环境：字体缓存可写、Node ≥ 22、composition 在；**并发预算** —— 读总内存／可用内存／swap，`suggest_workers()` 按「总内存÷`WORKER_RAM_GB`、可用内存÷`WORKER_RAM_GB`、核数」三者取低算出这台机器带得起的 `--workers`，可用内存 < `MIN_FREE_GB` 时退非零（`--workers auto` 是按核数开满 Chrome 的那个默认值） | `check_render_env.py [composition] [--json]`（`--json` 出 `{ok, workers, memory}` 给调用方直接消费） | 不渲染；不检查 HyperFrames 的其它 `HYPERFRAMES_*`；**不替 agent 决定要不要渲** —— 它只报这台机器能不能渲、该用几个 worker |
+| `helpers/check_motion_targets.py` | **手写 GSAP 时间轴的门禁**：时间轴里每个 selector 都命中、页面静态 `transform` 没被补间覆盖 | 「手写动效真的在演、页面位移没被 GSAP 吃掉」这一判据 | `check_motion_targets.py <project>` | 不判审美；有 `choreography.json` 的项目仍用 `check_parity.py` |
 | `helpers/check_parity.py` | **审阅面／合成面一致性检查**：三条断言全确定性，可进自检 | 「spec 里声明的效果在两条路径都有实现、selector 真的命中」这一判据 | `check_parity.py <project>` | 不管渲染；不替代 `hyperframes check` |
 | `helpers/state_fingerprint.py` | **工程态 ↔ 交付态的来源指纹**：让「这份交付是不是过期」变成可判定 | 「交付与当前工程态是否一致」这一判据；`capture`／`verify` 两个方向 | `state_fingerprint.py capture|verify <project> [-o 成品/delivery.json]` | **不是渲染前置**：过期是「需要重新输出」的信号，只拦发送 |
 
@@ -177,7 +178,7 @@
 | `visual/themes/<id>/theme.json` | 主题元数据（`id`／`mood`／`bestFor`／`preview`） | 被 `check_themes.py` 校验、被选主题时读 | 不写时长数值 |
 | `visual/scripts/render_layer.py` | **把 composition 渲成 alpha 层**（HTML-first 的覆盖层路径） | 最终要独立透明视频时才用的那条产出路径（`.mov`；兼容旧媒体叠层可同出 `.webm`） | `render_layer.py …` | 不是整片渲染（整片走 `generate-composition.py` + `hyperframes render`） |
 | `visual/scripts/auto_choreography.py` | **推导确定性的逐屏动画编排** | `timeline/choreography.json`（`check_parity.py` 的 spec 输入） | `auto_choreography.py <project>` | 不写 SVG 源；不决定视觉风格 |
-| `visual/scripts/snapshot_input.py` | **严格只读的 workbench snapshot 解析**（所有 SVG 消费者的唯一入口） | 「这份 snapshot 能不能用、边界在哪」这一判据 | `snapshot_input.py <project> --audit` | 不写项目内资产（那是 `import_svg_page.py`） |
+| `visual/scripts/snapshot_input.py` | **严格只读的 workbench snapshot 解析**（所有 SVG 消费者的唯一入口） | 「这份 snapshot 能不能用、边界在哪」这一判据 | 库，无 CLI（被 `import_svg_page.py` / `build_review.py` 调用） | 不写项目内资产（那是 `import_svg_page.py`） |
 
 ### 数据、评测与历史
 

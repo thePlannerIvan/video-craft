@@ -69,7 +69,6 @@ Video Craft 把已经确定的内容做成可播放、可审阅、可返修的�
 ```bash
 node "<idea>/scripts/check-handoff-artifacts.mjs" --project "<idea-project>"
 python3 "<craft>/helpers/check_script_hash.py" "<project>" --script "<script.md>" --plan "<visual-plan.json>"
-python3 "<craft>/visual/scripts/snapshot_input.py" "<project>" --audit
 ```
 
 拿到 PPT Hell snapshot 后导入项目内资产：
@@ -259,7 +258,8 @@ python3 "<craft>/helpers/review_inbox.py" "<project>"
 ### 10. 核验与交付
 
 ```bash
-python3 "<craft>/helpers/check_parity.py" "<project>"
+python3 "<craft>/helpers/check_parity.py" "<project>"          # 有 choreography.json 的 spec 驱动项目
+python3 "<craft>/helpers/check_motion_targets.py" "<project>"  # 手写 GSAP 时间轴的项目：替代上一行
 python3 "<craft>/helpers/verify_delivery.py" "<edit>" --video "<final-video>"
 python3 "<craft>/helpers/export_deliverables.py" "<edit>" \
     --out "<project>/成品" --videos "final.mp4=01_人物口播_成片.mp4" \
@@ -267,7 +267,9 @@ python3 "<craft>/helpers/export_deliverables.py" "<edit>" \
 python3 "<craft>/helpers/state_fingerprint.py" capture "<project>"   # 交付自带来源指纹
 ```
 
-`check_parity.py` 先跑：它断言 spec（`choreography.json`）里的每个效果 kind 在 composition 与审阅页两条路径都有实现、每个 selector 在目标页面上真的命中元素。这两类失配**不会让 `hyperframes check` 失败、也不会让页面报错**，只会让某一步静默不演 —— 交付前必须过。
+两选一，不是都跑：有 `timeline/choreography.json` 的项目跑 `check_parity.py`；动效是手写 GSAP 时间轴的项目（没有 spec 可比）跑 `check_motion_targets.py` —— 它断言时间轴里的每个 selector 都命中、且页面自带的静态 `transform` 没有被 x/y/scale/rotation 补间覆盖（GSAP 会把 attribute 重写掉，位移静默丢失）。
+
+`check_parity.py` 断言 spec（`choreography.json`）里的每个效果 kind 在 composition 与审阅页两条路径都有实现、每个 selector 在目标页面上真的命中元素。这两类失配**不会让 `hyperframes check` 失败、也不会让页面报错**，只会让某一步静默不演 —— 交付前必须过。
 
 **指纹不是渲染前置，是交付过期信号**：已有交付先跑 `state_fingerprint.py verify` 判断是否过期；改源后过期正是**需要重新输出**的信号，不拦住新渲染，只拦住**发送**。 重新输出并核验后 `capture` 新指纹，发送前再 `verify`，不一致就不能发送。工程态的渲染与预览一律落 `edit/_engineering/`，**不进 `edit/` 根**，免得被当成当前底片（GOTCHAS #56）。
 

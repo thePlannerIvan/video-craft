@@ -69,6 +69,9 @@ python3 "<craft>/helpers/build_review.py" "<project>" --mode auto
 python3 "<craft>/helpers/review_surface.py" "<project>" --surface-only
 ```
 
+审阅期间保持 `live_stage` 进程运行：它给工程态预览提供编译路由。停掉后页面会提示
+「预览暂时无法启动」；要恢复就重跑 `live_stage.py ... --composition <dir>` 再刷新。
+
 recompose 模式下，`build_review.py` 把 `recompose/lines.json` 写进
 `review/review_data.json` 的 `density` 块。页面重排为：左侧窄 beat 列表、中间大预览（默认活 composition，工程态、不渲染）、底部「分段工作区」；右栏收起。底部分四个 tab：
 

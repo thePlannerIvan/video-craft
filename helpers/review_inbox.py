@@ -35,6 +35,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from visual_review_feedback import (          # noqa: E402
     OVERALL_FILE, STORYBOARD_FILE, SURFACE_REL, normalize_record, record_filename, save_feedback,
 )
+import recompose_plan  # noqa: E402
+
+DENSITY_FILE = 'density.jsonl'
 
 CURSOR_REL = "review/.inbox-cursor.json"
 MAX_RECORDS = 500
@@ -192,6 +195,22 @@ def import_submissions(project: Path, dry_run: bool = False) -> dict:
         digest = record_hash(record)
         if digest in imported:
             receipt["skipped"].append({"index": index, "reason": "已经收过（内容哈希相同）"})
+            continue
+        if str(record.get("phase") or "") == "density":
+            try:
+                applied = recompose_plan.apply_record(project, record)
+            except ValueError as error:
+                receipt["rejected"].append({"index": index, "reason": str(error), "record": record})
+                continue
+            if dry_run:
+                receipt["imported"].append({"index": index, "file": f"feedback/{DENSITY_FILE}",
+                                            "dry_run": True, "hash": digest,
+                                            "density": applied})
+                continue
+            info = save_feedback(project, DENSITY_FILE, normalize_record(record))
+            imported.add(digest)
+            receipt["imported"].append({"index": index, **info, "hash": digest,
+                                        "density": applied})
             continue
         filename, routed, error = route_of(record, project)
         if filename is None:

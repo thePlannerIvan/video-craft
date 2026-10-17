@@ -4089,6 +4089,7 @@
       }
       try {
         review = await ReviewBridge.connect();
+        window.__vcReview = review;
       } catch (error) {
         label(`连不上审阅宿主（${error.message}）——反馈存不进文件。把这一行发回对话`, "error");
         return;
@@ -4124,5 +4125,335 @@
       if (window.console) console.error("review-init-failed", err);
     });
   </script>
+
+<style id="density-style">
+  #density-open{display:inline-flex;align-items:center;gap:6px}
+  #density-drawer{position:fixed;left:0;top:0;bottom:0;width:440px;max-width:92vw;background:var(--bg-panel,#15161a);border-right:1px solid var(--border,#333);z-index:80;display:flex;flex-direction:column;transform:translateX(-102%);transition:transform .18s ease;box-shadow:18px 0 40px rgba(0,0,0,.35);color:var(--text,#eee);font-family:var(--font-ui,system-ui,sans-serif)}
+  #density-drawer.open{transform:translateX(0)}
+  #density-drawer header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border,#333);gap:10px}
+  #density-drawer .dt{font-family:var(--font-mono,monospace);font-size:10px;letter-spacing:.18em;color:var(--text-muted,#888)}
+  #density-drawer h2{font-size:14px;font-weight:700;margin:3px 0 0}
+  #density-drawer .dclose{border:1px solid var(--border,#333);background:transparent;color:inherit;width:28px;height:28px;cursor:pointer;border-radius:4px}
+  #density-summary{padding:10px 16px;border-bottom:1px solid var(--border,#333);font-family:var(--font-mono,monospace);font-size:10px;color:var(--text-muted,#888);display:flex;justify-content:space-between;gap:8px}
+  #density-body{flex:1;overflow:auto;padding:6px 0 18px}
+  .dbeat{padding:2px 0 0}
+  .dbeat-h{position:sticky;top:0;z-index:2;background:var(--bg-panel,#15161a);padding:10px 16px 8px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border,#2a2b30)}
+  .dbeat-h .bid{font-family:var(--font-mono,monospace);font-size:10px;color:var(--text-muted,#888);letter-spacing:.1em}
+  .dbeat-h .bt{font-size:12px;font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dbeat-h button{font-family:var(--font-mono,monospace);font-size:9px;letter-spacing:.06em;border:1px solid var(--border,#333);background:transparent;color:var(--text-muted,#999);padding:3px 5px;cursor:pointer;border-radius:3px}
+  .dbeat-h button:hover{color:var(--text,#eee);border-color:var(--text-muted,#888)}
+  .dline{display:grid;grid-template-columns:44px 1fr 74px;gap:8px;align-items:start;padding:7px 16px;border-left:2px solid transparent;cursor:pointer}
+  .dline:hover{background:rgba(255,255,255,.035)}
+  .dline.sel{border-left-color:var(--accent,#e8a33d);background:rgba(232,163,61,.07)}
+  .dline.now{background:rgba(120,180,255,.07)}
+  .dline .lt{font-family:var(--font-mono,monospace);font-size:9px;color:var(--text-muted,#888);padding-top:4px}
+  .dline .lx{font-size:12px;line-height:1.55;color:var(--text,#e7e7e7)}
+  .dline .lx .note{display:block;font-size:10px;color:var(--text-muted,#999);margin-top:2px;font-style:italic}
+  .dline .chip{justify-self:end;font-family:var(--font-mono,monospace);font-size:9px;letter-spacing:.04em;border:1px solid var(--border,#3a3b40);border-radius:999px;padding:3px 6px;white-space:nowrap;color:var(--text-muted,#bbb);background:transparent}
+  .dline[data-s="off"] .chip{border-style:dashed;color:#d7836a}
+  .dline[data-s="still"] .chip{background:rgba(255,255,255,.10);color:#eee}
+  .dline[data-s="light"] .chip{background:rgba(255,255,255,.20);color:#fff}
+  .dline[data-s="full"] .chip{background:rgba(255,255,255,.34);color:#111}
+  .dline[data-s="auto"] .chip{color:var(--text-muted,#aaa)}
+  #density-foot{border-top:1px solid var(--border,#333);padding:10px 16px 14px;display:flex;flex-direction:column;gap:8px}
+  #density-foot .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  #density-foot .row .lbl{font-family:var(--font-mono,monospace);font-size:9px;letter-spacing:.1em;color:var(--text-muted,#888)}
+  #density-foot .batch{border:1px solid var(--border,#333);background:transparent;color:var(--text-muted,#bbb);font-family:var(--font-mono,monospace);font-size:9px;padding:3px 6px;cursor:pointer;border-radius:3px}
+  #density-foot .batch:hover{color:#fff;border-color:#888}
+  #density-note{width:100%;background:transparent;border:1px solid var(--border,#333);color:var(--text,#eee);font-size:11px;padding:6px 8px;border-radius:3px;outline:none}
+  #density-submit{width:100%;border:1px solid var(--accent,#e8a33d);background:var(--accent,#e8a33d);color:#111;font-family:var(--font-mono,monospace);font-size:10px;letter-spacing:.14em;padding:9px;cursor:pointer;border-radius:3px;font-weight:700}
+  #density-submit:disabled{opacity:.4;cursor:not-allowed}
+  #density-status{font-family:var(--font-mono,monospace);font-size:9px;line-height:1.6;color:var(--text-muted,#999);min-height:24px}
+  #density-status.err{color:#e07a5f}#density-status.ok{color:#8ec99a}
+</style>
+
+<script>
+/* 逐字密度：只存在于 recompose build mode；page 模式完全不注入。 */
+(function () {
+  "use strict";
+  const RD = window.__REVIEW_DATA__ || {};
+  const D = RD.density || {};
+  if (!D.enabled || !Array.isArray(D.beats)) return;
+
+  const STATES = ["auto", "off", "still", "light", "full"];
+  const LABEL = { auto: "自动", off: "字幕", still: "单图", light: "轻动", full: "完整" };
+  const state = D.beats.map(b => ({
+    id: b.id, title: b.title, startMs: b.startMs, endMs: b.endMs,
+    lines: (b.lines || []).map(l => ({ ...l }))
+  }));
+  let selected = null;             // line id
+  let anchor = null;               // range anchor
+  let review = window.__vcReview || null;
+  let timer = null;
+  let dirty = false;
+
+  function flat() {
+    const out = [];
+    state.forEach(b => b.lines.forEach(l => { out.push({ beat: b, line: l }); }));
+    return out;
+  }
+  function lineById(id) { return flat().find(x => x.line.id === id); }
+  function resolved(l) { return l.state === "auto" ? l.proposal : l.state; }
+  function labelOf(l) { return l.state === "auto" ? ("自动·" + LABEL[l.proposal]) : LABEL[l.state]; }
+
+  // 顶栏按钮
+  const top = document.querySelector(".top-right");
+  if (top) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.id = "density-open";
+    btn.className = "tool-btn";
+    btn.textContent = "逐字密度";
+    btn.title = "按口播逐字稿调视觉密度（0 字幕 / 1 单图 / 2 轻动 / 3 完整）";
+    top.insertBefore(btn, top.firstChild);
+    btn.addEventListener("click", () => open());
+  }
+
+  // 抽屉
+  const drawer = document.createElement("div");
+  drawer.id = "density-drawer";
+  drawer.innerHTML = `
+    <header>
+      <div><div class="dt">RECOMPOSE / LINE BUDGET</div><h2>逐字密度</h2></div>
+      <button type="button" class="dclose" id="density-close" aria-label="关闭">×</button>
+    </header>
+    <div id="density-summary"><span id="density-count">—</span><span id="density-mode">自动 = 模型建议；你只改例外</span></div>
+    <div id="density-body"></div>
+    <div id="density-foot">
+      <div class="row"><span class="lbl">选中</span><span id="density-selected" class="lbl">—</span></div>
+      <div class="row">
+        <span class="lbl">批量</span>
+        <button type="button" class="batch" data-set="auto">自动</button>
+        <button type="button" class="batch" data-set="off">字幕</button>
+        <button type="button" class="batch" data-set="still">单图</button>
+        <button type="button" class="batch" data-set="light">轻动</button>
+        <button type="button" class="batch" data-set="full">完整</button>
+        <button type="button" class="batch" id="density-locate">定位当前</button>
+      </div>
+      <input id="density-note" placeholder="选中行的备注（可选）" />
+      <button type="button" id="density-submit">提交逐字密度 / 唤醒模型</button>
+      <div id="density-status">先播放，看到不想要画面的那句就点它。</div>
+    </div>`;
+  document.body.appendChild(drawer);
+
+  const body = drawer.querySelector("#density-body");
+  const status = drawer.querySelector("#density-status");
+  const note = drawer.querySelector("#density-note");
+
+  function setStatus(text, kind) { status.textContent = text; status.className = kind || ""; }
+  function markDirty() { dirty = true; }
+
+  function render() {
+    body.innerHTML = "";
+    state.forEach(beat => {
+      const wrap = document.createElement("div");
+      wrap.className = "dbeat";
+      const head = document.createElement("div");
+      head.className = "dbeat-h";
+      head.innerHTML = `<span class="bid">${beat.id}</span><span class="bt">${beat.title || ""}</span>`;
+      [["auto", "自动"], ["off", "字幕"], ["full", "完整"]].forEach(([s, label]) => {
+        const b = document.createElement("button");
+        b.type = "button"; b.textContent = label; b.dataset.beat = beat.id; b.dataset.set = s;
+        b.addEventListener("click", () => { beat.lines.forEach(l => { l.state = s; }); markDirty(); render(); });
+        head.appendChild(b);
+      });
+      wrap.appendChild(head);
+      beat.lines.forEach(line => {
+        const row = document.createElement("div");
+        row.className = "dline" + (selected === line.id ? " sel" : "") + (line.state === "off" ? " quiet" : "");
+        row.dataset.id = line.id; row.dataset.s = line.state;
+        const t = document.createElement("span"); t.className = "lt"; t.textContent = fmt(line.startMs);
+        const x = document.createElement("span"); x.className = "lx"; x.textContent = line.text || "（无字）";
+        if (line.note) { const n = document.createElement("span"); n.className = "note"; n.textContent = line.note; x.appendChild(n); }
+        const chip = document.createElement("button"); chip.type = "button"; chip.className = "chip"; chip.textContent = labelOf(line);
+        chip.title = "点击切换：自动 → 字幕 → 单图 → 轻动 → 完整";
+        chip.addEventListener("click", (e) => { e.stopPropagation(); cycle(line); });
+        row.appendChild(t); row.appendChild(x); row.appendChild(chip);
+        row.addEventListener("click", (e) => {
+          if (e.shiftKey && anchor) {
+            const all = flat(); const ids = all.map(o => o.line.id);
+            const a = ids.indexOf(anchor), b = ids.indexOf(line.id);
+            if (a >= 0 && b >= 0) {
+              const [lo, hi] = a < b ? [a, b] : [b, a];
+              for (let i = lo; i <= hi; i++) all[i].line.state = lineById(anchor).line.state;
+              markDirty(); render(); return;
+            }
+          }
+          select(line.id);
+        });
+        wrap.appendChild(row);
+      });
+      body.appendChild(wrap);
+    });
+    const total = flat().length;
+    const changed = flat().filter(o => o.line.state !== "auto").length;
+    drawer.querySelector("#density-count").textContent = `${total} 行 · 已改 ${changed}`;
+    const sel = selected ? lineById(selected) : null;
+    drawer.querySelector("#density-selected").textContent = sel ? `${sel.line.id} · ${labelOf(sel.line)}` : "—";
+    note.value = sel ? (sel.line.note || "") : "";
+  }
+
+  function select(id) {
+    selected = id; anchor = id; render();
+    const hit = lineById(id);
+    if (hit) seekTo(hit.line.startMs);
+  }
+
+  function cycle(line) {
+    const i = STATES.indexOf(line.state);
+    line.state = STATES[(i + 1) % STATES.length];
+    selected = line.id; anchor = line.id;
+    markDirty(); render();
+  }
+
+  function fmt(ms) {
+    const s = Math.max(0, ms) / 1000;
+    return String(Math.floor(s / 60)).padStart(2, "0") + ":" + (s % 60).toFixed(1).padStart(4, "0");
+  }
+
+  function player() {
+    const comp = document.getElementById("composite-video-player");
+    if (comp && comp.getAttribute("src") && !comp.closest("[hidden]")) return comp;
+    const live = document.getElementById("live-stage-frame");
+    if (live && live.ready) return live;
+    const spk = document.getElementById("stage-speaker-video");
+    if (spk && spk.getAttribute("src") && !spk.hidden) return spk;
+    return live || comp || spk || null;
+  }
+  function playerMs() {
+    const p = player();
+    if (!p) return 0;
+    const t = Number(p.currentTime);
+    return Number.isFinite(t) ? t * 1000 : 0;
+  }
+  function seekTo(ms) {
+    const p = player();
+    if (!p) return;
+    try {
+      if (typeof p.seek === "function") p.seek(ms / 1000);
+      else p.currentTime = ms / 1000;
+    } catch (e) { /* player may not be ready */ }
+  }
+  function currentLine() {
+    const t = playerMs();
+    return flat().find(o => t >= o.line.startMs && t < o.line.endMs) || null;
+  }
+  function tick() {
+    if (!drawer.classList.contains("open")) return;
+    const cur = currentLine();
+    body.querySelectorAll(".dline.now").forEach(el => el.classList.remove("now"));
+    if (cur) {
+      const el = body.querySelector('.dline[data-id="' + cur.line.id + '"]');
+      if (el) el.classList.add("now");
+    }
+  }
+
+  function open() {
+    drawer.classList.add("open");
+    if (!timer) timer = setInterval(tick, 250);
+    loadLast();
+  }
+  function close() { drawer.classList.remove("open"); }
+  document.getElementById("density-close").addEventListener("click", close);
+  document.getElementById("density-locate").addEventListener("click", () => {
+    const cur = currentLine();
+    if (cur) { select(cur.line.id); const el = body.querySelector('.dline[data-id="' + cur.line.id + '"]'); if (el) el.scrollIntoView({ block: "center" }); }
+    else setStatus("播放头还不在一行字幕里。", "err");
+  });
+  drawer.querySelectorAll(".batch[data-set]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const target = selected ? [selected] : [];
+      if (!target.length) { setStatus("先在列表里点一行（或拖选一段）再批量设置。", "err"); return; }
+      const line = lineById(target[0]);
+      if (line) { line.line.state = btn.dataset.set; markDirty(); render(); }
+    });
+  });
+  note.addEventListener("input", () => {
+    const sel = selected ? lineById(selected) : null;
+    if (sel) { sel.line.note = note.value; markDirty(); }
+  });
+
+  async function ensureReview() {
+    if (review) return review;
+    if (!window.ReviewBridge) throw new Error("审阅桥未加载");
+    review = await ReviewBridge.connect();
+    window.__vcReview = review;
+    return review;
+  }
+
+  async function loadLast() {
+    try {
+      const r = await ensureReview();
+      const text = await r.readText("review/review-submissions.json", { optional: true });
+      if (!text) return;
+      const doc = JSON.parse(text);
+      const recs = Array.isArray(doc.records) ? doc.records : [];
+      const last = [...recs].reverse().find(r => r && r.phase === "density");
+      if (!last || !Array.isArray(last.lines)) return;
+      const by = new Map(last.lines.map(l => [l.id, l]));
+      flat().forEach(o => {
+        const hit = by.get(o.line.id);
+        if (hit && STATES.includes(hit.state)) { o.line.state = hit.state; if (typeof hit.note === "string") o.line.note = hit.note; }
+      });
+      setStatus("已载入上一次提交的逐字密度。", "ok");
+      render();
+    } catch (e) { /* no submission yet, or bridge not ready */ }
+  }
+
+  async function submit() {
+    const btn = drawer.querySelector("#density-submit");
+    btn.disabled = true;
+    setStatus("正在写入提交…");
+    try {
+      const r = await ensureReview();
+      let doc = { contract_version: "video-craft-review-submissions/1.0.0", surface: "video-craft/visual", records: [] };
+      try {
+        const text = await r.readText("review/review-submissions.json", { optional: true });
+        if (text) doc = JSON.parse(text);
+      } catch (e) { /* first submission */ }
+      if (!Array.isArray(doc.records)) doc.records = [];
+      if (!Array.isArray(doc.records)) doc.records = [];
+      doc.records.push({
+        phase: "density",
+        kind: "density",
+        createdAt: new Date().toISOString(),
+        snapshot: RD.snapshot || null,
+        buildId: RD.buildId || null,
+        buildMode: "recompose",
+        lines: flat().map(o => ({ id: o.line.id, state: o.line.state, note: o.line.note || "" })),
+      });
+      doc.updated_at = new Date().toISOString();
+      await r.write(doc);
+      dirty = false;
+      setStatus("已写入提交文件，正在唤醒模型…", "ok");
+      await r.wake({ unit: "逐字密度", text: "逐字密度已提交（" + flat().length + " 行）。先运行 video-craft/helpers/review_inbox.py <本项目绝对路径> 收件；按 recompose/lines.json 的 state/proposal 只改受影响的视觉段。" });
+      setStatus("已提交并唤醒。模型收件后只改受影响的句子。", "ok");
+    } catch (e) {
+      setStatus("提交失败：" + (e && e.message ? e.message : e), "err");
+    } finally {
+      btn.disabled = false;
+    }
+  }
+  document.getElementById("density-submit").addEventListener("click", submit);
+
+  document.addEventListener("keydown", (e) => {
+    if (!drawer.classList.contains("open")) return;
+    const tag = (e.target && e.target.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "textarea" || tag === "select") return;
+    const map = { "0": "off", "1": "still", "2": "light", "3": "full", "a": "auto" };
+    if (map[e.key]) {
+      const sel = selected ? lineById(selected) : currentLine();
+      if (sel) { sel.line.state = map[e.key]; markDirty(); render(); }
+      e.preventDefault();
+    } else if (e.key === "Escape") {
+      close();
+    }
+  });
+
+  render();
+  tick();
+})();
+</script>
+
 </body>
 </html>

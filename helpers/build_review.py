@@ -28,6 +28,7 @@ from lib.planners_modules import resolve_module
 from review_surface import write_surface, validate_surface
 import review_copy
 import review_slices
+import recompose_plan
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "visual" / "scripts"))
 from snapshot_input import resolve_snapshot  # noqa: E402
@@ -453,6 +454,52 @@ def _overlay_layers(project_root: Path, edit_dir: Path, edl_data: dict | None) -
     return sorted(layers, key=lambda x: x["startMs"])
 
 
+def build_density(project_root: Path, beats: list, captions: list) -> dict:
+    """Recompose mode: one density row per caption line, grouped by beat.
+
+    The page only shows the density drawer when this is enabled; page mode returns
+    {"enabled": False} and the template keeps its current UI unchanged.
+    """
+    if not recompose_plan.enabled(project_root):
+        return {"enabled": False, "mode": "page"}
+    lines_doc = recompose_plan.read_json(project_root / recompose_plan.LINES_REL, {}) or {}
+    lines = lines_doc.get("lines") or []
+    source = lines_doc.get("source") or ""
+    if not lines:
+        return {"enabled": False, "mode": "recompose",
+                "reason": "缺 recompose/lines.json；先跑 recompose_plan.py init"}
+    by_beat = {}
+    for line in lines:
+        by_beat.setdefault(str(line.get("beatId") or ""), []).append({
+            "id": line.get("id"),
+            "startMs": int(line.get("startMs") or 0),
+            "endMs": int(line.get("endMs") or 0),
+            "text": str(line.get("text") or ""),
+            "state": line.get("state") if line.get("state") in recompose_plan.STATES else "auto",
+            "proposal": line.get("proposal") if line.get("proposal") in recompose_plan.RESOLVED else "still",
+            "note": str(line.get("note") or ""),
+        })
+    out_beats = []
+    for beat in beats:
+        bid = str(beat.get("id") or "")
+        rows = by_beat.get(bid) or []
+        out_beats.append({
+            "id": bid,
+            "title": beat.get("title") or "",
+            "startMs": beat.get("startMs") or 0,
+            "endMs": beat.get("endMs") or 0,
+            "lines": rows,
+        })
+    return {
+        "enabled": True,
+        "mode": "recompose",
+        "source": source,
+        "states": list(recompose_plan.STATES),
+        "beats": out_beats,
+        "lineCount": len(lines),
+    }
+
+
 def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = "auto",
                       *, allow_review_copy: bool = True,
                       slices: str = "auto") -> dict:
@@ -802,7 +849,9 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
         "captions": captions,
         "svgs": svg_map,
         "workbenchSnapshot": workbench_snapshot.binding() if workbench_snapshot else None,
-        "edl": edl_data or {}
+        "edl": edl_data or {},
+        "buildMode": ("recompose" if recompose_plan.enabled(project_root) else "page"),
+        "density": build_density(project_root, beats, captions)
     }
     return review_data
 

@@ -8,6 +8,25 @@
 
 编辑后重建上述相应审阅页，无需先渲整片。旧媒体交付与转码工具保留如下。
 
+## recompose 构建模式（composition 为源，opt-in）
+
+```bash
+python3 "<craft>/helpers/recompose_plan.py" init "<project>" \
+    --composition "<project>/composition" --draft "<project>/recompose/draft.mp4" \
+    --person-slot "0,0,620,1080" --caption-safe "0,885,1920,195"
+python3 "<craft>/helpers/recompose_plan.py" check "<project>"
+python3 "<craft>/helpers/recompose_plan.py" lines "<project>"
+
+python3 "<craft>/helpers/build_review.py" "<project>" --mode auto   # 右栏出现「逐字密度」
+python3 "<craft>/helpers/review_surface.py" "<project>" --surface-only
+python3 "<craft>/helpers/review_inbox.py" "<project>"               # 密度记录落到 feedback/density.jsonl
+```
+
+recompose 不调用 `import_svg_page.py`、`generate-composition.py`、`auto_choreography.py`，也不跑 `check_parity.py`。
+产物：`recompose.json`、`recompose/lines.json`。密度以**口播逐字稿的行**为单位，提交走现有审阅面；
+`review_inbox.py` 校验后回写 lines，agent 只改受影响视觉段。完整说明见 [recompose-mode.md](recompose-mode.md)。
+page 仍是默认与 fallback。
+
 # 工具调用手册
 
 按任务选入口，不逐个跑完。本页的 `<craft>`、`<idea>`、`<ppt>`、`<core>` 分别替换为对应 Skill 的绝对根目录；`<project>`、`<edit>`、`<pages>` 是项目、剪辑目录与 PPT Hell 画面项目。Python 用安装时确认的解释器；每条 Python 命令都可将 `python3` 换为该解释器。扩展参数用该命令的 `--help`，不读实现。

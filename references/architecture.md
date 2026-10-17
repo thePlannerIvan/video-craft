@@ -48,6 +48,18 @@
 但交付证据必须是实测渲染**。没有录音时项目照走到第 4 步并出可审的样片；「等录音」停的是
 第 5 步**之后的交付态**，不是整条流程。`content-to-production.md` 是这条分界的 owner。
 
+### recompose 构建模式（opt-in，不是用户路线）
+
+page 路线 1–10 步不变。recompose 是项目级的内部模式，默认关闭；作者仍在 PPT Hell 确认 board，
+Craft 把 board 当视觉参考、以 composition 为源重排。它复用同一套事实层、审阅宿主与交付核验。
+
+| module | 拥有什么 | 接口 | 不做什么 |
+|---|---|---|---|
+| `helpers/recompose_plan.py` | `recompose.json`、`recompose/lines.json`；逐字行的 state/proposal | `init` / `check` / `lines`；inbox 调 `apply_record` | 不生成 composition、不导入页面、不跑 parity |
+| `helpers/build_review.py` 的 `density` 块 | 把逐字行按 beat 分组交给页面 | `review_data.json.density` | 不新增审阅宿主或第二份提交文件 |
+| `visual/assets/review-page-template.html` 的密度抽屉 | 逐行 0–3 / off / 自动；同一个 review 实例 | 提交 `phase: "density"` 记录 | 不放 board 参考帧、不替代逐元素动效 |
+| `helpers/review_inbox.py` | 识别 density 记录，落 `feedback/density.jsonl`，回写 lines | `import_submissions()` | 不改 page 路线的逐章收件 |
+
 ## 2. 模块表
 
 一行一个 module：**它是什么／拥有什么（唯一主人）／接口是什么／不做什么**。

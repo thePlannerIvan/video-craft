@@ -16,11 +16,26 @@ Video Craft 把已经确定的内容做成可播放、可审阅、可返修的�
 本 Skill 的审阅面有两个：
 
 1. **逐字剪辑面**：取舍词、删除气口、恢复片段、改字，写入剪辑选择。
-2. **动效与合成面**：按稳定 `unitId` 查看一屏一段，调整动效参数、元素位置、文字、框选批注并攒批提交。
+2. **动效与合成面**：按稳定 `unitId` 查看一屏一段，调整动效参数、元素位置、文字、框选批注并攒批提交。在 **recompose 构建模式**下，同一页右栏多一个「逐字密度」抽屉：按口播逐字稿的行调 0–3（字幕 / 单图 / 轻动 / 完整），不是按 beat 一个开关。
 
-念稿确认仍回 `video-idea-system`；静态画面审阅仍回 `planners-ppt-hell`。不要用 Craft 的两个面替代上游决定。
+念稿确认仍回 `video-idea-system`；静态页面的页面级审阅仍回 `planners-ppt-hell`。不要用 Craft 的审阅面替代上游决定。
 
-两个面的顺序是**先剪点、后画面**：逐字剪辑面定"说什么、留哪句"，确认之后才做动效与合成面。剪点一动，画面锚点、字幕、composition 全部要重出，反过来做就是白做。
+顺序仍是**先剪点、后画面**：逐字剪辑面定"说什么、留哪句"，确认之后才做动效 / 密度。剪点一动，画面锚点、字幕、composition 全部要重出，反过来做就是白做。
+
+## 一条流程，两种构建方式
+
+工作方式不变：作者仍在 PPT Hell 里确认画面、录制、再做成片。Craft 不新增用户要选的路线；只决定**最终成片是否严格保留那版画面**。
+
+| 构建方式 | 画面源 | 谁决定 | 审阅 |
+|---|---|---|---|
+| **page**（默认） | PPT Hell 静态 SVG 快照，逐像素保留 | 作者已批准页面；Craft 只做动效与合成 | 动效与合成面（逐元素） |
+| **recompose**（opt-in） | PPT Hell 的 board 作为视觉参考；composition 为源，允许重排 | 作者批准方向；Craft 在成片阶段重排 | 动效与合成面 + 逐字密度抽屉 |
+| **composite** | 已有成片或外部透明层 | 作者已有素材；Craft 只做声音/字幕/合成 | 已有媒体审阅与叠层 |
+
+- **page 是默认和 fallback**，全链 1–10 步一行不动。
+- **recompose** 不是用户路线，是项目级的内部构建模式（`recompose.json`）。失败或作者要求“这版别改”时回 page。
+- recompose 不调用 `import_svg_page.py` / `generate-composition.py` / `check_parity.py`；它复用同一套事实层（声音、EDL、字幕、anchors、timeline）和同一套交付核验。
+- recompose 的密度单位是**口播逐字稿的行**；beat 只是分组与批量入口。`off` 是结构指令（这一句不要图），不是动效参数。
 
 ## 工程预览与最终交付
 
@@ -35,6 +50,23 @@ Video Craft 把已经确定的内容做成可播放、可审阅、可返修的�
 `live_stage.py` 启动 HyperFrames 编译服务；`build_review.py` 将编译后的工程、官方播放器和素材清单装进审阅快照。新工程只让 HyperFrames 拥有播放与动效时钟；旧 `VideoCraftAnimEngine` 仅作为旧 SVG 审阅兼容路径保留。浏览器通过 review-core 取素材，在官方播放器内部播放，**不从 DSH 的不透明 iframe 访问本机 HTTP 舞台**。改源后重新 build、刷新即可看，不渲视频。没有 HyperFrames 审阅适配器时，动画参数通过反馈交给模型修改源工程；有适配器时也只能修改 composition 明确声明的参数。快照中记录播放器版本与工程哈希；不能把旧快照说成热更新。
 
 声音清理、VFR 转 CFR 或浏览器不支持的媒体转码属于素材准备，可以做并缓存；它们不应变成每次修改动画都重跑的前置。工程预览不冒充最终音画验收。实测时长、字幕锁、来源指纹与正式交付核验继续保留。
+
+### recompose 构建模式的入口
+
+```bash
+python3 "<craft>/helpers/recompose_plan.py" init "<project>" \
+    --composition "<project>/composition" --draft "<project>/recompose/draft.mp4" \
+    --person-slot "0,0,620,1080" --caption-safe "0,885,1920,195"
+python3 "<craft>/helpers/recompose_plan.py" check "<project>"
+python3 "<craft>/helpers/recompose_plan.py" lines "<project>"
+
+# 之后照常 build_review.py；页面右栏会出现「逐字密度」
+python3 "<craft>/helpers/build_review.py" "<project>" --mode auto
+python3 "<craft>/helpers/review_surface.py" "<project>" --surface-only
+```
+
+densities 的提交仍走同一个审阅面，由 `review_inbox.py` 收件：`feedback/density.jsonl` + 回写 `recompose/lines.json`。
+完整说明见 [recompose-mode.md](references/recompose-mode.md)。产物是 `recompose.json`、`recompose/lines.json`，不生成页面快照。
 
 ### 验收判据
 
@@ -51,6 +83,7 @@ Video Craft 把已经确定的内容做成可播放、可审阅、可返修的�
 | 原始视频或录音，需要取舍 | 转写 → EDL → 源媒体逐字预览 → 确认后输出 | 不直接手改成片后再猜字幕时间 |
 | 已剪音频 + SRT + SVG | 核版本 → 导入 SVG → 对齐时间 → 动效与合成 | SRT 只能标为 `srt-import`，不能冒充 EDL 实测 |
 | 已有项目或返修反馈 | 读项目依据和收件回执 → 只重建受影响部分 | 不在旧审阅页上继续写新反馈 |
+| 已锁音频 + 词级锚点，画面是连续动画 / 图解 | 默认 page；作者明确要更大重排自由度时开 **recompose**：`recompose_plan.py` → composition → 逐字密度 | 不import静态页、不生成 composition、不做 page/composition parity；page 仍是 fallback |
 
 项目目录、剪辑目录和上游目录必须使用绝对路径。先确认当前采用版本，再执行下面的流程。
 
@@ -292,6 +325,7 @@ python3 "<craft>/helpers/state_fingerprint.py" capture "<project>"   # 交付自
 
 ## 文件与参考入口
 
+- 一条流程与两种构建方式：`references/recompose-mode.md`
 - 可执行命令与产物目录：`references/tools.md`
 - 上游交接与责任边界：`references/content-to-production.md`
 - 视觉时间绑定：`references/visual-timeline.md`

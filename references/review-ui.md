@@ -14,19 +14,20 @@ DSH tokens 仍来自 review-core，生成时内联。导航显示分屏标题、
 
 不得将“runtime 已握手”作为验收。至少验证不同分屏只显示目标 clip，声音与录屏 seek/倍速同步，字幕开关有效，提交实际写入并被 inbox 接收。锁屏、宿主不可达等导致的实测缺口必须明确记录。
 
-## recompose 构建模式：逐字密度抽屉
+## recompose 构建模式：逐字密度 dock
 
 `recompose.json` 存在时，`build_review.py` 把 `recompose/lines.json` 写进
-`review/review_data.json` 的 `density` 块，页面右栏多一个「逐字密度」按钮：
+`review/review_data.json` 的 `density` 块，页面底部「分步动效」区变成「分段工作区」，默认「逐字密度」：
 
 - 单位是**口播逐字稿的行**（字幕 cue），不是 beat；beat 只是分组与批量入口。
 - 状态：`auto`（跟 `proposal`）/ `off`（字幕级，不要图）/ `still` / `light` / `full`。
-- 播放时当前行高亮；点行 seek；`0/1/2/3/a` 设状态；拖选连续行批量；beat 标题一键“全字幕/全完整”。
+- 播放时当前行高亮；点行 seek；`0/1/2/3/a` 设状态；单击 / Shift 连选 / Cmd-Ctrl 加选 / 按住拖选多行；批量条应用到选中；beat 标题一键“全字幕/全完整”；可撤销。
+- 「动效细节」是同一 dock 的第二个 tab，只在选中“有图”的句子时使用。
 - 提交写入同一份 `review/review-submissions.json` 的 `phase: "density"` 记录；
   `review_inbox.py` 校验后追加 `feedback/density.jsonl` 并回写 `recompose/lines.json`。
 - 不要在动效页放 board 参考帧：作者已在 PPT Hell 确认画面，成片页只看成片。
 
-page 模式没有这个抽屉，页面与现有流程不变。
+page 模式没有这个 dock，页面与现有流程不变。
 
 ## 兼容已有项目
 

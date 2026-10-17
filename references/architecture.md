@@ -57,7 +57,7 @@ Craft 把 board 当视觉参考、以 composition 为源重排。它复用同一
 |---|---|---|---|
 | `helpers/recompose_plan.py` | `recompose.json`、`recompose/lines.json`；逐字行的 state/proposal | `init` / `check` / `lines`；inbox 调 `apply_record` | 不生成 composition、不导入页面、不跑 parity |
 | `helpers/build_review.py` 的 `density` 块 | 把逐字行按 beat 分组交给页面 | `review_data.json.density` | 不新增审阅宿主或第二份提交文件 |
-| `visual/assets/review-page-template.html` 的密度抽屉 | 逐行 0–3 / off / 自动；同一个 review 实例 | 提交 `phase: "density"` 记录 | 不放 board 参考帧、不替代逐元素动效 |
+| `visual/assets/review-page-template.html` 的密度 dock | 逐行 0–3 / off / 自动；多选批量；与分步动效同区两个 tab | 提交 `phase: "density"` 记录 | 不放 board 参考帧；`off` 句不展示分步动效 |
 | `helpers/review_inbox.py` | 识别 density 记录，落 `feedback/density.jsonl`，回写 lines | `import_submissions()` | 不改 page 路线的逐章收件 |
 
 ## 2. 模块表

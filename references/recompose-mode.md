@@ -14,7 +14,7 @@
 1. **内容不归本模式重写。** 口播稿、事实、结论仍归作者与上游；本模式只安排视觉层。
 2. **board 仍然是第一视觉确认。** 作者在 PPT Hell 里看到并确认画面；recompose 不跳过这一步，
    只是不把 board 当逐像素契约。
-3. **成片仍然只有一个审阅面。** 逐字密度是现有动效审阅页里的一个抽屉，不是第二个页面。
+3. **成片仍然只有一个审阅面。** 逐字密度是现有动效审阅页底部的一个 dock（与分步动效同区），不是第二个页面。
 
 ## 产物
 
@@ -60,7 +60,7 @@ python3 "<craft>/helpers/recompose_plan.py" check "<project>"
 - board 只当参考：概念、顺序、每 beat 的一两个关键图元；不复制页面几何；
 - 人物位按 `recompose.json` 的 `personSlot`；画面不能进这个区域。
 
-### 3. 审阅：现有动效页 + 逐字密度抽屉
+### 3. 审阅：现有动效页 + 分段工作区
 
 ```bash
 python3 "<craft>/helpers/build_review.py" "<project>" --mode auto
@@ -68,13 +68,15 @@ python3 "<craft>/helpers/review_surface.py" "<project>" --surface-only
 ```
 
 recompose 模式下，`build_review.py` 把 `recompose/lines.json` 写进
-`review/review_data.json` 的 `density` 块；页面右栏出现「逐字密度」：
+`review/review_data.json` 的 `density` 块；页面底部的「分步动效」区变成「分段工作区」，默认「逐字密度」：
 
 - **单位是口播逐字稿的行**，不是 beat。beat 只是分组标题与批量入口。
 - 每行状态：`auto`（跟模型建议）/ `off`（字幕级，不要图）/ `still`（单图）/ `light`（轻动）/ `full`（完整）。
 - 默认全部 `auto`；作者只改例外。改过的行数显示在顶部。
-- 播放时当前行高亮；点行定位到那句；`0/1/2/3/a` 设状态；拖选连续行批量设置；
-  beat 标题可一键“全字幕 / 全完整”；只改选中行，不必逐行扫。
+- 播放时当前行高亮；点行定位到那句；`0/1/2/3/a` 设状态。
+- 多选：单击、Shift 连选、Cmd/Ctrl 加选、按住拖过多行；批量条一次应用到所有选中句。
+- beat 标题可一键“全字幕 / 全完整”；「只看非自动」过滤；「撤销」回退上一次批量。
+- 「动效细节」是同一 dock 的第二个 tab，只用于选中“有图”的句子；`off` 的句子没有分步动效。
 - 提交写入现有 `review/review-submissions.json` 的 `phase: "density"` 记录，走同一个
   `feedback/` 收件；不新增第二套提交格式。
 

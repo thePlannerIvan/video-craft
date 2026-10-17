@@ -4190,14 +4190,14 @@
   .dens-batch #dens-note{flex:1 1 auto;min-width:100px;background:var(--d-bg);border:1px solid var(--d-border);color:var(--d-text);font-size:10px;padding:4px 6px;border-radius:3px;outline:none}
   .dens-batch #dens-submit{border:0;background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-inverted);font-family:var(--font-mono);font-size:10px;letter-spacing:.06em;padding:7px 10px;cursor:pointer;border-radius:4px}
   .dens-batch #dens-submit:disabled{opacity:.4}
-  #dens-status,#fb-status{font-family:var(--font-mono);font-size:9px;line-height:1.6;color:var(--d-muted);min-height:18px}
-  #dens-status.err,#fb-status.err{color:var(--dsw-static-red-600)}
-  #dens-status.ok,#fb-status.ok{color:var(--dsw-static-green-600)}
+  #dens-status,#fb-status,#vfb-status{font-family:var(--font-mono);font-size:9px;line-height:1.6;color:var(--d-muted);min-height:18px}
+  #dens-status.err,#fb-status.err,#vfb-status.err{color:var(--dsw-static-red-600)}
+  #dens-status.ok,#fb-status.ok,#vfb-status.ok{color:var(--dsw-static-green-600)}
   #fb-panel .fbh{font-size:15px;color:var(--d-text);font-weight:600}
   #fb-panel .fbs{font-family:var(--font-mono);font-size:9px;color:var(--d-muted)}
   #fb-kind{background:var(--d-panel);border:0;color:var(--d-text);font-size:11px;padding:7px;border-radius:4px}
-  #fb-text{flex:1 1 auto;min-height:160px;background:var(--d-panel);border:0;color:var(--d-text);font-size:12px;line-height:1.65;padding:10px;resize:none;outline:none;border-radius:4px}
-  #fb-save{align-self:flex-start;border:0;background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-inverted);font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;padding:8px 12px;cursor:pointer;border-radius:4px}
+  #fb-text,#vfb-text{flex:1 1 auto;min-height:160px;background:var(--d-panel);border:0;color:var(--d-text);font-size:12px;line-height:1.65;padding:10px;resize:none;outline:none;border-radius:4px}
+  #fb-save,#vfb-save{align-self:flex-start;border:0;background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-inverted);font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;padding:8px 12px;cursor:pointer;border-radius:4px}
   #hist-panel .hist-tools{display:flex;align-items:center;gap:8px;font-family:var(--font-mono);font-size:9px;color:var(--d-muted)}
   #hist-list{flex:1 1 auto;min-height:0;overflow:auto;background:var(--d-panel);border-radius:4px}
   .hist-item{padding:8px 10px;border-bottom:1px solid var(--d-border);font-size:11px;line-height:1.55;color:var(--d-text)}
@@ -4237,12 +4237,12 @@
     </div>
     <div class="fp-body">
       <div class="fp-panel" id="fb-panel">
-        <div class="fbh" id="fb-head">整 beat 反馈</div>
-        <div class="fbs" id="fb-sub">—</div>
-        <select id="fb-kind"><option value="visual">画面与版式</option><option value="animation">动画与镜头</option><option value="timing">节奏与卡点</option><option value="copy">文字</option><option value="asset">素材</option></select>
-        <textarea id="fb-text" placeholder="这个 beat 整体哪里不对？只针对这一 beat，不针对某一屏。"></textarea>
-        <button type="button" id="fb-save">保存整 beat 反馈</button>
-        <div id="fb-status">提交后会进 feedback/beat-xx.jsonl，并唤醒模型。</div>
+        <div class="fbh" id="vfb-head">整 beat 反馈</div>
+        <div class="fbs" id="vfb-sub">—</div>
+        <select id="vfb-kind"><option value="visual">画面与版式</option><option value="animation">动画与镜头</option><option value="timing">节奏与卡点</option><option value="copy">文字</option><option value="asset">素材</option></select>
+        <textarea id="vfb-text" placeholder="这个 beat 整体哪里不对？只针对这一 beat，不针对某一屏。"></textarea>
+        <button type="button" id="vfb-save">保存整 beat 反馈</button>
+        <div id="vfb-status">提交后会进 feedback/beat-xx.jsonl，并唤醒模型。</div>
       </div>
       <div class="fp-panel" id="density-panel" hidden>
         <div class="dens-head">
@@ -4457,8 +4457,8 @@
 
   function renderFbHead() {
     const beat = state[current];
-    document.getElementById("fb-head").textContent = "整 beat 反馈 · " + beat.id;
-    document.getElementById("fb-sub").textContent = beat.title + " · " + fmtShort(beat.startMs) + "–" + fmtShort(beat.endMs);
+    document.getElementById("vfb-head").textContent = "整 beat 反馈 · " + beat.id;
+    document.getElementById("vfb-sub").textContent = beat.title + " · " + fmtShort(beat.startMs) + "–" + fmtShort(beat.endMs);
   }
   async function ensureReview() {
     if (review) return review;
@@ -4507,8 +4507,8 @@
   document.getElementById("dens-submit").addEventListener("click", submit);
 
   async function saveFb() {
-    const text = document.getElementById("fb-text").value.trim();
-    const fbStatus = document.getElementById("fb-status");
+    const text = document.getElementById("vfb-text").value.trim();
+    const fbStatus = document.getElementById("vfb-status");
     if (!text) { fbStatus.textContent = "先写一点这个 beat 的反馈。"; fbStatus.className = "err"; return; }
     const beat = state[current];
     try {
@@ -4517,18 +4517,18 @@
       try { const t = await r.readText("review/review-submissions.json", { optional: true }); if (t) doc = JSON.parse(t); } catch (e) {}
       if (!Array.isArray(doc.records)) doc.records = [];
       const unit = (RD.binding?.units || []).find(u => u.chapterId === beat.id);
-      doc.records.push({ type: document.getElementById("fb-kind").value, text, status: "open",
+      doc.records.push({ type: document.getElementById("vfb-kind").value, text, status: "open",
         createdAt: new Date().toISOString(), snapshot: RD.snapshot || null, buildId: RD.buildId || null,
         chapterId: beat.id, stepId: firstStep(beat.id), unitId: unit ? unit.unitId : null,
         playbackTimeMs: Math.round(playerMs()) });
       doc.updated_at = new Date().toISOString();
       await r.write(doc);
-      document.getElementById("fb-text").value = "";
+      document.getElementById("vfb-text").value = "";
       fbStatus.textContent = "已保存整 beat 反馈；模型收件后会处理。"; fbStatus.className = "ok";
       await r.wake({ unit: beat.id, text: "收到 " + beat.id + " 的整 beat 反馈。运行 video-craft/helpers/review_inbox.py <本项目绝对路径> 收件。" });
     } catch (e) { fbStatus.textContent = "保存失败：" + (e && e.message ? e.message : e); fbStatus.className = "err"; }
   }
-  document.getElementById("fb-save").addEventListener("click", saveFb);
+  document.getElementById("vfb-save").addEventListener("click", saveFb);
 
   async function loadHistory() {
     const list = document.getElementById("hist-list");

@@ -4582,6 +4582,7 @@
       const comp = RD.media && RD.media.liveStage && RD.media.liveStage.composition;
       el.innerHTML = '<div class="pf-row"><b>工程预览没有就绪</b>'
         + '<button type="button" id="pf-composite">切到成片预览</button>'
+        + '<button type="button" id="pf-local">浏览器打开工程预览</button>'
         + '<button type="button" id="pf-retry">重试</button></div>'
         + '<div class="pf-diag">player=' + (customElements.get("hyperframes-player") ? "defined" : "missing")
         + ' · html=' + (comp && comp.html ? Math.round(comp.html.length / 1024) + "KB" : "none")
@@ -4589,8 +4590,10 @@
         + ' · stage=' + (document.body.dataset.stage || "") + '</div>';
       box.appendChild(el);
       const c = document.getElementById("pf-composite");
+      const l = document.getElementById("pf-local");
       const r = document.getElementById("pf-retry");
       if (c) c.addEventListener("click", () => { if (window.__vcSetStageMode) window.__vcSetStageMode("composite"); el.remove(); });
+      if (l) l.addEventListener("click", () => { const live = RD.media && RD.media.liveStage; const url = live && (live.studioUrl || live.serverUrl); if (url) window.open(url, "_blank"); });
       if (r) r.addEventListener("click", () => location.reload());
     }, 10000);
   }

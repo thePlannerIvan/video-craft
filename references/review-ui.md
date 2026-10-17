@@ -14,10 +14,10 @@ DSH tokens 仍来自 review-core，生成时内联。导航显示分屏标题、
 
 不得将“runtime 已握手”作为验收。至少验证不同分屏只显示目标 clip，声音与录屏 seek/倍速同步，字幕开关有效，提交实际写入并被 inbox 接收。锁屏、宿主不可达等导致的实测缺口必须明确记录。
 
-## recompose 构建模式：逐字密度 dock
+## recompose 构建模式：右侧整栏反馈
 
 `recompose.json` 存在时，`build_review.py` 把 `recompose/lines.json` 写进
-`review/review_data.json` 的 `density` 块；页面重排为左侧窄 beat 列表、中间活 composition 预览、底部分段工作区，右栏收起。底部四 tab：逐句调整 / 整 beat 反馈 / 历史反馈 / 动效细节。逐句调整：
+`review/review_data.json` 的 `density` 块；页面重排为左侧大预览、视频下方横向 Beat 编号切换、右侧整栏反馈。右侧三 tab：整 beat 反馈 / 逐句调整 / 历史反馈。逐句调整：
 
 - 单位是**口播逐字稿的行**（字幕 cue），不是 beat；beat 只是分组与批量入口。
 - 状态：`auto`（跟 `proposal`）/ `off`（字幕级，不要图）/ `still` / `light` / `full`。

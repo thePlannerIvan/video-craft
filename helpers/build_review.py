@@ -1003,7 +1003,7 @@ def fit_live_stage_assets(project_root: Path, review_data: dict) -> None:
     composition["assetBytes"] = total
     # The page scales its watchdog off this instead of a fixed 8s, which was only
     # ever right for a small map.
-    live["budgetMs"] = int(8000 + max(0.0, total / 1e6 - 4.0) * 1500)
+    live["budgetMs"] = int(25000 + max(0.0, total / 1e6 - 4.0) * 1500)
 
     if fittings:
         for old, new, size, under in fittings:

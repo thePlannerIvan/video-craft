@@ -2617,7 +2617,8 @@
               explain("素材仍在解码 —— 体积较大时首次会久一点。若长时间停在这里，"
                       + "重新 build review 让活舞台资产走审阅副本。");
             } else {
-              explain("预览暂时无法启动。先确认 live_stage.py 起的预览服务在运行，再刷新页面。");
+              explain("工程预览加载超时：可能是侧栏 iframe 的播放器或素材传输较慢。"
+                      + "先点「刷新」；仍不行就用下方「切到成片预览」，并把诊断行发回对话。");
             }
           }, budget);
         }
@@ -2638,6 +2639,7 @@
       if (toggle) toggle.textContent = isLive ? "工程动效" : "分步动效";
     }
     function setStageViewMode(mode) {
+      window.__vcSetStageMode = setStageViewMode;
       // 舞台按「这个项目有什么数据」选：活 composition 优先，其次合成成片，最后静态页。
       // 原模板在这里写死 `mode = "composite"`，把调用方传进来的选择丢掉了 ——
       // 连初始化那句 setStageViewMode("svg") 也变成切到合成台，而合成台在没有成片时
@@ -4096,7 +4098,11 @@
       }
 
       const live = window.__REVIEW_DATA__?.media?.liveStage;
-      if (live) { await liveStage.attach(live.url); liveStage.watchdog(); }
+      if (live) {
+        await liveStage.attach(live.url);
+        liveStage.watchdog();
+        setTimeout(() => { try { liveStage.seek(4); } catch (e) {} }, 500);
+      }
       submissionsRel = await resolveSubmissionsRel();
       setMode("overall");
       document.getElementById("fb-save").disabled = false;
@@ -4140,78 +4146,68 @@
     --d-strong-bg:var(--dsw-alias-button-contrast-fill);
     --d-strong-fg:var(--dsw-alias-label-primary-inverted);
   }
-  body.density-on .layout{grid-template-columns:190px minmax(0,1fr) !important}
+  body.density-on .layout{grid-template-columns:minmax(0,1.75fr) minmax(360px,1fr) !important;height:calc(100vh - 46px)}
   body.density-on .side-left,body.density-on .side-right{display:none !important}
-  body.density-on .center-stage{padding:0 12px;display:flex;flex-direction:column;gap:4px}
-  body.density-on .player-box{flex:0 0 36vh;width:min(100%,calc(36vh * 16 / 9));height:36vh;margin:0 auto;aspect-ratio:auto}
-  body.density-on .choreo-deck{display:flex !important;flex:1 1 auto;max-height:none;min-height:0;margin:0;border:0;background:transparent;padding:4px 0 0}
-  body.density-on .choreo-deck{overflow:hidden}
+  body.density-on .center-stage{padding:10px 12px 6px;display:flex;flex-direction:column;gap:6px;min-width:0}
   body.density-on .canvas-toolbar,body.density-on #advanced-toggle{display:none !important}
-  body.density-on .seg-tabs{border-bottom:0;border-top:0}
-  body.density-on #beat-rail{border-right:0;background:transparent}
-  #beat-rail{display:none;flex-direction:column;gap:2px;overflow:auto;padding:4px 8px 10px}
-  body.density-on #beat-rail{display:flex}
-  .br-head{display:flex;justify-content:space-between;align-items:baseline;padding:2px 4px 8px;font-family:var(--font-mono);font-size:10px;letter-spacing:.1em;color:var(--text-muted)}
-  .br-beat{display:flex;flex-direction:column;gap:3px;padding:8px;border:1px solid transparent;border-left:2px solid transparent;cursor:pointer;border-radius:4px}
-  .br-beat:hover{background:var(--dsw-alias-interactive-bg-hover)}
-  .br-beat.active{border-left-color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-bg-layer-1)}
-  .br-beat .bid{font-family:var(--font-mono);font-size:9px;color:var(--text-muted);letter-spacing:.06em}
-  .br-beat .bt{font-size:11px;line-height:1.4;color:var(--text);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-  .br-beat .bm{font-family:var(--font-mono);font-size:8px;color:var(--text-muted)}
-  .seg-tabs{display:flex;align-items:center;gap:5px;padding:4px 2px 7px;border-bottom:1px solid var(--border);flex-wrap:wrap}
-  .seg-tabs button{border:1px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-secondary);font-family:var(--font-mono);font-size:10px;letter-spacing:.06em;padding:4px 8px;cursor:pointer;border-radius:4px}
-  .seg-tabs button.active{background:var(--dsw-alias-button-primary-fill);border-color:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-inverted)}
-  .seg-tabs #seg-summary{margin-left:auto;font-family:var(--font-mono);font-size:10px;color:var(--text-muted)}
-  #density-panel,#fb-panel,#hist-panel{display:flex;flex-direction:column;gap:7px;min-height:0;flex:1 1 auto}
-  #density-panel[hidden],#fb-panel[hidden],#hist-panel[hidden],#choreo-detail[hidden]{display:none !important}
-  .dens-head{display:flex;flex-direction:column;gap:5px}
-  .dens-beats{display:flex;gap:4px;flex-wrap:wrap}
-  .dens-beats button{border:1px solid var(--border);background:transparent;color:var(--text-secondary);font-family:var(--font-mono);font-size:9px;padding:3px 6px;cursor:pointer;border-radius:3px;white-space:nowrap}
-  .dens-beats button.active{border-color:var(--text);color:var(--text);background:var(--bg-card)}
-  .dens-tools{display:flex;align-items:center;gap:12px;font-family:var(--font-mono);font-size:9px;color:var(--text-muted)}
+  body.density-on .player-box{flex:0 0 auto;width:100%;height:auto;aspect-ratio:16/9;max-height:calc(100vh - 210px);margin:0 auto;overflow:hidden;background:#000;border-radius:6px;position:relative}
+  body.density-on #choreo-deck{display:none !important}
+  #beat-switcher{display:flex;gap:4px;flex:0 0 40px;width:100%;align-items:stretch}
+  #beat-switcher button{flex:1;min-width:0;border:0;background:var(--d-panel);color:var(--d-muted);font-family:var(--font-mono);font-size:10px;letter-spacing:.06em;cursor:pointer;position:relative;border-radius:3px}
+  #beat-switcher button:hover{background:var(--dsw-alias-interactive-bg-hover)}
+  #beat-switcher button.active{background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-inverted)}
+  #beat-switcher button.changed::after{content:"";position:absolute;right:5px;top:5px;width:4px;height:4px;border-radius:50%;background:var(--dsw-alias-brand-primary)}
+  #feedback-panel{display:flex;flex-direction:column;min-height:0;padding:2px 0 8px 10px;background:var(--d-bg)}
+  .fp-tabs{display:flex;gap:4px;padding:0 0 8px;flex:0 0 auto}
+  .fp-tabs button{border:0;background:var(--d-panel);color:var(--d-muted);font-family:var(--font-mono);font-size:10px;letter-spacing:.06em;padding:7px 10px;cursor:pointer;border-radius:4px}
+  .fp-tabs button.active{background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-inverted)}
+  .fp-body{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:7px}
+  .fp-panel{display:flex;flex-direction:column;gap:7px;min-height:0;flex:1 1 auto}
+  .fp-panel[hidden]{display:none !important}
+  .dens-head{display:flex;flex-direction:column;gap:5px;flex:0 0 auto}
+  .dens-tools{display:flex;align-items:center;gap:12px;font-family:var(--font-mono);font-size:9px;color:var(--d-muted)}
   .dens-tools label{display:flex;align-items:center;gap:4px;cursor:pointer}
-  .dens-tools #dens-count{margin-left:auto;color:var(--text-secondary)}
-  .dens-selbar{display:flex;align-items:center;gap:5px;flex-wrap:wrap;padding:6px;background:var(--bg-card);border:1px solid var(--border)}
-  .dens-selbar #dens-sel-count{font-family:var(--font-mono);font-size:10px;color:var(--text);margin-right:4px}
+  .dens-tools #dens-count{margin-left:auto}
+  .dens-selbar{display:flex;align-items:center;gap:5px;flex-wrap:wrap;padding:7px 8px;background:var(--d-panel);border-radius:4px;flex:0 0 auto}
+  .dens-selbar #dens-sel-count{font-family:var(--font-mono);font-size:10px;color:var(--d-text);margin-right:2px}
   .dens-selbar button{border:1px solid var(--d-border);background:var(--d-bg);color:var(--d-text);font-family:var(--font-mono);font-size:9px;padding:3px 7px;cursor:pointer;border-radius:3px}
-  .dens-selbar button:hover{border-color:var(--text)}
   .dens-selbar .spacer{flex:1}
-  .dens-body{flex:1 1 auto;min-height:140px;overflow:auto;border:1px solid var(--border);background:var(--bg-input)}
-  .dline{display:grid;grid-template-columns:58px 1fr 86px;gap:8px;align-items:start;padding:5px 8px;border-left:2px solid transparent;cursor:pointer;user-select:none}
-  .dline:hover{background:var(--bg-card)}
-  .dline.sel{border-left-color:var(--accent);background:var(--accent-soft)}
-  .dline.now{background:var(--blue-soft)}
-  .dline .lt{font-family:var(--font-mono);font-size:9px;color:var(--text-muted);padding-top:3px}
-  .dline .lx{font-size:12px;line-height:1.5;color:var(--d-text)}
-  .dline .lx .note{display:block;font-size:9px;color:var(--text-muted);font-style:italic}
+  .dens-body{flex:1 1 auto;min-height:160px;overflow:auto;background:var(--d-panel);border-radius:4px}
+  .dline{display:grid;grid-template-columns:52px 1fr 80px;gap:8px;align-items:start;padding:6px 9px;cursor:pointer;user-select:none;border-left:2px solid transparent}
+  .dline:hover{background:var(--dsw-alias-interactive-bg-hover)}
+  .dline.sel{border-left-color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-bg-multi-select)}
+  .dline.now{background:var(--dsw-alias-bg-document-selection)}
+  .dline .lt{font-family:var(--font-mono);font-size:9px;color:var(--d-muted);padding-top:3px}
+  .dline .lx{font-size:12px;line-height:1.55;color:var(--d-text)}
+  .dline .lx .note{display:block;font-size:9px;color:var(--d-muted);font-style:italic}
   .dline .chip{justify-self:end;font-family:var(--font-mono);font-size:9px;border:1px solid var(--d-border);border-radius:99px;padding:2px 6px;white-space:nowrap;background:var(--d-chip);color:var(--d-text)}
-  .dline[data-s="off"] .chip{border-style:dashed;color:#c0563a;background:transparent}
-  .dline[data-s="still"] .chip{background:var(--d-chip);color:var(--d-text)}
+  .dline[data-s="off"] .chip{border-style:dashed;color:var(--dsw-static-red-600);background:transparent}
   .dline[data-s="light"] .chip{background:var(--d-mid-bg);color:var(--d-mid-fg);font-weight:700}
   .dline[data-s="full"] .chip{background:var(--d-strong-bg);color:var(--d-strong-fg);font-weight:700}
-  .dens-foot{display:flex;flex-direction:column;gap:5px;padding-top:1px}
-  .dens-sel{font-family:var(--font-mono);font-size:9px;color:var(--text-secondary);min-height:14px}
-  .dens-batch{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-  .dens-batch button{border:1px solid var(--d-border);background:transparent;color:var(--d-text);font-family:var(--font-mono);font-size:9px;padding:3px 6px;cursor:pointer;border-radius:3px}
-  .dens-batch button:hover{color:var(--text);border-color:var(--text-muted)}
-  .dens-batch #dens-submit{margin-left:auto;background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
-  .dens-batch #dens-submit:disabled{opacity:.4;cursor:not-allowed}
-  .dens-batch #dens-note{flex:1 1 160px;min-width:120px;background:transparent;border:1px solid var(--border);color:var(--text);font-size:10px;padding:4px 6px;border-radius:3px;outline:none}
-  #dens-status{font-family:var(--font-mono);font-size:9px;line-height:1.6;color:var(--text-muted);min-height:20px}
-  #dens-status.err,#fb-status.err{color:var(--accent)}
-  #dens-status.ok,#fb-status.ok{color:var(--green)}
-  #fb-panel{overflow:auto}
-  #fb-panel .fbh{font-size:13px;color:var(--text);font-weight:600}
-  #fb-panel .fbs{font-family:var(--font-mono);font-size:9px;color:var(--text-muted)}
-  #fb-kind{background:var(--bg-card);border:1px solid var(--border);color:var(--text);font-size:11px;padding:5px}
-  #fb-text{min-height:88px;background:var(--bg-input);border:1px solid var(--border);color:var(--text);font-size:12px;line-height:1.6;padding:8px;resize:vertical;outline:none}
-  #fb-save{border:1px solid var(--accent);background:var(--accent);color:#fff;font-family:var(--font-mono);font-size:10px;letter-spacing:.1em;padding:7px 10px;cursor:pointer;border-radius:3px;align-self:flex-start}
-  #fb-status{font-family:var(--font-mono);font-size:9px;color:var(--text-muted);min-height:20px}
-  #hist-panel .hist-tools{display:flex;align-items:center;gap:8px;font-family:var(--font-mono);font-size:9px;color:var(--text-muted)}
-  #hist-list{flex:1 1 auto;overflow:auto;border:1px solid var(--border);background:var(--bg-input)}
-  .hist-item{padding:7px 9px;border-bottom:1px solid var(--border);font-size:11px;line-height:1.55;color:var(--text)}
-  .hist-item .hm{font-family:var(--font-mono);font-size:8px;color:var(--text-muted);display:block;margin-bottom:2px}
-  .hist-empty{padding:12px;font-size:11px;color:var(--text-muted)}
+  .dens-foot{display:flex;flex-direction:column;gap:5px;flex:0 0 auto}
+  .dens-sel{font-family:var(--font-mono);font-size:9px;color:var(--d-muted);min-height:13px}
+  .dens-batch{display:flex;align-items:center;gap:6px}
+  .dens-batch #dens-note{flex:1 1 auto;min-width:100px;background:var(--d-bg);border:1px solid var(--d-border);color:var(--d-text);font-size:10px;padding:4px 6px;border-radius:3px;outline:none}
+  .dens-batch #dens-submit{border:0;background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-inverted);font-family:var(--font-mono);font-size:10px;letter-spacing:.06em;padding:7px 10px;cursor:pointer;border-radius:4px}
+  .dens-batch #dens-submit:disabled{opacity:.4}
+  #dens-status,#fb-status{font-family:var(--font-mono);font-size:9px;line-height:1.6;color:var(--d-muted);min-height:18px}
+  #dens-status.err,#fb-status.err{color:var(--dsw-static-red-600)}
+  #dens-status.ok,#fb-status.ok{color:var(--dsw-static-green-600)}
+  #fb-panel .fbh{font-size:15px;color:var(--d-text);font-weight:600}
+  #fb-panel .fbs{font-family:var(--font-mono);font-size:9px;color:var(--d-muted)}
+  #fb-kind{background:var(--d-panel);border:0;color:var(--d-text);font-size:11px;padding:7px;border-radius:4px}
+  #fb-text{flex:1 1 auto;min-height:160px;background:var(--d-panel);border:0;color:var(--d-text);font-size:12px;line-height:1.65;padding:10px;resize:none;outline:none;border-radius:4px}
+  #fb-save{align-self:flex-start;border:0;background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-inverted);font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;padding:8px 12px;cursor:pointer;border-radius:4px}
+  #hist-panel .hist-tools{display:flex;align-items:center;gap:8px;font-family:var(--font-mono);font-size:9px;color:var(--d-muted)}
+  #hist-list{flex:1 1 auto;min-height:0;overflow:auto;background:var(--d-panel);border-radius:4px}
+  .hist-item{padding:8px 10px;border-bottom:1px solid var(--d-border);font-size:11px;line-height:1.55;color:var(--d-text)}
+  .hist-item:last-child{border-bottom:0}
+  .hist-item .hm{font-family:var(--font-mono);font-size:8px;color:var(--d-muted);display:block;margin-bottom:2px}
+  .hist-empty{padding:12px;font-size:11px;color:var(--d-muted)}
+  #preview-fallback{position:absolute;left:12px;right:12px;bottom:12px;padding:10px 12px;background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary);border-radius:6px;font-family:var(--font-sans);font-size:11px;line-height:1.6;display:flex;flex-direction:column;gap:6px;z-index:5}
+  #preview-fallback .pf-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  #preview-fallback button{border:1px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-primary);font-family:var(--font-mono);font-size:9px;padding:4px 7px;cursor:pointer;border-radius:3px}
+  #preview-fallback .pf-diag{font-family:var(--font-mono);font-size:8px;color:var(--dsw-alias-label-tertiary);white-space:pre-wrap}
 </style>
 <script>
 (function () {
@@ -4221,87 +4217,71 @@
   if (!D.enabled || !Array.isArray(D.beats)) return;
   document.body.classList.add("density-on");
   const layout = document.querySelector(".layout");
-  const deck = document.getElementById("choreo-deck");
-  if (!layout || !deck) return;
+  const center = document.querySelector(".center-stage");
+  const playerBox = document.querySelector(".player-box");
+  if (!layout || !center || !playerBox) return;
 
-  // 左栏：紧凑 beat 列表
-  const rail = document.createElement("aside");
-  rail.id = "beat-rail";
-  rail.innerHTML = '<div class="br-head"><span>BEATS</span><span id="br-count">8</span></div><div id="br-list"></div>';
-  layout.insertBefore(rail, layout.firstChild);
+  // 视频下方：横向 Beat 编号切换器（只在视频宽度内）
+  const switcher = document.createElement("div");
+  switcher.id = "beat-switcher";
+  playerBox.after(switcher);
 
-  // 底部：原有分步动效包进「动效细节」，再加三个面板
-  const detail = document.createElement("div");
-  detail.id = "choreo-detail";
-  while (deck.firstChild) detail.appendChild(deck.firstChild);
-  deck.appendChild(detail);
-
-  const tabs = document.createElement("div");
-  tabs.className = "seg-tabs";
-  tabs.innerHTML = '<button type="button" data-seg="density" class="active">逐句调整</button>'
-    + '<button type="button" data-seg="fb">整 beat 反馈</button>'
-    + '<button type="button" data-seg="hist">历史反馈</button>'
-    + '<button type="button" data-seg="choreo">动效细节</button>'
-    + '<span id="seg-summary"></span>';
-  deck.insertBefore(tabs, detail);
-
-  const density = document.createElement("div");
-  density.id = "density-panel";
-  density.innerHTML = `
-    <div class="dens-head">
-      <div class="dens-beats" id="dens-beats"></div>
-      <div class="dens-tools">
-        <label><input type="checkbox" id="dens-follow" checked> 跟随播放</label>
-        <label><input type="checkbox" id="dens-only"> 只看非自动</label>
-        <span id="dens-count">—</span>
-      </div>
+  // 右侧：整栏反馈，三个 tab
+  const feedback = document.createElement("aside");
+  feedback.id = "feedback-panel";
+  feedback.innerHTML = `
+    <div class="fp-tabs">
+      <button type="button" data-fp="beat" class="active">整 beat 反馈</button>
+      <button type="button" data-fp="line">逐句调整</button>
+      <button type="button" data-fp="hist">历史反馈</button>
     </div>
-    <div class="dens-selbar">
-      <span id="dens-sel-count">已选 0 句</span>
-      <button type="button" id="dens-sel-all">全选本 beat</button>
-      <button type="button" id="dens-sel-clear">清除</button>
-      <span class="spacer"></span>
-      <button type="button" data-set="auto">自动</button>
-      <button type="button" data-set="off">字幕</button>
-      <button type="button" data-set="still">单图</button>
-      <button type="button" data-set="light">轻动</button>
-      <button type="button" data-set="full">完整</button>
-      <button type="button" id="dens-beat-all">整 beat</button>
-      <button type="button" id="dens-undo">撤销</button>
-    </div>
-    <div class="dens-body" id="dens-body"></div>
-    <div class="dens-foot">
-      <div class="dens-sel" id="dens-sel">单击一句；Shift 连选；Cmd/Ctrl 加选；按住拖过多行。</div>
-      <div class="dens-batch">
-        <input id="dens-note" placeholder="备注（单选时可填）" />
-        <button type="button" id="dens-submit">提交密度 / 唤醒模型</button>
+    <div class="fp-body">
+      <div class="fp-panel" id="fb-panel">
+        <div class="fbh" id="fb-head">整 beat 反馈</div>
+        <div class="fbs" id="fb-sub">—</div>
+        <select id="fb-kind"><option value="visual">画面与版式</option><option value="animation">动画与镜头</option><option value="timing">节奏与卡点</option><option value="copy">文字</option><option value="asset">素材</option></select>
+        <textarea id="fb-text" placeholder="这个 beat 整体哪里不对？只针对这一 beat，不针对某一屏。"></textarea>
+        <button type="button" id="fb-save">保存整 beat 反馈</button>
+        <div id="fb-status">提交后会进 feedback/beat-xx.jsonl，并唤醒模型。</div>
       </div>
-      <div id="dens-status">看片拖选一段，点上方状态；不用逐句点。</div>
+      <div class="fp-panel" id="density-panel" hidden>
+        <div class="dens-head">
+          <div class="dens-tools">
+            <label><input type="checkbox" id="dens-follow" checked> 跟随播放</label>
+            <label><input type="checkbox" id="dens-only"> 只看非自动</label>
+            <span id="dens-count">—</span>
+          </div>
+        </div>
+        <div class="dens-selbar">
+          <span id="dens-sel-count">已选 0 句</span>
+          <button type="button" id="dens-sel-all">全选本 beat</button>
+          <button type="button" id="dens-sel-clear">清除</button>
+          <span class="spacer"></span>
+          <button type="button" data-set="auto">自动</button>
+          <button type="button" data-set="off">字幕</button>
+          <button type="button" data-set="still">单图</button>
+          <button type="button" data-set="light">轻动</button>
+          <button type="button" data-set="full">完整</button>
+          <button type="button" id="dens-beat-all">整 beat</button>
+          <button type="button" id="dens-undo">撤销</button>
+        </div>
+        <div class="dens-body" id="dens-body"></div>
+        <div class="dens-foot">
+          <div class="dens-sel" id="dens-sel">单击一句；Shift 连选；Cmd/Ctrl 加选；按住拖过多行。</div>
+          <div class="dens-batch">
+            <input id="dens-note" placeholder="备注（单选时可填）" />
+            <button type="button" id="dens-submit">提交密度 / 唤醒模型</button>
+          </div>
+          <div id="dens-status">看片拖选一段，点上方状态；不用逐句点。</div>
+        </div>
+      </div>
+      <div class="fp-panel" id="hist-panel" hidden>
+        <div class="fbs" id="hist-head">历史反馈</div>
+        <div class="hist-tools"><span id="hist-count">—</span><button type="button" id="hist-refresh">刷新</button></div>
+        <div id="hist-list"><div class="hist-empty">点「刷新」读取 feedback/*.jsonl。</div></div>
+      </div>
     </div>`;
-  deck.appendChild(density);
-
-  const fb = document.createElement("div");
-  fb.id = "fb-panel"; fb.hidden = true;
-  fb.innerHTML = `
-    <div class="fbh" id="fb-head">整 beat 反馈</div>
-    <div class="fbs" id="fb-sub">—</div>
-    <select id="fb-kind"><option value="visual">画面与版式</option><option value="animation">动画与镜头</option><option value="timing">节奏与卡点</option><option value="copy">文字</option><option value="asset">素材</option></select>
-    <textarea id="fb-text" placeholder="这个 beat 整体哪里不对？只针对这一 beat，不针对某一屏。"></textarea>
-    <button type="button" id="fb-save">保存整 beat 反馈</button>
-    <div id="fb-status">提交后会进 feedback/beat-xx.jsonl，并唤醒模型。</div>`;
-  deck.appendChild(fb);
-
-  const hist = document.createElement("div");
-  hist.id = "hist-panel"; hist.hidden = true;
-  hist.innerHTML = `
-    <div class="fbs" id="hist-head">历史反馈</div>
-    <div class="hist-tools"><span id="hist-count">—</span><button type="button" id="hist-refresh">刷新</button></div>
-    <div id="hist-list"><div class="hist-empty">点「刷新」读取 feedback/*.jsonl。</div></div>`;
-  deck.appendChild(hist);
-
-  deck.hidden = false;
-  const adv = document.getElementById("advanced-toggle");
-  if (adv) { adv.setAttribute("aria-expanded", "true"); adv.textContent = "分段工作区"; }
+  layout.appendChild(feedback);
 
   const STATES = ["auto", "off", "still", "light", "full"];
   const LABEL = { auto: "自动", off: "字幕", still: "单图", light: "轻动", full: "完整" };
@@ -4310,7 +4290,7 @@
   let current = 0, follow = true, onlyChanged = false;
   let selected = new Set(), anchor = null, dragging = false, undo = null;
   let shiftDown = false, metaDown = false;
-  let review = window.__vcReview || null, timer = null;
+  let review = window.__vcReview || null;
 
   const body = document.getElementById("dens-body");
   const status = document.getElementById("dens-status");
@@ -4326,29 +4306,27 @@
     return ch && ch.steps && ch.steps[0] ? ch.steps[0].id : null;
   };
 
-  function tab(seg) {
-    tabs.querySelectorAll("[data-seg]").forEach(b => b.classList.toggle("active", b.dataset.seg === seg));
-    density.hidden = seg !== "density";
-    fb.hidden = seg !== "fb";
-    hist.hidden = seg !== "hist";
-    detail.hidden = seg !== "choreo";
-    if (seg === "hist") loadHistory();
-    if (seg === "fb") renderFbHead();
+  function tab(which) {
+    feedback.querySelectorAll("[data-fp]").forEach(b => b.classList.toggle("active", b.dataset.fp === which));
+    document.getElementById("fb-panel").hidden = which !== "beat";
+    document.getElementById("density-panel").hidden = which !== "line";
+    document.getElementById("hist-panel").hidden = which !== "hist";
+    if (which === "hist") loadHistory();
   }
-  tabs.addEventListener("click", e => { const b = e.target.closest("[data-seg]"); if (b) tab(b.dataset.seg); });
+  feedback.querySelector(".fp-tabs").addEventListener("click", e => { const b = e.target.closest("[data-fp]"); if (b) tab(b.dataset.fp); });
 
-  function renderRail() {
-    const list = document.getElementById("br-list"); list.innerHTML = "";
+  function renderSwitch() {
+    switcher.innerHTML = "";
     state.forEach((b, i) => {
       const changed = b.lines.filter(l => l.state !== "auto").length;
-      const el = document.createElement("div");
-      el.className = "br-beat" + (i === current ? " active" : "");
-      el.innerHTML = '<span class="bid">' + b.id + '</span><span class="bt">' + (b.title || b.id) + '</span>'
-        + '<span class="bm">' + (changed ? changed + " 处调整" : b.lines.length + " 句") + '</span>';
+      const el = document.createElement("button");
+      el.type = "button";
+      el.className = (i === current ? "active" : "") + (changed ? " changed" : "");
+      el.textContent = b.id.replace(/^beat-/, "B");
+      el.title = b.title || "";
       el.addEventListener("click", () => selectBeat(i));
-      list.appendChild(el);
+      switcher.appendChild(el);
     });
-    document.getElementById("br-count").textContent = state.length;
   }
 
   function selectBeat(i) {
@@ -4365,23 +4343,11 @@
   }
 
   function render() {
-    renderRail();
-    const beat = state[current];
-    const chips = document.getElementById("dens-beats"); chips.innerHTML = "";
-    state.forEach((b, i) => {
-      const changed = b.lines.filter(l => l.state !== "auto").length;
-      const btn = document.createElement("button");
-      btn.type = "button"; btn.dataset.beat = i; btn.className = i === current ? "active" : "";
-      btn.textContent = b.id.replace(/^beat-/, "B") + " · " + (changed ? changed + " 改" : b.lines.length + " 句");
-      btn.title = b.title || "";
-      btn.addEventListener("click", () => selectBeat(i));
-      chips.appendChild(btn);
-    });
+    renderSwitch();
     renderRows();
     renderSelection();
     const changedAll = flat().filter(o => o.line.state !== "auto").length;
     document.getElementById("dens-count").textContent = flat().length + " 行 · 已改 " + changedAll;
-    document.getElementById("seg-summary").textContent = beat.id + " · " + beat.title;
     renderFbHead();
   }
 
@@ -4419,8 +4385,7 @@
   function renderSelection() {
     const n = selected.size;
     const el = document.getElementById("dens-sel");
-    const cnt = document.getElementById("dens-sel-count");
-    cnt.textContent = "已选 " + n + " 句";
+    document.getElementById("dens-sel-count").textContent = "已选 " + n + " 句";
     if (!n) { el.textContent = "单击一句；Shift 连选；Cmd/Ctrl 加选；按住拖过多行。"; note.value = ""; note.disabled = true; return; }
     const ids = [...selected]; const first = lineById(ids[0]), last = lineById(ids[ids.length - 1]);
     el.textContent = fmtShort(first ? first.line.startMs : 0) + "–" + fmtShort(last ? last.line.endMs : 0)
@@ -4442,7 +4407,6 @@
     selected = new Set([line.id]); anchor = state[current].lines.indexOf(line);
     renderRows(); renderSelection();
   }
-
   function applyTo(targets, s) {
     if (!targets.length) { setStatus("先选几行，或点「整 beat」。", "err"); return; }
     undo = targets.map(l => ({ id: l.id, state: l.state }));
@@ -4450,15 +4414,10 @@
     setStatus("已把 " + targets.length + " 句设为「" + LABEL[s] + "」。", "ok");
     render();
   }
-  document.querySelectorAll(".dens-selbar [data-set]").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const targets = [...selected].map(lineById).filter(Boolean).map(o => o.line);
-      applyTo(targets, btn.dataset.set);
-    });
+  feedback.querySelectorAll(".dens-selbar [data-set]").forEach(btn => {
+    btn.addEventListener("click", () => applyTo([...selected].map(lineById).filter(Boolean).map(o => o.line), btn.dataset.set));
   });
-  document.getElementById("dens-sel-all").addEventListener("click", () => {
-    state[current].lines.forEach(l => selected.add(l.id)); renderSelection();
-  });
+  document.getElementById("dens-sel-all").addEventListener("click", () => { state[current].lines.forEach(l => selected.add(l.id)); renderSelection(); });
   document.getElementById("dens-sel-clear").addEventListener("click", () => { selected.clear(); renderSelection(); });
   document.getElementById("dens-beat-all").addEventListener("click", () => applyTo(state[current].lines, "off"));
   document.getElementById("dens-undo").addEventListener("click", () => {
@@ -4470,7 +4429,7 @@
     if (selected.size !== 1) return;
     const hit = lineById([...selected][0]); if (hit) hit.line.note = note.value;
   });
-  document.getElementById("dens-follow").addEventListener("change", e => { follow = e.target.checked; if (follow) tick(true); });
+  document.getElementById("dens-follow").addEventListener("change", e => { follow = e.target.checked; if (follow) tick(); });
   document.getElementById("dens-only").addEventListener("change", e => { onlyChanged = e.target.checked; renderRows(); renderSelection(); });
 
   function activeEl() {
@@ -4484,7 +4443,7 @@
   }
   function playerMs() { const p = activeEl(); if (!p) return 0; const t = Number(p.currentTime); return Number.isFinite(t) ? t * 1000 : 0; }
   function seekTo(ms) { const p = activeEl(); if (!p) return; try { if (typeof p.seek === "function") p.seek(ms / 1000); else p.currentTime = ms / 1000; } catch (e) {} }
-  function tick(force) {
+  function tick() {
     const t = playerMs();
     if (follow) {
       const i = state.findIndex(b => t >= b.startMs && t < b.endMs);
@@ -4551,17 +4510,14 @@
       try { const t = await r.readText("review/review-submissions.json", { optional: true }); if (t) doc = JSON.parse(t); } catch (e) {}
       if (!Array.isArray(doc.records)) doc.records = [];
       const unit = (RD.binding?.units || []).find(u => u.chapterId === beat.id);
-      doc.records.push({
-        type: document.getElementById("fb-kind").value, text, status: "open",
+      doc.records.push({ type: document.getElementById("fb-kind").value, text, status: "open",
         createdAt: new Date().toISOString(), snapshot: RD.snapshot || null, buildId: RD.buildId || null,
         chapterId: beat.id, stepId: firstStep(beat.id), unitId: unit ? unit.unitId : null,
-        playbackTimeMs: Math.round(playerMs()),
-      });
+        playbackTimeMs: Math.round(playerMs()) });
       doc.updated_at = new Date().toISOString();
       await r.write(doc);
       document.getElementById("fb-text").value = "";
-      fbStatus.textContent = "已保存整 beat 反馈；模型收件后会处理。";
-      fbStatus.className = "ok";
+      fbStatus.textContent = "已保存整 beat 反馈；模型收件后会处理。"; fbStatus.className = "ok";
       await r.wake({ unit: beat.id, text: "收到 " + beat.id + " 的整 beat 反馈。运行 video-craft/helpers/review_inbox.py <本项目绝对路径> 收件。" });
     } catch (e) { fbStatus.textContent = "保存失败：" + (e && e.message ? e.message : e); fbStatus.className = "err"; }
   }
@@ -4581,7 +4537,7 @@
           if (!text) continue;
           text.split(/\r?\n/).forEach(line => {
             line = line.trim(); if (!line) return;
-            try { const rec = JSON.parse(line); entries.push({ file, rec }); } catch (e) {}
+            try { entries.push({ file, rec: JSON.parse(line) }); } catch (e) {}
           });
         } catch (e) {}
       }
@@ -4589,14 +4545,11 @@
       document.getElementById("hist-count").textContent = entries.length + " 条";
       if (!entries.length) { list.innerHTML = '<div class="hist-empty">这个 beat 还没有历史反馈。</div>'; return; }
       list.innerHTML = "";
-      entries.slice(0, 30).forEach(({ file, rec }) => {
-        const el = document.createElement("div");
-        el.className = "hist-item";
+      entries.slice(0, 40).forEach(({ file, rec }) => {
+        const el = document.createElement("div"); el.className = "hist-item";
         const when = (rec.createdAt || "").replace("T", " ").slice(0, 19);
         const kind = rec.phase === "density" ? "密度" : (rec.type || "反馈");
-        const text = rec.phase === "density"
-          ? "密度：" + (rec.lines || []).filter(l => l.state !== "auto").length + " 句调整"
-          : (rec.text || "");
+        const text = rec.phase === "density" ? "密度：" + (rec.lines || []).filter(l => l.state !== "auto").length + " 句调整" : (rec.text || "");
         el.innerHTML = '<span class="hm">' + when + " · " + kind + " · " + file + '</span>' + escapeHtml(text);
         list.appendChild(el);
       });
@@ -4609,7 +4562,8 @@
   document.addEventListener("keydown", e => { if (e.key === "Shift") shiftDown = true; if (e.key === "Meta" || e.key === "Control") metaDown = true; }, true);
   document.addEventListener("keyup", e => { if (e.key === "Shift") shiftDown = false; if (e.key === "Meta" || e.key === "Control") metaDown = false; }, true);
   document.addEventListener("keydown", e => {
-    if (density.hidden) return;
+    const panel = document.getElementById("density-panel");
+    if (!panel || panel.hidden) return;
     const tag = (e.target && e.target.tagName || "").toLowerCase();
     if (tag === "input" || tag === "textarea" || tag === "select") return;
     const map = { "0": "off", "1": "still", "2": "light", "3": "full", "a": "auto" };
@@ -4617,9 +4571,34 @@
     else if (e.key === "Escape") { selected.clear(); renderSelection(); }
   });
 
+  function watchPreview() {
+    setTimeout(() => {
+      const live = document.getElementById("live-stage-frame");
+      if (live && live.ready) return;
+      const box = document.querySelector(".player-box");
+      if (!box || document.getElementById("preview-fallback")) return;
+      const el = document.createElement("div");
+      el.id = "preview-fallback";
+      const comp = RD.media && RD.media.liveStage && RD.media.liveStage.composition;
+      el.innerHTML = '<div class="pf-row"><b>工程预览没有就绪</b>'
+        + '<button type="button" id="pf-composite">切到成片预览</button>'
+        + '<button type="button" id="pf-retry">重试</button></div>'
+        + '<div class="pf-diag">player=' + (customElements.get("hyperframes-player") ? "defined" : "missing")
+        + ' · html=' + (comp && comp.html ? Math.round(comp.html.length / 1024) + "KB" : "none")
+        + ' · ready=' + !!(live && live.ready)
+        + ' · stage=' + (document.body.dataset.stage || "") + '</div>';
+      box.appendChild(el);
+      const c = document.getElementById("pf-composite");
+      const r = document.getElementById("pf-retry");
+      if (c) c.addEventListener("click", () => { if (window.__vcSetStageMode) window.__vcSetStageMode("composite"); el.remove(); });
+      if (r) r.addEventListener("click", () => location.reload());
+    }, 10000);
+  }
+  watchPreview();
+
   render();
-  tab("density");
-  setInterval(() => { if (!density.hidden) tick(); }, 350);
+  tab("beat");
+  setInterval(() => { if (!document.getElementById("density-panel").hidden) tick(); }, 350);
   loadLast();
 })();
 </script>

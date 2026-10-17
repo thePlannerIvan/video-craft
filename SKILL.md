@@ -16,7 +16,7 @@ Video Craft 把已经确定的内容做成可播放、可审阅、可返修的�
 本 Skill 的审阅面有两个：
 
 1. **逐字剪辑面**：取舍词、删除气口、恢复片段、改字，写入剪辑选择。
-2. **动效与合成面**：按稳定 `unitId` 查看一屏一段，调整动效参数、元素位置、文字、框选批注并攒批提交。在 **recompose 构建模式**下，底部「分步动效」区变成「分段工作区」：默认「逐字密度」，按口播逐字稿的行调 0–3（字幕 / 单图 / 轻动 / 完整）；「动效细节」仍保留原来的分步动效，只在选中“有图”的句子时看。
+2. **动效与合成面**：按稳定 `unitId` 查看一屏一段，调整动效参数、元素位置、文字、框选批注并攒批提交。在 **recompose 构建模式**下，页面变成「左侧大预览 + 视频下方横向 Beat 切换 + 右侧整栏反馈」：右侧三个 tab 是整 beat 反馈 / 逐句调整 / 历史反馈。逐句调整按口播逐字稿的行调 0–3（字幕 / 单图 / 轻动 / 完整）。
 
 念稿确认仍回 `video-idea-system`；静态页面的页面级审阅仍回 `planners-ppt-hell`。不要用 Craft 的审阅面替代上游决定。
 
@@ -29,7 +29,7 @@ Video Craft 把已经确定的内容做成可播放、可审阅、可返修的�
 | 构建方式 | 画面源 | 谁决定 | 审阅 |
 |---|---|---|---|
 | **page**（默认） | PPT Hell 静态 SVG 快照，逐像素保留 | 作者已批准页面；Craft 只做动效与合成 | 动效与合成面（逐元素） |
-| **recompose**（opt-in） | PPT Hell 的 board 作为视觉参考；composition 为源，允许重排 | 作者批准方向；Craft 在成片阶段重排 | 动效与合成面 + 分段工作区（逐字密度 / 动效细节） |
+| **recompose**（opt-in） | PPT Hell 的 board 作为视觉参考；composition 为源，允许重排 | 作者批准方向；Craft 在成片阶段重排 | 动效与合成面 + 右侧整栏反馈（整 beat / 逐句 / 历史） |
 | **composite** | 已有成片或外部透明层 | 作者已有素材；Craft 只做声音/字幕/合成 | 已有媒体审阅与叠层 |
 
 - **page 是默认和 fallback**，全链 1–10 步一行不动。
@@ -60,7 +60,7 @@ python3 "<craft>/helpers/recompose_plan.py" init "<project>" \
 python3 "<craft>/helpers/recompose_plan.py" check "<project>"
 python3 "<craft>/helpers/recompose_plan.py" lines "<project>"
 
-# 之后照常 build_review.py；底部「分段工作区」会出现「逐字密度」
+# 之后照常 build_review.py；重排为左视频 + 右侧反馈三 tab
 python3 "<craft>/helpers/build_review.py" "<project>" --mode auto
 python3 "<craft>/helpers/review_surface.py" "<project>" --surface-only
 ```

@@ -164,8 +164,8 @@ class RecomposeTest(unittest.TestCase):
 
     def test_template_has_density_panel(self):
         template = (Path(__file__).resolve().parents[1] / "visual/assets/review-page-template.html").read_text(encoding="utf-8")
-        self.assertIn("density-panel", template)
-        self.assertIn("分段工作区", template)
+        self.assertIn("feedback-panel", template)
+        self.assertIn("beat-switcher", template)
         self.assertIn("window.__vcReview", template)
         self.assertIn('phase: "density"', template)
 

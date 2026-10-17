@@ -4462,8 +4462,15 @@
   }
   async function ensureReview() {
     if (review) return review;
-    if (!window.ReviewBridge) throw new Error("审阅桥未加载");
-    review = await ReviewBridge.connect(); window.__vcReview = review; return review;
+    // Do NOT open a second ReviewBridge connection: the page's main init owns
+    // the bridge and must finish it before it attaches the live player. A
+    // second connect from this panel can starve the main init in the sidebar,
+    // leaving srcdoc empty and the player never ready.
+    for (let i = 0; i < 75; i += 1) {
+      if (window.__vcReview) { review = window.__vcReview; return review; }
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    throw new Error("审阅桥尚未连接（主页面还没拿到宿主）");
   }
   async function loadLast() {
     try {
@@ -4580,6 +4587,8 @@
       const el = document.createElement("div");
       el.id = "preview-fallback";
       const comp = RD.media && RD.media.liveStage && RD.media.liveStage.composition;
+      let sandbox = "n/a";
+      try { sandbox = window.frameElement ? String(window.frameElement.getAttribute("sandbox")) : "none"; } catch (e) { sandbox = "blocked"; }
       el.innerHTML = '<div class="pf-row"><b>工程预览没有就绪</b>'
         + '<button type="button" id="pf-composite">切到成片预览</button>'
         + '<button type="button" id="pf-local">浏览器打开工程预览</button>'
@@ -4587,7 +4596,10 @@
         + '<div class="pf-diag">player=' + (customElements.get("hyperframes-player") ? "defined" : "missing")
         + ' · html=' + (comp && comp.html ? Math.round(comp.html.length / 1024) + "KB" : "none")
         + ' · ready=' + !!(live && live.ready)
-        + ' · stage=' + (document.body.dataset.stage || "") + '</div>';
+        + ' · stage=' + (document.body.dataset.stage || "")
+        + ' · sandbox=' + sandbox
+        + ' · srcdoc=' + (live ? ((live.getAttribute("srcdoc") || "").length / 1024).toFixed(0) + "KB" : "none")
+        + ' · note=' + ((document.getElementById("live-stage-note") && document.getElementById("live-stage-note").textContent) || "").slice(0, 40) + '</div>';
       box.appendChild(el);
       const c = document.getElementById("pf-composite");
       const l = document.getElementById("pf-local");

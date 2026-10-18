@@ -4147,7 +4147,7 @@
     --d-strong-bg:var(--dsw-alias-button-contrast-fill);
     --d-strong-fg:var(--dsw-alias-label-primary-inverted);
   }
-  body.density-on .layout{grid-template-columns:minmax(0,1.75fr) minmax(380px,1fr) !important;height:calc(100vh - 46px)}
+  body.density-on .layout{grid-template-columns:minmax(0,1.75fr) 6px minmax(380px,1fr) !important;height:calc(100vh - 46px)}
   body.density-on .side-left,body.density-on .side-right{display:none !important}
   body.density-on .center-stage{padding:10px 12px 8px;display:flex;flex-direction:column;gap:8px;min-width:0}
   body.density-on .canvas-toolbar,body.density-on #advanced-toggle{display:none !important}
@@ -4172,7 +4172,7 @@
 
   /* 右侧：整栏反馈 */
   #feedback-panel{display:flex;flex-direction:column;min-height:0;padding:2px 8px 8px 12px;background:var(--d-bg);color:var(--d-text)}
-  .fp-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:2px;padding:3px;margin-bottom:10px;background:var(--d-panel);border-radius:8px;flex:0 0 auto}
+  .fp-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px;padding:3px;margin-bottom:10px;background:var(--d-panel);border-radius:8px;flex:0 0 auto}
   .fp-tabs button{border:0;background:transparent;color:var(--d-muted);font-family:var(--font-mono);font-size:10px;letter-spacing:.04em;padding:7px 4px;cursor:pointer;border-radius:6px;white-space:nowrap;transition:background .12s ease,color .12s ease}
   .fp-tabs button:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--d-text)}
   .fp-tabs button:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}
@@ -4287,6 +4287,17 @@
   #dens-status.err{color:var(--dsw-alias-state-error-primary)}
   #dens-status.ok{color:var(--dsw-alias-state-success-primary)}
 
+  body.density-on #beat-feedback-dock{flex:1 1 auto;min-height:190px;display:flex;flex-direction:column;padding:6px 2px 0;min-width:0}
+  body.density-on #beat-feedback-dock #fb-panel{display:flex;flex-direction:column;gap:6px;min-height:0;flex:1 1 auto;overflow:auto}
+  body.density-on #beat-feedback-dock #vfb-kind,
+  body.density-on #beat-feedback-dock .vfb-history{display:none !important}
+  body.density-on #beat-feedback-dock #vfb-text{flex:1 1 auto;min-height:110px;max-height:none;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1)}
+  body.density-on #beat-feedback-dock .vfb-head{flex:0 0 auto}
+  body.density-on #beat-feedback-dock .vfb-actions{flex:0 0 auto}
+  body.density-on #split-handle{width:6px;cursor:col-resize;position:relative;align-self:stretch;touch-action:none}
+  body.density-on #split-handle::after{content:"";position:absolute;left:2px;top:12%;bottom:12%;width:2px;border-radius:2px;background:var(--dsw-alias-border-l2);opacity:.55;transition:opacity .12s ease}
+  body.density-on #split-handle:hover::after,body.density-on.col-resizing #split-handle::after{opacity:1;background:var(--dsw-alias-brand-primary)}
+  body.density-on.col-resizing{cursor:col-resize;user-select:none}
   #preview-fallback{position:absolute;left:12px;right:12px;bottom:12px;padding:10px 12px;background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary);border-radius:6px;font-family:var(--font-sans);font-size:11px;line-height:1.6;display:flex;flex-direction:column;gap:6px;z-index:5}
   #preview-fallback .pf-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
   #preview-fallback button{border:1px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-primary);font-family:var(--font-mono);font-size:9px;padding:4px 7px;cursor:pointer;border-radius:3px}
@@ -4327,8 +4338,7 @@
   feedback.id = "feedback-panel";
   feedback.innerHTML = `
     <div class="fp-tabs" role="tablist" aria-label="反馈区域">
-      <button type="button" role="tab" data-fp="beat" class="active" aria-selected="true">整 beat 反馈</button>
-      <button type="button" role="tab" data-fp="line" aria-selected="false">逐句调整</button>
+      <button type="button" role="tab" data-fp="line" class="active" aria-selected="true">逐句调整</button>
       <button type="button" role="tab" data-fp="hist" aria-selected="false">历史反馈</button>
     </div>
     <div class="fp-body">
@@ -4409,6 +4419,42 @@
       </div>
     </div>`;
   layout.appendChild(feedback);
+  const handle = document.createElement("div");
+  handle.id = "split-handle";
+  handle.title = "拖动调整预览与反馈宽度";
+  layout.insertBefore(handle, feedback);
+
+  const dock = document.createElement("section");
+  dock.id = "beat-feedback-dock";
+  const transport = document.querySelector(".global-transport-bar");
+  if (transport) transport.after(dock); else center.appendChild(dock);
+  dock.appendChild(document.getElementById("fb-panel"));
+
+  (function initSplit() {
+    let dragging = false;
+    const clamp = (x) => Math.max(680, Math.min(x, layout.clientWidth - 390));
+    handle.addEventListener("pointerdown", (e) => {
+      dragging = true;
+      document.body.classList.add("col-resizing");
+      try { handle.setPointerCapture(e.pointerId); } catch (err) {}
+      e.preventDefault();
+    });
+    window.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      const left = clamp(e.clientX - layout.getBoundingClientRect().left);
+      layout.style.gridTemplateColumns = left + "px 6px minmax(380px,1fr)";
+    });
+    window.addEventListener("pointerup", () => {
+      dragging = false;
+      document.body.classList.remove("col-resizing");
+    });
+    window.addEventListener("resize", () => {
+      if (!layout.style.gridTemplateColumns) return;
+      const first = parseFloat(layout.style.gridTemplateColumns) || 900;
+      const left = clamp(first);
+      layout.style.gridTemplateColumns = left + "px 6px minmax(380px,1fr)";
+    });
+  })();
 
   const STATES = ["auto", "off", "still", "light", "full"];
   const LABEL = { auto: "自动", off: "无画面", still: "仅配图", light: "轻动效", full: "完整动效" };
@@ -4472,11 +4518,9 @@
       b.classList.toggle("active", on);
       b.setAttribute("aria-selected", String(on));
     });
-    document.getElementById("fb-panel").hidden = which !== "beat";
     document.getElementById("density-panel").hidden = which !== "line";
     document.getElementById("hist-panel").hidden = which !== "hist";
     if (which === "hist") loadHistory();
-    else if (which === "beat" && historyOpen) loadHistory();
   }
   feedback.querySelector(".fp-tabs").addEventListener("click", e => { const b = e.target.closest("[data-fp]"); if (b) tab(b.dataset.fp); });
 
@@ -5217,7 +5261,7 @@
   watchPreview();
 
   render();
-  tab("beat");
+  tab("line");
   setInterval(() => { if (!document.getElementById("density-panel").hidden) tick(); }, 350);
 
   // 初始化顺序：先把界面画出来，桥连上后再补历史与草稿；任何一步失败都不该让页面停住。

@@ -73,11 +73,11 @@ python3 "<craft>/helpers/review_surface.py" "<project>" --surface-only
 「预览暂时无法启动」；要恢复就重跑 `live_stage.py ... --composition <dir>` 再刷新。
 
 recompose 模式下，`build_review.py` 把 `recompose/lines.json` 写进
-`review/review_data.json` 的 `density` 块。页面重排为：**左侧大预览 + 视频下方横向 Beat 编号切换；右侧整栏反馈**。右侧三个 tab：
+`review/review_data.json` 的 `density` 块。页面重排为：**左侧大预览 + 视频下方横向 Beat 编号切换 + 视频下方整 beat 反馈；右侧逐句调整 / 历史反馈**。历史反馈是低频 tab；左侧和右侧中间的分界可以拖动。
 
-- **整 beat 反馈**：这个 beat 的整体意见；
-- **逐句调整**：按口播逐字稿的行调密度，批量条在句子列表上方；
-- **历史反馈**：读 `feedback/*.jsonl`。
+- **整 beat 反馈**：视频下方，占满左栏剩余高度；
+- **逐句调整**：右侧主 tab，按口播逐字稿的行调密度，批量条在句子列表上方；
+- **历史反馈**：右侧低频 tab，读 `feedback/*.jsonl`。
 
 - **单位是口播逐字稿的行**，不是 beat。beat 只是分组标题与批量入口。
 - 每行状态：`auto`（跟模型建议）/ `off`（无画面，只留字幕）/ `still`（仅配图，一张静态图）/ `light`（轻动效）/ `full`（完整动效）。

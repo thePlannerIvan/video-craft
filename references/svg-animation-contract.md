@@ -1,5 +1,7 @@
 # SVG 动效预埋与跨 Skill 交接契约（`svg-animation-contract.md`）
 
+> **适用条件（先读）**：这是**可选**的元素级动效契约。页面没有 `data-step`、`data-anim` 或稳定 `id` 时，仍可作为整页画面导入和合成；只有明确要做元素级动效时才需要按本文加钩子。
+
 > **核心原则**：为什么普通 AI 做的 SVG 动画看起来「只是简单的浮现」？因为它们只对最外层 `<g data-step="N">` 做了一个单层透明度/位移过渡。
 > 要在不写逐页定制代码的前提下做出**电影片头级的精致感**，`planners-ppt-hell` 在写 SVG 时必须把步进组内部的子构件挂上标准语义类名（`.anim-stroke`、`.anim-endpoint`、`.anim-fill`、`.anim-wall`、`.anim-card`、`.anim-shadow`、`.anim-tape`、`.slot-left`、`.slot-core`、`.slot-right`）。下游 `video-craft` 无需重新研究每页怎么动，也无需拆改 SVG DOM，直接按外层 `data-anim` + 内部子件语义类名驱动**复合子件连锁微动效（Compound Sub-Element Choreography）**。
 

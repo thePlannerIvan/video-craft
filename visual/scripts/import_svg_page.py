@@ -477,25 +477,27 @@ def main() -> int:
             print(f"  round trip: {mark}  ({len(r.substitutions)} href rewrite(s))")
         if args.audit and not a["addressable"]:
             unaddressable += 1
-            print("  x no element id below <svg>: the animation layer has nothing to name."
-                  "\n    Fix on the picture side: give every element that may be emphasized"
-                  " a stable id, then re-render the page.")
+            print("  ! no element id below <svg>: this page can still be used as a whole-page"
+                  "\n    visual. Element-level animation is unavailable until it gets stable ids;"
+                  " for larger re-composition use the recompose mode instead.")
         for problem in r.problems:
             print(f"  x {problem}")
 
     ids = audit_pages(results)
     if args.audit and not ids["clean"]:
-        print("\nx ids shared by more than one page — these land in ONE DOM, where the"
-              "\n  global selector resolves a repeated id to the first match, so"
-              "\n  \"animate #name\" can highlight another screen's element and nothing fails:")
+        print("\n! ids shared by more than one page — if you do element-level animation, these"
+              "\n  pages land in ONE DOM and the global selector resolves a repeated id to the"
+              "\n  first match, so \"animate #name\" can highlight another screen's element:")
         for name, owners in ids["collisions"].items():
             print(f"    #{name}  in  {', '.join(owners)}")
-        print("  Fix on the picture side: prefix every id with its page key so it is"
-              "\n  unique across the film, then re-render the pages.")
+        print("  Fix only if you want element-level animation: prefix every id with its"
+              "\n  page key so it is unique across the film, then re-render the pages.")
 
     if args.audit and (unaddressable or not ids["clean"]):
-        print(f"\n{unaddressable}/{len(results)} page(s) cannot be addressed by id · "
-              f"{len(ids['collisions'])} id(s) collide across pages.")
+        print(f"\n{unaddressable}/{len(results)} page(s) have no element id · "
+              f"{len(ids['collisions'])} id(s) collide across pages."
+              "\n  This is capability info, not an import failure: whole-page visuals remain usable.")
+    if any(r.problems for r in results):
         return 1
     return 0
 

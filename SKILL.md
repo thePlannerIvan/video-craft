@@ -239,7 +239,7 @@ python3 "<craft>/helpers/import_srt_timeline.py" "<project>" \
 
 ### 7. 动效与合成
 
-静态 SVG 必须来自第 1 步导入的项目内副本。沿用 `data-step`、`data-anim`、元素 `id` 和画面原有尺寸；不要把页面截图当成可编辑 SVG。
+静态 SVG 必须来自第 1 步导入的项目内副本。若页面已有 `data-step`、`data-anim`、元素 `id`，沿用它们；没有也可以导入——整页会作为一张画面使用，只有元素级动效才需要稳定 id。不要把页面截图当成可编辑 SVG。
 
 - HyperFrames：读 `$hyperframes`。整片走 `visual/scripts/generate-composition.py`；单层动效也先在 composition 中预览。只有最终合成需要独立透明视频，才用 `helpers/render_layer.py` 输出 `.mov`；兼容旧媒体叠层面时可同时输出 `.webm`。预览与渲染前先 `hyperframes check`。**任何 `hyperframes render` 之前必须先跑 `python3 "<craft>/helpers/check_render_env.py" "<project>/composition"`** —— 它报 RAM、可用内存与建议的 `--workers` 值（默认从 1 起）；并先过 `references/timing-lock.md`：`--verify` 退 0，且 `feedback/*.jsonl` 的未决项已清或显式接受。缺一不渲。
   **动效的源是 composition，不是那段视频**：层要能改、能预览，才谈得上「先审后渲」。

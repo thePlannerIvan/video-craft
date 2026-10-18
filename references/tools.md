@@ -37,7 +37,7 @@ page 仍是默认与 fallback。
 | 位置 | 拥有的内容 | 下一消费者 |
 |---|---|---|
 | `_idea/current.md`、`deliverable/` 或 `input/` | Idea 的作者决定、脚本、内容契约、资产与制作说明 | Craft 承接；原始内容版本保留 |
-| `<pages>/_internal/02_svg_source/`、`design_direction.md` | PPT Hell 批准的 SVG、稳定 id、合成约束 | 页面导入器与动画层 |
+| `<pages>/_internal/02_svg_source/`、`design_direction.md` | PPT Hell 的 SVG、可选稳定 id、可选合成提示 | 页面导入器与动画层；无 id 时整页可用，不阻塞导入 |
 | `edit/project.md`、`production-plan.md` | 本次采用版、输入路径、当前决定和计划 | 制作、恢复与交接 |
 | `edit/transcripts/`、`takes_packed.md` | 转写缓存、Take 阅读视图 | EDL 编辑和字幕 |
 | `edit/edl.json`、`segment_durations.json` | 剪辑决定与该版底片实测记录 | 渲染、字幕与核验 |

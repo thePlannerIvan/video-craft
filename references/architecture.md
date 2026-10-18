@@ -181,7 +181,7 @@ Craft 把 board 当视觉参考、以 composition 为源重排。它复用同一
 |---|---|---|---|
 | `visual/scripts/generate-composition.py` | **组成品骨架的唯一生产者**：一个 step 一个 clip、主题 token 内联进 `:root`、声音元素、时间轴提示；**声明了 `mediaClips` 的屏**（录屏/实拍）改发 `<video class="clip">` 并带 `data-media-start` —— 于是 composition 就是画面轨的**唯一源**，审阅与交付是同一份；随包拷 GSAP 与嵌入桥进 `composition/assets/`；`--verify` 的时间／尺寸／**父级穿越**闸门 | `generate-composition.py <project> [--theme] [--layout] [--audio] [--media-box x,y,w,h] [--verify]` | 不实现每个 clip 的视觉（那是 agent 写进 HTML）；**不写 `package.json`**；不替项目决定录屏落在哪 —— 落位由 `--media-box` 给 |
 | `visual/assets/composition-embed-bridge.js` | **composition 自己的控制面**：被 iframe 时接 postMessage（`hello/seek/play/pause` → `ready/time`），让审阅页能演活的工程态。审阅页在不透明源 iframe 里够不着子页 DOM，这是唯一通道 | 由生成器拷进 `composition/assets/`；`window.__kwEmbedBridge` 幂等标记 | 非嵌入路径**一个字节都不影响**（`window.parent === window` 时第一行返回）；渲染时没人给它发消息 |
-| `visual/scripts/import_svg_page.py` | **画面页与动画层之间的唯一适配器**：逐字内联、只改图片 href 前缀、边界解析、`--audit`（可指名性 + 跨页 id 碰撞）、`--prove`（往返未改坏） | `import_svg_page.py <project> [--pages] [--audit/--prove/--emit]` | **不改页面标记**、不改 id、不保证 composition 能渲染（那是 `hyperframes check`） |
+| `visual/scripts/import_svg_page.py` | **画面页与动画层之间的唯一适配器**：逐字内联、只改图片 href 前缀、边界解析、`--audit`（可指名性 + 跨页 id 碰撞，均为提示，不因无 id 失败）、`--prove`（往返未改坏） | `import_svg_page.py <project> [--pages] [--audit/--prove/--emit]` | **不改页面标记**、不改 id、不保证 composition 能渲染（那是 `hyperframes check`） |
 | `visual/scripts/check_themes.py` | 主题库的判据：`theme.json` 可解析、必填 token、`var()` 链解析得掉、对比度、圆角刻度一致、无死节奏 token | `check_themes.py [themes_dir] [--json]` | 不判断风格好不好；不改主题文件 |
 | `visual/scripts/encode_transparent.py` | 透明层的编码（PNG 序列 → MOV） | `encode_transparent.py <png_dir> -o <out> [--codec] [--fps]` | 不验证透明（那是 `check_alpha.py`） |
 | `visual/scripts/align-visual-plan.py` | 把 `script.md` 的 Beat 对齐到实测 cue，产出 `visual-plan-alignment.json` | `align-visual-plan.py --plan <plan> --script <md> --edit-dir <dir> --output <json>` | 不替人处理 low/unmatched |
@@ -248,8 +248,9 @@ Craft 把 board 当视觉参考、以 composition 为源重排。它复用同一
   `invalid_parent_traversal_in_asset_path` 拒绝）→ `assets/pages/<page_key>/<file>` 并拷进 composition；
   ② 只动 `<image>` 的 `href`/`xlink:href` 值，**页面其余一字不动**，用「写回去 == 源文件字节」自证。
 - **谁读它**：`generate-composition.py`（内联进 clip）、以及独立跑 `--audit` 时的人。
-- **两条硬约定**：**按 `id` 指名元素**（DOM 序号在重渲后会静默错绑）；**id 全片唯一**
+- **两条可选约定（只在做元素级动效时成立）**：按 `id` 指名元素（DOM 序号在重渲后会静默错绑）；id 全片唯一
   （各屏内联进同一个 DOM，重复的 `#caption-1` 只命中第一屏——`audit_pages()` 报这个）。
+  没有 id 的页面照样导入，作为整页画面使用；`--audit` 只报能力，不拦。
 - **`--prove` 证明什么、不证明什么**：只证明**页面往返没被改坏**，不证明 composition 渲染得出来。
   后者归 `cd composition && npx hyperframes check`；`generate-composition.py --verify` 另外拦父级穿越。
 - **为什么这是一个真 adapter 而不是多余的中间层**：翻译有两处以上消费者——`generate-composition.py`
@@ -311,7 +312,7 @@ studio 的「Describe a change to the agent」只调 `navigator.clipboard.writeT
 | 相邻方 | 它给本 Skill 什么 | 本 Skill 给它什么 | 什么不归本 Skill |
 |---|---|---|---|
 | `video-idea-system`（上游） | `script.md`、`visual-plan.json`、`assets/`、制作说明、念稿审阅记录 | 内容契约落地时发现的技术缺口；不符 `script_hash` 时的**停手与追问作者**（结论停在作者那里，不飞回上游）。注意它下游做画面那一步**也核** `script_hash`——那一次在录制前，来得及 | 不写稿、不改上屏文字、不做发散与主张 |
-| `planners-ppt-hell`（视频路线，上游的画面） | 静态 SVG 页（`_internal/02_svg_source/` 或 `input/scenes/`） | 三个合成事实的字段契约、导入器、按 `id` 指名的要求、`--audit` 的碰撞报告 | 不画画面、不改页面、不决定风格怎么落 |
+| `planners-ppt-hell`（视频路线，上游的画面） | 静态 SVG 页（`_internal/02_svg_source/` 或 `input/scenes/`） | 三个合成事实的字段契约、导入器、可选 id 指引、`--audit` 的能力/碰撞报告 | 不画画面、不改页面、不决定风格怎么落；无 id 页面按整页使用 |
 | `hyperframes` | 组成品的运行时与校验器（`check` / `render` / `preview`） | `composition/index.html` 的骨架与内联页面 | 不是本 Skill 的一部分；它的 CLI 行为变化属于外部工具那一类 gotcha |
 | `02-skills-library/.venv` | 共用解释器（3.9.6，依赖齐） | — | 不由本 Skill 维护 |
 | 作者（人） | 目标、决定、录音、逐屏反馈 | 可审的样片、剪接审阅页、视觉审阅页、成片与 SRT | 不替作者确认策略、不替作者念稿、不替作者批准 |

@@ -243,9 +243,9 @@ def generate(project: Path, theme_id: str, audio: Path | None,
                              "byte-identical, so what landed here is not the page any more")
                 ids = result.audit["element_ids"]
                 if not ids:
-                    print(f"warn: page {page_key} has no element id below <svg> — the animation "
-                          "layer can only address the page as a whole. Ask the picture side to give "
-                          "every element that may be emphasized a stable id, then re-render.")
+                    print(f"warn: page {page_key} has no element id below <svg> — continuing with "
+                          "the page as a whole. For element-level animation, add stable ids on the "
+                          "picture side or use the recompose mode.")
                 page_comment = (
                     f"    <!-- page {esc(page_key)} imported verbatim from {result.source}\n"
                     f"         · only <image> href prefixes rewritten; round trip proved byte-identical\n"

@@ -2,8 +2,9 @@
 """Import a static picture page (SVG) into the composition, verbatim.
 
 The video route's static screen is an SVG page and it stays SVG because the
-animation layer comes later. Handing over a page therefore hands over a **live
-structure whose elements can be named**, not a pile of files.
+animation layer comes later. Handing over a page hands over a **visual**; if
+the page also exposes element ids, those elements can be named for element-level
+animation. A page without ids is still a valid whole-page visual.
 
 A page arrives one of two ways, and both are supported:
 
@@ -17,16 +18,19 @@ A page arrives one of two ways, and both are supported:
 the picture project's root when you can** — the pages carry hrefs relative to
 their own project, and the root is what those hrefs are written against.
 
-Four rules, each checked:
+Four rules; the id rule is a capability, not a gate:
 
 1. **The page is copied byte for byte.** `_inline_image_hrefs` touches only the
    `href` / `xlink:href` values of `<image>` tags; `import_page` proves it by
    rewriting them back in memory and comparing against the source bytes.
-2. **Elements are addressed by `id`.** `audit_page` counts the ids a page
-   exposes, and `audit_pages` reports ids that two pages share — inline pages
+2. **Elements are optionally addressed by `id`.** `audit_page` counts the ids a
+   page exposes; zero ids is allowed and the page is used as a whole. If pages
+   do expose ids, `audit_pages` reports ids shared by two pages — inline pages
    land in one DOM, where a repeated id makes `#name` ambiguous and the global
    selector silently picks the first. DOM order is not a substitute either: one
    extra `<text>` in a re-render re-binds `slice(-10)` to a different element.
+   Cross-page collisions stay an error only because they would mis-bind element
+   animation; they are not a requirement that every page must have ids.
 3. **Page coordinates are video pixels.** Every picture page is
    `viewBox="0 0 1920 1080"`, so animation needs no coordinate transform.
 4. **Assets live inside the composition.** Pages reference images as
@@ -496,7 +500,12 @@ def main() -> int:
     if args.audit and (unaddressable or not ids["clean"]):
         print(f"\n{unaddressable}/{len(results)} page(s) have no element id · "
               f"{len(ids['collisions'])} id(s) collide across pages."
-              "\n  This is capability info, not an import failure: whole-page visuals remain usable.")
+              "\n  no ids is capability info (whole-page visuals stay usable);"
+              "\n  cross-page collisions remain an error only because they would mis-bind element animation.")
+    # No ids is not a failure. Cross-page collisions are: they are not "missing ids",
+    # they are ids that would silently animate the wrong page if element animation runs.
+    if args.audit and not ids["clean"]:
+        return 1
     if any(r.problems for r in results):
         return 1
     return 0

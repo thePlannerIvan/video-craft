@@ -20,7 +20,7 @@ DSH tokens 仍来自 review-core，生成时内联。导航显示分屏标题、
 `review/review_data.json` 的 `density` 块；页面重排为左侧大预览、视频下方横向 Beat 编号切换、右侧整栏反馈。右侧三 tab：整 beat 反馈 / 逐句调整 / 历史反馈。逐句调整：
 
 - 单位是**口播逐字稿的行**（字幕 cue），不是 beat；beat 只是分组与批量入口。
-- 状态：`auto`（跟 `proposal`）/ `off`（字幕级，不要图）/ `still` / `light` / `full`。
+- 状态：`auto`（跟 `proposal`）/ `off`（无画面）/ `still`（仅配图）/ `light`（轻动效）/ `full`（完整动效）。
 - 播放时当前行高亮；点行 seek；`0/1/2/3/a` 设状态；单击 / Shift 连选 / Cmd-Ctrl 加选 / 按住拖选多行；批量条应用到选中；beat 标题一键“全字幕/全完整”；可撤销。
 - 「动效细节」是同一 dock 的第二个 tab，只在选中“有图”的句子时使用。
 - 提交写入同一份 `review/review-submissions.json` 的 `phase: "density"` 记录；

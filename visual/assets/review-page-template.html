@@ -4147,7 +4147,7 @@
     --d-strong-bg:var(--dsw-alias-button-contrast-fill);
     --d-strong-fg:var(--dsw-alias-label-primary-inverted);
   }
-  body.density-on .layout{grid-template-columns:minmax(0,1.75fr) 6px minmax(380px,1fr) !important;height:calc(100vh - 46px)}
+  body.density-on .layout{grid-template-columns:minmax(0,1.75fr) 10px minmax(380px,1fr) !important;height:calc(100vh - 46px)}
   body.density-on .side-left,body.density-on .side-right{display:none !important}
   body.density-on .center-stage{padding:10px 12px 8px;display:flex;flex-direction:column;gap:8px;min-width:0}
   body.density-on .canvas-toolbar,body.density-on #advanced-toggle{display:none !important}
@@ -4287,15 +4287,16 @@
   #dens-status.err{color:var(--dsw-alias-state-error-primary)}
   #dens-status.ok{color:var(--dsw-alias-state-success-primary)}
 
-  body.density-on #beat-feedback-dock{flex:1 1 auto;min-height:190px;display:flex;flex-direction:column;padding:6px 2px 0;min-width:0}
-  body.density-on #beat-feedback-dock #fb-panel{display:flex;flex-direction:column;gap:6px;min-height:0;flex:1 1 auto;overflow:auto}
+  body.density-on #beat-feedback-dock{flex:1 1 auto;min-height:150px;display:flex;flex-direction:column;padding:6px 2px 0;min-width:0}
+  body.density-on #beat-feedback-dock #fb-panel{display:flex;flex-direction:column;gap:6px;min-height:0;flex:1 1 auto;overflow:hidden}
   body.density-on #beat-feedback-dock #vfb-kind,
   body.density-on #beat-feedback-dock .vfb-history{display:none !important}
-  body.density-on #beat-feedback-dock #vfb-text{flex:1 1 auto;min-height:110px;max-height:none;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1)}
+  body.density-on #beat-feedback-dock #vfb-text{flex:1 1 auto;min-height:56px;max-height:none;overflow:auto;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1)}
   body.density-on #beat-feedback-dock .vfb-head{flex:0 0 auto}
   body.density-on #beat-feedback-dock .vfb-actions{flex:0 0 auto}
-  body.density-on #split-handle{width:6px;cursor:col-resize;position:relative;align-self:stretch;touch-action:none}
-  body.density-on #split-handle::after{content:"";position:absolute;left:2px;top:12%;bottom:12%;width:2px;border-radius:2px;background:var(--dsw-alias-border-l2);opacity:.55;transition:opacity .12s ease}
+  body.density-on #split-handle{width:10px;cursor:col-resize;position:relative;align-self:stretch;touch-action:none;z-index:3;background:var(--dsw-alias-bg-base)}
+  body.density-on #split-handle::after{content:"";position:absolute;left:4px;top:12%;bottom:12%;width:2px;border-radius:2px;background:var(--dsw-alias-border-l3);opacity:.9;transition:opacity .12s ease,background .12s ease}
+  body.density-on #split-handle::before{content:"";position:absolute;left:3px;top:50%;width:4px;height:52px;transform:translateY(-50%);border-radius:3px;background:repeating-linear-gradient(to bottom,var(--dsw-alias-label-tertiary) 0 2px,transparent 2px 8px);opacity:.85}
   body.density-on #split-handle:hover::after,body.density-on.col-resizing #split-handle::after{opacity:1;background:var(--dsw-alias-brand-primary)}
   body.density-on.col-resizing{cursor:col-resize;user-select:none}
   #preview-fallback{position:absolute;left:12px;right:12px;bottom:12px;padding:10px 12px;background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary);border-radius:6px;font-family:var(--font-sans);font-size:11px;line-height:1.6;display:flex;flex-direction:column;gap:6px;z-index:5}
@@ -4305,6 +4306,7 @@
 
   @media (max-width: 980px){
     body.density-on .layout{grid-template-columns:1fr !important;height:auto;min-height:calc(100vh - 46px)}
+    body.density-on #split-handle{display:none}
     body.density-on #feedback-panel{min-height:58vh;padding:8px 0 0}
     body.density-on .player-box{max-height:none}
   }
@@ -4442,7 +4444,7 @@
     window.addEventListener("pointermove", (e) => {
       if (!dragging) return;
       const left = clamp(e.clientX - layout.getBoundingClientRect().left);
-      layout.style.gridTemplateColumns = left + "px 6px minmax(380px,1fr)";
+      layout.style.gridTemplateColumns = left + "px 10px minmax(380px,1fr)";
     });
     window.addEventListener("pointerup", () => {
       dragging = false;
@@ -4452,7 +4454,7 @@
       if (!layout.style.gridTemplateColumns) return;
       const first = parseFloat(layout.style.gridTemplateColumns) || 900;
       const left = clamp(first);
-      layout.style.gridTemplateColumns = left + "px 6px minmax(380px,1fr)";
+      layout.style.gridTemplateColumns = left + "px 10px minmax(380px,1fr)";
     });
   })();
 

@@ -23,12 +23,12 @@ v3 已补的两个缺口：`helpers/edl_from_keep.py`（keep-list → 静音吸�
 
 | 包 | 判据 | 依赖能力 | DoD（点名检查） |
 |---|---|---|---|
-| 保真页面 | 作者要求逐像素保留那版页面 | 页面导入、时间轴、页级动效 | `check_parity` / `check_screen_text` / `check_motion` |
+| 保真页面 | 作者要求逐像素保留那版页面 | 页面导入、时间轴、页级动效 | `check_parity` / `check_screen_text`；**页面没有元素级动效时 `check_motion --expect-still`**（默认判据会把静止页误报成“时间轴没注册”） |
 | 重排画面 | 板子只作参考，允许为动效重排 | recompose、composition | `check_overlay` / 人物位不被占用 |
 | 叠层 | 已有成片，只叠字幕/图形 | 合成、字幕 | `check_overlay` / `verify_av` |
 | 人物层 | 需要一个与声音严格同步的小窗/角落人像 | 时间映射、FFmpeg overlay | `check_overlay`（人像区不压字）+ judgment：同一帧对比源与成片 |
 | 字幕 | 需要上屏文字 | 字幕生成 | 内烧需 libass；缺则外挂 SRT，并在交付说明里写清 |
-| 音乐床 | 需要 BGM | 单一混音出口 | `audio_diag`（停顿时可闻）+ judgment：整体响度一键统一 |
+| 音乐床 | 需要 BGM | 单一混音出口 | `audio_diag`（停顿时可闻）+ **进 composition 前先 `audio_mix`/`audio_fix` 到 -14 LUFS**（composition 不会替你归一）+ judgment：整体听感 |
 
 没有"必须四选一"：这次任务就是 保真页面 + 人物层 + 外挂字幕 + 音乐床 叠加。
 包的记录写在 `edit/project.md`（人读），**不新增 project.json**；只有被工具实际消费的字段才值得机器化。

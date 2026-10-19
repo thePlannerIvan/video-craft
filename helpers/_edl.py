@@ -77,3 +77,73 @@ def render_record(edit_dir: Path, *, allow_projected: bool = False) -> tuple:
     edl_path = Path(edit_dir) / "edl.json"
     digest = edl_digest(edl_path) if edl_path.exists() else None
     return select_render_record(blob, digest, allow_projected=allow_projected)
+
+def duration_record(edit_dir: Path, count: int, edl_path: Path | None = None
+                    ) -> tuple[list[float] | None, str | None, str | None, str | None]:
+    """One answer for "which durations should captions use?".
+
+    Returns `(durations, source, tag, problem)`; `source` is `"measured"` or
+    `"projected"`. Policy: the **latest** matching record whose segment count
+    matches wins — the same record the delivery gates read. A record with the
+    right digest but the wrong count is skipped (reported when nothing else
+    fits), so one bad record cannot refuse a project that has a good one.
+
+    `edl_path` matters: `srt_export --edl` may point at a different file than
+    `edit_dir/edl.json`; the digest must be taken from the EDL actually in use.
+    """
+    edit_dir = Path(edit_dir)
+    edl_file = Path(edl_path) if edl_path is not None else edit_dir / "edl.json"
+    digest = edl_digest(edl_file) if edl_file.exists() else None
+    blob = _load_duration_blob(edit_dir)
+    if blob is None:
+        return None, None, None, None
+
+    def _candidates(allow_projected: bool):
+        return [(tag, entry) for tag, entry in blob.items()
+                if isinstance(entry, dict) and isinstance(entry.get("durations"), list)
+                and (allow_projected or not entry.get("projected"))]
+
+    hashed = [(t, e) for t, e in _candidates(True) if e.get("edl_sha256")]
+    # Same policy as select_render_record: digest match wins; if no record carries a
+    # digest at all (pre-digest projects), the newest record is the best guess; if
+    # records carry digests but none matches, the render is stale — do not silently
+    # fall back to a no-digest record.
+    use_no_digest = not hashed and bool(digest)
+
+    def _matching(allow_projected: bool):
+        records = _candidates(allow_projected)
+        if digest and not use_no_digest:
+            return [(t, e) for t, e in records if e.get("edl_sha256") == digest]
+        if use_no_digest:
+            return [(t, e) for t, e in records if not e.get("edl_sha256")]
+        return records
+
+    for allow_projected, source in ((False, "measured"), (True, "projected")):
+        records = _matching(allow_projected)
+        if allow_projected:
+            records = [(t, e) for t, e in records if e.get("projected")]
+        count_problem = None
+        for tag, entry in reversed(records):
+            durations = [float(x) for x in entry["durations"]]
+            if len(durations) == count:
+                return durations, source, tag, None
+            count_problem = f"{tag}: {len(durations)} 段，EDL 有 {count} 段"
+        if count_problem:
+            return None, None, None, count_problem
+
+    hashed = [tag for tag, entry in blob.items()
+              if isinstance(entry, dict) and entry.get("edl_sha256")]
+    if hashed:
+        return None, None, None, "segment_durations.json 是另一次 EDL 的渲染结果（哈希不符）"
+    return None, None, None, None
+
+
+def _load_duration_blob(edit_dir: Path):
+    path = Path(edit_dir) / "segment_durations.json"
+    if not path.exists():
+        return None
+    try:
+        blob = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    return blob if isinstance(blob, dict) else None

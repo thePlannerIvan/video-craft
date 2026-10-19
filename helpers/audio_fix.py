@@ -114,7 +114,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Voice fix chain + loudness-matched A/B")
     ap.add_argument("input", type=Path)
     ap.add_argument("-o", "--output", type=Path, default=None, help="Processed wav output")
-    ap.add_argument("--target-lufs", type=float, default=-16.5, help="Loudness target (default -16.5)")
+    ap.add_argument("--target-lufs", type=float, default=-16.5, help="Material-preprocessing loudness target (default -16.5). The delivery standard is render.py's -14 LUFS normalisation; do not treat this number as the film standard.")
     ap.add_argument("--deess", action="store_true", help="Add sidechain de-ess (5-8k transients)")
     ap.add_argument("--ab", type=str, default=None, help="A/B excerpt 'START,DUR' in seconds")
     ap.add_argument("--ab-out", type=Path, default=None, help="A/B output dir (default: input parent)")

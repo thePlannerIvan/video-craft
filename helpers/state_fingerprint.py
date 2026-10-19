@@ -33,7 +33,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 SCHEMA = "video-craft/delivery-fingerprint"
-VERSION = 1
+VERSION = 2
 
 
 def sha256(path: Path) -> str:
@@ -78,7 +78,7 @@ def capture(project: Path) -> dict:
         "render_record": entry(project / "edit" / "segment_durations.json"),
     }
     out_dir = project / "成品"
-    deliverables = [entry(p) for p in sorted(out_dir.glob("*")) if p.is_file() and p.name != "delivery.json"]
+    deliverables = [entry(p) for p in sorted(out_dir.rglob("*")) if p.is_file() and p.name != "delivery.json"]
     return {
         "schema": SCHEMA,
         "version": VERSION,
@@ -95,6 +95,8 @@ def compare(saved: dict, now: dict) -> list[str]:
     diff: list[str] = []
     if saved.get("schema") != SCHEMA:
         diff.append(f"指纹文件不是本工具写的（schema={saved.get('schema')!r}）")
+    elif saved.get("version") != VERSION:
+        diff.append(f"指纹是旧版本（v{saved.get('version')}）采集的，嵌套交付件可能没被记录——重新 capture 后再 verify")
 
     for key, cur in (now.get("sources") or {}).items():
         old = (saved.get("sources") or {}).get(key)

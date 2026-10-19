@@ -22,18 +22,19 @@ Video Craft 把已经确定的内容做成可播放、可审阅、可返修的�
 
 顺序仍是**先剪点、后画面**：逐字剪辑面定"说什么、留哪句"，确认之后才做动效 / 密度。剪点一动，画面锚点、字幕、composition 全部要重出，反过来做就是白做。
 
-## 一条流程，两种构建方式
+## 历史构建方式的命名（不是要选的路线）
 
-工作方式不变：作者仍在 PPT Hell 里确认画面、录制、再做成片。Craft 不新增用户要选的路线；只决定**最终成片是否严格保留那版画面**。
+先读 [capability-packs.md](references/capability-packs.md)：现在按**能力包组合**，不再先选路线。
+下表是旧项目和旧文档里会遇到的三个历史名字，以及它们大致对应哪几组能力包；新项目按能力包记录（`edit/project.md`），不再声明路线。
 
-| 构建方式 | 画面源 | 谁决定 | 审阅 |
+| 历史名 | 大致对应的能力包 | 谁决定 | 审阅 |
 |---|---|---|---|
-| **page**（默认） | PPT Hell 静态 SVG 快照，逐像素保留 | 作者已批准页面；Craft 只做动效与合成 | 动效与合成面（逐元素） |
-| **recompose**（opt-in） | PPT Hell 的 board 作为视觉参考；composition 为源，允许重排 | 作者批准方向；Craft 在成片阶段重排 | 动效与合成面 + 右侧整栏反馈（整 beat / 逐句 / 历史） |
-| **composite** | 已有成片或外部透明层 | 作者已有素材；Craft 只做声音/字幕/合成 | 已有媒体审阅与叠层 |
+| **page** | 保真页面 + 字幕（+ 音乐床） | 作者已批准页面；Craft 只做动效与合成 | 动效与合成面（逐元素） |
+| **recompose** | 重排画面 + 字幕（+ 音乐床） | 作者批准方向；Craft 在成片阶段重排 | 动效与合成面 + 右侧整栏反馈（整 beat / 逐句 / 历史） |
+| **composite** | 叠层 + 字幕 | 作者已有素材；Craft 只做声音/字幕/合成 | 已有媒体审阅与叠层 |
 
-- **page 是默认和 fallback**，全链 1–10 步一行不动。
-- **recompose** 不是用户路线，是项目级的内部构建模式（`recompose.json`）。失败或作者要求“这版别改”时回 page。
+- **page 仍是多数项目的默认组合**（保真页面），但不是必须的路线；作者要“更大自由度”时换成重排画面包，两者可以同片混用（按单元）。
+- **recompose** 是历史命名，对应“重排画面”能力包（`recompose.json` 只是该组合的项目标记）。失败或作者要求“这版别改”时回保真页面。
 - recompose 不调用 `import_svg_page.py` / `generate-composition.py` / `check_parity.py`；它复用同一套事实层（声音、EDL、字幕、anchors、timeline）和同一套交付核验。
 - recompose 的密度单位是**口播逐字稿的行**；beat 只是分组与批量入口。`off` 是结构指令（这一句不要图），不是动效参数。
 
@@ -83,7 +84,7 @@ densities 的提交仍走同一个审阅面，由 `review_inbox.py` 收件：`fe
 | 原始视频或录音，需要取舍 | 转写 → EDL → 源媒体逐字预览 → 确认后输出 | 不直接手改成片后再猜字幕时间 |
 | 已剪音频 + SRT + SVG | 核版本 → 导入 SVG → 对齐时间 → 动效与合成 | SRT 只能标为 `srt-import`，不能冒充 EDL 实测 |
 | 已有项目或返修反馈 | 读项目依据和收件回执 → 只重建受影响部分 | 不在旧审阅页上继续写新反馈 |
-| 已锁音频 + 词级锚点，画面是连续动画 / 图解 | 默认 page；作者明确要更大重排自由度时开 **recompose**：`recompose_plan.py` → composition → 逐字密度 | 不import静态页、不生成 composition、不做 page/composition parity；page 仍是 fallback |
+| 已锁音频 + 词级锚点，画面是连续动画 / 图解 | 默认组合「保真页面 + 字幕」；作者要更大重排自由度时改用「重排画面」包（旧名 recompose）：`recompose_plan.py` → composition → 逐字密度 | 不import静态页、不生成 composition、不做 page/composition parity；两包可按单元混用 |
 
 项目目录、剪辑目录和上游目录必须使用绝对路径。先确认当前采用版本，再执行下面的流程。
 
@@ -241,7 +242,7 @@ python3 "<craft>/helpers/import_srt_timeline.py" "<project>" \
 
 静态 SVG 必须来自第 1 步导入的项目内副本。若页面已有 `data-step`、`data-anim`、元素 `id`，沿用它们；没有也可以导入——整页会作为一张画面使用，只有元素级动效才需要稳定 id。不要把页面截图当成可编辑 SVG。
 
-- HyperFrames：读 `$hyperframes`。整片走 `visual/scripts/generate-composition.py`；单层动效也先在 composition 中预览。只有最终合成需要独立透明视频，才用 `helpers/render_layer.py` 输出 `.mov`；兼容旧媒体叠层面时可同时输出 `.webm`。预览与渲染前先 `hyperframes check`。**任何 `hyperframes render` 之前必须先跑 `python3 "<craft>/helpers/check_render_env.py" "<project>/composition"`** —— 它报 RAM、可用内存与建议的 `--workers` 值（默认从 1 起）；并先过 `references/timing-lock.md`：`--verify` 退 0，且 `feedback/*.jsonl` 的未决项已清或显式接受。缺一不渲。
+- HyperFrames：读 `$hyperframes`。整片走 `visual/scripts/generate-composition.py`；单层动效也先在 composition 中预览。只有最终合成需要独立透明视频，才用 `helpers/render_layer.py` 输出 `.mov`；兼容旧媒体叠层面时可同时输出 `.webm`。预览与渲染前先 `hyperframes check`。**任何 `hyperframes render` 之前先跑 `python3 "<craft>/helpers/probe_env.py" "<project>"` 报告能力（libass/字体预算/残留进程；只报告不阻断），再跑 `python3 "<craft>/helpers/check_render_env.py" "<project>/composition"`** —— 它报 RAM、可用内存与建议的 `--workers` 值（默认从 1 起）；并先过 `references/timing-lock.md`：`--verify` 退 0，且 `feedback/*.jsonl` 的未决项已清或显式接受。缺一不渲。
   **动效的源是 composition，不是那段视频**：层要能改、能预览，才谈得上「先审后渲」。
 - Manim：只有严密数学或技术动画才调用 `$manim-video`。
 - 自定义逐帧：读 `references/frame-animation-pipeline.md`。
@@ -326,6 +327,7 @@ python3 "<craft>/helpers/state_fingerprint.py" capture "<project>"   # 交付自
 ## 文件与参考入口
 
 - 一条流程与两种构建方式：`references/recompose-mode.md`
+- 能力系统与共享事实（v3 方向）：`references/capability-packs.md`
 - 可执行命令与产物目录：`references/tools.md`
 - 上游交接与责任边界：`references/content-to-production.md`
 - 视觉时间绑定：`references/visual-timeline.md`

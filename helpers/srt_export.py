@@ -29,6 +29,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _edl  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _words import content_len as _content_len  # noqa: E402
 from _words import normalize as _normalize_shared  # noqa: E402
 
@@ -197,18 +200,11 @@ def _measured_durations(edit_dir: Path, edl_file: Path, count: int,
                         strict: bool) -> tuple[list[float] | None, str | None]:
     """Per-segment durations the last render actually produced.
 
-    The rendered timeline is authoritative. ffmpeg's frame-grid rounding is only
-    known post-hoc (a 3-decimal `-t` plus the encoder's own ceil added up to a
-    full second over 38 segments), so cues built on the EDL's nominal
-    Σ(end-start) ran early and every caption check still passed.
-
-    Returns `(durations, source)` with source in {"measured", "projected", None}:
-    a real render is preferred; the analytic projection written by
-    `duration_plan.py` is used when no render exists yet, so captions and the
-    visual timeline can be built AND reviewed before the film is encoded. A
-    projected timeline is recorded as such and is not a delivery artefact. A
-    render that does not belong to this EDL is refused when `strict`
-    (build/check), and reported otherwise (article preparation is text work).
+    The policy lives in `_edl.duration_record` — one answer shared with the
+    delivery gates. Before, this function kept its own loop and took the FIRST
+    matching record while delivery took the LAST: two records with the same EDL
+    digest produced different caption timelines (audit evidence:
+    caption [1.1, 0.9] vs delivery [1.0, 1.0], same EDL, same total).
     """
     path = edit_dir / "segment_durations.json"
     if not path.exists():
@@ -216,46 +212,24 @@ def _measured_durations(edit_dir: Path, edl_file: Path, count: int,
               "（可先跑 helpers/duration_plan.py 得到预演时间轴）")
         return None, None
     try:
-        blob = json.loads(path.read_text(encoding="utf-8"))
+        json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         print("  · segment_durations.json 无法解析，按标称时间轴生成")
         return None, None
-    digest = _sha256(edl_file)
-    measured: tuple[str, list[float]] | None = None
-    projected: tuple[str, list[float]] | None = None
-    mismatches = []
-    for tag, entry in blob.items():
-        if not isinstance(entry, dict) or not isinstance(entry.get("durations"), list):
-            continue
-        durations = [float(x) for x in entry["durations"]]
-        problem = None
-        if len(durations) != count:
-            problem = (f"segment_durations.json[{tag}] 有 {len(durations)} 段，"
-                       f"EDL 有 {count} 段")
-        elif entry.get("edl_sha256") and entry["edl_sha256"] != digest:
-            problem = "segment_durations.json 是另一次 EDL 的渲染结果（哈希不符）"
-        if problem:
-            mismatches.append(f"{tag}: {problem}")
-            continue
-        if entry.get("projected"):
-            projected = projected or (tag, durations)
+    durations, source, tag, problem = _edl.duration_record(edit_dir, count, edl_path=edl_file)
+    if durations is not None:
+        total = sum(durations)
+        if source == "measured":
+            print(f"  · 字幕时间轴取自实测段时长（{tag}，共 {total:.3f}s）")
         else:
-            measured = measured or (tag, durations)
-    if measured:
-        tag, durations = measured
-        print(f"  · 字幕时间轴取自实测段时长（{tag}，共 {sum(durations):.3f}s）")
-        return durations, "measured"
-    if projected:
-        tag, durations = projected
-        print(f"  ！字幕时间轴取自解析预演（{tag}，共 {sum(durations):.3f}s）——"
-              "可在渲染前用于审阅；交付前必须真实渲染并重建字幕")
-        return durations, "projected"
-    if mismatches:
-        detail = "；".join(mismatches)
+            print(f"  ！字幕时间轴取自解析预演（{tag}，共 {total:.3f}s）——"
+                  "可在渲染前用于审阅；交付前必须真实渲染并重建字幕")
+        return durations, source
+    if problem:
         if strict:
-            _fail(f"没有找到与当前 EDL 匹配的段时长记录（{detail}）——"
+            _fail(f"没有找到与当前 EDL 匹配的段时长记录（{problem}）——"
                   "先跑 helpers/duration_plan.py 得到预演时间轴，或重新渲染后再生成字幕")
-        print(f"  ! 没有找到与当前 EDL 匹配的段时长记录（{detail}）——"
+        print(f"  ! 没有找到与当前 EDL 匹配的段时长记录（{problem}）——"
               "本次按标称时间轴生成，不能作为交付版本")
         return None, None
     print("  · segment_durations.json 是旧格式，按标称时间轴生成")

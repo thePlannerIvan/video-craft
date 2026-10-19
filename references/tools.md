@@ -200,7 +200,8 @@ scaffold 只用于新 composition，不在已有制作源上重复 init。生成
 
 ## 渲染、核验、包装
 
-**渲染前置条件（缺一不渲）**：剪点已确认；动效 / 合成审阅已确认；`check_render_env.py` 退 0。
+**渲染前置条件（缺一不渲）**：剪点已确认；动效 / 合成审阅已确认；`probe_env.py` 先报告能力（不阻断），`check_render_env.py` 退 0。
+**响度唯一标准**：成片由 `render.py` 归一化到 -14 LUFS / -1 dBTP / LRA 11；`audio_fix.py --target-lufs` 只用于素材预处理，不是成片标准。
 
 **指纹不是渲染前置，是交付过期信号**：已有交付时先跑 `state_fingerprint.py verify` 判断它有没有过期 —— 改源之后「过期」正是**需要重新输出**的信号，它不拦住新渲染。重新输出并核验后再 `capture` 新指纹，发送前再 `verify`，不一致就不能**发送**。与 `SKILL.md` 第 10 步是同一句。
 渲染前先过 [timing-lock](timing-lock.md)：`generate-composition.py --verify` 退 0，且 `feedback/*.jsonl` 的未决项已清或显式接受。

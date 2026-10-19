@@ -55,7 +55,6 @@ Craft 把 board 当视觉参考、以 composition 为源重排。它复用同一
 
 | module | 拥有什么 | 接口 | 不做什么 |
 |---|---|---|---|
-| `helpers/recompose_plan.py` | `recompose.json`、`recompose/lines.json`；逐字行的 state/proposal | `init` / `check` / `lines`；inbox 调 `apply_record` | 不生成 composition、不导入页面、不跑 parity |
 | `helpers/build_review.py` 的 `density` 块 | 把逐字行按 beat 分组交给页面 | `review_data.json.density` | 不新增审阅宿主或第二份提交文件 |
 | `visual/assets/review-page-template.html` 的密度 dock | 逐行 0–3 / off / 自动；多选批量；与分步动效同区两个 tab | 提交 `phase: "density"` 记录 | 不放 board 参考帧；`off` 句不展示分步动效 |
 | `helpers/review_inbox.py` | 识别 density 记录，落 `feedback/density.jsonl`，回写 lines | `import_submissions()` | 不改 page 路线的逐章收件 |
@@ -109,6 +108,7 @@ Craft 把 board 当视觉参考、以 composition 为源重排。它复用同一
 
 | module | 拥有什么（唯一判据） | 接口 | 不做什么 |
 |---|---|---|---|
+| `helpers/_edl.py`（库） | **EDL 身份与时间映射的唯一实现**：`edl_digest`、`select_render_record`、`duration_record`（字幕与交付共用同一记录策略） | 被 `check_edl` / `srt_export` / `duration_plan` / `render` / `timeline_derive` import | 不写盘、不规范化；读时校验、写时原样 |
 | `helpers/check_edl.py` | 切点合法性、停顿预算、SRT 与实测时间轴是否同源 | `check_edl.py <edit_dir> [--max-pause] [--json]` | 不看画面、不判断内容 |
 | `helpers/check_overlay.py` | 覆盖层接口：alpha 真在、没被烘死不透明、帧率与时长对得上 | `check_overlay.py <edit_dir>`；`render.py` 合成前会再调它 | 不渲染、不判断动效内容 |
 | `helpers/check_motion.py` | 声明为动效的窗口是否真的有变化 | `check_motion.py <video> [--samples] [--expect-still]` | 不判断动作方向与结束状态（要人看片） |
@@ -119,15 +119,26 @@ Craft 把 board 当视觉参考、以 composition 为源重排。它复用同一
 | `helpers/verify_delivery.py` | **交付副本**：与工作区逐字节、时长对渲染记录、字幕尾 | `verify_delivery.py <edit_dir> [--video] [--deliver-dir]` | 不看源素材 |
 | `helpers/check_script_hash.py` | `script.md` 与内容契约的 `script_hash` 是否相符 | `check_script_hash.py <项目目录> ／ --script --plan`；退 0／1／2 | 不改任何文件；核不了时**不报成功** |
 | `helpers/check_render_env.py` | 渲染环境：字体缓存可写、Node ≥ 22、composition 在；**并发预算** —— 读总内存／可用内存／swap，`suggest_workers()` 按「总内存÷`WORKER_RAM_GB`、可用内存÷`WORKER_RAM_GB`、核数」三者取低算出这台机器带得起的 `--workers`，可用内存 < `MIN_FREE_GB` 时退非零（`--workers auto` 是按核数开满 Chrome 的那个默认值） | `check_render_env.py [composition] [--json]`（`--json` 出 `{ok, workers, memory}` 给调用方直接消费） | 不渲染；不检查 HyperFrames 的其它 `HYPERFRAMES_*`；**不替 agent 决定要不要渲** —— 它只报这台机器能不能渲、该用几个 worker |
+| `helpers/probe_env.py` | **能力报告，不做决定**：ffmpeg 滤镜（libass/drawtext）、字体与资产预算、残留 `hyperframes preview`/chrome 进程、font cache 可写性 | `probe_env.py [project] --json [--require libass --strict]`；默认退 0；`render.py` 在烧字幕前消费其中 libass 一项 | 不决定降级、不阻断渲染（缺 libass 由 `render.py` 按成片合同报错） |
 | `helpers/check_motion_targets.py` | **手写 GSAP 时间轴的门禁**：时间轴里每个 selector 都命中、页面静态 `transform` 没被补间覆盖 | 「手写动效真的在演、页面位移没被 GSAP 吃掉」这一判据 | `check_motion_targets.py <project>` | 不判审美；有 `choreography.json` 的项目仍用 `check_parity.py` |
 | `helpers/check_parity.py` | **审阅面／合成面一致性检查**：三条断言全确定性，可进自检 | 「spec 里声明的效果在两条路径都有实现、selector 真的命中」这一判据 | `check_parity.py <project>` | 不管渲染；不替代 `hyperframes check` |
 | `helpers/state_fingerprint.py` | **工程态 ↔ 交付态的来源指纹**：让「这份交付是不是过期」变成可判定 | 「交付与当前工程态是否一致」这一判据；`capture`／`verify` 两个方向 | `state_fingerprint.py capture|verify <project> [-o 成品/delivery.json]` | **不是渲染前置**：过期是「需要重新输出」的信号，只拦发送 |
+
+### 共享事实（唯一主人）
+
+| 事实 | 唯一主人 | 其余模块的自由 |
+|---|---|---|
+| 源时间 → 输出时间映射 | `helpers/_edl.py`（`duration_record` / `render_record` / `select_render_record`）；**不含变速**——`speed` 由 `render_cut.py` 消费，`render.py` 拒收声明了 speed/mute 的 range | 删哪里、留哪里、是否用 `render_cut` 变速 |
+| 最终可听见的混音 | `helpers/render.py` 的响度归一化（-14 LUFS / -1 dBTP / LRA 11）；`audio_fix.py --target-lufs` 仅用于素材预处理，不是成片标准 | 人声处理、BGM 选择、ducking 参数、单条素材的阶段目标 |
+| 页面保真或重排范围 | 具体页面/单元的制作意图（可按单元混用） | 同片部分保真、部分重排 |
+| 输出来源与交付件 | 生成时记录的实际输入 + 显式交付清单（`state_fingerprint.py`；当前交付侧仍是显式清单，raw-deck 需手动登记来源） | 画幅、版本、字幕形态、输出组合 |
 
 ### 生产者（`helpers/` 里写盘的那些）
 
 | module | 拥有什么 | 接口 | 不做什么 |
 |---|---|---|---|
-| `helpers/render.py` | **最终像素的唯一决定者**：逐段抽取（内容键缓存）、无损 concat、覆盖层与字幕合成、响度归一化；**`segment_durations.json` 的唯一写者**；每段读回校验与总长断言 | `render.py <edl.json> -o <out> [--preview/--draft/--no-cache/--no-subtitles/--no-loudnorm]` | 不判断内容；不决定要不要重渲 |
+| `helpers/recompose_plan.py` | `recompose.json`、`recompose/lines.json` 的唯一写者；逐字行的 state/proposal | `init` / `check` / `lines`；inbox 调 `apply_record` | 不生成 composition、不导入页面、不跑 parity |
+| `helpers/render.py` | **最终像素的唯一决定者**：逐段抽取（内容键缓存）、无损 concat、覆盖层与字幕合成、响度归一化（**成片响度标准 -14 LUFS / -1 dBTP / LRA 11，唯一主人；`audio_fix --target-lufs` 只是素材预处理**）；**`segment_durations.json` 的唯一写者**；每段读回校验与总长断言 | `render.py <edl.json> -o <out> [--preview/--draft/--no-cache/--no-subtitles/--no-loudnorm]` | 不判断内容；不决定要不要重渲 |
 | `helpers/render_cut.py` | 带 `speed` / `mute` 的 EDL 渲成单个 MP4 | `render_cut.py <edl.json> -o <out>` | 不走覆盖层合成 |
 | `helpers/timeline_derive.py` | **`timeline.json` 的唯一生产者**：EDL 实测 cue + `grouping.json` → 视觉步骤。**接受两种来源**：`measured`（实测段时长）与 `projected`（解析预演，工程态可审、不可交付）；**交付路径**的 measured 硬要求由 `validate_measured_bindings` 把关，不是这里 | `timeline_derive.py <edit_dir> --grouping … --output-timeline … [--alignment] [--stats]` | 不重新解析 SRT；不做创作分组 |
 | `helpers/srt_export.py` | **输出时间轴 SRT 的唯一生产者**（article → line plan → lock → build → check）；`caption_words.json` 的写者 | `srt_export.py <edit_dir> --prepare／--lock／--build／--check` | 不认标称时间轴（渲染过期就拒） |
@@ -181,6 +192,7 @@ Craft 把 board 当视觉参考、以 composition 为源重排。它复用同一
 |---|---|---|---|
 | `visual/scripts/generate-composition.py` | **组成品骨架的唯一生产者**：一个 step 一个 clip、主题 token 内联进 `:root`、声音元素、时间轴提示；**声明了 `mediaClips` 的屏**（录屏/实拍）改发 `<video class="clip">` 并带 `data-media-start` —— 于是 composition 就是画面轨的**唯一源**，审阅与交付是同一份；随包拷 GSAP 与嵌入桥进 `composition/assets/`；`--verify` 的时间／尺寸／**父级穿越**闸门 | `generate-composition.py <project> [--theme] [--layout] [--audio] [--media-box x,y,w,h] [--verify]` | 不实现每个 clip 的视觉（那是 agent 写进 HTML）；**不写 `package.json`**；不替项目决定录屏落在哪 —— 落位由 `--media-box` 给 |
 | `visual/assets/composition-embed-bridge.js` | **composition 自己的控制面**：被 iframe 时接 postMessage（`hello/seek/play/pause` → `ready/time`），让审阅页能演活的工程态。审阅页在不透明源 iframe 里够不着子页 DOM，这是唯一通道 | 由生成器拷进 `composition/assets/`；`window.__kwEmbedBridge` 幂等标记 | 非嵌入路径**一个字节都不影响**（`window.parent === window` 时第一行返回）；渲染时没人给它发消息 |
+| `visual/assets/composition-studio-hook.js` | **studio 批注的采集钩子**：在 composition 内捕获作者在 studio 里画的批注，交给 `helpers/studio_notes.py` | 被 `generate-composition.py` 拷进 `composition/assets/`；studio 内运行时生效 | 不在渲染路径上；不存业务判断 |
 | `visual/scripts/import_svg_page.py` | **画面页与动画层之间的唯一适配器**：逐字内联、只改图片 href 前缀、边界解析、`--audit`（可指名性提示；无 id 不失败；跨页 id 碰撞仍拦，因为它会让元素动效错绑）、`--prove`（往返未改坏） | `import_svg_page.py <project> [--pages] [--audit/--prove/--emit]` | **不改页面标记**、不改 id、不保证 composition 能渲染（那是 `hyperframes check`） |
 | `visual/scripts/check_themes.py` | 主题库的判据：`theme.json` 可解析、必填 token、`var()` 链解析得掉、对比度、圆角刻度一致、无死节奏 token | `check_themes.py [themes_dir] [--json]` | 不判断风格好不好；不改主题文件 |
 | `visual/scripts/encode_transparent.py` | 透明层的编码（PNG 序列 → MOV） | `encode_transparent.py <png_dir> -o <out> [--codec] [--fps]` | 不验证透明（那是 `check_alpha.py`） |
@@ -198,7 +210,7 @@ Craft 把 board 当视觉参考、以 composition 为源重排。它复用同一
 |---|---|---|---|
 | `tests/` | **每条判据的可执行形态**（199 条） | `python -m unittest discover -s tests -p "test_*.py"` | 不是规格来源（规格在 Stage 文档与 contract） |
 | `evals/evals.json` | 干净任务与 `must_do` / `must_not_do` | 人工或 Judge 跑 | 不是自动测试 |
-| `skills/manim-video/` | 随包的 manim 子 Skill（自绘逐帧那条路线的一个后端） | 走 manim 时读 | 不在默认运行路径上；唯一声明 Python 3.10+ 的地方 |
+| `skills/manim-video/`（含 `setup.sh`） | 随包的 manim 子 Skill（自绘逐帧那条路线的一个后端） | 走 manim 时读 | 不在默认运行路径上；唯一声明 Python 3.10+ 的地方 |
 | `static/` | 展示用素材（banner、timeline-view SVG） | 人读 | 不参与运行 |
 | `poster.html` | 项目的宣传页 | 人读 | 不参与运行 |
 | `archive/` | 两个旧体系整份封存（见第 6 节） | **只读** | 不是运行入口；不往里写 |

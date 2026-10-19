@@ -35,12 +35,26 @@ from snapshot_input import resolve_snapshot  # noqa: E402
 from import_svg_page import import_page, _inline_image_hrefs  # noqa: E402
 
 
+_FILE_DIGEST_CACHE: dict = {}
+
+
 def snapshot_file(path: Path, root: Path) -> dict:
     stat = path.stat()
     item = {"path": path.relative_to(root).as_posix(), "size": stat.st_size,
             "mtime_ns": stat.st_mtime_ns}
-    if path.suffix.lower() in (".json", ".svg", ".srt", ".html", ".js"):
-        item["sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    # Content identity for every file, media included: path+size+mtime is not an
+    # identity (same-size, same-mtime replacement kept the manifest unchanged in
+    # the v3 audit). Stream large media instead of reading it whole.
+    key = (stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_ino)
+    cached = _FILE_DIGEST_CACHE.get(key)
+    if cached is None:
+        digest = hashlib.sha256()
+        with path.open("rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                digest.update(chunk)
+        cached = digest.hexdigest()
+        _FILE_DIGEST_CACHE[key] = cached
+    item["sha256"] = cached
     return item
 
 
@@ -1025,6 +1039,14 @@ def write_review_files(project_root: Path, review_data: dict) -> tuple[Path, Pat
 
     player_script = ""
     if review_data.get("media", {}).get("liveStage"):
+        # Report capabilities where the compile actually happens; a font dump or a
+        # missing libass shows up here first, and only this call site can see it.
+        try:
+            import probe_env
+            for note in probe_env.build(project_root).get("notes", []):
+                print(f"  ! [probe] {note}")
+        except Exception:  # noqa: BLE001 - probe must never block review
+            pass
         from live_preview import compile_preview
         live = review_data["media"]["liveStage"]
         live["composition"] = compile_preview(

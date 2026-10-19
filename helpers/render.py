@@ -552,6 +552,7 @@ def extract_all_segments(
     clips_tag: str = "base",
     use_cache: bool = True,
     edl_path: Path | None = None,
+    allow_range_flags: bool = False,
 ) -> tuple[list[Path], list[float]]:
     """Extract every EDL range into edit_dir/clips_<tag>/seg_NN.mp4.
 
@@ -623,6 +624,21 @@ def extract_all_segments(
         start = float(r["start"])
         end = float(r["end"])
         duration = end - start
+        # This extractor reads source/start/end only. `render_cut` owns speed and
+        # mute. Report the gap instead of silently producing a different film than
+        # duration_plan projected (v3 audit: projection applied speed, render did not).
+        speed = float(r.get("speed", 1.0) or 1.0)
+        if speed != 1.0 or r.get("mute"):
+            detail = []
+            if speed != 1.0:
+                detail.append(f"speed={speed}（duration_plan 按 speed 算、这里按原速）")
+            if r.get("mute"):
+                detail.append("mute=true（声音会原样进入成片）")
+            msg = (f"range {i} 声明了 render.py 不消费的字段：" + "；".join(detail) +
+                   "——音画/字幕会静默不同步。用 render_cut 渲染，或显式加 --allow-range-flags")
+            if not allow_range_flags:
+                raise SystemExit(msg)
+            print(f"  ! {msg}（--allow-range-flags 已放行）")
         tv = math.floor(math.ceil(duration * grid) / grid * 1000) / 1000
         out_path = clips_dir / f"seg_{i:02d}_{src_name}.mp4"
 
@@ -1056,6 +1072,11 @@ def main() -> None:
         help="Skip subtitles even if the EDL references one",
     )
     ap.add_argument(
+        "--allow-range-flags",
+        action="store_true",
+        help="Allow ranges with speed/mute, which render.py does not apply (audio/subtitle drift).",
+    )
+    ap.add_argument(
         "--no-loudnorm",
         action="store_true",
         help="Skip audio loudness normalization. Default is on (-14 LUFS, -1 dBTP, LRA 11).",
@@ -1082,6 +1103,20 @@ def main() -> None:
     edl = json.loads(edl_path.read_text())
     edit_dir = edl_path.parent
     out_path = args.output.resolve()
+
+    # Fail in the first second, not after extract+concat. Only a probe that
+    # positively reports "no libass" blocks; a probe that itself breaks must not.
+    if edl.get("subtitles") and not args.no_subtitles:
+        try:
+            import probe_env
+            caps = probe_env.ffmpeg_capabilities().get("filters", {})
+        except Exception:  # noqa: BLE001 - a broken probe must never block a render
+            caps = {}
+        if caps and not caps.get("subtitles"):
+            sys.exit(
+                "ffmpeg 没有 libass（subtitles/ass 滤镜），无法把字幕烧进画面。"
+                "改用 --no-subtitles 并外挂 SRT，或安装带 libass 的 ffmpeg；"
+                "本条不能静默降级，因为成片合同里写的是烧录字幕。")
 
     # The output frame rate is resolved ONCE inside extract_all_segments, which
     # knows the precedence (explicit --fps → the EDL's `fps` → the first source's

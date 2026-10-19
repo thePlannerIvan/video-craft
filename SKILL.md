@@ -90,13 +90,24 @@ densities 的提交仍走同一个审阅面，由 `review_inbox.py` 收件：`fe
 
 ## 全链流程
 
+流程是**能力序列的参考顺序，不是路线**：每步说明“这一步要产出什么事实”，完成标准由对应能力包定义
+（见 [capability-packs.md](references/capability-packs.md)）。**page 专属判据只在「保真页面」包内生效**；
+其他组合按各自能力包的 DoD 判，不要拿 page 的标准去卡它们。
+
+| 阶段 | 步骤 | 产出的事实 |
+|---|---|---|
+| 接入 | 1–2 | 来源与制作方案：可用能力、作者约束（保真/自由度、画幅、字幕内外、交付件） |
+| 剪辑 | 3–6 | EDL、字幕、唯一时间脊柱（实测优先，预演只作工程态） |
+| 画面 | 7–8 | 视觉层与审阅确认（按能力包的 DoD） |
+| 交付 | 9–10 | 收件返修、核验与交付（指纹、外挂 SRT、交付说明） |
+
 每一步都必须把产物交给表中的下一消费者。完成标准是硬事实，不是“页面打开了”。
 
 ### 1. 接手与版本核对
 
 **何时进入**：所有新项目、恢复项目、收到返修反馈时。
 
-**先读**：`references/content-to-production.md`、项目 `_idea/current.md`、PPT Hell 的 `.snapshot`、已有 `edit/project.md`、`production-plan.md` 和 `feedback/`。
+**先读**：`references/content-to-production.md`、项目 `_idea/current.md`、已有 `edit/project.md`、`production-plan.md` 和 `feedback/`；走保真页面包时还要读 PPT Hell 的 `.snapshot`，用现成 SVG 目录时直接读页面源（不要求 snapshot）。
 
 **调用**：
 
@@ -240,7 +251,7 @@ python3 "<craft>/helpers/import_srt_timeline.py" "<project>" \
 
 ### 7. 动效与合成
 
-静态 SVG 必须来自第 1 步导入的项目内副本。若页面已有 `data-step`、`data-anim`、元素 `id`，沿用它们；没有也可以导入——整页会作为一张画面使用，只有元素级动效才需要稳定 id。不要把页面截图当成可编辑 SVG。
+静态 SVG 必须来自第 1 步导入的项目内副本（**保真页面包的判据**；其他组合见 [capability-packs.md](references/capability-packs.md)）。若页面已有 `data-step`、`data-anim`、元素 `id`，沿用它们；没有也可以导入——整页会作为一张画面使用，只有元素级动效才需要稳定 id。不要把页面截图当成可编辑 SVG。
 
 - HyperFrames：读 `$hyperframes`。整片走 `visual/scripts/generate-composition.py`；单层动效也先在 composition 中预览。只有最终合成需要独立透明视频，才用 `helpers/render_layer.py` 输出 `.mov`；兼容旧媒体叠层面时可同时输出 `.webm`。预览与渲染前先 `hyperframes check`。**任何 `hyperframes render` 之前先跑 `python3 "<craft>/helpers/probe_env.py" "<project>"` 报告能力（libass/字体预算/残留进程；只报告不阻断），再跑 `python3 "<craft>/helpers/check_render_env.py" "<project>/composition"`** —— 它报 RAM、可用内存与建议的 `--workers` 值（默认从 1 起）；并先过 `references/timing-lock.md`：`--verify` 退 0，且 `feedback/*.jsonl` 的未决项已清或显式接受。缺一不渲。
   **动效的源是 composition，不是那段视频**：层要能改、能预览，才谈得上「先审后渲」。

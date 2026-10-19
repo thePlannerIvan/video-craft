@@ -242,3 +242,59 @@ sha256 `796ff3f2…` → 按文档那一步用新模板重生成（`15418868…`
 |---|---|---|---|
 | 快照 binding 增加 `order`；invalidation 增加 `order_changed` / `timeline_needs_review`，合成前校验时间线页序 | PPT 拖动顺序必须真正传递到视频生产；已有录音时间绑定不能被静默重排 | `visual/scripts/snapshot_input.py`、`visual/scripts/generate-composition.py`、`SKILL.md` | 把实时 PPT 项目目录当作视频输入的模糊示例 |
 | 原 visual-plan 与工作台集合不一致时要求显式 `collection_delta` 与内容复核 | 新增/删除页需要显式承接，避免下游误把旧脚本当成完整页面集合 | `snapshot_input.py` | 集合变化的隐式接受 |
+
+## GOTCHAS 迁移索引（2026-10-19）：已升级/已修条目
+
+这些条目已由代码/测试/公共宿主承接，正文从 `GOTCHAS.md` 移出，仅留索引。
+
+- #8 A leftover review server serves the wrong project ｜ 已升级（剪接线那台自带服务器 `edl_preview_serve.py` 已退役，宿主归公共缝）
+- #9 Register the timeline after the DOM, in the same script ｜ 已升级
+- #14 Screen recordings are VFR — force CFR before compositing ｜ 已升级
+- #16 The picture carries content, never method ｜ 已升级
+- #17 One cue per natural clause — the ceiling is not a grouping rule ｜ 已升级
+- #23 `hyperframes render --help` advertises WebM transparency; only the MOV half is true ｜ 已升级
+- #25 A freshly extracted segment was never read back ｜ 已升级
+- #26 Delivery gates picked the render record by position ｜ 已升级
+- #27 The page importer's href boundary was the page directory ｜ 已升级
+- #28 Inlining a page by hand bypasses the href rewrite ｜ 已升级
+- #29 The same id in two pages makes `#name` ambiguous ｜ 已升级
+- #30 A criterion that can never fail ｜ 已升级
+- #31 `hyperframes doctor` does not check the font cache ｜ 已升级
+- #32 注入点必须裸着独占一行，而且只许一个 ｜ 已升级
+- #35 出口与内容不许取决于"恰恰会失败的那件事"（R11） ｜ 已升级
+- #36 测量工具在测量自己 ｜ 已升级
+- #37 想要"写沙盒"就**硬链接**，别用软链 —— 宿主会（正确地）拒绝 ｜ 已升级
+- #38 浏览器用例：**一个类共用一个浏览器**，而且失败也要关 ｜ 已升级
+- #39 交付审阅页必须启动 HTTP 审阅宿主，绝不能直接 open 本地 file:// 路径 ｜ 已升级（已确立为铁律，机制在 review-core 宿主那一侧）。
+- #66 GSAP 握手不证明 HyperFrames 播放正常 ｜ 已升级
+- #67 不透明源访问 loopback 和跨帧 blob 都可能被拦 ｜ 已升级
+- #68 编译路由的 base 不是 HTML 路径的父目录 ｜ 已升级
+- #74 审阅副本坏了不报错：页面照播，只是没声 ｜ 已修
+
+## GOTCHAS 迁移索引（2026-10-19）
+
+以下条目的后果已由代码/测试/公共宿主承接，正文移出 `GOTCHAS.md`，只留索引；「看到这个症状该怎么判断」如需追溯读历史版本。
+
+- #8 A leftover review server serves the wrong project ｜ 已升级（剪接线那台自带服务器 `edl_preview_serve.py` 已退役，宿主归公共缝）
+- #9 Register the timeline after the DOM, in the same script ｜ 已升级
+- #14 Screen recordings are VFR — force CFR before compositing ｜ 已升级
+- #16 The picture carries content, never method ｜ 已升级
+- #17 One cue per natural clause — the ceiling is not a grouping rule ｜ 已升级
+- #23 `hyperframes render --help` advertises WebM transparency; only the MOV half is true ｜ 已升级
+- #25 A freshly extracted segment was never read back ｜ 已升级
+- #26 Delivery gates picked the render record by position ｜ 已升级
+- #27 The page importer's href boundary was the page directory ｜ 已升级
+- #28 Inlining a page by hand bypasses the href rewrite ｜ 已升级
+- #29 The same id in two pages makes `#name` ambiguous ｜ 已升级
+- #30 A criterion that can never fail ｜ 已升级
+- #31 `hyperframes doctor` does not check the font cache ｜ 已升级
+- #32 注入点必须裸着独占一行，而且只许一个 ｜ 已升级
+- #35 出口与内容不许取决于"恰恰会失败的那件事"（R11） ｜ 已升级
+- #36 测量工具在测量自己 ｜ 已升级
+- #37 想要"写沙盒"就**硬链接**，别用软链 —— 宿主会（正确地）拒绝 ｜ 已升级
+- #38 浏览器用例：**一个类共用一个浏览器**，而且失败也要关 ｜ 已升级
+- #39 交付审阅页必须启动 HTTP 审阅宿主，绝不能直接 open 本地 file:// 路径 ｜ 已升级（已确立为铁律，机制在 review-core 宿主那一侧）。
+- #66 GSAP 握手不证明 HyperFrames 播放正常 ｜ 已升级
+- #67 不透明源访问 loopback 和跨帧 blob 都可能被拦 ｜ 已升级
+- #68 编译路由的 base 不是 HTML 路径的父目录 ｜ 已升级
+- #74 审阅副本坏了不报错：页面照播，只是没声 ｜ 已修

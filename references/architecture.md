@@ -129,7 +129,7 @@ Craft 把 board 当视觉参考、以 composition 为源重排。它复用同一
 | 事实 | 唯一主人 | 其余模块的自由 |
 |---|---|---|
 | 源时间 → 输出时间映射 | `helpers/_edl.py`（`duration_record` / `render_record` / `select_render_record`）；**不含变速**——`speed` 由 `render_cut.py` 消费，`render.py` 拒收声明了 speed/mute 的 range | 删哪里、留哪里、是否用 `render_cut` 变速 |
-| 最终可听见的混音 | `helpers/render.py` 的响度归一化（-14 LUFS / -1 dBTP / LRA 11）；`audio_fix.py --target-lufs` 仅用于素材预处理，不是成片标准 | 人声处理、BGM 选择、ducking 参数、单条素材的阶段目标 |
+| 最终可听见的混音 | `helpers/audio_mix.py`（人声/BGM/duck/响度）；`render.py` 的 loudnorm 只服务没有预混音的项目，用了 audio_mix 就 `--no-loudnorm`；`audio_fix.py --target-lufs` 只是素材预处理 | 人声处理、BGM 选择、ducking 参数、单条素材的阶段目标 |
 | 页面保真或重排范围 | 具体页面/单元的制作意图（可按单元混用） | 同片部分保真、部分重排 |
 | 输出来源与交付件 | 生成时记录的实际输入 + 显式交付清单（`state_fingerprint.py`；当前交付侧仍是显式清单，raw-deck 需手动登记来源） | 画幅、版本、字幕形态、输出组合 |
 
@@ -138,6 +138,8 @@ Craft 把 board 当视觉参考、以 composition 为源重排。它复用同一
 | module | 拥有什么 | 接口 | 不做什么 |
 |---|---|---|---|
 | `helpers/recompose_plan.py` | `recompose.json`、`recompose/lines.json` 的唯一写者；逐字行的 state/proposal | `init` / `check` / `lines`；inbox 调 `apply_record` | 不生成 composition、不导入页面、不跑 parity |
+| `helpers/edl_from_keep.py` | **keep-list → edl.json 的唯一生产者**：每条保留区间按实测静音吸附边界（`_silence.measure`），可选从 transcripts 出 `cut_text.md` | `edl_from_keep.py keeps.json --edit-dir <edit> [--snap-tol/--no-snap/--transcripts]` | 不决定留哪句（那是作者的 keep list）；不渲染、不生成字幕 |
+| `helpers/audio_mix.py` | **最终可听见混音的唯一生产者**：人声（+可选 BGM，sidechain duck）→ 交付响度（-14 LUFS / -1.5 dBTP） | `audio_mix.py <voice> -o <mix> [--bgm --bgm-lufs --target-lufs --tail]` | 不剪画面；不再做第二遍母带（用它的输出时 `render.py` 必须 `--no-loudnorm`） |
 | `helpers/render.py` | **最终像素的唯一决定者**：逐段抽取（内容键缓存）、无损 concat、覆盖层与字幕合成、响度归一化（**成片响度标准 -14 LUFS / -1 dBTP / LRA 11，唯一主人；`audio_fix --target-lufs` 只是素材预处理**）；**`segment_durations.json` 的唯一写者**；每段读回校验与总长断言 | `render.py <edl.json> -o <out> [--preview/--draft/--no-cache/--no-subtitles/--no-loudnorm]` | 不判断内容；不决定要不要重渲 |
 | `helpers/render_cut.py` | 带 `speed` / `mute` 的 EDL 渲成单个 MP4 | `render_cut.py <edl.json> -o <out>` | 不走覆盖层合成 |
 | `helpers/timeline_derive.py` | **`timeline.json` 的唯一生产者**：EDL 实测 cue + `grouping.json` → 视觉步骤。**接受两种来源**：`measured`（实测段时长）与 `projected`（解析预演，工程态可审、不可交付）；**交付路径**的 measured 硬要求由 `validate_measured_bindings` 把关，不是这里 | `timeline_derive.py <edit_dir> --grouping … --output-timeline … [--alignment] [--stats]` | 不重新解析 SRT；不做创作分组 |

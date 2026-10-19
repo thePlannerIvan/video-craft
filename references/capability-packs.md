@@ -15,7 +15,7 @@
 - 能力**不决定用户要走哪条路**，只返回结果与失败原因。
 - 检查放在真正需要它的底层操作旁边（渲染、编译预览、导入、交付），不集中成一个调度器。
 
-v3 明确补的两个缺口：`keep-list → 静音吸附 EDL`、`人声/BGM/duck/响度 → 单一混音出口`。
+v3 已补的两个缺口：`helpers/edl_from_keep.py`（keep-list → 静音吸附 EDL）、`helpers/audio_mix.py`（人声/BGM/duck/响度 → 单一混音出口）。
 
 ## 2. 能力包（docs only，可叠加）
 

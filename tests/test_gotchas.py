@@ -15,7 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).parents[1]
 GOTCHAS = ROOT / "GOTCHAS.md"
 HISTORY = ROOT / "references" / "maintenance-history.md"
-MAX_GOTCHAS = 51  # 2026-10-19: 74 → 51 after moving upgraded/retired entries to the index
+MAX_GOTCHAS = 40  # 2026-10-19: 74 → 51 (retire upgraded) → 40 (merge same-root)
 PREFIXES = ("test", "check", "env", "judgment")
 
 

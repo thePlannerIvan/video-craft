@@ -62,6 +62,18 @@ Idea 检查只核文件和素材，不代替作者决定。导入器读取 PPT H
 
 ## 声音与剪辑
 
+从 keep list 建 EDL（剪点自动吸附实测静音）：
+
+```bash
+python3 "<craft>/helpers/edl_from_keep.py" "<keeps.json>" --edit-dir "<edit>" --snap-tol 0.35
+```
+
+把人声与 BGM 合成一个混音（唯一混音出口）：
+
+```bash
+python3 "<craft>/helpers/audio_mix.py" "<voice.wav>" -o "<mix.wav>" --bgm "<bgm.wav>" --bgm-lufs -32
+```
+
 ```bash
 python3 "<craft>/helpers/transcribe.py" "<原始视频>" --edit-dir "<edit>" --audio-track 0 --backend auto
 python3 "<craft>/helpers/transcribe_batch.py" "<素材目录>" --edit-dir "<edit>" --workers 4
@@ -201,7 +213,7 @@ scaffold 只用于新 composition，不在已有制作源上重复 init。生成
 ## 渲染、核验、包装
 
 **渲染前置条件（缺一不渲）**：剪点已确认；动效 / 合成审阅已确认；`probe_env.py` 先报告能力（不阻断），`check_render_env.py` 退 0。
-**响度唯一标准**：成片由 `render.py` 归一化到 -14 LUFS / -1 dBTP / LRA 11；`audio_fix.py --target-lufs` 只用于素材预处理，不是成片标准。
+**响度唯一标准**：成片混音由 `audio_mix.py` 产出一个文件（-14 LUFS / -1.5 dBTP，可带 BGM duck；用它时 render 加 `--no-loudnorm`）；没有预混音时 `render.py` 自己归一化。`audio_fix.py --target-lufs` 只用于素材预处理。
 
 **指纹不是渲染前置，是交付过期信号**：已有交付时先跑 `state_fingerprint.py verify` 判断它有没有过期 —— 改源之后「过期」正是**需要重新输出**的信号，它不拦住新渲染。重新输出并核验后再 `capture` 新指纹，发送前再 `verify`，不一致就不能**发送**。与 `SKILL.md` 第 10 步是同一句。
 渲染前先过 [timing-lock](timing-lock.md)：`generate-composition.py --verify` 退 0，且 `feedback/*.jsonl` 的未决项已清或显式接受。

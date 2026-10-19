@@ -298,3 +298,19 @@ sha256 `796ff3f2…` → 按文档那一步用新模板重生成（`15418868…`
 - #67 不透明源访问 loopback 和跨帧 blob 都可能被拦 ｜ 已升级
 - #68 编译路由的 base 不是 HTML 路径的父目录 ｜ 已升级
 - #74 审阅副本坏了不报错：页面照播，只是没声 ｜ 已修
+
+## GOTCHAS 合并索引（2026-10-19）
+
+同根条目合并进宿主条目，正文只留宿主；症状与修正原则已并入宿主条目。
+
+- #5 Cloud-synced video folders make ffmpeg fail intermittently ｜ 并入 #52 编码产物不要直接写进云同步目录
+- #46 云同步目录里刚建的目录，下一个进程可能看不见 ｜ 并入 #52 编码产物不要直接写进云同步目录
+- #60 `hyperframes preview` 在沙箱下静默不起，而且它的路由只能验内容 ｜ 并入 #63 studio 会缓存 composition —— 改了源，你要硬刷新它
+- #64 studio 的 player 路由剥掉所有 `src=` 脚本，并把内联脚本拼成一个大脚本 ｜ 并入 #63 studio 会缓存 composition —— 改了源，你要硬刷新它
+- #65 「第几个脚本」不能当锚点，「第一个内联 script」尤其不能 ｜ 并入 #63 studio 会缓存 composition —— 改了源，你要硬刷新它
+- #69 `hyperframes render --workers auto` 按核数开满 Chrome → 小内存机器被 swap 打崩 ｜ 并入 #70 首次渲染的 compile 是冷启动（约 25 分钟），会被误判成「这台机器渲不动」
+- #51 lint 会把运行期 `if` 当成「补间一定存在」 ｜ 并入 #62 静态检查的两个假阳：对正确代码报红，训练出来的只是忽略
+- #54 删掉标记、却没删挂事件的代码 → 页面死在渲染数据之前 ｜ 并入 #57 审阅页的护栏是两具尸体 —— 不跑的测试等于没有测试
+- #72 `segment_durations.json` 的键是输出文件名的 stem，渲到非权威名会静默留下旧记录 ｜ 并入 #61 composition 用旧时间轴打过补丁 → 过期 3 秒，无人发现
+- #15 `-t` between two inputs belongs to the second input ｜ 并入 #22 Never end a render command with a pipe
+- #20 `render.py --no-loudnorm` cannot take an `-o` that equals the internal base name ｜ 并入 #22 Never end a render command with a pipe

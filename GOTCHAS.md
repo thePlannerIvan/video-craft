@@ -69,36 +69,6 @@ PIL card.
 
 ## Filesystem
 
-### 5. Cloud-synced video folders make ffmpeg fail intermittently
-
-**module**：helpers/render.py（写大媒体那一步）　｜　**状态**：已复现
-- **enforcement**：env:references/visual-rendering.md
-
-When footage and `edit/` live on a synced folder (OneDrive/iCloud/Dropbox),
-writing a large mp4 in place can stall the muxer:
-
-    Error submitting a packet to the muxer: Operation timed out
-    Task finished with error code: -60 (Operation timed out)
-
-exit 196. It is intermittent and it is NOT a code bug — it hit 1 of 7 short demo
-clips in one run, none of the 16 full-render segments in another, then hit a
-13-segment re-render on 2026-09-15. Build in a local temp dir and copy only the
-finished artefact into the project: symlink `edit/clips_<tag>` at a local dir and
-point `-o` at local disk, then copy `final.mp4` back. `/tmp` does not survive a
-reboot, so delete the dangling symlink before the next render.
-
-**2026-10-17：重试已落地**（`render.py`：`SEGMENT_ATTEMPTS = 4`、`SEGMENT_RETRY_DELAY_S = 1.5`，
-失败先删半截段再退避重试；测试里把延迟置 0）。整片渲染遇到 stall 仍优先走本机 staging。
-
-**2026-09-22, same failure, cheaper fix.** It hit a `render.py` segment extraction
-(exit 196) and later a per-shot frame/clip ffmpeg call; the identical command run
-by hand succeeded both times. **Wrap the project's own per-frame / per-clip ffmpeg
-calls in an exponential-backoff retry** (4 tries, 1.5 s × n) instead of hand-fixing
-afterwards — a 24-clip batch then finished with one silent retry. Retry is the
-cheap default; local temp dirs remain the fix for whole-render stalls.
-
-## Verification
-
 ### 6. A claim must match the evidence behind it
 
 **module**：SKILL.md 的判断类规则（跨 module）　｜　**状态**：已复现
@@ -176,18 +146,6 @@ displays as `1080x1920`. A whole film was nearly planned landscape off that numb
 Read `stream_side_data=rotation` (or just extract a frame and look) before fixing
 the canvas.
 
-### 15. `-t` between two inputs belongs to the second input
-
-**module**：references/frame-animation-pipeline.md（ffmpeg 调用写法）　｜　**状态**：已复现
-- **enforcement**：env:references/visual-rendering.md
-
-`ffmpeg -i a.mp4 -t 40 -i b.png -filter_complex …` makes `-t` an option of `b`, so
-an infinite filter source (a `color=` canvas) ran unbounded: one run wrote 36,498
-frames / 9.9 GB before it was stopped. Output duration is an **output** option —
-put it after `-map`, and check the frame count when a batch finishes.
-
-## What reaches the screen
-
 ### 18. A review copy needs sound, a visible save state, and per-round archiving
 
 **module**：references/review-ui.md（审阅页的硬约定）　｜　**状态**：已复现
@@ -231,19 +189,6 @@ Three traps compound so that "the source was fine" still ships clipped:
   step. **Lock one sample rate through the whole chain** (`-ar 48000` at every
   stage).
 
-### 20. `render.py --no-loudnorm` cannot take an `-o` that equals the internal base name
-
-**module**：helpers/render.py（输出路径）　｜　**状态**：已复现
-- **enforcement**：env:references/visual-rendering.md
-
-The base path is fixed per mode: `edit/base.mp4`, `base_preview.mp4` (`--preview`),
-`base_draft.mp4` (`--draft`). With loudnorm on, the composite goes to
-`<out>.prenorm.mp4` first, so no collision. With **`--no-loudnorm` it composites
-straight to `-o`** — so `-o edit/base.mp4` becomes
-`ffmpeg -i base.mp4 -c copy base.mp4` → `Output same as Input - exiting`.
-Name the output something else (`person_leg.mp4`). The failure reads like a broken
-render; it is only a name collision.
-
 ### 21. A silent visual leg makes `verify_delivery.py` fail, by design
 
 **module**：helpers/verify_delivery.py + SKILL.md 第 10 步　｜　**状态**：已复现
@@ -265,6 +210,11 @@ from the renderer: an ffmpeg failure or a raised exception still reports
 matters** — redirect to a file and read the tail separately.
 
 ## External tools
+
+**同根并入**（合并后仍按本条处理）：
+- #15 `-t` between two inputs belongs to the second input：
+- #20 `render.py --no-loudnorm` cannot take an `-o` that equals the internal base name：
+
 
 ### 24. Re-rendering a project rendered before 2026-09-25 changes its bytes
 
@@ -412,15 +362,6 @@ deletion from an accidental loss.
 - **修正原则**：`_alpha_range` 先用默认路径抽，失败后**用显式解码器重试并打印说明**，而不是直接判失败。（原有的判据「pix_fmt 只是参考、以平面为准」是对的，这里补的是取平面的方法。）
 - **证据**：同一份 WebM，默认路径 0 字节；`-c:v libvpx-vp9` 得到 1080×1920×96 帧 = 199,065,600 字节完整平面。
 
-## 46. 云同步目录里刚建的目录，下一个进程可能看不见
-- **enforcement**：env:references/visual-rendering.md
-
-- **module**：`helpers/review_slices.py` ｜ **状态**：已复现
-- **现象**：`out_dir.mkdir(parents=True, exist_ok=True)` 之后立刻调 ffmpeg 写该目录，ffmpeg 报 `Error opening output ... No such file or directory`（exit 254），事后该目录也不存在。
-- **原因**：工作区在 OneDrive 上，新建目录的元数据没有立刻对下一个进程可见（与第 5 条同源：云同步目录对 ffmpeg 的间歇性影响）。
-- **修正原则**：建完目录**立即验证**，不可见就重试一次，仍不可见则明确报错——而不是「跑了 28 个切片，实际 0 个」。同类写入前都该这样自证。
-- **证据**：手工先 `mkdir -p` 再跑则 28 个切片全部成功；不先建目录时同一命令失败。
-
 ## 47. 页面实时叠层，不能叠在已经烘焙了层的成片上
 - **enforcement**：judgment:references/review-ui.md
 
@@ -455,14 +396,6 @@ deletion from an accidental loss.
 - **原因**：`<head>` 里漏了 `<meta name="viewport" content="width=…, height=…" />`。没有它，浏览器按默认视口（约 980px）布局再把整页缩放去适配，于是「显式像素尺寸」的元素全被比例放大。正品卡因为按图片自然尺寸渲染、又恰好落在一个被缩放的容器里，容易被误判为「没问题」。
 - **修正原则**：`data-width` / `data-height` 之外，**viewport meta 必须同步写上同样的尺寸**。这是最小骨架的一部分，不是可选项。
 
-## 51. lint 会把运行期 `if` 当成「补间一定存在」
-- **enforcement**：judgment:references/visual-timeline.md
-
-- **module**：`hyperframes check` 的 `overlapping_gsap_tweens` ｜ **状态**：已复现
-- **现象**：写 `if (SPEC.hold > 0) { tl.to(g, …) }` 时，`hold = 0` 的组也被报「autoAlpha 补间在 0.00–0.26s 重叠」；连**根本没有该元素**的组（`genuine: null`）也照报。
-- **原因**：lint 静态读时间轴，不求解 `SPEC` 的取值，按最坏情况假设补间存在。
-- **修正原则**：这类条件要在**生成期**决定——生成器直接决定写不写这一段（含元素本身的块），而不是留一个运行期分支。修完 `hyperframes check` 从「2 warning」到 **0 error / 0 warning**。
-
 ## 52. 编码产物不要直接写进云同步目录
 - **enforcement**：judgment:references/review-ui.md
 
@@ -470,6 +403,11 @@ deletion from an accidental loss.
 - **现象**：把 VP9/MOV 直接编码到 OneDrive 上的目标路径，长任务跑到一半报 `Error writing trailer: Operation timed out` / `Error closing file`，**留下 0 字节文件**（五层里坏了两层），而命令看上去只是「慢」。
 - **原因**：与第 5、46 条同源：云同步目录对长时间连续写入不稳。
 - **修正原则**：**先编码到本地 /tmp，成功后再 move 进目标目录**。`encode_sequence()` 与 `preview_layers.export_one()` 现在都这么做；凡是「跑几十秒以上的写盘」都该按这条自查。
+
+**同根并入**（合并后仍按本条处理）：
+- #5 Cloud-synced video folders make ffmpeg fail intermittently：
+- #46 云同步目录里刚建的目录，下一个进程可能看不见：建完目录**立即验证**，不可见就重试一次，仍不可见则明确报错——而不是「跑了 28 个切片，实际 0 个」。同类写入前都该这样自证。
+
 
 ## 53. 审阅页在**不透明源 iframe** 里：宿主 token 不会继承，硬编码会静默胜出
 - **enforcement**：judgment:references/review-ui.md
@@ -479,15 +417,6 @@ deletion from an accidental loss.
 - **原因**：审阅页跑在 `sandbox="allow-scripts"` 的**不透明源 iframe** 里——宿主的 CSS 变量不继承进来，外链样式表也会被信任围栏打回。所以 DSH token 必须**随页面发**（`/*__DSH_TOKENS__*/` 占位符 + `planners-review-core/assets/dsh-tokens.css`）。真正致命的是**组件自己写死颜色**：`.fb-card { background:#1c202d !important; color:#e2e8f0 !important }` 这种带 `!important` 的硬编码，会让 token 桥形同虚设，而且明暗两套主题下都不报错。
 - **修正原则**：模板只允许引用 `var(--dsw-*)`（经 `body` 的别名映射）与语义变量；**组件级硬编码一律清掉，尤其带 `!important` 的**。改完 count 从 63 → 32（剩下的是 token 缺失时的兜底调色板）。
 - **证据**：同一份数据，改前反馈卡深底近似白字、改后随主题；`#stale-note`、`.fb-card-body`、`.fb-card-badge` 等都是这一类。
-
-## 54. 删掉标记、却没删挂事件的代码 → 页面死在渲染数据之前
-- **enforcement**：env:references/visual-rendering.md
-
-- **module**：`visual/assets/review-page-template.html` ｜ **状态**：已复现
-- **现象**：去掉「视听动效舞台 / 最终合成预览 / 逐字剪辑」三个切换按钮后，页面变成**「0 屏」**——像是数据没加载，其实是 `document.getElementById("view-svg-btn").addEventListener(...)` 拿到 null 抛了 `TypeError`，整个脚本在渲染列表之前就停了。
-- **原因**：这类挂载点不写 null 保护；一旦元素不在（被删、或某个模式不渲染），失败发生在**离症状很远的地方**。
-- **修正原则**：删 UI 元素时必须同时删/收口它的挂载点，并且新挂载一律 `if (el)` 保护。另外**不要在顶层调用依赖 `let` 的函数**：`setStageViewMode("composite")` 提前调用会撞上 `isGlobalPlaying` 的 TDZ，报的是 `Cannot access ... before initialization`。初始可见性应当写在标记里，而不是靠初始化脚本补。
-- **证据**：《图拉斯创新》审阅页两轮排查：先 `Cannot read properties of null`，修完暴露 `Cannot access 'isGlobalPlaying' before initialization`。
 
 ## 55. 「当前屏」只在扬声器轨可见时才被记下 → 上一屏/下一屏看着像坏的
 - **enforcement**：judgment:references/review-ui.md
@@ -519,6 +448,10 @@ deletion from an accidental loss.
 - **修正原则**：**默认自检必须全绿，否则护栏等于装饰。** 死测试删掉（它测的元素已经不存在）；跨 Skill 按路径加载的测试要把它自己的 `scripts/` 放上 `sys.path`（否则 `No module named 'canvas_frame'` 让整个模块静默消失）。修完之后默认自检 326(2 ERROR) → 344 全 OK。
 - **证据**：`test_interactive_ui` 的 `ModuleNotFoundError: No module named 'playwright'`；`test_snapshot_input` 的 `No module named 'canvas_frame'`。
 
+**同根并入**（合并后仍按本条处理）：
+- #54 删掉标记、却没删挂事件的代码 → 页面死在渲染数据之前：删 UI 元素时必须同时删/收口它的挂载点，并且新挂载一律 `if (el)` 保护。另外**不要在顶层调用依赖 `let` 的函数**：`setStageViewMode("composite")` 提前调用会撞上 `isGlobalPlaying` 的 TDZ，报的是 `Cannot access ... befo…
+
+
 ## 58. 舞台选择函数改写了自己的参数 → 页面永远开在错的舞台上
 - **enforcement**：env:references/visual-rendering.md
 
@@ -537,15 +470,6 @@ deletion from an accidental loss.
 - **修正原则**：**有字幕契约时不存在这条退路**：匹配不到就什么都不显示。药丸再加一条 `max-width` 封顶，防任何超长串重演。同理，**点一屏只 `seek` 不 `play`**（舞台还停在静态页上）得到的是一张静止帧 —— 用户动作驱动的换屏必须 `play()`，而切舞台、拖进度条的 `seek` 不该自己开始播放。
 - **证据**：`check_review_template.py` 的 S5／S6；S6 只查分屏点击处理函数那一段，因为前三处 seek 是正当的。
 
-## 60. `hyperframes preview` 在沙箱下静默不起，而且它的路由只能验内容
-- **enforcement**：env:references/visual-rendering.md
-
-- **module**：`helpers/live_stage.py` ｜ **状态**：已复现
-- **现象**：`hyperframes preview --background` 退出后 `--status` 说没有后台预览；日志里也没有明显报错。
-- **原因**：① 它把状态写在 `~/.local/state/hyperframes`，`workspace-write` 沙箱下这个 mkdir 直接 `EPERM`，预览就没起来。② studio 的地址是 `#/project/<id>` 这种 hash 路由，嵌不了；可嵌入的裸路由是 `/api/projects/<id>/preview/comp/index.html`，而它只出现在 studio 自己的 JS bundle 里。③ 那台服务器对**未知路径一律回 200 + SPA**，所以状态码什么都证明不了。
-- **修正原则**：确定性下沉成一个工具：把 `XDG_STATE_HOME` 指到项目内；pin 住裸路由并**验响应体**（stage 过的 composition 会带注入的 `data-hf-gsap-fallback` shim 与 `<base>`）；`--status/--stop/--json` 齐备。这条别在会话里手搓。
-- **证据**：`EPERM: operation not permitted, mkdir '~/.local/state/hyperframes/previews'`；裸路由 119263B 带 shim，`/anything` 也回 200。
-
 ## 61. composition 用旧时间轴打过补丁 → 过期 3 秒，无人发现
 - **enforcement**：judgment:references/review-ui.md
 
@@ -554,6 +478,10 @@ deletion from an accidental loss.
 - **原因**：这是第 56 条「工程态/交付态切分只做了一条轴」的第二条轴（**来源版本**）。生成器只管骨架，注入 cue 表是另一步；时间轴一变，注入物就过期，而两者之间没有闸门。
 - **修正原则**：**画面轨的唯一源是 `composition/`**，而它的输入是时间轴 —— 时间轴一动就重跑生成＋注入；`generate-composition.py --verify` 的核对要覆盖 `mediaClips` 与逐片时间，别只数 clip 个数。
 - **证据**：旧 `__SPANS__.step-open=[0.0,14.42]` vs 新时间轴 `0–11.42`；重跑后逐屏一致。
+
+**同根并入**（合并后仍按本条处理）：
+- #72 `segment_durations.json` 的键是输出文件名的 stem，渲到非权威名会静默留下旧记录：要交付就渲到权威名（`person_master.mp4` / `final.mp4`）；`render.py` 现在会在检测到「还有指向别的 EDL 的记录」时把冲突键打印出来。改 EDL 重渲后，顺手清掉过期键。
+
 
 ## 62. 静态检查的两个假阳：对正确代码报红，训练出来的只是忽略
 - **enforcement**：check:helpers/check_review_template.py
@@ -564,6 +492,10 @@ deletion from an accidental loss.
 - **修正原则**：每条检查都要能说出**它只对哪一种缺陷响**；S6 因此收窄到只查分屏点击处理函数那一段。并且每条检查必须配一份自证（`--prove`：把历史缺陷从干净基线打回去，检查必须响），否则它可能就是一条永远不会失败的判据（第 30 条）。
 - **证据**：收窄前后的两次实跑；`--prove` 七条全响。
 
+**同根并入**（合并后仍按本条处理）：
+- #51 lint 会把运行期 `if` 当成「补间一定存在」：这类条件要在**生成期**决定——生成器直接决定写不写这一段（含元素本身的块），而不是留一个运行期分支。修完 `hyperframes check` 从「2 warning」到 **0 error / 0 warning**。
+
+
 ## 63. studio 会缓存 composition —— 改了源，你要硬刷新它
 - **enforcement**：env:references/visual-rendering.md
 
@@ -573,32 +505,11 @@ deletion from an accidental loss.
 - **修正原则**：**改了 composition 之后，让作者硬刷新（Cmd+Shift+R）**；判断"服务是不是旧实例"不能只看端口，要看响应内容（`grep` 一下新加的东西在不在）。诊断一律用 CDP 取真实 DOM，不要用截图猜。
 - **证据**：同一台服务器、同一个 URL，缓存开时 `__kwStudioHook` 不存在、关掉后 `{"installed":true}`。
 
-## 64. studio 的 player 路由剥掉所有 `src=` 脚本，并把内联脚本拼成一个大脚本
-- **enforcement**：env:references/visual-rendering.md
+**同根并入**（合并后仍按本条处理）：
+- #60 `hyperframes preview` 在沙箱下静默不起，而且它的路由只能验内容：确定性下沉成一个工具：把 `XDG_STATE_HOME` 指到项目内；pin 住裸路由并**验响应体**（stage 过的 composition 会带注入的 `data-hf-gsap-fallback` shim 与 `<base>`）；`--status/--stop/--json` 齐备。这条别在会话里手搓。
+- #64 studio 的 player 路由剥掉所有 `src=` 脚本，并把内联脚本拼成一个大脚本：要在 studio 里执行的代码**必须内联**，并且**并进那段已经证明会执行的块**（这里是动画层），不要指望它自己独立跑。反过来，审阅页要用的东西（嵌入桥）走 `src=` 是对的 —— 那条路由不剥。
+- #65 「第几个脚本」不能当锚点，「第一个内联 script」尤其不能：锚点锚在**内容**上（这里是"那个注册 `window.__timelines` 的脚本"），或者用不会被当成脚本的东西传配置（`<meta>` 而不是内联 `<script>`）。凡是"取第 n 个"的锚点，都要问一句：谁还能往前面插东西？
 
-- **module**：`hyperframes preview` 的 player 路由、`visual/scripts/generate-composition.py` ｜ **状态**：已复现
-- **现象**：给 composition 加一个 `<script src="assets/xxx.js">` 的钩子，在 studio 里**永远不执行**；同一份文件在 `/preview/comp/index.html` 那条路由上是好的。
-- **原因**：两件事叠加。① player 路由只留一个 `src=` 脚本（它自己的 `/api/runtime.js`，GSAP 由它提供），composition 自己声明的 `src=` 脚本全被剥掉 —— 实测 player 文档里的 script 标签只剩 runtime。② runtime 把**内联**脚本拼成一个大脚本执行；我们的钩子虽然内联了，却排在动画那段之后，而它前面一段抛了错，于是永远轮不到它（`hasTimelines: true` 但 `__kwStudioHook: undefined`）。
-- **修正原则**：要在 studio 里执行的代码**必须内联**，并且**并进那段已经证明会执行的块**（这里是动画层），不要指望它自己独立跑。反过来，审阅页要用的东西（嵌入桥）走 `src=` 是对的 —— 那条路由不剥。
-- **证据**：`grep -o '<script[^>]*src=' player.html` 只有 runtime 一条；钩子文本在文档里（`hasHookText: true`）而全局变量 undefined；并入动画块后 `{"installed":true,"sent":1}`。
-
-## 65. 「第几个脚本」不能当锚点，「第一个内联 script」尤其不能
-- **enforcement**：env:references/visual-rendering.md
-
-- **module**：组装 composition 的注入步骤 ｜ **状态**：已复现
-- **现象**：往 composition 头部加了一个内联配置脚本之后，那个"把生成器骨架脚本换成 cue 表 + 动画"的步骤**把配置脚本整块替换掉了**：meta 没了、钩子读不到收集器地址，而页面其他地方一切正常。
-- **原因**：注入步骤的兜底锚点是"第一个不含 `src` 的 `<script>`"（`SCRIPT_RE`）。这是一个**位置锚点**，任何新增的内联脚本都会把它抢走。位置锚点在多人/多步改动的文件里天生不稳。
-- **修正原则**：锚点锚在**内容**上（这里是"那个注册 `window.__timelines` 的脚本"），或者用不会被当成脚本的东西传配置（`<meta>` 而不是内联 `<script>`）。凡是"取第 n 个"的锚点，都要问一句：谁还能往前面插东西？
-- **证据**：加配置脚本后 `grep -c kw-studio-notes` 从 1 变 0；改成内容锚点 + meta 后稳定。
-
-## 69. `hyperframes render --workers auto` 按核数开满 Chrome → 小内存机器被 swap 打崩
-- **enforcement**：check:helpers/check_render_env.py
-
-- **module**：`references/visual-rendering.md` + `helpers/check_render_env.py` + `SKILL.md` ｜ **状态**：已复现
-- **现象**：渲染参数留默认 `--workers auto` 时，`hyperframes render` 按 CPU 核数开满 Chrome 工作进程；核数多于内存预算的机器在渲染中途被拖垮。
-- **原因**：`auto` 只看核数，**不看内存**。每个 Chrome 工作进程约占 1.5 GB，6 核就把 8 GB 机器的内存吃穿——这是默认值的稳定后果，不是偶发：换一台同规格机器、用同一条命令必然重演。而文档此前只写「default auto」，全文零资源警告。
-- **修正原则**：渲染前先跑 `python3 "<craft>/helpers/check_render_env.py" "<project>/composition"`——它报 RAM、可用内存与 swap，并直接打印这台机器能带得起的 `--workers` 值（两个上限取低：总内存 ÷ 1.5、可用内存 ÷ 1.5，且不超过核数；8 GB 机器上因此 ≤ 2），照它给的值传，不要自己按核数推。**默认从 `--workers 1` 起**；要加并发，先拿 3–5 秒短片段试。审阅期用工程态（`live_stage.py` + `build_review.py`，零渲染），不要拿「先渲一版看看」当开工动作。
-- **证据**：9394 帧 / 1920×1080 / 8 GB RAM / 6 核 → 6 个 Chrome 进程 → swap 用满 8.2 GB → 系统崩溃。
 
 ## 70. 首次渲染的 compile 是冷启动（约 25 分钟），会被误判成「这台机器渲不动」
 - **enforcement**：env:references/visual-rendering.md
@@ -609,6 +520,10 @@ deletion from an accidental loss.
 - **修正原则**：**交付渲染前先渲一个 3–5 秒短片段把缓存焐热**，再渲整片。一次冷启动的长等待不构成「渲不动」的证据；以它为理由改走手工 ffmpeg 分叉，是拿一条不可复现的路径换十几分钟。
 - **证据**：同一工程同一命令——冷 `25m 5s` vs 暖 `40.2s`；整片暖缓存 `14m 11.6s`（`compile 5m 23.1s` + `capture 8m 37.4s` + `assemble 6.2s`）。
 
+**同根并入**（合并后仍按本条处理）：
+- #69 `hyperframes render --workers auto` 按核数开满 Chrome → 小内存机器被 swap 打崩：渲染前先跑 `python3 "<craft>/helpers/check_render_env.py" "<project>/composition"`——它报 RAM、可用内存与 swap，并直接打印这台机器能带得起的 `--workers` 值（两个上限取低：总内存 ÷ 1.5、可用内存 ÷ 1.5，且不超过核数…
+
+
 ## 71. 合成给「每一步」发一个媒体 clip，而各步不首尾相接 → 成片里成段黑帧
 - **enforcement**：check:helpers/verify_delivery.py
 
@@ -617,15 +532,6 @@ deletion from an accidental loss.
 - **原因**：生成器给每一步发一个时长正好等于该步时长的媒体 clip，而步与步之间并不相接（`timeline_derive.py` 的 step 边界取自首/末 cue，它自己的注释就写着 cue 之间有 0.2–0.7s 的真空隙）。空隙里画面区没有内容，渲染出来就是黑。对**连续**素材（录屏、长镜头）尤其致命：源本来一直在，是排版把它切出了洞。
 - **修正原则**：连续素材用**一条贯穿全片的媒体 clip**，不要按步骤切；被上层不透明 clip（画面页、截图）覆盖的窗口不必挖洞。判据落在 `verify_delivery.py` 的 `--max-black`：**累计纯黑秒数预算**（默认 2.0s）而不是「有黑帧即失败」——深色设计的片子天然含近黑帧，逐帧判黑会做成恒真告警。报出的黑段要能区分「源素材当时就是黑的」（正常）与「本该有画面却是黑的」（缺陷）。
 - **证据**：修复前 `37 段 / 13.10s` → 失败；改成一条连续 clip 后 `2 段 / 1.03s` → 通过，且那两段的**源素材亮度本身就是 0.03**（内容黑，非缺陷）。
-
-## 72. `segment_durations.json` 的键是输出文件名的 stem，渲到非权威名会静默留下旧记录
-- **enforcement**：judgment:references/caption-modes.md
-
-- **module**：`helpers/render.py` + `helpers/srt_export.py` ｜ **状态**：已复现
-- **现象**：渲到 `person_master.new.mp4` 后，`segment_durations.json` 里多了一个 `person_master.new` 键，**旧的 `person_master` 键原样留着**（指向去重前的 EDL，长 1.77s）。下游解析到哪一条，取决于各自的挑选规则。
-- **原因**：`blob[clips_tag] = {...}` 而 `clips_tag = out_path.stem`——键由输出名决定，没有「这个键是不是权威名」的校验。更麻烦的是**两个读者算法不一致**：`_edl.py` 取最后一条匹配，`srt_export.py` 取第一条；当两条记录哈希相同（EDL 没变、只重渲）时二者会指向不同时间。
-- **修正原则**：要交付就渲到权威名（`person_master.mp4` / `final.mp4`）；`render.py` 现在会在检测到「还有指向别的 EDL 的记录」时把冲突键打印出来。改 EDL 重渲后，顺手清掉过期键。
-- **证据**：`person_master`(311.366665, digest `13f33481…`) 与 `person_master.pre-dedupe`(313.133332, digest `41b1d81b…`) 并存，相差 1.77s，无任何脚本报告矛盾。
 
 ## 73. 交付副本与流水线产物是两份判据相反的东西（字幕空隙）
 - **enforcement**：judgment:references/caption-modes.md

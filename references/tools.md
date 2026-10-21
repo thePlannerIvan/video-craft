@@ -78,10 +78,13 @@ python3 "<craft>/helpers/audio_mix.py" "<voice.wav>" -o "<mix.wav>" --bgm "<bgm.
 python3 "<craft>/helpers/transcribe.py" "<原始视频>" --edit-dir "<edit>" --audio-track 0 --backend auto
 python3 "<craft>/helpers/transcribe_batch.py" "<素材目录>" --edit-dir "<edit>" --workers 4
 python3 "<craft>/helpers/pack_transcripts.py" --edit-dir "<edit>"
+python3 "<craft>/helpers/refine_transcript.py" "<edit>" --source <source> --asr <词级ASR.json>
 python3 "<craft>/helpers/check_edl.py" "<edit>" --max-pause 0.8
 ```
 
-转写会读取缓存；云端后端会上传声音并可能收费，先沿用作者已授权配置。离线选 `--backend mlx`。多音轨先核声音，`--audio-track` 是从零起的音轨索引。EDL 字段及多轨合成见 [composition-craft](composition-craft.md)。`render_cut.py <edl> -o <mp4> --quality draft` 只作快预览，不记录实测时长，不替代正式渲染路径（见「渲染、核验、包装」）。
+转写会读取缓存；云端后端会上传声音并可能收费，先沿用作者已授权配置。离线选 `--backend mlx`。多音轨先核声音，`--audio-track` 是从零起的音轨索引。EDL 字段及多轨合成见 [composition-craft](composition-craft.md)。
+
+**转写粒度是剪辑页的前提。** `edl_preview.html` 一个可选项对应 `transcripts/<source>.json` 的一个 token；如果这份文件是「一句一个 token」，页面只能整句删。出现整句 token（>1.5s）先跑 `refine_transcript.py`：它保留确认稿文字不变，用词级 ASR + `takes_packed.md` 的短语锚点补出字/词级 `start/end`；页面构建时也会对粗粒度转写报警，不再静默出整句选择器。`render_cut.py <edl> -o <mp4> --quality draft` 只作快预览，不记录实测时长，不替代正式渲染路径（见「渲染、核验、包装」）。
 
 按时间区间改词，并断言实际文字：
 

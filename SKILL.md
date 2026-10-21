@@ -165,7 +165,7 @@ python3 "<craft>/helpers/audio_fix.py" "<media>" -o "<fixed.wav>" --target-lufs 
 
 **下一消费者**：逐字剪辑审阅面；字幕与工程态时间脊柱可先行。正式底片渲染排在剪点确认之后（第 5 步），不排在审阅之前。
 
-**完成标准**：EDL 可检查；源文件、区间、速度、段落累计时间明确；没有把预览渲染当成正式底片。
+**完成标准**：EDL 可检查；源文件、区间、速度、段落累计时间明确；`transcripts/<source>.json` 是词/字级（正常 token < 1s，粗粒度转写先跑 `refine_transcript.py`）；没有把预览渲染当成正式底片。
 
 ### 4. 逐字剪辑审阅
 

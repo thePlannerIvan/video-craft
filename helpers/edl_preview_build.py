@@ -216,6 +216,33 @@ for ch in deleted:
             after = i
     ch["after_seg"] = after
 
+def _coarse_token(word):
+    """A sentence-level token, not a long English word.
+
+    `Disruption` can honestly last 1.6s; a 2-second Chinese "word" with six or
+    more Han characters is a sentence wearing a word's type. Counting any >1.5s
+    token flagged V1 after its transcript was already refined (one long brand
+    name), so the signal is Han-character count + duration.
+    """
+    text = str(word.get("text") or "").strip()
+    han = sum(1 for ch in text if "\u4e00" <= ch <= "\u9fff")
+    return (word.get("type", "word") != "spacing"
+            and han >= 6
+            and float(word["end"]) - float(word["start"]) > 1.5)
+
+
+coarse_tokens = [w for words in trans.values() for w in words if _coarse_token(w)]
+coarse_info = {
+    "count": sum(1 for w in coarse_tokens),
+    "max_seconds": round(max((float(w["end"]) - float(w["start"])
+                              for w in coarse_tokens), default=0.0), 2),
+}
+if coarse_tokens:
+    print(f"[warn] {EDIT.name}: {len(coarse_tokens)} 个 token 超过 1.5s（最长 "
+          f"{coarse_info['max_seconds']:.1f}s）—— 这份 transcript 还是句子级，"
+          f"页面只能整句选。先跑 helpers/refine_transcript.py 补词级时间戳再重建。",
+          file=sys.stderr)
+
 HTML = """<!DOCTYPE html>
 <html lang="zh">
 <head>
@@ -318,6 +345,17 @@ HTML = """<!DOCTYPE html>
     border-bottom: 1px solid #6a4520;
   }
   #staleness[hidden] { display: none; }
+  #coarse-warning {
+    margin: 0;
+    padding: 10px 24px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #ffe4e6;
+    background: #3b0d13;
+    border-bottom: 1px solid #7f1d1d;
+  }
+  #coarse-warning[hidden] { display: none; }
+  #coarse-warning code { color: #fecdd3; }
 
   button {
     padding: 5px 12px;
@@ -774,6 +812,7 @@ HTML = """<!DOCTYPE html>
   <a id="page-reload" href="" title="重新加载当前审阅页">⟳ 刷新</a>
 </div>
 <div id="staleness" hidden></div>
+<div id="coarse-warning" hidden></div>
 <div id="wrap">
   <div id="left">
     <div id="stage">
@@ -839,6 +878,14 @@ const SEGS = __SEGS__;
 const SRC = __SRC__;
 const CUES = __CUES__;
 const TOTAL = __TOTAL__;
+const COARSE = __COARSE__;
+if (COARSE.count) {
+  const box = document.getElementById("coarse-warning");
+  box.innerHTML = "<b>这份转写还是句子级：</b>右侧每个可选项是一整句（"
+    + COARSE.count + " 个超长 token，最长 " + COARSE.max_seconds.toFixed(1)
+    + "s），拖选只能整句删。请先跑 <code>helpers/refine_transcript.py</code> 补词级时间戳，再重建这一页。";
+  box.hidden = false;
+}
 const PAL = ["#2563eb", "#0d9488", "#d97706", "#4f46e5", "#059669", "#0284c7"];
 const srcColor = {};
 Object.keys(SRC).forEach((k, i) => (srcColor[k] = PAL[i % PAL.length]));
@@ -1665,6 +1712,7 @@ data = {
     "__SRC__": json.dumps(src_map_web, ensure_ascii=False),
     "__CUES__": json.dumps(cues, ensure_ascii=False),
     "__DELETED__": json.dumps(deleted, ensure_ascii=False),
+    "__COARSE__": json.dumps(coarse_info, ensure_ascii=False),
     "__TOTAL__": repr(total),
     "__NSEG__": str(len(segments)),
     "__EDIT_REL__": json.dumps('/' + EDIT.relative_to(ROOT).as_posix()),

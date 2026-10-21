@@ -74,12 +74,34 @@ for rec in selections.get("words", []):
 
 by_src = {}
 for rec in valid_words:
-    by_src.setdefault(rec["src"], []).append((rec["start"], rec["end"]))
+    by_src.setdefault(rec["src"], []).append((rec["start"], rec["end"], "word"))
 # pauses: keep `target` seconds of each selected gap, delete the excess silence
 for rec in selections.get("pauses", []):
     gs, ge, t = rec["start"], rec["end"], float(rec.get("target", 0))
     if ge - gs > t:
-        by_src.setdefault(rec["src"], []).append((round(gs + t, 3), ge))
+        by_src.setdefault(rec["src"], []).append((round(gs + t, 3), ge, "pause"))
+
+
+def snap_word_edges(src, ivs):
+    """Word selections are already on token boundaries; only float rounding
+    puts an edge 1-30ms inside a token. Snap to the nearest boundary so a
+    character-level transcript never gets a cut through the middle of a
+    character (which used to run the silence-edge chain through the sentence).
+    """
+    words = load_words(EDIT, src)
+    if not words:
+        return ivs
+    boundaries = sorted({round(w["start"], 3) for w in words}
+                        | {round(w["end"], 3) for w in words})
+    out = []
+    for a, b in ivs:
+        def nearest(value):
+            point = min(boundaries, key=lambda x: abs(x - value))
+            return point if abs(point - value) <= 0.05 else value
+        a2, b2 = nearest(a), nearest(b)
+        if b2 > a2:
+            out.append((a2, b2))
+    return out
 
 
 def align_gap_edges(src, ivs):
@@ -122,14 +144,18 @@ def align_gap_edges(src, ivs):
 
 
 intervals = {}
-for src, ivs in by_src.items():
-    if any(rec["start"] != rec["end"] for rec in selections.get("words", [])
-           if rec["src"] == src):
-        # gap edges only come from silence selections; word selections are
-        # already on word boundaries — but merged runs may still contain both,
-        # so align the whole set (word edges are already aligned, no-op)
-        ivs = align_gap_edges(src, ivs)
+for src, entries in by_src.items():
+    word_ivs = [(a, b) for a, b, kind in entries if kind == "word"]
+    pause_ivs = [(a, b) for a, b, kind in entries if kind == "pause"]
+    # Word edges must NEVER go through `align_gap_edges`: on a character-level
+    # transcript every token is contiguous, so the "extend through the chain"
+    # loop walks to the end of the sentence and the cut swallows everything.
+    ivs = snap_word_edges(src, word_ivs)
+    if pause_ivs:
+        ivs += align_gap_edges(src, pause_ivs)
     ivs.sort()
+    if not ivs:
+        continue
     merged = []
     cur = list(ivs[0])
     for a, b in ivs[1:]:

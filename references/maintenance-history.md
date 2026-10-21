@@ -323,3 +323,21 @@ sha256 `796ff3f2…` → 按文档那一步用新模板重生成（`15418868…`
 
 - #76 「画面」这一步以前没有入口，于是实现了自己重画原页 ｜ 已升级（`helpers/film.py` 的原页拆解闸门；`tests/test_film.py` 红→绿）
 - #77 画面层会把内容画进字幕区，字幕一压就废 ｜ 已升级（`helpers/deliver.py` 的 `captionSafe` 判据；`tests/test_deliver.py` 侵入即红）
+
+## 老路线 shim 为什么还留着（2026-10-21）
+
+`visual/scripts/import_svg_page.py`、`generate-composition.py` 仍是**活代码**，不是残留：
+
+- `helpers/build_review.py` 依赖 `import_svg_page.import_page` / `_inline_image_hrefs`（审阅页的 SVG 页导入路径）；
+- `visual/scripts/auto_choreography.py` 依赖 `import_svg_page.resolve_pages`；
+- `tests/test_snapshot_input.py` 直接 `import import_svg_page as pages`。
+
+所以老**路线**（十步流程、保真页面的做法）已存档进 `references/legacy-page-route.md`，
+但这两个**模块**必须保留。移除条件：当 `build_review.py` 与 `auto_choreography.py`
+各自的 SVG 页导入改为读 `_legacy_page/` 或新的 `film.py` 接口、且相关用例迁移完成后，
+再整体删除 shim 并同步更新本条。
+
+同轮还记录一条：**判据绿不等于页面可用**——`review.py` 的运行时判据曾经全绿，
+但页面顶栏是 `undefined 章 · NaN:NaN`、HUD `00:04 / 00:00`。根因是模板没对 `totals` 兜底、
+`build_density` 没从 steps 推区间。已在 2026-10-21 的现场测试后修复，并由
+`review.py` 的三道闸门锁住。

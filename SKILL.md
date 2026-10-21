@@ -424,6 +424,22 @@ python3 "<craft>/helpers/state_fingerprint.py" capture "<project>"   # 交付自
 - **渲染闸门（render 前第一步）**：`helpers/render_gate.py` —— 人工提交必须覆盖当前审阅快照；工程态 `--engineering` 只能落 `edit/_engineering/`
 - 维护与已知陷阱：`GOTCHAS.md`、`references/architecture.md`
 
+## 升级守则（每次改本 Skill 必读）
+
+判据只有一句：**改完以后所有的"绿"，都必须是这一次亲手跑出来的绿，不是上一次的绿。**
+
+改动前先跑一遍基线并记下结果；改动后逐条重跑，任何一条不如基线就不许发布。
+
+1. `PYTHONPATH=helpers python3 -m unittest discover -s tests -p 'test_*.py' | tail -3`
+   → 末行必须是 `OK`，并记下 `Ran N tests`。**N 只许增不许减**，除非是合并用例并写明理由。
+2. `python3 helpers/check_review_template.py`（0 项不通过）与 `--prove`（全响）。
+3. `python3 <planning-before-create-skill>/scripts/lint_skill.py .` → 无确定错误。
+4. **接真实项目跑一遍三条命令**：`review.py <project>`（退 0，且运行时判据「能播 / 有画面 / 有声音」全绿）、
+   `deliver.py <project>`（成片真有音轨、核验报告 `ok=true`）。**单测绿 ≠ 真实项目绿，这条不可省。**
+5. 发布前确认工作区干净、本地与 GitHub 一致；发布后再用同一现场重跑第 4 条。
+
+不许做：把上一次的绿灯当成本次状态；把没跑过的写成"已验证"；红了先发布再修。
+
 ## 自检
 
 从 Skill 根运行：

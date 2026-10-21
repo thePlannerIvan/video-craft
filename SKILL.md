@@ -291,7 +291,7 @@ DSH 有 `review_open` 时传返回的 surface 绝对路径；没有时去掉 `--
 
 官方播放器承担播放、暂停、拖动、倍速、单屏播放和屏末定位。字幕与反馈位置读取它的播放头；不要同时启动旧 SVG 定时器或隐藏视频。逐动画反馈以分屏、播放时间及对应分句锚点记录；框选批注先暂停。点选调整切换到静态源稿编辑，调整作为请求随反馈提交，返回预览后看当前真实工程，不能把未应用的草稿说成已生效。
 
-`review/media.json` 显式声明已有成片、底片或透明视频层；这些兼容入口继续保留。工程含图片、声音或录屏时必须来自项目内资产；`live_preview.py` 拒绝外部资源和越界路径。桥传素材字节，播放器层使用可跨不透明源的媒体载体；不要把父帧的 `blob:null` URL 直接给子帧。**活舞台的资产预算由 `build_review.py` 自动做**：`liveStage.composition.assets` 里超过 `LIVE_STAGE_ASSET_MB`（4MB）的会被换成 `review/proxies/` 下的审阅副本：时长不变，**先保原生像素只降码率，仍压不进才按 0.75/0.5/0.35 降分辨率**，降了会在 `mediaNotes` 里写明 `scaled`；同时把 `composition.assetBytes` 与 `liveStage.budgetMs` 写进快照 —— 页面按后者而不是写死的 8 秒算等待预算。`media.sizes` 逐通道标出 MB 与 `oversized`，页面对超大通道（例如 1.19GB 的口播母版）**拒绝下载**并说明原因，而不是把整份搬进侧栏。所以 agent 不需要手搓代理；看到「预览暂时无法连接」先查 `mediaNotes` 里有没有超预算记录，而不是先去查服务。
+`review/media.json` 显式声明已有成片、底片或透明视频层；这些兼容入口继续保留。工程含图片、声音或录屏时必须来自项目内资产；`live_preview.py` 拒绝外部资源和越界路径。桥传素材字节，播放器层使用可跨不透明源的媒体载体；不要把父帧的 `blob:null` URL 直接给子帧。**活舞台的资产预算由 `build_review.py` 自动做**：`liveStage.composition.assets` 里超过 `LIVE_STAGE_ASSET_MB`（4MB）的会被换成 `review/proxies/` 下的审阅副本：时长不变，**先保原生像素只降码率，仍压不进才按 0.75/0.5/0.35 降分辨率**，降了会在 `mediaNotes` 里写明「原生 W×H → w×h」；同时把 `composition.assetBytes` 与 `liveStage.budgetMs` 写进快照 —— 页面按后者而不是写死的 8 秒算等待预算。`media.sizes` 逐通道标出 MB 与 `oversized`，页面对超大通道（例如 1.19GB 的口播母版）**拒绝下载**并说明原因，而不是把整份搬进侧栏。所以 agent 不需要手搓代理；看到「预览暂时无法连接」先查 `mediaNotes` 里有没有超预算记录，而不是先去查服务。
 
 `review.draft()` 保存草稿；`review.write()` 正式落提交文件；有待处理意见时再 `review.wake()`。真实回执成功后才报告已写入，通知结果与保存结果分别显示。页面不保存时不唤醒模型。改 composition、剪点、字幕或画面后重新 build review。
 

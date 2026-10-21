@@ -552,13 +552,13 @@ deletion from an accidental loss.
 - **现象**：2026-10-21 XHS 三条片（`01-projects/mkt群课程准备/xhs-series/v3`）：工程在官方播放器里 6:08、画面正确；同一份工程进审阅页后时长 0、舞台区全黑，右侧人物照常播。`hyperframes check --json` 退 0，`runtime.duration` 为 `null`、`contrast.checked` 为 0（没有构建出 DOM，自然没有可测的对比度），没有一条 error。
 - **原因**：预览编译器把 `index.html` 里的内联 `<script>` 改写成 `type="text/hf-after-fonts"`（字体就绪后再跑）。`live_preview` 把 `src=` 的脚本取回来、内联成普通 `<script>`，所以外部脚本会执行；内联块原样留下，审阅页的 srcdoc 里没有东西替它重跑。`window.__CFG__` 与 `HF.build()` 都写在内联块里 → 时间轴从未构建。另一条同类：注册名必须等于根元素的 `data-composition-id`，否则 `hyperframes check` 报 `timeline_id_mismatch`，但更早的半成品不一定被所有路径拦住。
 - **修正原则**：会执行逻辑的脚本全部放 `src/*.js`；`index.html` 只留一行 lint 需要的容器初始化 `window.__timelines = window.__timelines || {};` —— `hyperframes check` 的 `missing_timeline_registry` 要求本文件里能看到它，而真正的 `window.__timelines["main"] = tl` 仍在外部文件。`build_review` 之前跑 `check_live_stage.py`：内联 `HF.build(` / `__CFG__` / 真正的 `__timelines[...] =`、注册名不一致、缺 bridge 全部判 error。**别把 `check` 绿灯当成「页面能播」**：绿只说明播放器路径没坏，审阅页走的是另一条路。
-- **证据**：本轮实测坏版 `hyperframes check --json` 退 0、`runtime.duration=null`、`contrast.checked=0`；同一份内容把 config/boot 移到外部并补 bridge 后，`check_live_stage.py` 从 FAIL（2 error）转为 PASS。回归 `tests/test_live_stage_contract.py`，契约写在 `references/live-stage-contract.md`。审阅页能否播放仍需实测，静态检查不替代那一步。
+- **证据**：坏版实测 `hyperframes check --json` 退 0、`runtime.duration=null`、`contrast.checked=0`；同一份内容把 config/boot 移到外部并补 bridge 后，`check_live_stage.py` 从 FAIL（2 error）转为 PASS。回归 `tests/test_live_stage_contract.py`，契约写在 `references/live-stage-contract.md`。审阅页能否播放仍需实测，静态检查不替代那一步。
 
 ## 75. 「确认前不要渲染」写在文档里，渲染命令什么都不检查
 - **enforcement**：check:helpers/render_gate.py
 
 - **module**：`helpers/render_gate.py` + `SKILL.md` 第 10 步 ｜ **状态**：已复现
-- **现象**：2026-10-21 XHS：`SKILL.md` 已经写了「确认前不要渲染成片」，还是渲了一版 43 秒的成片，用户明确批评。
+- **现象**：2026-10-21 XHS：`SKILL.md` 已经写了「确认前不要渲染成片」，还是渲了一版 43 秒的成片，被明确批评。
 - **原因**：规则是 prose，渲染入口（`render.py` / `hyperframes render` / `npm run render`）都不读审阅状态。只要 agent 想渲，就没有东西拦。
 - **修正原则**：渲染前第一步跑 `render_gate.py`：`review/review_data.json.snapshot` 必须被 `review/review-submissions.json` 或 `feedback/*.jsonl` 里至少一条人工提交覆盖，且 `sourceManifest` 与磁盘一致 —— 源改过但没重建，旧提交不算覆盖「现在这一版」。工程态 `--engineering --out` 被限制在 `edit/_engineering/`，不能改个文件名当交付。返修后必须重新 build、重新提交，不能拿旧提交放行新源码。
 - **证据**：真实 v1 工程 0 条提交时退 1，并列出 `sourceManifest` 的漂移（源改过、未重建）；`tests/test_render_gate.py` 覆盖 0 提交 / 旧快照 / 源漂移 / 匹配放行 / 工程态越界。

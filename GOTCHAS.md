@@ -335,6 +335,9 @@ deletion from an accidental loss.
 - **修正原则**：判据换成 10ms RMS 包络（阈值按 5% 分位底噪 +10dB 自适应）。**落在实测语音里 = HARD**（会切到声音）；**落在词框内但实测是静音 = WARN**（词框偏松，剪点没问题）。测量不可用时退回词框判据并在结果里标注 `silence_gate: unavailable`，绝不静默放过。
 - **证据**：同一条录音，实测 129.79 处为 −73.8dB 房间底噪（真语音 130.00 起）、210.62 处为 −65dB（真语音 210.80 起），两处都被旧判据误杀。回归测试 `tests/test_edl_silence_gate.py`。
 
+**同根并入**（合并后仍按本条处理）：
+- 2026-10-21 XHS 三条片的逐字剪辑页：`transcripts/<source>.json` 被写成「一句一个 token」，页面按 token 命中，拖选只能整句删（实测 11.3s / 3.2s / 20.9s），`selections.json` 也写整句区间。页面与 `selections.json` 契约都没坏，**坏的是词框粒度**。修法是用 `helpers/refine_transcript.py` 保留确认稿文字、用词级 ASR + `takes_packed.md` 短语锚点补字/词级 `start/end`；页面构建时对「≥6 个汉字且 >1.5s」的 token 打红条（不能用单纯的 >1.5s，`Disruption` 这种长英文词会假阳）。`apply_selection.py` 的词选择只做边界 snap，**绝不能**走 silence-edge 的串联扩展——字符级转写下那会把整句走完。回归 `tests/test_edl_word_granularity.py`（粗转写红灯 + 精修后拖选 <1s + 单字删除只动该段）。
+
 ## 43. 渲染器的帧格是 ceil，不是 round
 - **enforcement**：test:tests/test_duration_plan.py
 
@@ -541,13 +544,3 @@ deletion from an accidental loss.
 - **原因**：这条规则**不能**落在 `--build` 的产出上——`subtitles.srt` 的契约是「每个 cue 的时间戳等于保留词的边界」，`check_article_srt` 逐条核对，就地改 end 会把那份契约弄假（实测直接把测试弄红）。它属于**交付边界**，也就是文档说的「交付前做空隙检查」。
 - **修正原则**：流水线产物忠实、可校验；交付副本可导入。规则实现在 `srt_export.py:apply_import_gaps`，由 `export_deliverables.py` 在写 `成品/*.srt` 时调用；交付命名用 `src=dst`（如 `subtitles.srt=04_字幕文件.srt`）一次说清，不再拷完手工改名。
 - **证据**：同一条 161 cue 的字幕——流水线产物 22 处 <0.03s（忠实），交付副本 0 处、min 0.040s、保底 0.300s。
-
-
-## 74. 转写的 token 粒度就是剪辑页的选词粒度（页面看起来坏了，其实是数据粗）
-- **enforcement**：test:tests/test_edl_word_granularity.py
-
-- **module**：`helpers/edl_preview_build.py` + `helpers/refine_transcript.py` + `transcripts/<source>.json` ｜ **状态**：已复现
-- **现象**：三条已交剪辑的逐字预览页，拖选任意位置都选中一整句（实测 V1 第一句 11.3s、V3 20.9s）；`selections.json` 写出的也是整句 `start/end`。页面本身没坏，`apply_selection.py` 也按词级区间设计。
-- **原因**：`edl_preview_build.py` 给 `transcripts/<source>.json` 的每个 `words[]` 条目渲染一个 `<span>`，拖选按 token 命中；这三份 transcript 被写成了「一句一个 token」。同时 `apply_selection.py` 的 `words_inside` 碎片检查也依赖同一份词级数据——只在页面层拆字而不改 transcript，会让删一个词后剩下的整句因为「没有完整词」被丢弃。**只修页面不够，必须修数据。**
-- **修正原则**：`transcripts/<source>.json` 必须是字/词级（正常 token < 1s）。粗粒度用 `helpers/refine_transcript.py`：保留确认稿文字，用词级 ASR + `takes_packed.md` 短语锚点补 `start/end`；页面构建时对 >1.5s 的 token 打红条并给出命令，不再静默出整句选择器。`apply_selection.py` 的词选择只做边界 snap，**绝不**走 silence-edge 的串联扩展（字符级转写下那会把整句走完）。
-- **证据**：同一拖选 V1 11.3s→0.1s、V2 3.2s→0.3s、V3 20.9s→0.4s；`selections.json` 一条 0.312s；`apply_selection.py` 后 45 段中只有第一段从 0.93–4.12 变为 1.532–4.12，其余 44 段不变；重建页面后该字出现在「已剪掉的词」行且可恢复。

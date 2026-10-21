@@ -28,7 +28,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
 HELPERS = ROOT / "helpers"
-GENERATOR = ROOT / "visual" / "scripts" / "generate-composition.py"
+# page 十步路线已存档：真正的生成器在 _legacy_page/，原路径只剩 CLI 转发 shim
+GENERATOR = ROOT / "visual" / "scripts" / "_legacy_page" / "generate-composition.py"
 sys.path.insert(0, str(HELPERS))
 
 

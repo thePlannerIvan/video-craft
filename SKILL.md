@@ -22,21 +22,21 @@ Video Craft 把已经确定的内容做成可播放、可审阅、可返修的�
 
 顺序仍是**先剪点、后画面**：逐字剪辑面定"说什么、留哪句"，确认之后才做动效 / 密度。剪点一动，画面锚点、字幕、composition 全部要重出，反过来做就是白做。
 
-## 历史构建方式的命名（不是要选的路线）
+## 三条命令
 
-先读 [capability-packs.md](references/capability-packs.md)：现在按**能力包组合**，不再先选路线。
-下表是旧项目和旧文档里会遇到的三个历史名字，以及它们大致对应哪几组能力包；新项目按能力包记录（`edit/project.md`），不再声明路线。
+只有三条命令，别在别处找路线。每条命令背后各有契约文档，命令本身是唯一入口。
 
-| 历史名 | 大致对应的能力包 | 谁决定 | 审阅 |
+| 命令 | 什么时候用 | 它保证什么 | 细节 |
 |---|---|---|---|
-| **page** | 保真页面 + 字幕（+ 音乐床） | 作者已批准页面；Craft 只做动效与合成 | 动效与合成面（逐元素） |
-| **recompose** | 重排画面 + 字幕（+ 音乐床） | 作者批准方向；Craft 在成片阶段重排 | 动效与合成面 + 右侧整栏反馈（整 beat / 逐句 / 历史） |
-| **composite** | 叠层 + 字幕 | 作者已有素材；Craft 只做声音/字幕/合成 | 已有媒体审阅与叠层 |
+| `helpers/film.py outline / verify / pages` | **画面**：从原页做到 composition | 没交「原页拆解」不许进 composition（`pages/<page>.md`：元素清单 + 处置 + 对应口播） | [film.md](references/film.md) |
+| `helpers/review.py` | **审阅**：把工程变成能给人看的页面 | 自带"能播、时长对、有声音"的运行时判据；不绿不放行 | [review-ui.md](references/review-ui.md)、[live-stage-contract.md](references/live-stage-contract.md) |
+| `helpers/deliver.py` | **交付**：画面层 + 人物 + 声音 + 字幕 → 成片 + 核验报告 | 只做画面层、人物后期贴回这种真实形态有入口；逐项核验 | [delivery.md](references/delivery.md) |
 
-- **page 仍是多数项目的默认组合**（保真页面），但不是必须的路线；作者要“更大自由度”时换成重排画面包，两者可以同片混用（按单元）。
-- **recompose** 是历史命名，对应“重排画面”能力包（`recompose.json` 只是该组合的项目标记）。失败或作者要求“这版别改”时回保真页面。
-- recompose 不调用 `import_svg_page.py` / `generate-composition.py` / `check_parity.py`；它复用同一套事实层（声音、EDL、字幕、anchors、timeline）和同一套交付核验。
-- recompose 的密度单位是**口播逐字稿的行**；beat 只是分组与批量入口。`off` 是结构指令（这一句不要图），不是动效参数。
+剪辑、字幕、时间脊柱仍是三条命令的事实层，按全链流程做（第 3–6 步）。
+
+**老路线已存档，不再维护**：page 十步路线（`import_svg_page` → `generate-composition` → `check_parity`）
+整体归档在 [legacy-page-route.md](references/legacy-page-route.md)，代码在 `helpers/_legacy_page/` 与
+`visual/scripts/_legacy_page/`，原路径保留兼容 shim。新项目一律走 recompose + `film.py`；只有复活旧项目时才读那份存档。
 
 ## 工程预览与最终交付
 
@@ -287,6 +287,17 @@ python3 "<craft>/helpers/build_review.py" "<project>" --mode auto --slices off
 python3 "<craft>/helpers/review_surface.py" "<project>" --surface-only
 ```
 
+**建完之后必须跑运行时检查，它才是"这页能给人看"的判据**：
+
+```bash
+python3 "<craft>/helpers/check_review_playable.py" "<project>"   # 退 0 才能交给作者
+```
+
+它自己起宿主、用 Playwright 打开页面，断言：挂上哪条播放通道、**活舞台的时间轴真的构建了**
+（直接读 iframe 里的 `window.__timelines.main.duration()`，不信根元素的 `data-duration`）、
+能 seek 出画面、有声音且未被静音。任一条红就退 1 并指出该修哪一层——不要把一个
+"能提交反馈、但看不到也听不到"的页面交给作者（2026-10-21 就是在这里烧掉了一整轮）。
+
 DSH 有 `review_open` 时传返回的 surface 绝对路径；没有时去掉 `--surface-only`，由 review-core 启动本地宿主。两种宿主使用同一份审阅页。
 
 官方播放器承担播放、暂停、拖动、倍速、单屏播放和屏末定位。字幕与反馈位置读取它的播放头；不要同时启动旧 SVG 定时器或隐藏视频。逐动画反馈以分屏、播放时间及对应分句锚点记录；框选批注先暂停。点选调整切换到静态源稿编辑，调整作为请求随反馈提交，返回预览后看当前真实工程，不能把未应用的草稿说成已生效。
@@ -313,6 +324,17 @@ python3 "<craft>/helpers/review_inbox.py" "<project>"
 - 改变任何时间、页面或媒体绑定后，重新运行 `build_review.py`，让旧 snapshot 失效。
 
 ### 10. 核验与交付
+
+**先跑一条命令出成片，别手写 ffmpeg**：
+
+```bash
+python3 "<craft>/helpers/deliver.py" "<project>"        # 画面层 + 人物贴回 + 声音 + 核验报告
+python3 "<craft>/helpers/deliver.py" "<project>" --visuals "<已有画面层.mp4>"   # 跳过渲染
+```
+
+它按 `recompose.json` 的 `personSlot` / `captionSafe` 贴回人物、接声音、核验分辨率/帧率/时长/音轨/
+首中尾帧/字幕安全区，并写 `<成品>/<片名>_核验报告.json`；第一件事是跑 `render_gate.py`
+（没人审覆盖当前快照就拒绝出片）。契约见 [delivery.md](references/delivery.md)。
 
 **渲染前的第一步是渲染闸门，不是 render。** 它要求 `review/review-submissions.json`（或
 `feedback/*.jsonl`）里至少一条人工提交覆盖**当前**审阅快照，且源在那次构建之后没有再改过：

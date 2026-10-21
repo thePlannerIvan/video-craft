@@ -137,3 +137,39 @@ warning（不拦路）：画布/时长属性缺失、bridge 未被引用、注�
 | `hyperframes check` 报 `missing_timeline_registry` | `index.html` 里没有 `window.__timelines` 初始化那一行 |
 | 审阅页能播但没有声音 | 媒体是否走 `review/media.json`；`review_data.json` 的 `mediaNotes` |
 | 审阅页卡在“预览暂时无法连接” | 先看 `mediaNotes` 的资产预算，不要先怀疑服务 |
+
+## 运行时判据：`check_review_playable.py`（静态检查之后必须跑这一条）
+
+静态检查只能证明"这一版不会被静默改写"，证明不了"页面打开就能看、能听"。实测判据是：
+
+```bash
+python3 helpers/check_review_playable.py <project>
+```
+
+它自己起本地宿主、用 Playwright 打开审阅页，断言四件事，任一失败退出 1 并指出该修哪一层：
+
+1. 页面挂上了一条播放通道（活舞台 / 合成成片 / 人物轨），并报出是哪一条；
+2. **活舞台的时间轴真的构建了** —— 直接读 composition iframe 里的
+   `window.__timelines.main.duration()` 与已渲染元素数。这一条是 0 秒事故的唯一可靠判据：
+   根元素的 `data-duration` 会兜底成"看起来对"的数字，**只比 player.duration 会漏诊**；
+3. 能 seek 到 beat 起点并拿到画面（活舞台按"渲染了多少元素"判，成片通道按解码像素判）；
+4. 有声音且未被静音（工程声明为纯画面层时不适用，声音在交付合成阶段贴回）。
+
+### 已确认的 0 秒根因（2026-10-21，两条片子上复现）
+
+`window.__CFG__`（章节表）与 `HF.build()`（建时间轴）**写在 `index.html` 的内联 `<script>` 里**时，
+预览编译器会把它们改写成 `type="text/hf-after-fonts"` 的数据块；srcdoc 里没有人替它重跑，
+于是章节表为空、时间轴从不构建 → 播放器只有根元素的 `data-duration` 可用，页面显示
+`00:00 / 00:00`（内部 `NaN`），舞台停在首帧（黑），右侧人物照常播。
+
+判据：`curl <stageUrl> | grep -c 'text/hf-after-fonts'` 大于 0，且其中包含配置/启动逻辑，
+就是这一条。修法只有一个方向 —— **把会执行逻辑的脚本挪成外部文件**（`src/*.js`），
+`index.html` 里只留静态契约所需的注册语句。
+
+复现夹具（可直接用来验判据是否还有效）：
+
+```bash
+# 造一份坏工程：把 src/config.js、src/boot.js 内联回 index.html
+# 期望：check_review_playable.py 在「活舞台的时间轴真的构建了」上变红（timeline.duration=0, 已渲染元素=0）
+# 把两者改回外部文件后重跑，同一断言转绿（timeline.duration=368.4, 已渲染元素=147）
+```

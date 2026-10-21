@@ -562,3 +562,19 @@ deletion from an accidental loss.
 - **原因**：规则是 prose，渲染入口（`render.py` / `hyperframes render` / `npm run render`）都不读审阅状态。只要 agent 想渲，就没有东西拦。
 - **修正原则**：渲染前第一步跑 `render_gate.py`：`review/review_data.json.snapshot` 必须被 `review/review-submissions.json` 或 `feedback/*.jsonl` 里至少一条人工提交覆盖，且 `sourceManifest` 与磁盘一致 —— 源改过但没重建，旧提交不算覆盖「现在这一版」。工程态 `--engineering --out` 被限制在 `edit/_engineering/`，不能改个文件名当交付。返修后必须重新 build、重新提交，不能拿旧提交放行新源码。
 - **证据**：真实 v1 工程 0 条提交时退 1，并列出 `sourceManifest` 的漂移（源改过、未重建）；`tests/test_render_gate.py` 覆盖 0 提交 / 旧快照 / 源漂移 / 匹配放行 / 工程态越界。
+
+## 76. 「画面」这一步以前没有入口，于是实现了自己重画原页
+
+- **module**：`helpers/film.py` + `references/film.md` + `references/legacy-page-route.md` ｜ **状态**：已复现
+- **现象**：2026-10-21 三条片，作者原话「太简单、缺画面、不如我 PPT 清楚」。实现方把 PPT 原页重画成抽象几何，还先后做了两版（黑白线稿、大色块）全被否。
+- **原因**：Skill 有两套动画路线（page 十步 / recompose）+ 一段"能力包组合"，入口判断没有一句"你的输入是这个就走这条命令"；而且视觉步骤直接从"动效与合成"开始，**没有"先把原页读透"这一步**。跳过它，能画出来的就只有抽象几何。
+- **修正原则**：画面入口收成 `film.py`，第一件硬事是**原页拆解**——`pages/<page>.md` 里逐元素登记（类别/位置/原页文字/处置 保留·删·拆/对应哪句口播），`film.py verify` 不通过不许进 composition。老 page 路线整体存档，代码进 `_legacy_page/`。
+- **证据**：`tests/test_film.py` 覆盖"没映射→红 / 口播没填→红 / 填满→绿"；真实 PPT p04 抽出 40 个元素并预填处置。
+
+## 77. 画面层会把内容画进字幕区，字幕一压就废
+
+- **module**：`helpers/deliver.py` + `references/delivery.md` ｜ **状态**：已复现
+- **现象**：交付形态是「画面层只做右侧/上部，左侧 500 给人物、底部 200 给字幕」，但没有任何判据检查底部真的空着。画面元素一旦画进 `captionSafe`，成片字幕就压住内容。
+- **原因**：`recompose.json` 里 `captionSafe` 只是个声明，没有消费者；合成脚本只负责 overlay，不核验。
+- **修正原则**：`deliver.py` 把 `captionSafe` 变成判据——在画面层上按该区域取 1/4、1/2、3/4 三帧算平均亮度，超阈值就报红并指出是哪几个时刻；同时逐项核验分辨率/帧率/时长/音轨/首中尾帧，报告落 `<成品>/<片名>_核验报告.json`。
+- **证据**：`tests/test_deliver.py` 两条真 ffmpeg：干净画面层绿且成片有音轨；把内容画进 y>880 立刻红并给出时刻。

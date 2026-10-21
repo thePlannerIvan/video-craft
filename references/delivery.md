@@ -54,8 +54,12 @@ python3 helpers/deliver.py <project> --skip-gate
 
 `composition/_render/visuals.mp4` 是上一次渲染的画面层缓存，**改过 composition 之后再跑
 deliver 会复用它**。所以 deliver 交付前按源文件 mtime 判新旧：composition 的 `index.html`、
-`src/*`、`assets/*` 任一比缓存新就重新渲染并写一条 note（缓存不能手删才更新）。要渲染时它会
-先跑 `check_render_env.py`，退非 0 就停，不带着渲染环境问题硬渲。
+`src/*`、`assets/*` 任一比缓存新就重新渲染并写一条 note（缓存不能手删才更新）。
+
+要渲染时它会先跑 `check_render_env.py`：font cache / node / npx / composition 这些真问题拦下来；
+**只有「可用内存 < 门槛」一条红时不拦**，按 `check_render_env --json` 给的 `workers`（1 起）渲染
+并写 note —— deliver 本来就用 `--workers 1`，机器上有别的进程时可用内存长期低于 4GB，
+照「缺一不渲」会让人根本交不出片。
 
 ## 与前两步的关系
 

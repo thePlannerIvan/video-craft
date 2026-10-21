@@ -69,6 +69,25 @@ class DeliverIntegration(unittest.TestCase):
             self.assertTrue(names["成片有音轨"]["ok"], names["成片有音轨"])
             self.assertTrue(names["字幕安全区无内容"]["ok"], names["字幕安全区无内容"])
 
+    def test_render_cache_older_than_composition_is_stale(self):
+        """改过 composition 之后，旧的 _render/visuals.mp4 必须被判为新旧不符并重渲，
+        否则审阅看的是新的、交付的是旧的。"""
+        import os
+        import time
+        with tempfile.TemporaryDirectory() as td:
+            tmp = self._fixture(Path(td) / "demo", band_content=False)
+            tmp.mkdir(parents=True, exist_ok=True)
+            comp = tmp / "composition"
+            (comp / "index.html").write_text("<!doctype html><div></div>", encoding="utf-8")
+            visual = comp / "_render/visuals.mp4"
+            now = time.time()
+            os.utime(visual, (now - 500, now - 500))
+            self.assertTrue(deliver._render_is_stale(tmp, visual))
+            for path in comp.rglob("*"):
+                if path.is_file() and "_render" not in path.parts and path.suffix != ".mp4":
+                    os.utime(path, (now - 900, now - 900))
+            self.assertFalse(deliver._render_is_stale(tmp, visual))
+
     def test_no_person_layer_delivers_without_person(self):
         """纯画面 + 旁白的片子没有人物素材：--no-person 应该能出片，
         而不是把「人物素材缺失」当硬错误（recompose-mode 允许「仅画面层」）。"""

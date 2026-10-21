@@ -126,6 +126,32 @@ def _pick(project: Path, explicit: Path | None, candidates: list[Path]) -> Path 
     return None
 
 
+def _render_env(composition: Path) -> tuple[bool, int, str]:
+    """渲染环境判据：工具链坏了才拦，内存偏紧就降 worker 继续。
+
+    `check_render_env.py` 对 8GB 机器要求 >= 4GB 可用内存，否则退 1。但 deliver 用的
+    本来就是 `--workers 1`（它自己建议的安全值），只是机器上有别的进程时可用内存会长期
+    低于门槛 —— 于是照文档「缺一不渲」会让人根本交不出片。所以：font/node/npx/composition
+    这些真问题拦；只有 workers 一条红时按建议值渲染并记 note。
+    """
+    proc = _run([sys.executable, str(HELPERS / "check_render_env.py"), str(composition), "--json"])
+    try:
+        data = json.loads((proc.stdout or "").strip() or "{}")
+    except json.JSONDecodeError:
+        data = {}
+    workers = max(1, int(data.get("workers") or 1))
+    if bool(data.get("ok")):
+        return True, workers, f"check_render_env 退 0（workers={workers}）"
+    plain = _run([sys.executable, str(HELPERS / "check_render_env.py"), str(composition)])
+    lines = [ln.strip() for ln in (plain.stdout or "").splitlines() if ln.strip().startswith("x")]
+    blocked = [ln for ln in lines if "workers:" not in ln]
+    if blocked:
+        return False, workers, "；".join(blocked[:2])
+    mem = data.get("memory") or {}
+    avail = mem.get("availableGb")
+    return True, workers, (f"内存偏紧（可用 {avail} GB < 门槛），按建议 --workers {workers} 渲染")
+
+
 def _render_is_stale(project: Path, visual: Path) -> bool:
     """画面层是不是比 composition 源旧。
 
@@ -211,17 +237,16 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
     if visual_path is None:
         if not as_json:
             print("  · 没有 --visuals，开始渲染画面层（这是唯一需要等的一步）")
-        env = _run([sys.executable, str(HELPERS / "check_render_env.py"),
-                    str(project / "composition"), "--json"])
-        if env.returncode != 0:
-            check("渲染环境", False, (env.stdout or env.stderr or "")[-400:])
+        env_ok, workers, env_detail = _render_env(project / "composition")
+        if not check("渲染环境", env_ok, env_detail):
             print(json.dumps(report, ensure_ascii=False, indent=1))
             return 1
-        check("渲染环境", True, "check_render_env 退 0")
+        if workers != 1:
+            note(env_detail)
         (project / "composition/_render").mkdir(parents=True, exist_ok=True)
         render = _run(["hyperframes", "render", str(project / "composition"),
                        "-o", str(project / "composition/_render/visuals.mp4"),
-                       "--workers", "1", "-q", "looks"])
+                       "--workers", str(workers), "-q", "looks"])
         visual_path = project / "composition/_render/visuals.mp4"
         if render.returncode != 0 or not visual_path.is_file():
             check("画面层渲染", False, (render.stderr or render.stdout or "")[-400:])

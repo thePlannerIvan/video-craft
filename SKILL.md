@@ -267,7 +267,19 @@ python3 "<craft>/helpers/import_srt_timeline.py" "<project>" \
 
 ### 8. 动效与合成审阅
 
-先读 `references/review-ui.md` 与 `references/hyperframes-review-adapter.md`。通常调用：
+先读 `references/review-ui.md` 与 `references/hyperframes-review-adapter.md`。**`build_review` 之前先跑活舞台契约检查**：
+
+```bash
+python3 "<craft>/helpers/check_live_stage.py" "<project>"   # 退 0 才继续
+```
+
+它静态断言这份 composition 能进审阅页的活舞台（`data-composition-id` 与时间轴注册名一致、
+会执行逻辑的脚本全在外部文件、嵌入桥在、媒体在预算内）。`hyperframes check` 全绿**不能**替代它：
+那条路径不经过审阅页的 `srcdoc`，内联脚本被编译器改写成 `type="text/hf-after-fonts"` 后
+在 srcdoc 里永远不执行，播放器拿到 0 秒、舞台全黑。契约与根因见
+[live-stage-contract.md](references/live-stage-contract.md)。
+
+通常调用：
 
 ```bash
 python3 "<craft>/helpers/live_stage.py" "<project>" --json
@@ -279,7 +291,7 @@ DSH 有 `review_open` 时传返回的 surface 绝对路径；没有时去掉 `--
 
 官方播放器承担播放、暂停、拖动、倍速、单屏播放和屏末定位。字幕与反馈位置读取它的播放头；不要同时启动旧 SVG 定时器或隐藏视频。逐动画反馈以分屏、播放时间及对应分句锚点记录；框选批注先暂停。点选调整切换到静态源稿编辑，调整作为请求随反馈提交，返回预览后看当前真实工程，不能把未应用的草稿说成已生效。
 
-`review/media.json` 显式声明已有成片、底片或透明视频层；这些兼容入口继续保留。工程含图片、声音或录屏时必须来自项目内资产；`live_preview.py` 拒绝外部资源和越界路径。桥传素材字节，播放器层使用可跨不透明源的媒体载体；不要把父帧的 `blob:null` URL 直接给子帧。**活舞台的资产预算由 `build_review.py` 自动做**：`liveStage.composition.assets` 里超过 `LIVE_STAGE_ASSET_MB`（4MB）的会被换成 `review/proxies/` 下的审阅副本（时长与原生像素不变，画面不下采样），并把 `composition.assetBytes` 与 `liveStage.budgetMs` 写进快照 —— 页面按后者而不是写死的 8 秒算等待预算。`media.sizes` 逐通道标出 MB 与 `oversized`，页面对超大通道（例如 1.19GB 的口播母版）**拒绝下载**并说明原因，而不是把整份搬进侧栏。所以 agent 不需要手搓代理；看到「预览暂时无法连接」先查 `mediaNotes` 里有没有超预算记录，而不是先去查服务。
+`review/media.json` 显式声明已有成片、底片或透明视频层；这些兼容入口继续保留。工程含图片、声音或录屏时必须来自项目内资产；`live_preview.py` 拒绝外部资源和越界路径。桥传素材字节，播放器层使用可跨不透明源的媒体载体；不要把父帧的 `blob:null` URL 直接给子帧。**活舞台的资产预算由 `build_review.py` 自动做**：`liveStage.composition.assets` 里超过 `LIVE_STAGE_ASSET_MB`（4MB）的会被换成 `review/proxies/` 下的审阅副本：时长不变，**先保原生像素只降码率，仍压不进才按 0.75/0.5/0.35 降分辨率**，降了会在 `mediaNotes` 里写明 `scaled`；同时把 `composition.assetBytes` 与 `liveStage.budgetMs` 写进快照 —— 页面按后者而不是写死的 8 秒算等待预算。`media.sizes` 逐通道标出 MB 与 `oversized`，页面对超大通道（例如 1.19GB 的口播母版）**拒绝下载**并说明原因，而不是把整份搬进侧栏。所以 agent 不需要手搓代理；看到「预览暂时无法连接」先查 `mediaNotes` 里有没有超预算记录，而不是先去查服务。
 
 `review.draft()` 保存草稿；`review.write()` 正式落提交文件；有待处理意见时再 `review.wake()`。真实回执成功后才报告已写入，通知结果与保存结果分别显示。页面不保存时不唤醒模型。改 composition、剪点、字幕或画面后重新 build review。
 
@@ -301,6 +313,17 @@ python3 "<craft>/helpers/review_inbox.py" "<project>"
 - 改变任何时间、页面或媒体绑定后，重新运行 `build_review.py`，让旧 snapshot 失效。
 
 ### 10. 核验与交付
+
+**渲染前的第一步是渲染闸门，不是 render。** 它要求 `review/review-submissions.json`（或
+`feedback/*.jsonl`）里至少一条人工提交覆盖**当前**审阅快照，且源在那次构建之后没有再改过：
+
+```bash
+python3 "<craft>/helpers/render_gate.py" "<project>" --out "<实际成片路径>"   # 退 0 才允许 render
+```
+
+退 1 = 这一版没人看过或源已漂移，先 `build_review` + `review_open`；退 2 = 还没有审阅数据。
+工程态预览（`--preview`、落 `edit/_engineering/`）用 `--engineering --out <edit/_engineering/...>`，
+它不能改个文件名当成交付成片。口头规则拦不住渲染，这条闸门才是判据。
 
 ```bash
 python3 "<craft>/helpers/check_parity.py" "<project>"          # 有 choreography.json 的 spec 驱动项目
@@ -332,6 +355,8 @@ python3 "<craft>/helpers/state_fingerprint.py" capture "<project>"   # 交付自
 | 草稿显示已保存但提交文件没变 | 这是 `draft()`，不是 `write()`；点击正式提交并检查回执 |
 | `unitId` 被收件器拒绝 | 重新 build review；检查当前 `review_data.json.binding` 与反馈的 chapter / snapshot |
 | SRT 对齐路径不稳定 | 从任意工作目录调用时使用绝对 `--plan`、`--script`、`--srt`、`--output` |
+| 审阅页舞台 0:00 / 全黑，右侧人物正常 | 先跑 `check_live_stage.py`；查内联逻辑脚本与注册名，见 [live-stage-contract.md](references/live-stage-contract.md) |
+| `render_gate.py` 拒绝渲染 | 这一版没有覆盖当前快照的人工提交，或源已漂移；先 `build_review` + `review_open`，不要绕过 |
 | 音频需要 EQ 但工具没有该能力 | 先用 `audio_diag.py` 诊断；没有明确处理器就报告能力边界，不伪造完成 |
 | 导出结果纯色、无声或无字幕 | 回到正式 render；`export_video.py` 只包装已有结果，不替代渲染 |
 
@@ -348,6 +373,8 @@ python3 "<craft>/helpers/state_fingerprint.py" capture "<project>"   # 交付自
 - 合成与渲染：`references/composition-craft.md`、`references/visual-rendering.md`
 - **渲染前闸门**：`references/timing-lock.md` —— `--verify` 退 0 且 `feedback/*.jsonl` 未决项已清或显式接受，才谈得上渲染；`helpers/check_render_env.py` 是环境判据
 - **审阅页硬约定（改审阅页前必读）**：`references/review-ui.md`、`references/hyperframes-review-adapter.md`；桥、宿主与收件：`$planners-review-core`
+- **活舞台契约（build_review 前必过）**：`references/live-stage-contract.md` —— 根 `data-composition-id` + 同名 `window.__timelines[...]`、逻辑脚本全在 `src/*.js`、`assets/composition-embed-bridge.js`、媒体预算；自检 `helpers/check_live_stage.py`
+- **渲染闸门（render 前第一步）**：`helpers/render_gate.py` —— 人工提交必须覆盖当前审阅快照；工程态 `--engineering` 只能落 `edit/_engineering/`
 - 维护与已知陷阱：`GOTCHAS.md`、`references/architecture.md`
 
 ## 自检

@@ -29,6 +29,80 @@
 `recompose.json` 是模式标记；没有它，Craft 走 `page`。`recompose/lines.json` 的每一行来自
 字幕 / caption cue，按 `beatId` 分组；`state` 是人的决定，`proposal` 是模型的建议。
 
+## 画布与人物区
+
+recompose 的交付是**画面层**；人物与字幕要么在 composition 里，要么在合成阶段贴回。
+无论哪种，坐标只有一个来源：`recompose.json`。
+
+```json
+{
+  "canvas":     {"w": 1920, "h": 1080, "fps": 30},
+  "personSlot": {"x": 0, "y": 0, "w": 620, "h": 1080},
+  "captionSafe":{"x": 0, "y": 885, "w": 1920, "h": 195}
+}
+```
+
+### 换算关系
+
+`personSlot` / `captionSafe` 都是**画布像素**，原点左上，和 composition 里元素的
+`left/top` 是同一套坐标——**不乘任何缩放**。播放器与审阅页按根元素的 `data-width` /
+`data-height` 整体缩放，composition 内部坐标不变。
+
+人物在左时（默认）：
+
+| 区域 | 公式 | 用途 |
+|---|---|---|
+| 人物区 | `x ∈ [personSlot.x, personSlot.x + personSlot.w)`，`y` 全高 | 画面不得进入；人物视频或留黑都在这里 |
+| 画面安全区 | `x ∈ [personSlot.x + personSlot.w, canvas.w)`，`y ∈ [0, captionSafe.y)` | 舞台主体、图示、花字 |
+| 字幕安全区 | `y ∈ [captionSafe.y, captionSafe.y + captionSafe.h)`，`x` 全宽 | 只放字幕/角标，不放主体信息 |
+
+人物在右时镜像：画面安全区是 `x ∈ [0, personSlot.x)`。`captionSafe` 与人物区可以重叠
+（字幕压在人物下方的黑边上），但画面主体不能进任一个。
+
+改几何时改 `recompose.json`，然后：
+
+```bash
+python3 "<craft>/helpers/recompose_plan.py" check "<project>"     # 超画幅会报出来
+python3 "<craft>/helpers/check_live_stage.py" "<project>"         # 契约仍成立
+```
+
+不要在场景文件里手算一套新的 `500` / `620` / `880`：数值只有一个家，场景从
+`recompose.json` 读取。
+
+```python
+import json
+from pathlib import Path
+cfg = json.loads((Path(project) / "recompose.json").read_text(encoding="utf-8"))
+stage_x = cfg["personSlot"]["x"] + cfg["personSlot"]["w"]
+stage_bottom = cfg["captionSafe"]["y"]
+```
+
+### 两种合法交付形态
+
+| 形态 | composition 里有什么 | 人物从哪来 | 交付说明必须写 |
+|---|---|---|---|
+| **合成层** | 人物 `<video class="clip">` + 画面层 | composition 自己播 | 人物与画面已合成；画面避开 `personSlot` |
+| **仅画面层** | 只有画面，没有人物的 `<video>` | 合成阶段用 EDL / overlay 贴回 | 这是画面层，不是成片；人物与字幕的时间以另一份素材为准 |
+
+两种都合法。**"只有画面层"不是偷工减料**：画面层可以独立审、独立改、独立重渲，
+人物母版不必进 `composition/assets`（也躲开了活舞台的资产预算）。选择哪种写进
+`production-plan.md`，不要两份都做一半。
+
+### `live_stage.py` 的目录限制（已选择写进文档，不改代码）
+
+`live_stage.py` 接受 `--composition <dir>`，并把它透传给 `hyperframes preview`；
+但 `project_root()` 和 `build_review.py` 的 `has_composition` 都要求项目里存在一个
+**名为 `composition` 的目录**（否则活舞台起不来）。所以：
+
+- `composition/` 必须存在，哪怕真正要演的是 `composition-v2/`；
+- 用 `--composition composition-v2` 时，`composition/` 里至少要有 `index.html`；
+- `review/review_data.json` 的 `liveStage.compositionDir` 会记住实际目录，审阅页按它编译。
+
+选择写进文档而不是改代码，是因为这条要求同时落在 `live_stage.project_root()` 与
+`build_review.has_composition` 两处，只改一处会留下另一半；而且改默认目录会影响
+`recompose_plan.py` 的默认路径。遇到多套 composition 并存时，先跑
+`check_live_stage.py <project> --composition <dir>` 确认要演的那份，再起服务。
+
 ## 五步
 
 ### 1. 锁事实
@@ -64,6 +138,7 @@ python3 "<craft>/helpers/recompose_plan.py" check "<project>"
 
 ```bash
 # 工程态：起 composition 的活舞台（不渲染），再用同一份 URL 建审阅
+python3 "<craft>/helpers/check_live_stage.py" "<project>" --composition "<composition-dir>"
 python3 "<craft>/helpers/live_stage.py" "<project>" --composition "<composition-dir>"
 python3 "<craft>/helpers/build_review.py" "<project>" --mode auto
 python3 "<craft>/helpers/review_surface.py" "<project>" --surface-only

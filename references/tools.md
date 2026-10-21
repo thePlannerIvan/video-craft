@@ -1,5 +1,25 @@
+> **查 HyperFrames 的 `data-*` 契约与属性名，不要 grep 打包后的 CLI。**
+> `node_modules/hyperframes` 是几万行压缩后的 bundle：一次 `grep -rn` 就会把 100KB+ 的
+> 中间代码灌进上下文，而且线上属性名与源码里的标识符并不一一对应，读到的多半是噪音
+> （2026-10-21 实测两次，全部浪费）。正确做法按顺序：
+>
+> 1. `hyperframes <cmd> --help` —— 契约参数就在里面（例如 `check --help` 列出
+>    `--range` / `--at` / `--caption-zone` / `--frame-check` / `--layout`）；
+> 2. `hyperframes check --json` —— 真实加载后的 findings 与 DOM 事实（`runtime.duration`、
+>    `contrast.checked`、finding 的 `code` / `selector` / `dataAttributes`）；
+> 3. `hyperframes docs` 与该版本的官方文档；
+> 4. 本 Skill 的 `references/`：`composition-craft.md`、`composition-facts-contract.md`、
+>    `live-stage-contract.md` 写的是已经踩过的契约，不用再从 bundle 里反推；
+> 5. 还确认不了就做最小实验：写 3 行 fixture composition，跑一次 `check --json`，或在
+>    预览服务上用 CDP 读真实 DOM。**不要读打包后的源码。**
+>
+> 例外：`visual/assets/` 下本 Skill 自己的脚本（`svg-anim-engine.js`、`composition-embed-bridge.js`）
+> 不是打包产物，可以正常读。
+
 ## 免渲染审阅入口
 
+- `check_live_stage.py <project>`：进入 `build_review` 前的活舞台契约静态检查（前置条件，见 [live-stage-contract.md](live-stage-contract.md)）。
+- `render_gate.py <project>`：渲染闸门；至少一条人工提交覆盖当前审阅快照才放行。
 - `live_stage.py <project> --json`：启动/复用 HyperFrames 编译服务。
 - `build_review.py <project> --mode auto --slices off`：编译工程预览、内联对应官方 player 和素材清单。
 - `live_preview.py`：上项内部使用的纯传输模块；`compile_preview(project, stage_url)` 返回 HTML、素材映射和 sourceHash。
@@ -120,10 +140,13 @@ python3 "<craft>/helpers/edl_edit.py" "<edit>" --restore "<起秒>,<止秒>=<期
 ```bash
 python3 "<craft>/helpers/live_stage.py" "<project>"       # 起服务 → 打印可嵌入地址（--stop 停）
 python3 "<craft>/helpers/duration_plan.py" "<edit>"       # 解析预演（frame-quantised, projected）
-python3 "<craft>/helpers/review_copy.py" "<成片>"         # 审阅副本：保留时间与原生分辨率
+python3 "<craft>/helpers/review_copy.py" "<成片>"         # 审阅副本：保时间；先保原生像素，压不进再降分辨率
+python3 "<craft>/helpers/review_copy.py" "<成片>" --no-downscale  # 不允许降分辨率：压不进就失败
+python3 "<craft>/helpers/review_copy.py" "<composition 里 muted 的 video>" --no-audio  # 去重复音轨
 python3 "<craft>/helpers/review_copy.py" "<旁轨.m4a>"     # 纯音频也吃：降单声道
 python3 "<craft>/helpers/review_copy.py" "<成片>" --gop 0 # 不切片的副本别锁每秒关键帧（体积差 4 倍）
-# 活舞台的代理由 build_review.py 自动生成到 review/proxies/，不需要手工跑上面这两条
+# 活舞台的代理由 build_review.py 自动生成到 review/proxies/，不需要手工跑上面这几条
+# 降分辨率会写进 review_data.json 的 mediaNotes（scaled/scale），页面据此说明是代理
 python3 "<craft>/helpers/review_slices.py" "<project>"    # 按步切片，页面只取当前窗口
 python3 "<craft>/helpers/preview_layers.py" "<edit>"      # 已有 alpha 层补一份 WebM(VP9+alpha)
 python3 "<craft>/helpers/check_review_template.py"        # 审阅页模板的静态不变量

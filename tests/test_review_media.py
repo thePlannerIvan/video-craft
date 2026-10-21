@@ -48,6 +48,20 @@ def _tiny_video(path: Path, seconds: float = 0.6, size: str = "320x480") -> None
          "-c:a", "aac", "-shortest", str(path)], check=True)
 
 
+def _pattern_video(path: Path, seconds: float = 2.0, size: str = "960x540") -> None:
+    """Moving test pattern: pixel count actually drives the byte count here.
+
+    A flat gray frame is dominated by the container's fixed overhead at small
+    sizes, so it cannot demonstrate a resolution ladder.
+    """
+    subprocess.run(
+        ["ffmpeg", "-v", "error", "-y", "-f", "lavfi",
+         "-i", f"testsrc2=s={size}:d={seconds}:r=30",
+         "-f", "lavfi", "-i", f"anullsrc=r=48000:cl=stereo:d={seconds}",
+         "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18", "-pix_fmt", "yuv420p",
+         "-c:a", "aac", "-shortest", str(path)], check=True)
+
+
 class MediaResolutionTests(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
@@ -119,9 +133,10 @@ class ReviewCopyTests(unittest.TestCase):
         self.assertEqual(record["action"], "skip")
         self.assertEqual(Path(record["path"]), self.src.resolve())
 
-    def test_a_large_master_gets_a_time_preserving_native_copy(self):
+    def test_a_copy_that_fits_keeps_native_pixels(self):
+        """The ladder must not step down when native pixels already fit."""
         before = review_copy._probe_media(self.src)
-        record = review_copy.make(self.src, max_mb=0.001)
+        record = review_copy.make(self.src, max_mb=80.0, force=True)
         self.assertEqual(record["action"], "made")
         out = Path(record["path"])
         self.assertTrue(out.is_file())
@@ -129,6 +144,74 @@ class ReviewCopyTests(unittest.TestCase):
         after = review_copy._probe_media(out)
         self.assertEqual(before[1:], after[1:], "审阅副本必须保持原生分辨率")
         self.assertAlmostEqual(before[0], after[0], delta=0.1)
+        self.assertFalse(record["scaled"])
+        self.assertEqual(record["scale"], 1.0)
+
+    def test_native_pixels_that_cannot_fit_step_down_resolution(self):
+        """2026-10-21: a 368s 720x1280 master stayed 52MB at native pixels.
+
+        The copy has to step down rather than hand the page 70MB of base64.
+        The budget here is chosen from the native encode's real size so the test
+        is about the ladder, not about a particular encoder's byte count.
+        """
+        pattern = self.dir / "pattern.mp4"
+        _pattern_video(pattern)
+        native = review_copy.make(pattern, out=self.dir / "pattern.native.mp4",
+                                  force=True, max_mb=999.0)
+        budget_mb = native["bytes"] / 1e6 * 0.6
+        record = review_copy.make(pattern, out=self.dir / "ladder.mp4",
+                                  max_mb=budget_mb)
+        self.assertEqual(record["action"], "made")
+        self.assertTrue(record["scaled"], record)
+        self.assertIn(record["scale"], {0.75, 0.5, 0.35})
+        self.assertLess(record["width"], record["sourceWidth"])
+        self.assertLess(record["height"], record["sourceHeight"])
+        self.assertTrue(record["underBudget"], record)
+        out = Path(record["path"])
+        self.assertTrue(out.is_file())
+        self.assertAlmostEqual(review_copy.media_duration(out),
+                               review_copy.media_duration(pattern), delta=0.1)
+        self.assertEqual(review_copy.media_size(out),
+                         (record["width"], record["height"]))
+        # Only the chosen copy survives; no .part / stepped-down leftovers.
+        self.assertEqual([p.name for p in out.parent.glob("*.part*.mp4")], [])
+
+    def test_the_bottom_of_the_ladder_is_reported_not_hidden(self):
+        """If even 0.35x cannot fit, return the smallest copy and say so."""
+        record = review_copy.make(self.src, out=self.dir / "tiny.mp4",
+                                  max_mb=0.0001)
+        self.assertEqual(record["action"], "made")
+        self.assertTrue(record["scaled"])
+        self.assertEqual(record["scale"], 0.35)
+        self.assertFalse(record["underBudget"])
+        self.assertIn("仍超", record.get("note", ""))
+
+    def test_a_muted_video_can_drop_its_audio_track(self):
+        """The live stage's person track carries a duplicate narration track."""
+        record = review_copy.make(self.src, out=self.dir / "silent.mp4",
+                                  force=True, max_mb=80.0, keep_audio=False)
+        self.assertTrue(record["audioDropped"])
+        self.assertFalse(record["audio"])
+        stream_types = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "stream=codec_type",
+             "-of", "csv=p=0", record["path"]],
+            capture_output=True, text=True, check=True).stdout.split()
+        self.assertNotIn("audio", stream_types)
+
+    def test_silent_asset_tokens_reads_the_compiled_html(self):
+        html = """
+        <video class="clip" src="__VC_ASSET_1__" muted data-has-audio="false"></video>
+        <video class="clip" src="__VC_ASSET_2__" data-has-audio="true"></video>
+        <audio src="__VC_ASSET_3__"></audio>
+        """
+        silent = build_review.silent_asset_tokens(html)
+        self.assertEqual(silent, {"__VC_ASSET_1__"})
+
+    def test_no_downscale_refuses_instead_of_lowering_the_picture(self):
+        with self.assertRaises(SystemExit) as caught:
+            review_copy.make(self.src, force=True, max_mb=0.0001,
+                             allow_downscale=False)
+        self.assertIn("禁止降分辨率", str(caught.exception))
 
     def test_the_resolver_swaps_in_a_review_copy_for_the_composite(self):
         """The console must load the copy, not the master."""

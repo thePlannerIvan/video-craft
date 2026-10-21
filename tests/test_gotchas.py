@@ -15,7 +15,9 @@ from pathlib import Path
 ROOT = Path(__file__).parents[1]
 GOTCHAS = ROOT / "GOTCHAS.md"
 HISTORY = ROOT / "references" / "maintenance-history.md"
-MAX_GOTCHAS = 40  # 2026-10-19: 74 → 51 (retire upgraded) → 40 (merge same-root)
+# 2026-10-19: 74 → 51 (retire upgraded) → 40 (merge same-root)
+# 2026-10-21: 40 → 42 — 活舞台静默失败（#74）与渲染闸门（#75）各一条，机制是新检查脚本
+MAX_GOTCHAS = 42
 PREFIXES = ("test", "check", "env", "judgment")
 
 

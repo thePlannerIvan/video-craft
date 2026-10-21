@@ -7,6 +7,62 @@
 比较旧 `edit/project.md`，明确本版目标、素材来源、已定动作、待定事项和声音状态，
 **在本版 `edit/project.md` 记录来源与替代关系**。技术路径选择由 Craft 提出，核心冲突交作者判断。
 
+## 登记画面源：绝对路径 + 版本/哈希
+
+**接手时必须把画面源写进 `edit/project.md`，不是"知道在哪"就算完。** 一份口播片的画面可能
+来自 PPT Hell 的快照、一个现成的 SVG 目录，或项目内 `composition/pages`；不登记，下一轮
+（或下一个人）只能靠猜，返修时也无法判断"改的是不是批准过的那一版"。
+
+登记至少四件：
+
+- **类型**：`planners-ppt-hell` 视频路线导出的 snapshot，还是直接使用现成 SVG 目录；
+- **绝对路径**：目录或 snapshot 文件的绝对路径，不用相对路径、不写"PPT 文件夹里"；
+- **版本证据**：snapshot 的 revision / 导出时间，或目录内容哈希（见下）；
+- **页数与 page key**：多少页、每页 key 与脚本哪一段对应；PNG 预览只作对照，不是源。
+
+```text
+## 画面源
+- 类型：PPT Hell 视频路线 snapshot（或：现成 SVG 目录）
+- 绝对路径：/abs/path/to/ppt/_internal/02_svg_source
+- 版本：snapshot revision 2026-10-20T… / 目录 sha256 3f9c…
+- 页数：30（keys: cover, pain-01, …）
+- PNG 预览：/abs/path/to/ppt/_internal/03_png_preview（只对照，不导入）
+- 与脚本对应：ch01 → cover/pain-01；ch02 → …
+```
+
+目录哈希（同一份内容换台机器也能复核）：
+
+```bash
+find "<画面源目录>" -name '*.svg' -print0 | sort -z | xargs -0 shasum -a 256 | shasum -a 256
+```
+
+### 在一个工作区里找画面源的顺序
+
+按这个顺序找，找到就停，并把命中的那一条连同证据写进 `edit/project.md`：
+
+1. 项目内 `visual_screens/_internal/02_svg_source/` —— PPT Hell 工作台的页面源；
+2. 项目内 `composition/pages/` —— 已经导入过的页面副本与 `manifest.json`；
+3. 项目内 `scenes/`、`deliverable/scenes/`、`input/scenes/` —— 裸 SVG 目录；
+4. 项目根的 `.pages` 指针文件 —— 内容是画面项目的绝对或相对路径，顺着它找
+   `_internal/02_svg_source`；
+5. 作者提到的 PPT 目录：`<ppt>/_internal/02_svg_source/`，旁边通常还有
+   `<ppt>/_internal/03_png_preview/`。**PNG 预览不是源**：它证明"当时长这样"，不能导入、
+   不能改字、不能挂元素动效。
+
+### 两条路的区别
+
+| | `planners-ppt-hell` 的视频路线 snapshot | 直接用现成 SVG 目录 |
+|---|---|---|
+| 交接物 | 一份 snapshot（页面清单 + revision + 资产） | 一个目录，通常是 `_internal/02_svg_source` |
+| 导入 | `import_svg_page.py --pages <snapshot.json>` | `import_svg_page.py --pages <目录>` |
+| 版本 | snapshot 自带 revision，可核对"批准的是哪一版" | 只能靠目录哈希 + `design_direction.md`；没有批准记录 |
+| 返修 | 回 PPT Hell 改页、重新导出 snapshot | 直接改 SVG 会让"源"与"已导入副本"分叉，仍应回 PPT Hell 改 |
+| 能声称什么 | 页面经作者批准、可追溯到具体版本 | 只能说"用了这套 SVG"，不能声称已批准或可返修 |
+
+一句话区分：**snapshot 是带 revision 与批准记录的交接物；现成 SVG 目录只是页面源，没有版本与批准。**
+两条路导入后都以项目内副本为准；画面源一变，重新导入、重建 composition、重新 build review。
+审阅快照的 `sourceManifest` 会带每个源文件的 sha256，旧意见因此能对上"它当时看的是哪一版"。
+
 ## 核 `script_hash`：两处都核，各管自己那一段
 
 `visual-plan.json` 记着它绑定的那份 `script.md` 的 sha256。上游只在交接那一刻算过一次，

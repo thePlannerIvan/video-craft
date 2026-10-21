@@ -943,6 +943,36 @@ def audit_media_sizes(project_root: Path, media: dict, scene_assets: dict) -> di
     return sizes
 
 
+MEDIA_TAG_RE = re.compile(r"<(video|audio)\b([^>]*)>", re.S | re.I)
+ASSET_TOKEN_RE = re.compile(r"__VC_ASSET_\d+__")
+
+
+def silent_asset_tokens(html: str) -> set[str]:
+    """Tokens the composition plays muted, so a review copy may drop their audio.
+
+    The transport rewrites media src to `__VC_ASSET_n__` tokens, so the compiled
+    HTML is where "is this video muted?" is still visible. On the 2026-10-21 XHS
+    master the person track carried its own copy of the narration (191 kbps,
+    5.9MB) while the composition also had a separate `<audio>` element — the
+    duplicate alone exceeded the 4MB live-stage budget. A token used by an
+    `<audio>` element is never treated as silent.
+    """
+    silent: set[str] = set()
+    audible: set[str] = set()
+    for tag, attrs in MEDIA_TAG_RE.findall(html or ""):
+        token = ASSET_TOKEN_RE.search(attrs)
+        if not token:
+            continue
+        name = token.group(0)
+        if tag.lower() == "audio":
+            audible.add(name)
+            continue
+        has_audio = re.search(r"data-has-audio\s*=\s*[\"'](true|false)[\"']", attrs, re.I)
+        if re.search(r"\bmuted\b", attrs, re.I) or (has_audio and has_audio.group(1).lower() == "false"):
+            silent.add(name)
+    return silent - audible
+
+
 def fit_live_stage_assets(project_root: Path, review_data: dict) -> None:
     """Swap over-budget live-stage assets for review copies, in place.
 
@@ -960,6 +990,7 @@ def fit_live_stage_assets(project_root: Path, review_data: dict) -> None:
     if not assets:
         return
     notes = review_data.setdefault("mediaNotes", [])
+    silent_tokens = silent_asset_tokens(composition.get("html") or "")
     project_root = project_root.resolve()
     proxy_dir = project_root / LIVE_STAGE_PROXY_DIR
     known = {item["path"] for item in review_data.get("sourceManifest", [])}
@@ -982,19 +1013,36 @@ def fit_live_stage_assets(project_root: Path, review_data: dict) -> None:
             # with no sound and no error (2026-10-17, the author heard a silent
             # review). Decodability is the property that matters.
             src_duration = review_copy.media_duration(src) or 0.0
-            fresh = (out.is_file() and out.stat().st_mtime >= src.stat().st_mtime
-                     and out.stat().st_size <= budget_bytes
-                     and review_copy.is_fresh_copy(out, src_duration))
             record = None
+            source_shape = review_copy.media_size(src)
+            keep_audio = token not in silent_tokens
+            # Best effort: if even the floor of the ladder cannot fit, the result
+            # is still the smallest copy this tool can make. Without accepting it,
+            # every rebuild would re-encode for minutes and still land over budget
+            # (2026-10-21: 368s 720x1280 master → 4.9MB at 0.35x, 4MB budget).
+            out_shape = review_copy.media_size(out) if out.is_file() else None
+            floor = (review_copy.scaled_size(source_shape[0], source_shape[1],
+                                             review_copy.DOWNSCALE_STEPS[-1])
+                     if source_shape else None)
+            best_effort = bool(out_shape and floor and out_shape == tuple(floor)
+                               and (keep_audio or not review_copy.has_audio(out)))
+            fresh = (out.is_file() and out.stat().st_mtime >= src.stat().st_mtime
+                     and (out.stat().st_size <= budget_bytes or best_effort)
+                     and review_copy.is_fresh_copy(out, src_duration))
             if out.is_file() and not fresh and out.stat().st_mtime >= src.stat().st_mtime:
-                print(f"  ⚠ 审阅副本 {out.name} 读不出来，重建")
+                print(f"  ⚠ 审阅副本 {out.name} 已过期/不可读，重建")
             if not fresh:
                 try:
                     # gop=None on purpose: nothing slices this copy, and forcing a
                     # keyframe per second took the same CRF 29 encode from 2.6 MB
                     # to 10.0 MB. `review_slices` output keeps the default gop.
+                    # A composition-muted video does not need its audio: it is
+                    # usually a duplicate of the narration already carried by an
+                    # <audio> element, and at 191 kbps that duplicate alone fits
+                    # no 4MB budget.
                     record = review_copy.make(src, out, max_mb=LIVE_STAGE_ASSET_MB,
-                                              gop=None)
+                                              gop=None,
+                                              keep_audio=keep_audio)
                 except SystemExit as exc:
                     # A half-written copy must not survive: the next build would
                     # call it fresh by mtime and hand it over again.
@@ -1006,8 +1054,8 @@ def fit_live_stage_assets(project_root: Path, review_data: dict) -> None:
                 new_rel = out.resolve().relative_to(project_root).as_posix()
                 assets[token] = new_rel
                 src = out
-                fittings.append((rel, new_rel, src.stat().st_size,
-                                 True if record is None else record.get("underBudget", True)))
+                fittings.append((rel, new_rel, src.stat().st_size, record,
+                                 source_shape))
                 if new_rel not in known:
                     review_data["sourceManifest"].append(
                         snapshot_file(out, project_root))
@@ -1020,11 +1068,30 @@ def fit_live_stage_assets(project_root: Path, review_data: dict) -> None:
     live["budgetMs"] = int(25000 + max(0.0, total / 1e6 - 4.0) * 1500)
 
     if fittings:
-        for old, new, size, under in fittings:
-            note = (f"活舞台资产 {Path(old).name} → 审阅副本 "
-                    f"{size / 1e6:.1f}MB（{new}，时长与原生像素不变）")
+        for old, new, size, record, source_shape in fittings:
+            # `record` is None when a fresh proxy from an earlier build was reused;
+            # in that case read the shape back off the file so the note still says
+            # whether the picture was stepped down (the page shows these verbatim).
+            if record and record.get("scaled"):
+                out_shape = (record.get("width"), record.get("height"))
+            else:
+                out_shape = review_copy.media_size(project_root / new)
+            was_scaled = bool(source_shape and out_shape
+                              and tuple(out_shape) != tuple(source_shape))
+            if was_scaled:
+                note = (f"活舞台资产 {Path(old).name} → 审阅副本 "
+                        f"{size / 1e6:.1f}MB（{new}，时长不变；原生 "
+                        f"{source_shape[0]}×{source_shape[1]} → {out_shape[0]}×{out_shape[1]}，"
+                        f"原生像素压不进 {LIVE_STAGE_ASSET_MB:.0f}MB 预算才降分辨率）")
+            else:
+                note = (f"活舞台资产 {Path(old).name} → 审阅副本 "
+                        f"{size / 1e6:.1f}MB（{new}，时长与原生像素不变）")
+            if record and record.get("audioDropped"):
+                note += "；composition 里这条 video 是 muted，副本已去音轨"
+            under = size <= LIVE_STAGE_ASSET_MB * 1_000_000
             if not under:
-                note += f"；⚠ 仍超 {LIVE_STAGE_ASSET_MB:.0f}MB 单件预算，页面仍会整份搬"
+                note += (f"；⚠ 仍超 {LIVE_STAGE_ASSET_MB:.0f}MB 单件预算，页面仍会整份搬"
+                         "（考虑 review_slices.py 只取当前窗口）")
             notes.append(note)
     if total > LIVE_STAGE_TOTAL_MB * 1_000_000:
         notes.append(f"活舞台资产合计仍有 {total / 1e6:.1f}MB > "

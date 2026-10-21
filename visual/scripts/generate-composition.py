@@ -300,6 +300,35 @@ def generate(project: Path, theme_id: str, audio: Path | None,
         print(f"pages imported -> "
               f"{pages.write_manifest(project, page_default, imported, per_screen, ids)}")
 
+    # 时间轴必须写进外部文件：预览编译器会把 index.html 里的内联 <script> 改写成
+    # type="text/hf-after-fonts"，而审阅页的 srcdoc 没有东西替它重跑 —— 内联的
+    # HF.build()/注册会安静地得到 0 秒舞台（2026-10-21，XHS 三条片）。index.html
+    # 只留一行 lint 需要的容器初始化：hyperframes check 的 missing_timeline_registry
+    # 要求本文件里能看到 window.__timelines，但真正的注册在 src/timeline.js 里。
+    src_dir = project / "composition" / "src"
+    src_dir.mkdir(parents=True, exist_ok=True)
+    timeline_js = "\n".join([
+        "/* timeline.js — one paused timeline, registered under the root composition id.",
+        " *",
+        " * External on purpose. The HyperFrames preview compiler rewrites inline",
+        " * <script> blocks in index.html to type=\"text/hf-after-fonts\"; the review",
+        " * page's srcdoc never re-runs them, so an inline HF.build()/registration",
+        " * silently yields a 0s stage while the speaker column still plays. Scripts",
+        " * referenced with src= are inlined by the review transport and do run.",
+        " *",
+        " * index.html keeps one inline container init because hyperframes check's lint",
+        " * (missing_timeline_registry) requires that marker to be visible there.",
+        " */",
+        "(function () {",
+        "  window.__timelines = window.__timelines || {};",
+        "  const tl = gsap.timeline({ paused: true });",
+    ] + ["  " + line.strip() for line in tl_hints] + [
+        '  window.__timelines["main"] = tl;',
+        "})();",
+        "",
+    ])
+    (src_dir / "timeline.js").write_text(timeline_js, encoding="utf-8")
+
     html = f"""<!doctype html>
 <html lang="zh-CN">
   <head>
@@ -328,14 +357,10 @@ def generate(project: Path, theme_id: str, audio: Path | None,
 {chr(10).join(clips)}
     </div>
 
-    <script>
-      window.__timelines = window.__timelines || {{}};
-      const tl = gsap.timeline({{ paused: true }});
-{chr(10).join(tl_hints)}
-      // Scene entrances: gsap.set/fromTo on .scene-body or inner elements.
-      // Boundary initial states must be set OUTSIDE the timeline (gsap.set) for frame 0.
-      window.__timelines["main"] = tl;
-    </script>
+    <script src="src/timeline.js"></script>
+    <!-- lint 标记：hyperframes check 要求本文件里能看到 window.__timelines；
+         真正的注册在 src/timeline.js，不要把 tl 赋在这里 -->
+    <script>window.__timelines = window.__timelines || {{}};</script>
   </body>
 </html>
 """

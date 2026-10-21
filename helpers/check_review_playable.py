@@ -123,6 +123,71 @@ def _canvas_stats(page, selector: str) -> dict | None:
     )
 
 
+
+COMPOSITION_AUDIO_JS = """async () => {
+  const hosts = [...document.querySelectorAll('[data-composition-id]')];
+  const nodes = [...document.querySelectorAll('audio[data-start], video[data-start], audio, video')];
+  if (!hosts.length && !nodes.length) return null;
+  const out = [];
+  for (const el of nodes) {
+    const before = el.currentTime;
+    let playErr = null;
+    try { await el.play(); } catch (e) { playErr = String(e && e.name || e); }
+    await new Promise(r => setTimeout(r, 320));
+    out.push({
+      tag: el.tagName.toLowerCase(),
+      timed: el.hasAttribute('data-start'),
+      muted: !!el.muted,
+      volume: el.volume,
+      readyState: el.readyState,
+      before, after: el.currentTime,
+      advanced: el.currentTime > before + 0.01,
+      paused: el.paused,
+      duration: el.duration,
+      src: (el.currentSrc || el.src || '').slice(0, 48),
+      playErr,
+    });
+  }
+  return out;
+}"""
+
+
+def _usable_audio(channels: list[dict]) -> list[dict]:
+    """「能出声」的判据：解码就绪 + 未静音 + 有音量 + 有长度。
+
+    「时钟在推进」只作为附加证据写进 detail —— 审阅页停在 seek 点时，官方播放器
+    会主动暂停媒体，此时没推进不代表没声音（2026-10-21 真项目上就是这种情况）。
+    """
+    return [c for c in channels
+            if not c.get("muted") and (c.get("volume") or 0) > 0
+            and (c.get("readyState") or 0) >= 2 and (c.get("duration") or 0) > 0]
+
+
+def _composition_audio(page) -> dict:
+    """到 composition 的 iframe 里看声音：工程态审阅的旁白在那一层，不在页面层。
+
+    只扫页面层会把「composition 内自带 audio[data-start]」判成没有声音 ——
+    2026-10-21 作者就是被这一条卡住的（工程态能听见旁白，检查却说没声音）。
+    """
+    for frame in page.frames:
+        try:
+            if not frame.evaluate("()=>!!document.querySelector('[data-composition-id]')"):
+                continue
+        except Exception:
+            continue
+        try:
+            channels = frame.evaluate(COMPOSITION_AUDIO_JS)
+        except Exception as error:
+            return {"checked": True, "error": str(error)[:200], "channels": []}
+        if channels is None:
+            continue
+        # 「能出声」的判据：解码了就绪 + 未静音 + 有音量 + 有长度。
+        # 「时钟在推进」只作为附加证据写进 detail —— 审阅页停在一个 seek 点时
+        # 官方播放器会主动暂停媒体，这时没推进不代表没声音。
+        return {"checked": True, "channels": channels, "usable": _usable_audio(channels)}
+    return {"checked": False, "channels": [], "usable": []}
+
+
 def _mean_luma(png: Path) -> float | None:
     try:
         from PIL import Image
@@ -230,12 +295,24 @@ def run(project: Path, points: list[float], keep_host: bool, verbose: bool) -> i
         print(json.dumps({"ok": False, "error": f"没有 playwright：{error}"}, ensure_ascii=False, indent=1))
         return 2
 
-    from review_surface import open_review  # noqa: E402  (helpers 已在 sys.path)
     from lib.planners_modules import resolve_module  # noqa: E402
     sys.path.insert(0, str(resolve_module("planners-review-core") / "scripts" / "lib"))
     import review_host  # noqa: E402
 
-    started = open_review(project, port=0, open_browser=False, surface_only=False)
+    # 只读地起宿主：优先用**已经存在**的 surface，绝不重写它。
+    # 检查工具去改被检查的项目（重写 review-surface.json / 落宿主状态）是不可接受的——
+    # 2026-10-21 就因此在别人正在返修的项目里动了 mtime。
+    surface_path = project / "review" / "review-surface.json"
+    started = None
+    if surface_path.is_file():
+        try:
+            surface = json.loads(surface_path.read_text(encoding="utf-8"))
+            started = review_host.open_review(surface, port=0, open_browser=False)
+        except Exception:
+            started = None
+    if started is None:
+        from review_surface import open_review  # 没有 surface 时才走会写文件的这条路
+        started = open_review(project, port=0, open_browser=False, surface_only=False)
     # 只在"这次是我起的"时候收尾，别把别人正在用的宿主关掉
     owns_host = not started.get("reused", False)
     url = started.get("url") or started.get("path")
@@ -404,7 +481,24 @@ def run(project: Path, points: list[float], keep_host: bool, verbose: bool) -> i
             )
             candidates = [c for c in audio_state.get("channels", []) if c.get("src")]
             unmuted = [c for c in candidates if not c.get("muted")]
-            if not declares_audio:
+            composition_audio = _composition_audio(page)
+            page_level = bool(unmuted)
+            comp_level = bool((composition_audio or {}).get("usable"))
+            usable_detail = [
+                f"{c['tag']}{'[data-start]' if c['timed'] else ''} "
+                f"ready={c['readyState']} t={c['before']:.2f}→{c['after']:.2f}"
+                for c in (composition_audio or {}).get("usable", [])
+            ]
+            if page_level:
+                source = "页面级通道（speaker/composite 轨）+ composition 内旁白"                     if comp_level else "页面级通道（speaker/composite 轨）"
+            elif comp_level:
+                source = "composition 内旁白：" + "；".join(usable_detail[:2])
+            else:
+                source = ""
+
+            if page_level or comp_level:
+                report.add("有声音且未被静音", True, f"声音来自 {source}", "")
+            elif not declares_audio and not (composition_audio or {}).get("channels"):
                 report.add(
                     "有声音且未被静音",
                     True,
@@ -414,9 +508,11 @@ def run(project: Path, points: list[float], keep_host: bool, verbose: bool) -> i
             else:
                 report.add(
                     "有声音且未被静音",
-                    bool(unmuted),
-                    f"channels={audio_state.get('channels')}",
-                    "审阅页把人物轨当静音轨 / media.json 没给 guideAudio",
+                    False,
+                    f"页面级={audio_state.get('channels')}；composition 内="
+                    f"{(composition_audio or {}).get('channels')}",
+                    "若旁白在 composition 里：查 audio[data-start] 是否 muted/未解码；"
+                    "若走成片通道：查 media.json 与页面是否把人物轨当静音轨",
                 )
 
             page.screenshot(path=str(tmp / "page.png"))

@@ -314,3 +314,12 @@ sha256 `796ff3f2…` → 按文档那一步用新模板重生成（`15418868…`
 - #72 `segment_durations.json` 的键是输出文件名的 stem，渲到非权威名会静默留下旧记录 ｜ 并入 #61 composition 用旧时间轴打过补丁 → 过期 3 秒，无人发现
 - #15 `-t` between two inputs belongs to the second input ｜ 并入 #22 Never end a render command with a pipe
 - #20 `render.py --no-loudnorm` cannot take an `-o` that equals the internal base name ｜ 并入 #22 Never end a render command with a pipe
+
+
+## GOTCHAS 迁移索引（2026-10-21）：三条命令化带来的两条
+
+以下两条的机制已由 `helpers/film.py` 与 `helpers/deliver.py` 承接，正文不进 `GOTCHAS.md`
+（该文件有条数上限，新增必须走迁移索引）。
+
+- #76 「画面」这一步以前没有入口，于是实现了自己重画原页 ｜ 已升级（`helpers/film.py` 的原页拆解闸门；`tests/test_film.py` 红→绿）
+- #77 画面层会把内容画进字幕区，字幕一压就废 ｜ 已升级（`helpers/deliver.py` 的 `captionSafe` 判据；`tests/test_deliver.py` 侵入即红）

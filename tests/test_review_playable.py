@@ -44,5 +44,28 @@ class SeekPoints(unittest.TestCase):
         self.assertEqual(crp._seek_points(data, []), [40.6])
 
 
+class UsableAudio(unittest.TestCase):
+    """「能出声」的判据：解码就绪 + 未静音 + 有音量 + 有长度（不要求时钟在推进）。"""
+
+    def _ch(self, **kw):
+        base = {"tag": "audio", "timed": True, "muted": False, "volume": 1.0,
+                "readyState": 4, "duration": 368.4, "advanced": False, "paused": True}
+        base.update(kw)
+        return base
+
+    def test_decoded_unmuted_paused_still_counts(self):
+        # 页面停在 seek 点时官方播放器会主动暂停媒体：没推进不代表没声音
+        self.assertEqual(len(crp._usable_audio([self._ch()])), 1)
+
+    def test_muted_is_not_usable(self):
+        self.assertEqual(crp._usable_audio([self._ch(muted=True)]), [])
+
+    def test_zero_volume_is_not_usable(self):
+        self.assertEqual(crp._usable_audio([self._ch(volume=0.0)]), [])
+
+    def test_undecoded_is_not_usable(self):
+        self.assertEqual(crp._usable_audio([self._ch(readyState=0)]), [])
+
+
 if __name__ == "__main__":
     unittest.main()

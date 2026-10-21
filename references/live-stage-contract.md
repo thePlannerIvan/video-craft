@@ -173,3 +173,17 @@ python3 helpers/check_review_playable.py <project>
 # 期望：check_review_playable.py 在「活舞台的时间轴真的构建了」上变红（timeline.duration=0, 已渲染元素=0）
 # 把两者改回外部文件后重跑，同一断言转绿（timeline.duration=368.4, 已渲染元素=147）
 ```
+
+### 「有声音」要两条路都看
+
+工程态审阅时，**旁白在 composition 的 iframe 里**（`<audio data-start data-duration>`），
+不在页面层的 media 通道里；只扫页面级 `<audio>/<video>` 会把"能听见"误判成"没有声音"。
+`check_review_playable.py` 因此两路都查：
+
+1. **页面级通道**：`#stage-speaker-video` / `#composite-video-player` / 页面 `<audio>`；
+2. **composition 内**：进 iframe 查 `audio[data-start]` / `video[data-start]` 的
+   `muted` / `volume` / `readyState` / `duration`，并把 `currentTime` 是否推进作为附加证据。
+
+任一路满足即绿，并在 detail 里写明声音来自哪条（"页面级通道" vs "composition 内旁白"）。
+判"能出声"用**解码就绪 + 未静音 + 有音量 + 有长度**，不强制要求时钟推进——页面停在
+seek 点时官方播放器会主动暂停媒体。

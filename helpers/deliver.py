@@ -260,9 +260,16 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
     slot = geo["person"]
     pw, ph, px, py = int(slot["w"]), int(slot["h"]), int(slot["x"]), int(slot["y"])
     target = out / f"{name}_成片.mp4"
+    # 画面层是时长主人：人物轨 / 旁白常常比画面层长一点（母版 368.4 vs 画面 367.6），
+    # 只写 -shortest 在 filter_complex + overlay 下并不保证截断（2026-10-21 真实素材上
+    # 交付出 368.33s，比画面层长 0.7s，核验报红）。这里显式用 -t 钉住。
+    vis_dur = _duration(visual_path)
     tail = ["-c:v", "libx264", "-preset", "medium", "-crf", "17", "-pix_fmt", "yuv420p",
             "-r", str(geo["fps"]), "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
-            "-movflags", "+faststart", "-shortest", str(target)]
+            "-movflags", "+faststart"]
+    if vis_dur > 0:
+        tail += ["-t", f"{vis_dur:.3f}"]
+    tail.append(str(target))
     if burn:
         probe = _run(["ffmpeg", "-hide_banner", "-filters"])
         if " ass " not in (probe.stdout or ""):

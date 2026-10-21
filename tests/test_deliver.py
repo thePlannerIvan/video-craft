@@ -103,6 +103,44 @@ class DeliverIntegration(unittest.TestCase):
             self.assertTrue(data["ok"])
             self.assertTrue(any("无人物轨" in n for n in data["notes"]), data["notes"])
 
+    def test_duration_follows_visual_layer_when_person_runs_longer(self):
+        """人物/旁白比画面层长时，成片时长必须跟画面层走。
+
+        2026-10-21 的真实素材上，母版 368.4s、画面层 367.6s，只写 `-shortest`
+        在 filter_complex + overlay 下没截断，交付出 368.33s，核验「时长」报红。
+        现在用 `-t <画面层时长>` 钉住；这条测试防它回来。
+        """
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td) / "demo"
+            assets = tmp / "composition/assets"
+            (tmp / "composition/_render").mkdir(parents=True, exist_ok=True)
+            assets.mkdir(parents=True, exist_ok=True)
+            # 画面层 1s，人物与旁白各 2s
+            subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi",
+                            "-i", "color=c=0x050607:s=1920x1080:r=30:d=1",
+                            "-vf", "drawbox=x=700:y=200:w=1000:h=500:color=0xF2EBDD@1:t=fill",
+                            "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                            str(tmp / "composition/_render/visuals.mp4")], check=True)
+            subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi",
+                            "-i", "testsrc2=s=720x1280:r=30:d=2", "-c:v", "libx264",
+                            "-pix_fmt", "yuv420p", str(assets / "person.mp4")], check=True)
+            subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi",
+                            "-i", "sine=frequency=440:duration=2", "-c:a", "aac",
+                            str(assets / "audio.m4a")], check=True)
+            (tmp / "recompose.json").write_text(json.dumps({
+                "canvas": {"w": 1920, "h": 1080, "fps": 30},
+                "personSlot": {"x": 0, "y": 0, "w": 500, "h": 1080},
+                "captionSafe": {"x": 0, "y": 880, "w": 1920, "h": 200},
+            }), encoding="utf-8")
+
+            data = self._run(tmp)
+            self.assertEqual(data["exit"], 0, data)
+            names = {c["name"]: c for c in data["checks"]}
+            self.assertTrue(names["时长"]["ok"], names["时长"])
+            out = tmp / "成品" / f"{tmp.name}_成片.mp4"
+            got = float(deliver._duration(out))
+            self.assertAlmostEqual(got, 1.0, delta=0.15, msg=f"成片 {got:.2f}s，应跟画面层 1s")
+
     def test_missing_person_still_red_without_flag(self):
         with tempfile.TemporaryDirectory() as td:
             tmp = self._fixture(Path(td) / "demo", band_content=False)

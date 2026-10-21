@@ -1,5 +1,11 @@
 # Visual timeline (EDL-derived)
 
+> **老路线存档**：本文里凡涉及 `import_svg_page` / `generate-composition` / `check_parity`
+> 或「保真页面(page)」的段落，都是 **page 十步路线的存档说明**，新项目不要照做。
+> 画面的唯一入口是 `helpers/film.py`（见 [film.md](film.md)），存档总览见
+> [legacy-page-route.md](legacy-page-route.md)。
+
+
 The visual layer's timing comes from **the EDL's measured timeline**, not from a
 re-parse of the subtitles. SRT is a *view* of the same cues; deriving from it a
 second time threw away what the EDL already knew and re-computed the same numbers

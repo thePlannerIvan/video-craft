@@ -33,6 +33,27 @@ HELPERS = Path(__file__).resolve().parent
 sys.path.insert(0, str(HELPERS))
 
 
+def _free_port() -> int:
+    """挑一个空闲端口，避开"三条片都挤在默认端口、同 id 互相顶掉"。"""
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
+def _expected_duration(project: Path) -> float | None:
+    path = project / "review" / "review_data.json"
+    if path.is_file():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            ms = data.get("totalDurationMs")
+            if isinstance(ms, (int, float)) and ms > 0:
+                return float(ms) / 1000.0
+        except json.JSONDecodeError:
+            pass
+    return None
+
+
 def _run(args: list[str], expect_ok: bool = True) -> tuple[int, str]:
     proc = subprocess.run([sys.executable, *args], capture_output=True, text=True)
     out = (proc.stdout or "") + (proc.stderr or "")
@@ -49,6 +70,43 @@ def _json_tail(text: str) -> dict:
         except json.JSONDecodeError:
             start = text.find("{", start + 1)
     return {}
+
+
+# 端口上"是不是本工程"的判据：时长差 2s 以内算同一片。
+# 用 2s 而不是 0.5s，是因为同一份工程的 composition data-duration 与 timeline 允许有小漂移
+# （V2 实测 354.85 vs 354.10 = 0.75s）；真正的"端错工程"是十几秒级（V1 367.61 vs V2 354.10）。
+SAME_PROJECT_TOLERANCE = 2.0
+# 超过这个差值就值得警告（不是错工程，但会让交付核验对不上）
+DRIFT_WARN = 0.5
+
+
+def _same_project(expected: float | None, served: float | None,
+                  tolerance: float = SAME_PROJECT_TOLERANCE) -> bool | None:
+    """端口上的 composition 是不是本工程：用时长的可比性判断（None=无法判断）。"""
+    if expected is None or served is None:
+        return None
+    return abs(served - expected) <= tolerance
+
+
+def _served_timeline_duration(stage_url: str) -> float | None:
+    """从编译服务端出来的 composition 里读 data-duration（根元素声明值）。"""
+    import re
+    import urllib.request
+    if not stage_url:
+        return None
+    try:
+        with urllib.request.urlopen(stage_url, timeout=8) as resp:
+            html = resp.read().decode("utf-8", "replace")
+    except Exception:
+        return None
+    m = re.search(r'data-composition-id="[^"]*"[^>]*data-duration="([0-9.]+)"', html) \
+        or re.search(r'data-duration="([0-9.]+)"', html)
+    if not m:
+        return None
+    try:
+        return float(m.group(1))
+    except ValueError:
+        return None
 
 
 def review(project: Path, open_surface: bool = True, live: bool = True,
@@ -68,15 +126,38 @@ def review(project: Path, open_surface: bool = True, live: bool = True,
                     "composition/src：会执行逻辑的脚本必须在外部文件；注册名 = data-composition-id"):
             print("\n".join(out.strip().splitlines()[-8:]))
             return 1
-        stage_args = [str(HELPERS / "live_stage.py"), str(project), "--json"]
-        if port:
-            stage_args += ["--port", str(port)]
+        # 端口是这轮最大的静默陷阱：三条片同 id `composition`，谁占住默认端口谁被端出来。
+        # 所以默认自动挑空闲端口；并且起服务后**核对端出来的确实是本工程**。
+        use_port = port or _free_port()
+        stage_args = [str(HELPERS / "live_stage.py"), str(project), "--json", "--port", str(use_port)]
         code, out = _run(stage_args)
         info = _json_tail(out)
         if not step("编译服务", code == 0 and info.get("ok", False),
-                    f"stageUrl={info.get('stageUrl', '')}", "live_stage.py 的报错原文"):
+                    f"port={use_port} stageUrl={info.get('stageUrl', '')}", "live_stage.py 的报错原文"):
             print(out.strip().splitlines()[-6:])
             return 1
+
+        # 硬核对：这个端口端出来的 composition 时长必须与本工程 timeline 一致。
+        # 不一致 = 端的是别的工程的画面（静默错误，会把 A 片的画面当 B 片交出去）。
+        expect = _expected_duration(project)
+        served = _served_timeline_duration(info.get("stageUrl", ""))
+        if expect is not None and served is not None:
+            same = _same_project(expect, served)
+            detail = (f"项目={project.name} 期望时长={expect:.2f}s "
+                      f"端口回报={served:.2f}s port={use_port}")
+            if not step("端口上的工程就是本工程", same, detail,
+                        f"换端口重跑：review.py {project} --port <空闲端口>"
+                        f"（这一端口被另一份 composition 占着）"):
+                return 1
+            drift = abs(served - expect)
+            if drift > DRIFT_WARN:
+                step("composition data-duration 与 timeline 对得上", False,
+                     f"差 {drift:.2f}s（{served:.2f} vs {expect:.2f}）：会把这条谎报带进交付核验",
+                     "把 composition 的 data-duration 与 config.total 改成内容真实结束（最后一句字幕的结尾）")
+                return 1
+        else:
+            step("端口上的工程就是本工程", True,
+                 f"项目={project.name} 无法比对时长（期望={expect} 端口回报={served}）")
 
     # 2) 构建审阅页
     code, out = _run([str(HELPERS / "build_review.py"), str(project), "--mode", "auto", "--slices", "off"])
@@ -145,7 +226,8 @@ def main(argv=None) -> int:
                         help="跳过活舞台（成片/预览通道项目用）")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--port", type=int, default=None,
-                        help="编译服务端口；默认用 live_stage 的默认端口。别的工程占着它时会红，换一个端口")
+                        help="编译服务端口；默认自动挑空闲端口。三条片共用同一 project id，"
+                             "挤在默认端口会互相顶掉（会把 A 片的画面当 B 片交出去）")
     args = parser.parse_args(argv)
     return review(args.project.expanduser().resolve(), args.open_surface, args.live,
                   args.json, args.port)

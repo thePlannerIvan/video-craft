@@ -1,5 +1,11 @@
 # Idea / Story 内容包交接
 
+> **老路线存档**：本文里凡涉及 `import_svg_page` / `generate-composition` / `check_parity`
+> 或「保真页面(page)」的段落，都是 **page 十步路线的存档说明**，新项目不要照做。
+> 画面的唯一入口是 `helpers/film.py`（见 [film.md](film.md)），存档总览见
+> [legacy-page-route.md](legacy-page-route.md)。
+
+
 默认承接 Video Idea System，也兼容既有 Story 交付。先读取 script.md、visual-plan.json、production-brief.md 和作者原始反馈；素材路径按交付声明的根解析，不假设都相对 edit/。新版 contract 5.0 使用 screens / screen_id，旧 4.0 使用 blueprints / blueprint_id，均保持每屏一个 Beat。
 
 ## 先设计，再绑定实测声音

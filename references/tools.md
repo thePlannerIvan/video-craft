@@ -1,3 +1,8 @@
+> **老路线存档**：本文里凡涉及 `import_svg_page` / `generate-composition` / `check_parity`
+> 或「保真页面(page)」的段落，都是 **page 十步路线的存档说明**，新项目不要照做。
+> 画面的唯一入口是 `helpers/film.py`（见 [film.md](film.md)），存档总览见
+> [legacy-page-route.md](legacy-page-route.md)。
+
 > **查 HyperFrames 的 `data-*` 契约与属性名，不要 grep 打包后的 CLI。**
 > `node_modules/hyperframes` 是几万行压缩后的 bundle：一次 `grep -rn` 就会把 100KB+ 的
 > 中间代码灌进上下文，而且线上属性名与源码里的标识符并不一一对应，读到的多半是噪音

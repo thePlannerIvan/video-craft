@@ -1,5 +1,11 @@
 # SVG 动效预埋与跨 Skill 交接契约（`svg-animation-contract.md`）
 
+> **老路线存档**：本文里凡涉及 `import_svg_page` / `generate-composition` / `check_parity`
+> 或「保真页面(page)」的段落，都是 **page 十步路线的存档说明**，新项目不要照做。
+> 画面的唯一入口是 `helpers/film.py`（见 [film.md](film.md)），存档总览见
+> [legacy-page-route.md](legacy-page-route.md)。
+
+
 > **适用条件（先读）**：这是**可选**的元素级动效契约。页面没有 `data-step`、`data-anim` 或稳定 `id` 时，仍可作为整页画面导入和合成；只有明确要做元素级动效时才需要按本文加钩子。
 
 > **核心原则**：为什么普通 AI 做的 SVG 动画看起来「只是简单的浮现」？因为它们只对最外层 `<g data-step="N">` 做了一个单层透明度/位移过渡。

@@ -22,21 +22,43 @@ Video Craft 把已经确定的内容做成可播放、可审阅、可返修的�
 
 顺序仍是**先剪点、后画面**：逐字剪辑面定"说什么、留哪句"，确认之后才做动效 / 密度。剪点一动，画面锚点、字幕、composition 全部要重出，反过来做就是白做。
 
-## 三条命令
+## O / KR / Tools / Playbook
 
-只有三条命令，别在别处找路线。每条命令背后各有契约文档，命令本身是唯一入口。
+**O（这个 Skill 解决什么问题）**：把**已经确定的内容**做成**能播、能审、能返修**的视频 ——
+不是做设计、不是写稿、不是替作者决定说什么。判定"内容已定"的标志是：口播稿/脚本已确认、
+画面源（PPT 导出的 SVG 或已批准页面）在手、声音已剪好或已录。任何一条不成立就退回上游
+（`video-idea-system` 定内容、`planners-ppt-hell` 定静态页面），Craft 不越权改内容。
 
-| 命令 | 什么时候用 | 它保证什么 | 细节 |
+**KR（可观察的完成判据，缺一不可）**
+
+| # | 判据 | 怎么观察 |
+|---|---|---|
+| KR1 | 剪点由 EDL 表达，字幕与画面锚点跟随同一份实测时间 | `duration_plan.py` 有记录；`segment_durations.json` 的 hash/段数对得上 |
+| KR2 | 每屏画面都来自**原页拆解**，不是自由发挥 | `pages/<page>.md` 存在且 `film.py verify` 退 0 |
+| KR3 | 审阅页**能播、时长对、有画面、有声音** | `review.py` 退 0，报告写明通道与声音来源 |
+| KR4 | 人审确认后才出片 | `render_gate.py` 退 0；`deliver.py` 的第一道闸门 |
+| KR5 | 成片逐项核验通过 | `<成品>/<片名>_核验报告.json` 的 `ok=true`（分辨率/帧率/时长/音轨/首中尾帧/字幕安全区） |
+
+**Tools（三条命令；每条只回答"解决什么 / 何时调 / 失败信号"）**
+
+| 命令 | 解决什么 | 何时调 | 失败信号 |
 |---|---|---|---|
-| `helpers/film.py outline / verify / pages` | **画面**：从原页做到 composition | 没交「原页拆解」不许进 composition（`pages/<page>.md`：元素清单 + 处置 + 对应口播） | [film.md](references/film.md) |
-| `helpers/review.py` | **审阅**：把工程变成能给人看的页面 | 自带"能播、时长对、有声音"的运行时判据；不绿不放行 | [review-ui.md](references/review-ui.md)、[live-stage-contract.md](references/live-stage-contract.md) |
-| `helpers/deliver.py` | **交付**：画面层 + 人物 + 声音 + 字幕 → 成片 + 核验报告 | 只做画面层、人物后期贴回这种真实形态有入口；逐项核验 | [delivery.md](references/delivery.md) |
+| `helpers/film.py` | 把原页读透并落到 composition | 画面开工第一步，拆解没填完不许往下 | `verify` 退 1，逐条列出"哪个 beat 没映射 / 哪一列没填" |
+| `helpers/review.py` | 把工程变成能给人看的页面 | 画面改动后、交人审前 | 退 1 并指出该修 composition 还是审阅装配；端口端出别人的工程会硬失败 |
+| `helpers/deliver.py` | 画面层 + 人物 + 声音 + 字幕 → 成片 + 报告 | 人审通过之后 | 退 1，报告里红项指出回修哪一层 |
 
-剪辑、字幕、时间脊柱仍是三条命令的事实层，按全链流程做（第 3–6 步）。
+**Playbook（工作路线）**：接手核对版本 → 剪辑与字幕（EDL 为唯一时间来源）→ 画面（`film.py`
+拆解 → composition → `review.py` 人审）→ 交付（`deliver.py` → 核验报告）。每一步的顺序不能反：
+剪点一动，画面锚点、字幕、composition 全部重出。
+
+## 只有一条路线
+
+命令表见上面 Tools。剪辑、字幕、时间脊柱是它们的**事实层**，按全链流程做（第 3–6 步）。
 
 **老路线已存档，不再维护**：page 十步路线（`import_svg_page` → `generate-composition` → `check_parity`）
 整体归档在 [legacy-page-route.md](references/legacy-page-route.md)，代码在 `helpers/_legacy_page/` 与
-`visual/scripts/_legacy_page/`，原路径保留兼容 shim。新项目一律走 recompose + `film.py`；只有复活旧项目时才读那份存档。
+`visual/scripts/_legacy_page/`，原路径保留兼容 shim。新项目一律走 recompose + `film.py`；
+只有复活旧项目时才读那份存档。
 
 ## 工程预览与最终交付
 
@@ -61,9 +83,8 @@ python3 "<craft>/helpers/recompose_plan.py" init "<project>" \
 python3 "<craft>/helpers/recompose_plan.py" check "<project>"
 python3 "<craft>/helpers/recompose_plan.py" lines "<project>"
 
-# 之后照常 build_review.py；重排为左视频 + 右侧反馈三 tab
-python3 "<craft>/helpers/build_review.py" "<project>" --mode auto
-python3 "<craft>/helpers/review_surface.py" "<project>" --surface-only
+# 之后一条命令出审阅页（内部完成 静态契约 → 编译服务 → build_review → surface → 运行时判据）
+python3 "<craft>/helpers/review.py" "<project>"
 ```
 
 densities 的提交仍走同一个审阅面，由 `review_inbox.py` 收件：`feedback/density.jsonl` + 回写 `recompose/lines.json`。
@@ -84,15 +105,14 @@ densities 的提交仍走同一个审阅面，由 `review_inbox.py` 收件：`fe
 | 原始视频或录音，需要取舍 | 转写 → EDL → 源媒体逐字预览 → 确认后输出 | 不直接手改成片后再猜字幕时间 |
 | 已剪音频 + SRT + SVG | 核版本 → 导入 SVG → 对齐时间 → 动效与合成 | SRT 只能标为 `srt-import`，不能冒充 EDL 实测 |
 | 已有项目或返修反馈 | 读项目依据和收件回执 → 只重建受影响部分 | 不在旧审阅页上继续写新反馈 |
-| 已锁音频 + 词级锚点，画面是连续动画 / 图解 | 默认组合「保真页面 + 字幕」；作者要更大重排自由度时改用「重排画面」包（旧名 recompose）：`recompose_plan.py` → composition → 逐字密度 | 不import静态页、不生成 composition、不做 page/composition parity；两包可按单元混用 |
+| 已锁音频 + 词级锚点，画面是连续动画 / 图解 | **recompose 一条路线**：`recompose_plan.py` 建密度 → `film.py` 拆原页 → composition → 逐字密度 | 不跳原页拆解（KR2）；老 page 路线只读存档，新项目不走 |
 
 项目目录、剪辑目录和上游目录必须使用绝对路径。先确认当前采用版本，再执行下面的流程。
 
 ## 全链流程
 
-流程是**能力序列的参考顺序，不是路线**：每步说明“这一步要产出什么事实”，完成标准由对应能力包定义
-（见 [capability-packs.md](references/capability-packs.md)）。**page 专属判据只在「保真页面」包内生效**；
-其他组合按各自能力包的 DoD 判，不要拿 page 的标准去卡它们。
+流程是**事实的产出顺序**，不是路线：每步说明"这一步要产出什么事实"，判据由上表 KR 与各步的完成标准定义。
+老「能力包」体系只作历史读（[capability-packs.md](references/capability-packs.md)，已存档），不再按它选路线。
 
 | 阶段 | 步骤 | 产出的事实 |
 |---|---|---|
@@ -251,9 +271,11 @@ python3 "<craft>/helpers/import_srt_timeline.py" "<project>" \
 
 ### 7. 动效与合成
 
-静态 SVG 必须来自第 1 步导入的项目内副本（**保真页面包的判据**；其他组合见 [capability-packs.md](references/capability-packs.md)）。若页面已有 `data-step`、`data-anim`、元素 `id`，沿用它们；没有也可以导入——整页会作为一张画面使用，只有元素级动效才需要稳定 id。不要把页面截图当成可编辑 SVG。
+动手前必须已有 `pages/<page>.md` 原页拆解（见 [film.md](references/film.md)，KR2），元素清单按阅读顺序登记；
+把原页当**信息源**，按拆解逐条演出来 —— 不重画模型图，不把截图当 SVG。原页元素若已有
+`data-step` / `data-anim` / `id`，沿用它们；只有元素级动效才需要稳定 id。
 
-- HyperFrames：读 `$hyperframes`。整片走 `visual/scripts/generate-composition.py`；单层动效也先在 composition 中预览。只有最终合成需要独立透明视频，才用 `helpers/render_layer.py` 输出 `.mov`；兼容旧媒体叠层面时可同时输出 `.webm`。预览与渲染前先 `hyperframes check`。**任何 `hyperframes render` 之前先跑 `python3 "<craft>/helpers/probe_env.py" "<project>"` 报告能力（libass/字体预算/残留进程；只报告不阻断），再跑 `python3 "<craft>/helpers/check_render_env.py" "<project>/composition"`** —— 它报 RAM、可用内存与建议的 `--workers` 值（默认从 1 起）；并先过 `references/timing-lock.md`：`--verify` 退 0，且 `feedback/*.jsonl` 的未决项已清或显式接受。缺一不渲。
+- HyperFrames：读 `$hyperframes`。整片 composition 由 `film.py` 的拆解驱动、手写 `src/scenes/*.js`（不再用已存档的 `generate-composition.py`）；单层动效也先在 composition 中预览。只有最终合成需要独立透明视频，才用 `helpers/render_layer.py` 输出 `.mov`；兼容旧媒体叠层面时可同时输出 `.webm`。预览与渲染前先 `hyperframes check`。**任何 `hyperframes render` 之前先跑 `python3 "<craft>/helpers/probe_env.py" "<project>"` 报告能力（libass/字体预算/残留进程；只报告不阻断），再跑 `python3 "<craft>/helpers/check_render_env.py" "<project>/composition"`** —— 它报 RAM、可用内存与建议的 `--workers` 值（默认从 1 起）；并先过 `references/timing-lock.md`：`--verify` 退 0，且 `feedback/*.jsonl` 的未决项已清或显式接受。缺一不渲。
   **动效的源是 composition，不是那段视频**：层要能改、能预览，才谈得上「先审后渲」。
 - Manim：只有严密数学或技术动画才调用 `$manim-video`。
 - 自定义逐帧：读 `references/frame-animation-pipeline.md`。
@@ -385,7 +407,8 @@ python3 "<craft>/helpers/state_fingerprint.py" capture "<project>"   # 交付自
 ## 文件与参考入口
 
 - 一条流程与两种构建方式：`references/recompose-mode.md`
-- 能力系统与共享事实（v3 方向）：`references/capability-packs.md`
+- 画面入口：`references/film.md`；交付入口：`references/delivery.md`
+- 历史（存档，不要照做）：`references/capability-packs.md`、`references/legacy-page-route.md`
 - 可执行命令与产物目录：`references/tools.md`
 - 上游交接与责任边界：`references/content-to-production.md`
 - 视觉时间绑定：`references/visual-timeline.md`

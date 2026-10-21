@@ -1,5 +1,11 @@
 # 主题系统
 
+> **老路线存档**：本文里凡涉及 `import_svg_page` / `generate-composition` / `check_parity`
+> 或「保真页面(page)」的段落，都是 **page 十步路线的存档说明**，新项目不要照做。
+> 画面的唯一入口是 `helpers/film.py`（见 [film.md](film.md)），存档总览见
+> [legacy-page-route.md](legacy-page-route.md)。
+
+
 每个演示从头到尾跑**一个主题**。我们**不**在章节间翻转明暗 —— 那会
 打断视频的视觉连贯性，录屏时看起来像很硬的剪辑。如果想要"暗一点的氛围"
 段落，请在**同一调色板内**降对比、收聚光，而不是翻转表面色。

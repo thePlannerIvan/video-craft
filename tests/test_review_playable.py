@@ -67,5 +67,23 @@ class UsableAudio(unittest.TestCase):
         self.assertEqual(crp._usable_audio([self._ch(readyState=0)]), [])
 
 
+class ServedProjectGuard(unittest.TestCase):
+    """端口上端出来的必须是本工程：三条片同 id `composition`，挤同一端口会互相顶掉。"""
+
+    def test_same_duration_counts_as_same_project(self):
+        import review as rv
+        self.assertTrue(rv._same_project(354.10, 354.85))
+
+    def test_another_projects_duration_is_rejected(self):
+        import review as rv
+        # V2 期望 354.10，端口回报 V1 的 367.61 → 必须判成"不是本工程"
+        self.assertFalse(rv._same_project(354.10, 367.61))
+
+    def test_unknown_values_are_not_judged(self):
+        import review as rv
+        self.assertIsNone(rv._same_project(None, 367.61))
+        self.assertIsNone(rv._same_project(354.10, None))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -123,6 +123,15 @@ python3 "<craft>/helpers/recompose_plan.py" init "<project>" \
 python3 "<craft>/helpers/recompose_plan.py" check "<project>"
 ```
 
+**`init` 的两个前置文件（缺一个它就退 1）**：
+
+- `timeline/timeline.json` 必须有非空 `chapters[].steps[]`（每步 `startMs` / `endMs`）。
+  EDL 项目用 `timeline_derive.py` 产；外部剪好音频 + SRT 的项目用 `import_srt_timeline.py`
+  （需要 `--alignment`，来自上游 visual-plan）。**没有上游内容包的项目（自己录 / TTS 配音）
+  这两条都用不了，只能手写 timeline.json** —— 手写时把顶层 `totalChapters` / `totalSteps` /
+  `totalDurationMs` 一起写上：审阅页顶栏与播放器总时长读的就是这三个字段。
+- `edit/subtitles.srt` 或 `edit/captions.json`，至少一条字幕行。
+
 `init` 从字幕生成逐行预算：默认 `state: auto`、`proposal: still`。模型可以在
 `recompose/lines.json` 里逐行给 `proposal`（`off/still/light/full`），作为“自动”的建议值。
 

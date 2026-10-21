@@ -2388,6 +2388,30 @@
       return (hash >>> 0).toString(16).padStart(8, "0");
     }
 
+    /* 手写或旧版 timeline.json 可能没有顶层 totalChapters / totalSteps /
+       totalDurationMs（timeline_derive.py 与 import_srt_timeline.py 都会写）。
+       缺了页面就显示「undefined 章 · undefined 步 · NaN:NaN」、总时长恒 00:00，
+       而且不报错 —— 这里从 chapters 兜底推。 */
+    function normalizeTimeline(data) {
+      if (!data || typeof data !== "object") return data;
+      const chapters = Array.isArray(data.chapters) ? data.chapters : [];
+      const out = Object.assign({}, data, { chapters });
+      if (out.totalChapters == null) out.totalChapters = chapters.length;
+      if (out.totalSteps == null) {
+        out.totalSteps = chapters.reduce((n, ch) => n + ((ch.steps || []).length), 0);
+      }
+      if (out.totalDurationMs == null) {
+        let end = 0;
+        for (const ch of chapters) {
+          for (const st of (ch.steps || [])) {
+            end = Math.max(end, Number(st.endMs) || 0);
+          }
+        }
+        out.totalDurationMs = end;
+      }
+      return out;
+    }
+
     function fingerprint(data) {
       const parts = [data.totalChapters, data.totalSteps, data.totalDurationMs];
       for (const ch of data.chapters || []) {
@@ -3622,6 +3646,7 @@
           return null;
         }
       }
+      data = normalizeTimeline(data);
       timelineFingerprint = fingerprint(data);
       loadedTimelineId = shortId(timelineFingerprint);
       document.getElementById("project-name").textContent = data.totalChapters + " 章 · " + data.totalSteps + " 步 · " + fmt(data.totalDurationMs);

@@ -116,6 +116,29 @@ class RecomposeTest(unittest.TestCase):
         self.assertEqual(len(density["beats"][1]["lines"]), 1)
         self.assertEqual(density["beats"][0]["lines"][0]["state"], "auto")
 
+    def test_density_beat_range_derives_from_steps(self):
+        """build_review 组出来的 beat 只有 steps，没有章级 startMs / endMs。
+        直接读章级字段会让每个 beat 的区间恒为 0:00–0:00。"""
+        init(self.root)
+        beats = [
+            {"id": "beat-01", "title": "A", "steps": [
+                {"id": "s1", "startMs": 0, "endMs": 2000, "caption": "第一句"},
+                {"id": "s2", "startMs": 2000, "endMs": 5000, "caption": "第二句"}]},
+            {"id": "beat-02", "title": "B", "steps": [
+                {"id": "s3", "startMs": 5000, "endMs": 8000, "caption": "第三句"}]},
+        ]
+        density = build_review.build_density(self.root, beats, [])
+        self.assertEqual(
+            [(b["id"], b["startMs"], b["endMs"]) for b in density["beats"]],
+            [("beat-01", 0, 5000), ("beat-02", 5000, 8000)])
+
+    def test_template_derives_missing_timeline_totals(self):
+        """手写 / 旧版 timeline.json 没有顶层 totals 时，页面不能显示 undefined 与 NaN。"""
+        template = (Path(__file__).resolve().parents[1]
+                    / "visual/assets/review-page-template.html").read_text(encoding="utf-8")
+        self.assertIn("function normalizeTimeline(", template)
+        self.assertIn("out.totalDurationMs", template)
+
     def test_page_mode_keeps_density_disabled(self):
         (self.root / "recompose/lines.json").unlink(missing_ok=True)
         density = build_review.build_density(self.root, [], [])

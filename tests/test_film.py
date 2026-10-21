@@ -25,6 +25,8 @@ SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080">
   <text x="140" y="556" font-size="18">拒绝泛化的人口统计标签，锁定特定生活情境的精准切片。</text>
   <text x="100" y="1010" font-size="18">IVAN · 从 4A 方法论到生产力系统</text>
   <text x="1820" y="1010" font-size="18">06 / 27</text>
+  <line x1="140" y1="408" x2="460" y2="408" stroke="#3A3A3A"/>
+  <circle cx="107" cy="74" r="8" fill="#E5322B"/>
 </svg>
 """
 
@@ -54,6 +56,19 @@ class Extract(unittest.TestCase):
             self.assertEqual(actions["GET"], "保留")
             long_line = [a for t, a in actions.items() if t.startswith("拒绝泛化")][0]
             self.assertEqual(long_line, "拆")
+
+    def test_line_and_circle_keep_their_geometry(self):
+        """线用 x1/y1/x2/y2、点用 cx/cy；只读 x/y 会让它们全落在 (0,0)，
+        拆解表里就分不清哪根线对应哪句口播。"""
+        with tempfile.TemporaryDirectory() as td:
+            tmp = _project(Path(td))
+            elements = film.extract_elements(tmp / "page.svg")
+            line = next(e for e in elements if e["kind"] == "线")
+            self.assertEqual((line["x"], line["y"]), (140.0, 408.0))
+            self.assertEqual((line["info"]["x2"], line["info"]["y2"]), (460.0, 408.0))
+            dot = next(e for e in elements if e["kind"] == "点")
+            self.assertEqual((dot["x"], dot["y"]), (107.0, 74.0))
+            self.assertEqual(dot["info"]["r"], 8.0)
 
 
 class Gate(unittest.TestCase):

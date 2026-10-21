@@ -13,17 +13,20 @@
     python3 helpers/deliver.py <project>                       # 渲染画面层并合成
     python3 helpers/deliver.py <project> --visuals <mp4>       # 已有画面层，跳过渲染
     python3 helpers/deliver.py <project> --person <mp4> --audio <m4a> --srt <srt>
+    python3 helpers/deliver.py <project> --no-person      # 纯画面 + 旁白：画面层全幅交付
     python3 helpers/deliver.py <project> --json
 
 它保证
 ------
-1. 人物按 `recompose.json` 的 `personSlot` 贴回（cover 裁切，不挤压）；
+1. 人物按 `recompose.json` 的 `personSlot` 贴回（cover 裁切，不挤压）；没有人物轨的片子用
+   `--no-person` 全幅交付，并在报告 notes 里写明；
 2. 声音接上，且成片**真的有音轨**；
 3. 字幕区（`captionSafe`）在画面层里是空的 —— 有内容就报 warning 并指出哪一帧；
 4. 逐项核验：分辨率、帧率、时长、音轨、首/中/尾帧非全黑，产出 JSON 报告；
 5. 字幕优先外挂（`--burn-subtitles` 需要 ffmpeg 带 libass，没有就明确报错，不静默降级）。
 
 前置：`render_gate.py` 必须放行（有人工提交且源未漂移）；夹具可用 `--skip-gate`。
+`composition/_render/visuals.mp4` 比 composition 源旧时自动重渲（否则会交付上一版画面）。
 """
 from __future__ import annotations
 
@@ -123,9 +126,39 @@ def _pick(project: Path, explicit: Path | None, candidates: list[Path]) -> Path 
     return None
 
 
+def _render_is_stale(project: Path, visual: Path) -> bool:
+    """画面层是不是比 composition 源旧。
+
+    `composition/_render/visuals.mp4` 是上一次渲染的缓存。改过 composition、
+    重新审阅、再跑 deliver 时会静默拿旧画面出片 —— 审阅看的是新的、交付的是旧的。
+    这里按源文件 mtime 判新旧，旧了就重渲。
+    """
+    comp = project / "composition"
+    if not (comp / "index.html").is_file():
+        return False
+    try:
+        vis_mtime = visual.stat().st_mtime
+    except OSError:
+        return True
+    newest = (comp / "index.html").stat().st_mtime
+    for path in comp.rglob("*"):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(comp)
+        if rel.parts and rel.parts[0] in ("_render", ".hyperframes", "node_modules"):
+            continue
+        if path.suffix.lower() in (".mp4", ".mov", ".webm"):
+            continue
+        try:
+            newest = max(newest, path.stat().st_mtime)
+        except OSError:
+            continue
+    return newest > vis_mtime + 1e-6
+
+
 def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Path | None,
             srt: Path | None, out_dir: Path | None, burn: bool, skip_gate: bool,
-            as_json: bool) -> int:
+            as_json: bool, no_person: bool = False) -> int:
     geo = _geometry(project)
     out = (out_dir or project / "成品")
     out.mkdir(parents=True, exist_ok=True)
@@ -160,16 +193,32 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
                                         project / "edit/_engineering/review_audio.m4a"])
     srt_path = _pick(project, srt, [project / "edit/subtitles.srt",
                                     project / "成品" / f"{name}_字幕.srt"])
-    if not check("人物素材", person_path is not None, str(person_path or "缺（用 --person 指）")):
+    if no_person:
+        if person_path is not None:
+            note(f"声明无人物轨：忽略 {person_path.name}，画面层全幅交付")
+        person_path = None
+    elif not check("人物素材", person_path is not None,
+                   str(person_path or "缺（用 --person 指；纯画面 + 旁白的片子加 --no-person）")):
         return 1
     if not check("声音素材", audio_path is not None, str(audio_path or "缺（用 --audio 指）")):
         return 1
 
     # 2) 画面层：已有就用，没有就渲
     visual_path = _pick(project, visuals, [project / "composition/_render/visuals.mp4"])
+    if visual_path is not None and visuals is None and _render_is_stale(project, visual_path):
+        note(f"画面层比 composition 源旧（{visual_path.name}），重新渲染")
+        visual_path = None
     if visual_path is None:
         if not as_json:
             print("  · 没有 --visuals，开始渲染画面层（这是唯一需要等的一步）")
+        env = _run([sys.executable, str(HELPERS / "check_render_env.py"),
+                    str(project / "composition"), "--json"])
+        if env.returncode != 0:
+            check("渲染环境", False, (env.stdout or env.stderr or "")[-400:])
+            print(json.dumps(report, ensure_ascii=False, indent=1))
+            return 1
+        check("渲染环境", True, "check_render_env 退 0")
+        (project / "composition/_render").mkdir(parents=True, exist_ok=True)
         render = _run(["hyperframes", "render", str(project / "composition"),
                        "-o", str(project / "composition/_render/visuals.mp4"),
                        "--workers", "1", "-q", "looks"])
@@ -182,24 +231,29 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
     if not check("画面层可读", bool(v_video), f"{visual_path.name} {v_video.get('width')}×{v_video.get('height')}"):
         return 1
 
-    # 3) 合成：人物 cover 贴回 + 声音
+    # 3) 合成：人物 cover 贴回 + 声音（无人物轨时画面层全幅交付）
     slot = geo["person"]
     pw, ph, px, py = int(slot["w"]), int(slot["h"]), int(slot["x"]), int(slot["y"])
     target = out / f"{name}_成片.mp4"
-    vf = (f"[1:v]scale={pw}:{ph}:force_original_aspect_ratio=increase,"
-          f"crop={pw}:{ph},setsar=1[person];"
-          f"[0:v][person]overlay={px}:{py}:format=auto[v]")
+    tail = ["-c:v", "libx264", "-preset", "medium", "-crf", "17", "-pix_fmt", "yuv420p",
+            "-r", str(geo["fps"]), "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
+            "-movflags", "+faststart", "-shortest", str(target)]
     if burn:
         probe = _run(["ffmpeg", "-hide_banner", "-filters"])
         if " ass " not in (probe.stdout or ""):
             if not check("烧字幕", False, "本机 ffmpeg 没有 libass；改外挂 SRT（默认行为）"):
                 print(json.dumps(report, ensure_ascii=False, indent=1))
                 return 1
-    cmd = ["ffmpeg", "-y", "-v", "error", "-i", str(visual_path), "-i", str(person_path),
-           "-i", str(audio_path), "-filter_complex", vf, "-map", "[v]", "-map", "2:a",
-           "-c:v", "libx264", "-preset", "medium", "-crf", "17", "-pix_fmt", "yuv420p",
-           "-r", str(geo["fps"]), "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
-           "-movflags", "+faststart", "-shortest", str(target)]
+    if person_path is None:
+        note("无人物轨：画面层全幅交付，personSlot 区域保持画面层原样")
+        cmd = ["ffmpeg", "-y", "-v", "error", "-i", str(visual_path), "-i", str(audio_path),
+               "-map", "0:v", "-map", "1:a"] + tail
+    else:
+        vf = (f"[1:v]scale={pw}:{ph}:force_original_aspect_ratio=increase,"
+              f"crop={pw}:{ph},setsar=1[person];"
+              f"[0:v][person]overlay={px}:{py}:format=auto[v]")
+        cmd = ["ffmpeg", "-y", "-v", "error", "-i", str(visual_path), "-i", str(person_path),
+               "-i", str(audio_path), "-filter_complex", vf, "-map", "[v]", "-map", "2:a"] + tail
     proc = _run(cmd)
     if not check("合成", proc.returncode == 0 and target.is_file(),
                  (proc.stderr or "ok")[-300:] if proc.returncode != 0 else target.name):
@@ -271,11 +325,13 @@ def main(argv=None) -> int:
     parser.add_argument("--out", type=Path, help="输出目录（默认 <project>/成品）")
     parser.add_argument("--burn-subtitles", dest="burn", action="store_true",
                         help="烧录字幕（需要 ffmpeg 带 libass）")
+    parser.add_argument("--no-person", action="store_true",
+                        help="纯画面 + 旁白：不贴人物，画面层全幅交付")
     parser.add_argument("--skip-gate", action="store_true", help="夹具用：跳过 render_gate")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
     return deliver(args.project.expanduser().resolve(), args.visuals, args.person, args.audio,
-                   args.srt, args.out, args.burn, args.skip_gate, args.json)
+                   args.srt, args.out, args.burn, args.skip_gate, args.json, args.no_person)
 
 
 if __name__ == "__main__":

@@ -498,11 +498,22 @@ def build_density(project_root: Path, beats: list, captions: list) -> dict:
     for beat in beats:
         bid = str(beat.get("id") or "")
         rows = by_beat.get(bid) or []
+        # timeline.json 的章节不携带 startMs / endMs（它们只在 steps 上），
+        # 所以这里必须从 steps 推；直接读章级字段会让每个 beat 的区间恒为 0:00–0:00。
+        steps = beat.get("steps") or []
+        starts = [int(st.get("startMs") or 0) for st in steps]
+        ends = [int(st.get("endMs") or 0) for st in steps]
+        start_ms = beat.get("startMs")
+        if start_ms is None:
+            start_ms = min(starts) if starts else 0
+        end_ms = beat.get("endMs")
+        if end_ms is None:
+            end_ms = max(ends) if ends else 0
         out_beats.append({
             "id": bid,
             "title": beat.get("title") or "",
-            "startMs": beat.get("startMs") or 0,
-            "endMs": beat.get("endMs") or 0,
+            "startMs": int(start_ms),
+            "endMs": int(end_ms),
             "lines": rows,
         })
     return {

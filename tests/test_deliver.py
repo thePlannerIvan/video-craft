@@ -69,6 +69,30 @@ class DeliverIntegration(unittest.TestCase):
             self.assertTrue(names["成片有音轨"]["ok"], names["成片有音轨"])
             self.assertTrue(names["字幕安全区无内容"]["ok"], names["字幕安全区无内容"])
 
+    def test_no_person_layer_delivers_without_person(self):
+        """纯画面 + 旁白的片子没有人物素材：--no-person 应该能出片，
+        而不是把「人物素材缺失」当硬错误（recompose-mode 允许「仅画面层」）。"""
+        with tempfile.TemporaryDirectory() as td:
+            tmp = self._fixture(Path(td) / "demo", band_content=False)
+            tmp.mkdir(parents=True, exist_ok=True)
+            (tmp / "composition/assets/person.mp4").unlink()
+            code = deliver.deliver(tmp, None, None, None, None, tmp / "成品",
+                                   False, True, True, no_person=True)
+            report = tmp / "成品" / f"{tmp.name}_核验报告.json"
+            data = json.loads(report.read_text(encoding="utf-8"))
+            self.assertEqual(code, 0, data)
+            self.assertTrue(data["ok"])
+            self.assertTrue(any("无人物轨" in n for n in data["notes"]), data["notes"])
+
+    def test_missing_person_still_red_without_flag(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = self._fixture(Path(td) / "demo", band_content=False)
+            tmp.mkdir(parents=True, exist_ok=True)
+            (tmp / "composition/assets/person.mp4").unlink()
+            code = deliver.deliver(tmp, None, None, None, None, tmp / "成品",
+                                   False, True, True)
+            self.assertEqual(code, 1)
+
     def test_content_in_caption_band_goes_red(self):
         with tempfile.TemporaryDirectory() as td:
             tmp = self._fixture(Path(td) / "demo", band_content=True)

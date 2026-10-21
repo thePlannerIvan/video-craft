@@ -81,9 +81,14 @@ def _classify(node: ET.Element) -> tuple[str, dict]:
                                         "fill": node.get("fill") or "",
                                         "stroke": node.get("stroke") or ""}
     if tag == "line":
-        return "线", {"stroke": node.get("stroke") or ""}
+        # 线的坐标在 x1/y1/x2/y2，不在 x/y 上；不取出来就全落在 (0,0)，
+        # 拆解表里分不清哪根线对应哪句口播。
+        return "线", {"stroke": node.get("stroke") or "",
+                      "x1": float(node.get("x1") or 0), "y1": float(node.get("y1") or 0),
+                      "x2": float(node.get("x2") or 0), "y2": float(node.get("y2") or 0)}
     if tag == "circle":
-        return "点", {"r": float(node.get("r") or 0), "fill": node.get("fill") or ""}
+        return "点", {"r": float(node.get("r") or 0), "fill": node.get("fill") or "",
+                      "cx": float(node.get("cx") or 0), "cy": float(node.get("cy") or 0)}
     if tag == "image":
         return "图", {}
     return "其他", {}
@@ -121,9 +126,13 @@ def extract_elements(svg_path: Path) -> list[dict]:
         text = info.get("text", "")
         if kind == "字" and not text:
             continue
-        x = float(node.get("x") or 0)
-        y = float(node.get("y") or 0)
-        if kind in ("框", "底", "图"):
+        if kind == "线":
+            x = float(node.get("x1") or 0)
+            y = float(node.get("y1") or 0)
+        elif kind == "点":
+            x = float(node.get("cx") or 0)
+            y = float(node.get("cy") or 0)
+        else:
             x = float(node.get("x") or 0)
             y = float(node.get("y") or 0)
         action, reason = _disposition(kind, info)
@@ -182,6 +191,11 @@ def cmd_outline(project: Path, page_key: str, source: Path | None, overwrite: bo
         where = f"({el['x']:.0f},{el['y']:.0f})"
         if el["kind"] == "框":
             where += f" {info.get('w', 0):.0f}×{info.get('h', 0):.0f}"
+        if el["kind"] == "线":
+            where = (f"({info.get('x1', 0):.0f},{info.get('y1', 0):.0f})→"
+                     f"({info.get('x2', 0):.0f},{info.get('y2', 0):.0f})")
+        if el["kind"] == "点":
+            where = f"({info.get('cx', 0):.0f},{info.get('cy', 0):.0f}) r{info.get('r', 0):.0f}"
         if el["kind"] == "字":
             where += f" {info.get('font', 0):.0f}px"
         content = el["text"][:28].replace("|", "\\|")

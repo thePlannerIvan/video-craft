@@ -356,7 +356,9 @@ python3 "<craft>/helpers/deliver.py" "<project>" --visuals "<已有画面层.mp4
 
 它按 `recompose.json` 的 `personSlot` / `captionSafe` 贴回人物、接声音、核验分辨率/帧率/时长/音轨/
 首中尾帧/字幕安全区，并写 `<成品>/<片名>_核验报告.json`；第一件事是跑 `render_gate.py`
-（没人审覆盖当前快照就拒绝出片）。契约见 [delivery.md](references/delivery.md)。
+（没人审覆盖当前快照就拒绝出片）。**没有人物轨的片子加 `--no-person`**（纯画面 + 旁白是合法形态，
+不是缺素材）；`composition/_render/visuals.mp4` 比 composition 源旧时会自动重渲，交付的才是刚审过的那一版。
+契约见 [delivery.md](references/delivery.md)。
 
 **渲染前的第一步是渲染闸门，不是 render。** 它要求 `review/review-submissions.json`（或
 `feedback/*.jsonl`）里至少一条人工提交覆盖**当前**审阅快照，且源在那次构建之后没有再改过：

@@ -445,8 +445,10 @@ python3 "<craft>/helpers/spec_lint.py"          # 条数、篇幅、字段、执
    → 末行必须是 `OK`，并记下 `Ran N tests`。**N 只许增不许减**，除非是合并用例并写明理由。
 2. `python3 helpers/check_review_template.py`（0 项不通过）与 `--prove`（全响）。
 3. `python3 <planning-before-create-skill>/scripts/lint_skill.py .` → 无确定错误。
-4. **接真实项目跑一遍三条命令**：`review.py <project>`（退 0，且运行时判据「能播 / 有画面 / 有声音」全绿）、
-   `deliver.py <project> --render`（成片真有音轨、核验报告 `ok=true`）。**单测绿 ≠ 真实项目绿，这条不可省。**
+4. **接真实项目跑一遍**：
+   - 默认终点：`review.py <project>` 退 0、运行时判据「能播 / 有画面 / 有声音」全绿，页面在工程态；此时**不渲染**。
+   - 作者明确要出片后：`render_gate.py` 退 0 → `deliver.py <project> --render`（成片真有音轨、核验报告 `ok=true`）。
+   **单测绿 ≠ 真实项目绿，这条不可省。**
 5. 发布前确认工作区干净、本地与 GitHub 一致；发布后再用同一现场重跑第 4 条。
 
 不许做：把上一次的绿灯当成本次状态；把没跑过的写成"已验证"；红了先发布再修。

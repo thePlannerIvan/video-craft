@@ -141,7 +141,14 @@ def _words_in_range(transcript: dict, t_start: float, t_end: float) -> list[dict
         if start is None or end is None or end <= t_start or start >= t_end:
             continue
         visible = min(end, t_end) - max(start, t_start)
-        if visible < 0.8 * (end - start):
+        # 段尾被切掉一点尾巴时，词仍然听得见；整字丢掉会把句子断成「你要解决」。
+        # 2026-10-21 的三条片上，EDL 段尾系统性短了一帧（0.04s），17/9 个尾字被
+        # 整字丢弃，字幕直接读不通。判据分开处理：
+        #   · 字头在段内、尾巴被切 → 可见 ≥45% 就收（时间仍钳到段尾）；
+        #   · 字头在段前（跨段首）→ 仍要 ≥80%，否则会把同一个词同时塞进前后两段。
+        word_starts_inside = start >= t_start - 1e-6
+        threshold = 0.45 if word_starts_inside else 0.8
+        if visible < threshold * (end - start):
             continue
         text = _clean_text(str(word.get("text") or ""))
         if not text:

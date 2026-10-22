@@ -171,3 +171,28 @@ class ArticleFirstSrtTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class BoundaryWordInclusion(unittest.TestCase):
+    """段尾被切点吃到一小截的词：整字丢掉会把句子断成「你要解决」。
+
+    2026-10-21 的真实素材里，EDL 段尾系统性短一帧（0.04s），17/9 个尾字被整字
+    丢弃。判据改为按"字头位置"分开：字头在段内 → 可见 ≥45% 就收；字头在段前
+    （跨段首）→ 仍要 ≥80%，否则同一个词会同时塞进前后两段。
+    """
+
+    @staticmethod
+    def _transcript(words):
+        return {"words": [{"type": "word", "text": t, "start": a, "end": b}
+                          for t, a, b in words]}
+
+    def test_word_starting_inside_is_kept_when_tail_is_clipped(self):
+        tr = self._transcript([("解", 0.0, 0.2), ("决", 0.2, 0.4), ("它。", 0.4, 0.6)])
+        kept = MODULE._words_in_range(tr, 0.0, 0.5)
+        self.assertIn("它。", [w["text"] for w in kept], kept)
+
+    def test_word_straddling_segment_start_still_needs_80_percent(self):
+        tr = self._transcript([("前", 0.0, 0.2), ("跨段", 0.2, 0.6), ("后", 0.7, 0.9)])
+        kept = MODULE._words_in_range(tr, 0.3, 1.0)
+        texts = [w["text"] for w in kept]
+        self.assertNotIn("跨段", texts, texts)
+        self.assertIn("后", texts, texts)

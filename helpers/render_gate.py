@@ -41,10 +41,9 @@ ENGINEERING_REL = "edit/_engineering"
 
 
 def project_root(arg: str) -> Path:
-    p = Path(arg).expanduser().resolve()
-    if p.name in {"edit", "review"} and (p.parent / REVIEW_DATA_REL).is_file():
-        return p.parent
-    return p
+    """统一实现见 `helpers/_paths.py`（合并地图 M3）。"""
+    from _paths import resolve
+    return resolve(arg)[0]
 
 
 def read_json(path: Path):

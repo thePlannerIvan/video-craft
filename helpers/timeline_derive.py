@@ -206,28 +206,11 @@ def _stretch_to_measured(chapters: list[dict], measured_total_ms: int) -> None:
         st["durationMs"] = st["endMs"] - st["startMs"]
 
 
-def _measured_total_ms(edit_dir: Path, edl_path: Path | None = None) -> int | None:
-    """Total of the MEASURED cut, or None when no render record matches this EDL."""
-    record = edit_dir / "segment_durations.json"
-    if not record.exists():
-        return None
-    try:
-        blob = json.loads(record.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return None
-    cut = blob.get("cut") if isinstance(blob, dict) else None
-    if not isinstance(cut, dict):
-        return None
-    total = cut.get("total_s")
-    if not isinstance(total, (int, float)) or total <= 0:
-        return None
-    edl_file = (edl_path or (edit_dir / EDIT_DEFAULT)).resolve()
-    digest = cut.get("edl_sha256")
-    if edl_file.exists() and digest:
-        from _edl import edl_digest  # same directory
-        if edl_digest(edl_file) != digest:
-            return None  # stale: the cut changed after that render
-    return int(round(float(total) * 1000))
+def _measured_total_ms(edit_dir: Path, edl_path: Path | None = None
+                       ) -> tuple[int | None, str, str | None]:
+    """Delegate to `_edl.measured_total_ms`: identity by digest, not by file name."""
+    from _edl import measured_total_ms
+    return measured_total_ms(edit_dir, edl_path)
 
 
 def build_timeline(entries: list[dict], grouping: dict,
@@ -313,13 +296,12 @@ def build_timeline(entries: list[dict], grouping: dict,
         "source": "edl",
         "totalChapters": len(chapters),
         "totalSteps": sum(len(ch["steps"]) for ch in chapters),
-        # The axis length is the SPAN from the first step to the last, not the sum
-        # of step durations. Cues have real gaps between them (0.2-0.7s each; 11.4s
-        # on the 图拉斯 project), so summing drops those gaps: a 251.4s film was
-        # reported as exactly 240.0s and every consumer that used this as the axis
-        # length lost the tail (the review console could not reach the last 12s,
-        # and each step after a gap sat early by the accumulated gap).
-        "totalDurationMs": last_end - first_start,
+        # The axis length is the END of the last step, not the sum of step
+        # durations and not a span: cues have real gaps between them, and the
+        # film may start before the first cue (lead-in silence). Subtracting
+        # `first_start` made a 190.34s film report 190.08s and every consumer
+        # (review clock, playback check) lost the head.
+        "totalDurationMs": last_end,
         "chapters": chapters,
     }, duration_map
 
@@ -414,12 +396,29 @@ def main() -> int:
             check_alignment(entries, grouping, _read_json(args.alignment))
         measured_total = None
         if words_source == "measured":
-            measured_total = _measured_total_ms(edit_dir, args.edl)
-            if measured_total:
+            measured_total, how, tag = _measured_total_ms(edit_dir, args.edl)
+            if measured_total and how == "digest":
                 print(f"  · 时间脊柱按实测总长对齐：{measured_total / 1000:.3f}s，"
-                      "步骤首尾相接（不留章节空隙）")
+                      f"记录 {tag}（与当前剪辑指纹一致），步骤首尾相接")
+            elif measured_total and how == "no-digest":
+                print(f"  ! 时间脊柱用的是推定记录 {tag}（无剪辑指纹）："
+                      f"{measured_total / 1000:.3f}s，请确认它渲的是当前版本")
+            elif how == "mismatch":
+                print("  ! 记录都来自旧版剪辑：时间轴按名义时长，画面时间点可能偏移")
+            else:
+                print("  ! 还没有与当前剪辑对应的渲染记录：时间轴按名义时长（先渲底片再派生可消除）")
+        if measured_total and how == "digest":
+            time_source = "measured"
+        elif measured_total and how == "no-digest":
+            time_source = "measured-guessed"
+        elif words_source == "projected":
+            time_source = "projected"
+        else:
+            time_source = "nominal"
         timeline, durations = build_timeline(entries, grouping,
                                              measured_total_ms=measured_total)
+        timeline["timeSource"] = time_source
+        timeline["measuredTotalMs"] = int(measured_total) if measured_total else None
         if args.output_timeline:
             args.output_timeline.parent.mkdir(parents=True, exist_ok=True)
             args.output_timeline.write_text(

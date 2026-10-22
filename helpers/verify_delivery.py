@@ -39,24 +39,20 @@ from _edl import render_record  # noqa: E402
 
 
 def probe(path: Path) -> dict:
-    out = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries",
-         "format=duration,size:stream=index,codec_type,codec_name,width,height,"
-         "r_frame_rate,channels",
-         "-of", "json", str(path)], capture_output=True, text=True, check=True)
-    return json.loads(out.stdout)
+    """统一实现见 `helpers/_probe.py`（合并地图 M4）；保留旧返回形状。"""
+    from _probe import probe_media
+    media = probe_media(path)
+    return {
+        "format": {"duration": media["duration"], "size": media["size"]},
+        "streams": media["streams"],
+    }
 
 
 def srt_cues(path: Path) -> list[tuple[float, float]]:
-    def sec(h: str, m: str, s: str, ms: str) -> float:
-        return int(h) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000
-
-    text = path.read_text(encoding="utf-8", errors="replace")
-    cues = []
-    for groups in re.findall(
-            r"(\d\d):(\d\d):(\d\d),(\d\d\d) --> (\d\d):(\d\d):(\d\d),(\d\d\d)", text):
-        cues.append((sec(*groups[:4]), sec(*groups[4:])))
-    return cues
+    """统一实现见 `helpers/_timecode.py`（合并地图 M1/M2）；畸形块保持跳过语义。"""
+    from _timecode import parse_srt_file_loose
+    return [(cue["startMs"] / 1000, cue["endMs"] / 1000)
+            for cue in parse_srt_file_loose(path)]
 
 
 def silence_spans(path: Path, max_pause: float) -> list[tuple[float, float, float]]:
@@ -183,6 +179,8 @@ def main() -> int:
     ap.add_argument("--max-black", type=float, default=2.0,
                     help="成片里累计纯黑画面的秒数预算（超过即失败）。深色设计天然含近黑帧，"
                          "所以给的是总量预算而不是「有黑帧即失败」；这一步抓的是成段的画面空洞。")
+    ap.add_argument("--no-audio", action="store_true",
+                    help="这是无声画面轨（画面成片）：不要求音轨；声音在成片或人物轨上")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
@@ -209,11 +207,25 @@ def main() -> int:
         hard.append("成片没有视频流")
     if "audio" in streams:
         print(f"  音频 {streams['audio']['codec_name']} {streams['audio']['channels']}ch")
+    elif args.no_audio:
+        print("  声明为无声画面轨：不要求音轨（声音在成片或人物轨上）")
     else:
         hard.append("成片没有音频流")
 
     if args.deliver_dir:
         check_deliverable_specs(edit_dir.parent, args.deliver_dir.resolve(), hard, warn, report)
+
+    from _paths import timeline_file, timeline_span_ms
+    timeline = timeline_file(edit_dir)
+    timeline_end = timeline_span_ms(timeline) if timeline is not None else None
+    if timeline_end:
+        expected = timeline_end / 1000
+        report["timeline_end_s"] = round(expected, 3)
+        if abs(duration - expected) > 0.5:
+            hard.append(f"成片 {duration:.3f}s 与画面时间轴末段 {expected:.3f}s "
+                        f"相差 {duration - expected:+.3f}s——画面与时间轴不是同一版")
+        else:
+            print(f"  时长与画面时间轴一致（{expected:.3f}s）")
 
     measured, tag, how = measured_total(edit_dir)
     if measured is not None:

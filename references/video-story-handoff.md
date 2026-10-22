@@ -1,9 +1,6 @@
 # Idea / Story 内容包交接
 
-> **老路线存档**：本文里凡涉及 `import_svg_page` / `generate-composition` / `check_parity`
-> 或「保真页面(page)」的段落，都是 **page 十步路线的存档说明**，新项目不要照做。
-> 画面的唯一入口是 `helpers/film.py`（见 [film.md](film.md)），存档总览见
-> [legacy-page-route.md](legacy-page-route.md)。
+> 本文涉及 page 路线的段落已归档（见 [legacy-page-route.md](legacy-page-route.md)）；现行 recompose 路线见 [film.md](film.md) 与 [recompose-mode.md](recompose-mode.md)。命令集中在 [tools.md](tools.md)。
 
 
 默认承接 Video Idea System，也兼容既有 Story 交付。先读取 script.md、visual-plan.json、production-brief.md 和作者原始反馈；素材路径按交付声明的根解析，不假设都相对 edit/。新版 contract 5.0 使用 screens / screen_id，旧 4.0 使用 blueprints / blueprint_id，均保持每屏一个 Beat。
@@ -12,17 +9,13 @@
 
 没有录音时按 content-to-production.md 形成制作方案和预演，不能运行最终字幕对齐来伪造时钟。声音到位、剪接批准、底片渲染和语义字幕构建后：
 
-```bash
-python <skill>/visual/scripts/align-visual-plan.py --plan <project>/deliverable/visual-plan.json --script <project>/deliverable/script.md --edit-dir <edit> --output <edit>/timeline/content-alignment.json
-```
+对齐命令（`align-visual-plan.py`）见 [tools.md](tools.md)「SVG 与视觉时间」。
 
 对齐结果保留 sample 作为素材参考，保留 mustShow / mustExpress / exactLabels / evidence。`blueprintId`、`screenId` 都沿用原 screen_id；grouping 的 sourceBlueprintId 使用这个原 ID，不重编号。脚本检查稿件哈希，但匹配只是候选：逐段核听，处理 needsReview；演示原声、临时插入段或实录改意不能硬塞进自动匹配结果。
 
 每个 Step 只引用一个 screen，在该 Beat 内可以有多个状态；有序 cue 必须连续。明确的无口播演示窗口以 EDL 与独立视觉槽承载，写在制作说明及创意兑现表，不伪造字幕。原稿漏段或发生语义变化时先更新并确认内容包，然后重新对齐。
 
-```bash
-python <skill>/helpers/timeline_derive.py <edit> --grouping <edit>/timeline/grouping.json --alignment <edit>/timeline/content-alignment.json --output-timeline <edit>/timeline/timeline.json
-```
+派生命令（`timeline_derive.py`）见 [tools.md](tools.md)「SVG 与视觉时间」。
 
 存在上游画面契约时必须带 `--alignment`。校验拒绝错误/过期对齐、未处理屏、跨屏引用、重复和遗漏 cue；只证明绑定覆盖，不证明画面内容真的实现。语音很短但画面需延长时，先调整制作/剪辑安排再重新测时，不手改 cue。
 

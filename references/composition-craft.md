@@ -1,9 +1,6 @@
 # Composition Craft (Phase 3)
 
-> **老路线存档**：本文里凡涉及 `import_svg_page` / `generate-composition` / `check_parity`
-> 或「保真页面(page)」的段落，都是 **page 十步路线的存档说明**，新项目不要照做。
-> 画面的唯一入口是 `helpers/film.py`（见 [film.md](film.md)），存档总览见
-> [legacy-page-route.md](legacy-page-route.md)。
+> 本文涉及 page 路线的段落已归档（见 [legacy-page-route.md](legacy-page-route.md)）；现行 recompose 路线见 [film.md](film.md) 与 [recompose-mode.md](recompose-mode.md)。命令集中在 [tools.md](tools.md)。
 
 
 The visual source of truth is `composition/index.html`, a HyperFrames
@@ -11,8 +8,8 @@ composition. React pages no longer implement final visuals.
 
 ## Workflow per chapter
 
-1. `visual/scripts/generate-composition.py <project> --theme=<id>` produced the
-   skeleton: one clip per visual step, timing locked to timeline.json.
+1. （已归档 page 路线）`generate-composition.py` 曾生成骨架：一个 step 一个 clip、时间锁到 timeline.json。
+   recompose 由 Agent 手写 `src/scenes/*.js`，时间同样从 timeline.json 取。
 2. Read `composition/index.html` first. Implement each step's visual
    INSIDE its clip (`<section class="clip scene" id="step-...">`).
 3. After each chapter: `cd composition && npm run check` — must be 0 errors.
@@ -121,10 +118,7 @@ step's data-start so payoffs land on the spoken word.
 一屏来自哪一页：在该步的 `grouping.json` 里写 `sourcePageKey`；生成器据此内联，并把下面那张表的三个事实
 写成该屏 clip 的属性。
 
-```bash
-python3 visual/scripts/import_svg_page.py <project> --pages <picture-project> --audit
-python3 visual/scripts/import_svg_page.py <project> --page beat-01 --prove
-```
+参考页不导入。page 路线的导入器与新项目无关，见 [legacy-page-route.md](legacy-page-route.md)。
 
 `--audit` 逐页报出可被指名的元素数量，并在一页于 `<svg>` 之下没有任何 `id` 时退非零——
 那种页面只能整页动，需要做画面那边补 `id` 再重渲。

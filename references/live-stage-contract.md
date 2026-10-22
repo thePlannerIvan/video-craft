@@ -81,7 +81,7 @@ window.__timelines["main"] = HF.tl;     // 名字必须等于 #root 的 data-com
 <composition>/assets/composition-embed-bridge.js
 ```
 
-由 `visual/scripts/generate-composition.py` 的 `BRIDGE_FILE` 约定拷贝进来，并在 `index.html`
+由手写 composition 时按 `visual/assets/composition-embed-bridge.js` 拷进 `composition/assets/`，并在 `index.html` reference；生成器已归档，`check_live_stage.py` 会验这一份在不在
 里以 `src=` 引用。审阅页跑在不透明源的 sandbox iframe 里，够不着子页 DOM，`postMessage`
 是唯一通道；bridge 是 composition 自己的控制面。缺文件时页面不会报错，只是**不能定位、
 不能播放**。
@@ -104,11 +104,7 @@ window.__timelines["main"] = HF.tl;     // 名字必须等于 #root 的 data-com
 
 ## 自检
 
-```bash
-python3 "<craft>/helpers/check_live_stage.py" "<project>"            # 默认 composition/
-python3 "<craft>/helpers/check_live_stage.py" "<project>" --composition composition-v2
-python3 "<craft>/helpers/check_live_stage.py" "<project>" --json     # 机器读
-```
+自检命令（默认 `composition/`，可 `--composition`、`--json`）见 [tools.md](tools.md)「免渲染的工程态」。
 
 退出码：0 无 error；1 有 error；2 找不到 composition。检查项：
 
@@ -142,9 +138,7 @@ warning（不拦路）：画布/时长属性缺失、bridge 未被引用、注�
 
 静态检查只能证明"这一版不会被静默改写"，证明不了"页面打开就能看、能听"。实测判据是：
 
-```bash
-python3 helpers/check_review_playable.py <project>
-```
+运行时校验只跑 `check_review_playable.py <project>`；它断言的三件事见下。
 
 它自己起本地宿主、用 Playwright 打开审阅页，断言四件事，任一失败退出 1 并指出该修哪一层：
 
@@ -168,11 +162,7 @@ python3 helpers/check_review_playable.py <project>
 
 复现夹具（可直接用来验判据是否还有效）：
 
-```bash
-# 造一份坏工程：把 src/config.js、src/boot.js 内联回 index.html
-# 期望：check_review_playable.py 在「活舞台的时间轴真的构建了」上变红（timeline.duration=0, 已渲染元素=0）
-# 把两者改回外部文件后重跑，同一断言转绿（timeline.duration=368.4, 已渲染元素=147）
-```
+负例复现：把 `src/config.js`、`src/boot.js` 内联回 `index.html` 后，`check_review_playable.py` 应在「活舞台的时间轴真的构建了」上变红（`timeline.duration=0`、已渲染元素=0）；改回外部文件后同一断言转绿（实测 368.4s／147 个元素）。
 
 ### 「有声音」要两条路都看
 

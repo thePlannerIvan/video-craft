@@ -229,21 +229,19 @@ class BuildTimelineTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             timeline_derive.build_timeline(entries, grouping)
 
-    def test_total_duration_is_the_span_not_the_sum_of_steps(self):
-        """The axis length is末步止 − 首步起, not the sum of step durations.
+    def test_total_duration_is_the_end_of_the_last_step(self):
+        """The axis length is末步止, not a span and not the sum of step durations.
 
-        Regression: `totalDurationMs` used to be `sum(sum(v) for v in
-        duration_map.values())`. Cues have real gaps between them (4.180 -> 12.200
-        in this fixture; 11.4s across the 图拉斯 project), so summing dropped them.
-        That project's 251.41s timeline was reported as exactly 240.0s, and
-        `build_review.py` adopts this number as the console's axis length — so the
-        last ~12s were unreachable and every step after a gap sat early.
+        Regression: `totalDurationMs` used to be `sum(...)`, then `末步止 − 首步起`.
+        The span still dropped the lead-in before the first cue (an independent
+        run on a finished 190.34s film reported 190.08s because the first step
+        started at 260ms), and `build_review.py` / `check_review_playable.py`
+        adopt this number as the console's axis length.
         """
         entries = timeline_derive.derive_entries(self.edit)
         timeline, _ = timeline_derive.build_timeline(entries, self._grouping())
         steps = timeline["chapters"][0]["steps"]
-        self.assertEqual(timeline["totalDurationMs"],
-                         steps[-1]["endMs"] - steps[0]["startMs"])
+        self.assertEqual(timeline["totalDurationMs"], steps[-1]["endMs"])
 
     def test_a_gap_between_steps_is_counted_in_the_total(self):
         """Splitting at a real gap must make the span strictly larger than the sum."""
@@ -254,8 +252,7 @@ class BuildTimelineTests(unittest.TestCase):
         steps = timeline["chapters"][0]["steps"]
         summed = sum(s["durationMs"] for s in steps)
         self.assertLess(summed, timeline["totalDurationMs"])
-        self.assertEqual(timeline["totalDurationMs"],
-                         steps[-1]["endMs"] - steps[0]["startMs"])
+        self.assertEqual(timeline["totalDurationMs"], steps[-1]["endMs"])
 
     def test_measured_total_pins_the_spine_and_closes_the_cue_gaps(self):
         """The cue span is shorter than the measured cut, and steps do not touch.

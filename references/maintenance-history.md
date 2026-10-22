@@ -1,5 +1,35 @@
 # 维护记录（升级，不是 CHANGELOG）
 
+## 2026-10-22 · 判准双层落地、主题库退役、跨 Skill 解耦
+
+| 做了什么 | 为什么 | 影响了哪些 module | 删了什么 |
+|---|---|---|---|
+| 新增 `references/author-spec.md`（全局判准 7 条，上限 8）与 `references/style-spec.md`（三种风格：`line-art` 线稿 / `business-report` 商业报告 / `collage` 拼贴，每种上限 5） | 每支片子重复口述同一要求；`preferences.md` 只有记录规则、没有目的地。评审中确认路线只有 recompose 一条，于是把最初的三层收成两层：全局 + 风格 | `references/author-spec.md`、`references/style-spec.md`、`SKILL.md` 第 1/2/11 步与入口表 | — |
+| 新增 `helpers/spec_lint.py` + `tests/test_author_spec.py`（5 类缺陷各自有用例） | 条数、篇幅、字段、执行点、风格枚举、编号唯一不能靠自觉 | `helpers/spec_lint.py`、`tests/test_author_spec.py` | — |
+| `preferences.md` 改写为契约：两套准入（否定型一次 / 倾向型 ≥2 次）、归位规则、四条减法、谁批准 | 没有准入与归位，同一句话会同时住在判准与正式文档 | `references/preferences.md` | 旧的"归入已有偏好/记忆系统"空指针 |
+| 新增第 11 步「收尾与沉淀」：读三处证据、只挑重复、≤3 条候选、写入后跑 `spec_lint.py` | 闭环断在交付，没有这一步判准永远靠临时复述 | `SKILL.md`、`references/preferences.md` | — |
+| 退役主题库：`visual/themes/`（24 套）、`themes.md`、`check_themes.py`、`test_themes.py`、`scaffold.sh`；同步 `architecture.md` 模块行/5.2/6.1/深度举例与各文档口径 | recompose 没有"选主题"这一步：画面由原页拆解后重做，风格数值归画面侧；跨 Skill 注册逻辑一并解耦 | `references/architecture.md`、`visual-timeline.md`、`composition-craft.md`、`visual-rendering.md`、`tools.md`、`capability-map.md`、`upstream-diff.md` | `visual/themes/`、`references/themes.md`、`visual/scripts/check_themes.py`、`tests/test_themes.py`、`visual/scripts/scaffold.sh` |
+| 文档收口：消掉 `film.md`「按原构图搬」与 `recompose-mode.md`「不复制页面几何」的冲突，统一为「以视频动画为目的：原片可用则遵循构图，不适合再优化」（全局 G08）；修掉 9 处"文档说还活着、实际已归档"的路线口径；把 `preferences.md`/`creative-direction.md`/`visual-direction.md` 接回入口表；`film.md` 的写死坐标改为只从 `recompose.json` 取；`storyboard-format.md` 标老路线存档 | 昨天归档了代码却没改口径，模型要在同一份文件里猜哪段算数 | `recompose-mode.md`、`tools.md`、`timing-lock.md`、`SKILL.md`、`svg-animation-contract.md`、`capability-map.md`、`architecture.md`、`film.md`、`storyboard-format.md` | 9 处旧口径；`film.md` 里的 500/200 常量；3 条依赖归档生成器的集成用例 |
+| 修复实测时长选择：`_edl.measured_total_ms` 成为唯一入口，按**剪辑指纹**在所有渲染记录里选（不再认死 `cut`）；无指纹的老记录（含老式"每段秒数"）按推定；`timeline_derive` 与交付报告明确标注 | 真实项目 8 个里 7 个的记录不叫 `cut`，按实测总长拉伸一直被静默跳过；该路径无测试 | `helpers/_edl.py`、`helpers/timeline_derive.py`、`helpers/deliver.py`、`tests/test_measured_total.py`、`references/delivery.md`、`references/tools.md` | 旧的"按 `blob['cut']` 读"逻辑 |
+| 合并 M4 第一步：`_probe.probe_media` 成为\“格式+全部流\”探测口，`verify_delivery` 迁入；真实成片对照旧实现一致（时长/体积/流数） | 26 处 ffprobe 各写一条 -show_entries，坏文件行为不一致 | `helpers/_probe.py`、`helpers/verify_delivery.py` | 一处本地探测 |
+| 合并 M5-A：`deliver` 末尾调用 `verify_delivery` 并把结论记入报告 `delivery_verdict`；严格度保持\“记录+提示\”，硬门在 `stage_deliver verify`；新增 `--no-audio` 声明无声画面轨 | 交付有两个判据来源；\“画面轨无声\”是交付形态声明，不该被判成缺陷 | `helpers/deliver.py`、`helpers/verify_delivery.py`、`helpers/stage_deliver.py`、`references/stages.md`、`references/tools.md` | 无 |
+| 单一时间源：`timeline.json` 自报 `timeSource` / `measuredTotalMs`（`timeline_derive` 与 `import_srt_timeline` 都写）；字幕只在该值为 `measured` 时才取渲染记录，其余用标称段时长；`srt_export --check` 新增"字幕末条 vs 时间轴末段"漂移闸门（>0.1s 退非零）；`verify_delivery` 有画面时间轴时以它为时长基准 | v1/v2/v3 三条片的画面时间轴按名义、字幕按实测记录，字幕尾部累计偏出 0.44–0.81s，导出后交付字幕超出成片 0.875s，且无检查发现 | `helpers/_paths.py`、`helpers/timeline_derive.py`、`helpers/import_srt_timeline.py`、`helpers/srt_export.py`、`helpers/verify_delivery.py`、`references/caption-article-first.md`、`references/visual-timeline.md`、`references/stages.md`、`references/tools.md`、`tests/test_time_source.py`（新） | 字幕取渲染记录的旧策略（改为仅 timeSource=measured 时） |
+| 退休旧十步审阅页：`build_review` 默认拒绝 page 模式（退 2，`--allow-page` 仅供旧项目/测试），`review.py` 入口要求 `recompose.json`（缺则提示 `recompose_plan.py init`）；审阅页只保留 recompose 布局（左侧大预览 + 横向 Beat + 右侧逐句调整/历史反馈） | 用户确认新路线审阅页是 recompose 布局；旧 page 十步页须退休，避免再被当成"新页" | `helpers/build_review.py`、`helpers/review.py`、`references/review-ui.md`、`references/stages.md` | page 模式审阅布局 |
+| 默认不渲染：`deliver.py` 缺画面层/画面层过期时直接拒绝（显式 `--render` 才渲）；`--skip-gate` 只对 `DSH_TEST=1` 的测试进程开放；KR3 改为"工程态审阅页是阶段交付物"，KR4 写明审阅阶段禁止渲染；第 10 步默认停在第 9 步，作者说"出片"才进入；`stage_deliver status` 的下一步先指向工程态审阅 | 模型每次都急着渲染成片：完成判据只认可成片、deliver 默认自动渲染、闸门被"夹具"后门绕过、流程没有"停在审阅"的终态 | `helpers/deliver.py`、`helpers/stage_deliver.py`、`SKILL.md`、`references/stages.md`、`references/tools.md`、`references/delivery.md`、`tests/test_deliver.py` | 自动渲染默认、`--skip-gate` 常态可用 |
+| 审阅流程闸门：`build_review` 在有 composition 却没有活舞台时退 2（新增 `--allow-static` 显式降级）；`check_review_playable` 的"已渲染元素"不再写死 `.scene-root`，改为数 composition 根下真实 DOM | 独立验收把"从成品轨包装审阅页"当成工程态审阅，页面静默退回成片态却仍算成功；这正是审阅流程的核心失败模式 | `helpers/build_review.py`、`helpers/check_review_playable.py`、`references/stages.md`、`references/review-ui.md` | 无活舞台时的静默降级 |
+| 合并 M1/M2 收尾：`check_edl` 与 `verify_delivery` 的起止秒换算迁到 `_timecode`，新增宽松读取（只抓时间码行）保留旧的跳过语义；一个"字幕块之间缺空行"的既有用例暴露出紧凑解析与旧行为的差异，已修正 | 两处换算对畸形字幕是跳过而不是报错；统一实现必须保住这个语义 | `helpers/_timecode.py`、`helpers/check_edl.py`、`helpers/verify_delivery.py`、`tests/test_timecode.py` | 两处本地换算 |
+| 合并 M6（入口层）：文档只暴露 `review.py` 为审阅公共入口，五个内部步骤标注为调试/持久舞台时单跑 | 深模块已存在，但内部步骤仍以独立命令出现在文档里，调用方会绕过它 | `references/tools.md`、`references/stages.md`、`references/review-ui.md` | — |
+| 合并 M7 第一步：`build_review` 不再在模块导入期加载 `import_svg_page`（改为只在导入旧快照时惰性 import）；`generate-composition.py` 的 CLI 改为明确报"page 路线已归档"并退 2 | live 路径不应依赖已归档适配器；死入口不能看起来还能用 | `helpers/build_review.py`、`visual/scripts/generate-composition.py`、`references/stages.md` | 模块导入期的遗留依赖 |
+| 合并 M3：新增 `helpers/_paths.py`（项目/剪辑目录的唯一解析），迁移 `render_gate` / `live_stage` / `studio_notes` / `export_video` / `build_review` 五处推断 | 五套规则略有出入，传错目录时静默识别成另一个目录 | `helpers/_paths.py`（新）、上述五个文件、`tests/test_paths.py`（新） | 五处本地路径推断 |
+| 合并 M1 完成解析侧：新增 `helpers/_timecode.py`，迁移 5 份解析（`build_review` / `srt_export` / `recompose_plan` / `edl_preview_build` / `align-visual-plan`）与 `srt_export` 的写出格式化；逐个迁移后都用 5 个老项目 602 条真实字幕对照，零差异 | 5 份解析各写一遍，格式接受度不一致 | `helpers/_timecode.py`（新）、上述 5 个文件、`tests/test_timecode.py`（新） | 五处本地解析实现 |
+| 新增阶段脚本先行版：`helpers/stage_cut.py`（status/prepare/review/apply）与 `helpers/stage_deliver.py`（status/run/verify/export/fingerprint），公共壳 `helpers/_stage.py`；只串既有命令，不改行为，旧命令保留 | 固定的活要靠脚本保证"做对"，而不是每次手敲顺序；先包壳、再合并内部（stages.md 的 M1–M8） | `helpers/stage_cut.py`（新）、`helpers/stage_deliver.py`（新）、`helpers/_stage.py`（新）、`references/stages.md`、`references/tools.md`、`references/architecture.md`、`tests/test_stage_scripts.py`（新） | — |
+| 新增 `references/stages.md`：九个阶段契约 + 脚本合并地图（M1–M8）与合并红线 | 用户要求固定工作沉淀进脚本、契约清楚；合并要一步一步来 | `references/stages.md`、`SKILL.md` 入口、`references/architecture.md`、`references/tools.md` | — |
+| 剪口播路径核对 | 口播与画面是两件事、先剪后画；本轮改动不得触碰 | `SKILL.md` 第 3–5 步与 `transcribe.py` / `check_edl.py` / `apply_selection.py` / `srt_export.py` | — |
+
+**验证（本次亲手跑的）**：`Ran 447 tests — OK`（基线 463：删掉 22 条主题校验 + 3 条依赖归档生成器的集成用例，新增 9 条 spec 用例）；`check_review_template.py` 0 项不通过；`lint_skill.py` 无确定错误；`spec_lint.py` 退 0。
+
+**跨 Skill**：`planners-ppt-hell` 删除 `scripts/style/theme_tokens.py` 与测试、口径改为自己维护风格（`Ran 387 tests — OK, skipped=93`）；`video-idea-system` 两处指针指向 `style-spec.md`（`node evals/run-validator-cases.mjs` → 94 ok / 0 FAIL）。两边未发布，发布时统一跑 `publish_skills.py`。
+
 ## 2026-10-08 · 审阅宿主公共化与跨 Skill 接缝收口
 
 | 做了什么 | 为什么 | 影响了哪些 module | 删了什么 |

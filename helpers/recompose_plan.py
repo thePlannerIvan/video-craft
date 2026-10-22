@@ -65,26 +65,14 @@ def config(project: Path) -> dict:
 
 
 def parse_srt(text: str) -> list[dict]:
-    pattern = re.compile(
-        r"(\d+)\s*\r?\n(\d{2}:\d{2}:\d{2}[,.]\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}[,.]\d{3})\s*\r?\n(.*?)(?=\r?\n\r?\n|\Z)",
-        re.DOTALL,
-    )
-
-    def sec(value: str) -> float:
-        value = value.replace(",", ".")
-        h, m, s = value.split(":")
-        return int(h) * 3600 + int(m) * 60 + float(s)
-
-    cues = []
-    for match in pattern.finditer(text):
-        start, end = sec(match.group(2)), sec(match.group(3))
-        cues.append({
-            "id": f"l{int(match.group(1)):03d}",
-            "startMs": int(round(start * 1000)),
-            "endMs": int(round(end * 1000)),
-            "text": " ".join(match.group(4).strip().splitlines()).strip(),
-        })
-    return cues
+    """统一实现见 `helpers/_timecode.py`（合并地图 M1）；输出形状保持不变。"""
+    from _timecode import flatten as _flatten, parse_srt_text as _parse_srt_text
+    return [{
+        "id": f"l{cue['index']:03d}",
+        "startMs": cue["startMs"],
+        "endMs": cue["endMs"],
+        "text": _flatten(cue, " "),
+    } for cue in _parse_srt_text(text)]
 
 
 def load_cues(project: Path) -> tuple[list[dict], str]:

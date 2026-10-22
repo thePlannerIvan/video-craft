@@ -159,6 +159,19 @@ class DeliverIntegration(unittest.TestCase):
             names = {c["name"]: c for c in data["checks"]}
             self.assertFalse(names["字幕安全区无内容"]["ok"], names["字幕安全区无内容"])
 
+    def test_missing_visual_layer_is_refused_without_render_flag(self):
+        """审阅停在工程态：没有画面层时 deliver 必须拒绝，不能自动渲染。"""
+        with tempfile.TemporaryDirectory() as td:
+            tmp = self._fixture(Path(td) / "demo", band_content=False)
+            (tmp / "composition/_render/visuals.mp4").unlink()
+            code = deliver.deliver(tmp, None, None, None, None, tmp / "成品",
+                                   False, True, False, True)
+            report = tmp / "成品" / f"{tmp.name}_核验报告.json"
+            data = json.loads(report.read_text(encoding="utf-8"))
+            self.assertEqual(code, 1)
+            self.assertFalse(data["ok"])
+            self.assertTrue([c for c in data["checks"] if c["name"] == "画面层" and not c["ok"]])
+
 
 if __name__ == "__main__":
     unittest.main()

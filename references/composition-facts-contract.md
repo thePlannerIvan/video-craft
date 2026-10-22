@@ -1,9 +1,6 @@
 # 合成事实的字段契约：`composite` / `personWindow` / `captionSafe`
 
-> **老路线存档**：本文里凡涉及 `import_svg_page` / `generate-composition` / `check_parity`
-> 或「保真页面(page)」的段落，都是 **page 十步路线的存档说明**，新项目不要照做。
-> 画面的唯一入口是 `helpers/film.py`（见 [film.md](film.md)），存档总览见
-> [legacy-page-route.md](legacy-page-route.md)。
+> 本文涉及 page 路线的段落已归档（见 [legacy-page-route.md](legacy-page-route.md)）；现行 recompose 路线见 [film.md](film.md) 与 [recompose-mode.md](recompose-mode.md)。命令集中在 [tools.md](tools.md)。
 
 
 这三件事回答同一屏的合成问题：**这一屏是满屏替换，还是压在人物上**，以及**人物的画面矩形在哪**、

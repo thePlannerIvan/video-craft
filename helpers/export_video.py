@@ -20,12 +20,9 @@ from pathlib import Path
 
 
 def resolve_project_paths(target: Path) -> tuple[Path, Path]:
-    target = target.resolve()
-    root = target.parent if target.name in ('edit', 'review', '成品') else target
-    edit = root / 'edit'
-    if not edit.exists() and (root / 'edl.json').is_file():
-        edit = root
-    return root, edit
+    """统一实现见 `helpers/_paths.py`（合并地图 M3）。"""
+    from _paths import resolve
+    return resolve(target)
 
 
 def copy_track(source: Path, dest: Path, video=True) -> Path:

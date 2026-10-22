@@ -60,7 +60,7 @@ HyperFrames rendering, and it was never committed to any repository.
 Two things were carried over from upstream's own history, because they were
 already in the local copy:
 
-- the 23 themes in `visual/themes/` (byte-identical to upstream), and
+- the 23 themes in `visual/themes/` (byte-identical to upstream; **retired 2026-10-22** with the page route), and
 - upstream's habit of pruning: `6ff69f3` deleted `PATTERNS.md` and
   `PRINCIPLES.md` into a single `CHAPTER-CRAFT.md`, and `fe12ba4` cut
   `OUTLINE-FORMAT.md` by 116 lines.

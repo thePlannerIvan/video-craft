@@ -35,9 +35,10 @@ Video Craft 把已经确定的内容做成可播放、可审阅、可返修的�
 |---|---|---|
 | KR1 | 剪点由 EDL 表达，字幕与画面锚点跟随同一份实测时间 | `duration_plan.py` 有记录；`segment_durations.json` 的 hash/段数对得上 |
 | KR2 | 每屏画面都来自**原页拆解**，不是自由发挥 | `pages/<page>.md` 存在且 `film.py verify` 退 0 |
-| KR3 | 审阅页**能播、时长对、有画面、有声音** | `review.py` 退 0，报告写明通道与声音来源 |
-| KR4 | 人审确认后才出片 | `render_gate.py` 退 0；`deliver.py` 的第一道闸门 |
+| KR3 | **工程态审阅页是阶段交付物**：能播、时长对、有画面、有声音、默认演 composition | `review.py` 退 0，报告写明 `channel=live`、时间轴时长与声音来源；`check_review_playable` 绿 |
+| KR4 | 人审确认后才出片；**审阅阶段禁止渲染** | 默认终点是 KR3。渲染必须作者显式"出片"指令 → `render_gate.py` 退 0 → `deliver.py --render`；缺画面层时 deliver 直接拒绝 |
 | KR5 | 成片逐项核验通过 | `<成品>/<片名>_核验报告.json` 的 `ok=true`（分辨率/帧率/时长/音轨/首中尾帧/字幕安全区） |
+| KR6 | 本轮沉淀有回执：候选被处置、规范通过校验 | 第 11 步的处置记录写明收了哪条、放在哪、替代了谁（或明确没收）；`helpers/spec_lint.py` 退 0 |
 
 **Tools（三条命令；每条只回答"解决什么 / 何时调 / 失败信号"）**
 
@@ -74,18 +75,16 @@ Video Craft 把已经确定的内容做成可播放、可审阅、可返修的�
 
 声音清理、VFR 转 CFR 或浏览器不支持的媒体转码属于素材准备，可以做并缓存；它们不应变成每次修改动画都重跑的前置。工程预览不冒充最终音画验收。实测时长、字幕锁、来源指纹与正式交付核验继续保留。
 
-### recompose 构建模式的入口
+### recompose 主路线入口
 
 ```bash
 python3 "<craft>/helpers/recompose_plan.py" init "<project>" \
     --composition "<project>/composition" --draft "<project>/recompose/draft.mp4" \
     --person-slot "0,0,620,1080" --caption-safe "0,885,1920,195"
-python3 "<craft>/helpers/recompose_plan.py" check "<project>"
-python3 "<craft>/helpers/recompose_plan.py" lines "<project>"
-
-# 之后一条命令出审阅页（内部完成 静态契约 → 编译服务 → build_review → surface → 运行时判据）
-python3 "<craft>/helpers/review.py" "<project>"
+python3 "<craft>/helpers/review.py" "<project>"      # 一条命令出审阅页
 ```
+
+`check` / `lines` 的完整参数与产物见 [tools.md](references/tools.md)「recompose 主路线」。
 
 densities 的提交仍走同一个审阅面，由 `review_inbox.py` 收件：`feedback/density.jsonl` + 回写 `recompose/lines.json`。
 完整说明见 [recompose-mode.md](references/recompose-mode.md)。产物是 `recompose.json`、`recompose/lines.json`，不生成页面快照。
@@ -103,7 +102,7 @@ densities 的提交仍走同一个审阅面，由 `review_inbox.py` 收件：`fe
 |---|---|---|
 | 内容包，没有录音 | 接手并写制作方案；可做 `planned` 预演 | 不把估时当成实测时间，不生成假字幕 |
 | 原始视频或录音，需要取舍 | 转写 → EDL → 源媒体逐字预览 → 确认后输出 | 不直接手改成片后再猜字幕时间 |
-| 已剪音频 + SRT + SVG | 核版本 → 导入 SVG → 对齐时间 → 动效与合成 | SRT 只能标为 `srt-import`，不能冒充 EDL 实测 |
+| 已剪音频 + SRT + 参考页 | 核版本 → 对齐时间（`srt-import`）→ `film.py` 拆原页 → 重做动画与合成 | SRT 只能标为 `srt-import`，不能冒充 EDL 实测；不导入 SVG 页 |
 | 已有项目或返修反馈 | 读项目依据和收件回执 → 只重建受影响部分 | 不在旧审阅页上继续写新反馈 |
 | 已锁音频 + 词级锚点，画面是连续动画 / 图解 | **recompose 一条路线**：`recompose_plan.py` 建密度 → `film.py` 拆原页 → composition → 逐字密度 | 不跳原页拆解（KR2）；老 page 路线只读存档，新项目不走 |
 
@@ -119,7 +118,7 @@ densities 的提交仍走同一个审阅面，由 `review_inbox.py` 收件：`fe
 | 接入 | 1–2 | 来源与制作方案：可用能力、作者约束（保真/自由度、画幅、字幕内外、交付件） |
 | 剪辑 | 3–6 | EDL、字幕、唯一时间脊柱（实测优先，预演只作工程态） |
 | 画面 | 7–8 | 视觉层与审阅确认（按能力包的 DoD） |
-| 交付 | 9–10 | 收件返修、核验与交付（指纹、外挂 SRT、交付说明） |
+| 交付 | 9–10 | 收件返修、核验与交付（指纹、外挂 SRT、交付说明）；**只有作者显式"出片"才进入** |
 
 每一步都必须把产物交给表中的下一消费者。完成标准是硬事实，不是“页面打开了”。
 
@@ -127,20 +126,18 @@ densities 的提交仍走同一个审阅面，由 `review_inbox.py` 收件：`fe
 
 **何时进入**：所有新项目、恢复项目、收到返修反馈时。
 
-**先读**：`references/content-to-production.md`、项目 `_idea/current.md`、已有 `edit/project.md`、`production-plan.md` 和 `feedback/`；走保真页面包时还要读 PPT Hell 的 `.snapshot`，用现成 SVG 目录时直接读页面源（不要求 snapshot）。
+**先读**：`references/content-to-production.md`、`references/author-spec.md`（判准，全篇）、`references/preferences.md`（准入与归位规则）、项目 `_idea/current.md`、已有 `edit/project.md`、`production-plan.md` 和 `feedback/`；画面以 PPT Hell 的视频快照为参考页（recompose 不导入页，见 [recompose-mode.md](references/recompose-mode.md)）。
 
 **调用**：
 
 ```bash
-node "<idea>/scripts/check-handoff-artifacts.mjs" --project "<idea-project>"
 python3 "<craft>/helpers/check_script_hash.py" "<project>" --script "<script.md>" --plan "<visual-plan.json>"
 ```
 
-拿到 PPT Hell snapshot 后导入项目内资产：
+上游交接检查（`check-handoff-artifacts.mjs`）见 [tools.md](references/tools.md)「接上游」。
 
-```bash
-python3 "<craft>/visual/scripts/import_svg_page.py" "<project>" --pages "<snapshot.json绝对路径>" --audit --prove --emit --json
-```
+recompose 路线**不导入页**：PPT Hell 的快照只作视觉参考，用 `film.py` 抽原页拆解（见第 7 步）。
+`import_svg_page.py` 属于已归档的 page 路线，只在复活旧项目时读 [legacy-page-route.md](references/legacy-page-route.md)。
 
 **输入**：上游交接包、作者决定、脚本、visual-plan、snapshot、SVG、素材。
 
@@ -152,7 +149,7 @@ python3 "<craft>/visual/scripts/import_svg_page.py" "<project>" --pages "<snapsh
 
 ### 2. 确定制作方案
 
-在 `production-plan.md` 写清楚：成片形态（口播 / 动画 / 合成）、声音来源、画幅、画面过程、强调动作、素材、时间依据、字幕形态、交付件和返修范围。
+在 `production-plan.md` 写清楚**风格**（`line-art` 线稿 / `business-report` 商业报告 / `collage` 拼贴，见 [style-spec.md](references/style-spec.md)）、成片形态（口播 / 动画 / 合成）、声音来源、画幅、画面过程、强调动作、素材、时间依据、字幕形态、交付件和返修范围。路线固定为 recompose，不用选；第 7 步按风格那一节做。
 
 需要改内容意义、必见对象、固定文字或素材关系时回 `$video-idea-system`；需要重做静态画面时回 `$planners-ppt-hell`；需要复用方法时调用 `$planners-method-wiki`，但 Wiki 只提供方法，不提供本项目事实。
 
@@ -164,9 +161,9 @@ python3 "<craft>/visual/scripts/import_svg_page.py" "<project>" --pages "<snapsh
 
 ```bash
 python3 "<craft>/helpers/transcribe.py" "<source-video>" --edit-dir "<edit>" --audio-track 0 --backend auto
-python3 "<craft>/helpers/pack_transcripts.py" --edit-dir "<edit>"
-python3 "<craft>/helpers/check_edl.py" "<edit>" --max-pause 0.8
 ```
+
+打包与停顿预算（`pack_transcripts.py` / `check_edl.py`）见 [tools.md](references/tools.md)「声音与剪辑」。
 
 用 `edl.json` 表达取舍，不手改底片来表达取舍。逐字面写入的选择由 `selections.json` 表达，之后调用：
 
@@ -176,10 +173,7 @@ python3 "<craft>/helpers/apply_selection.py" "<edit>"
 
 有声质量问题先诊断再处理：
 
-```bash
-python3 "<craft>/helpers/audio_diag.py" "<media>" --json
-python3 "<craft>/helpers/audio_fix.py" "<media>" -o "<fixed.wav>" --target-lufs -16.5
-```
+音质诊断与处理（`audio_diag.py` / `audio_fix.py`）见 [tools.md](references/tools.md)「声音与剪辑」。
 
 **输出**：`transcripts/`、`takes_packed.md`、`edl.json`、必要时 `selections.json`。
 
@@ -195,8 +189,9 @@ python3 "<craft>/helpers/audio_fix.py" "<media>" -o "<fixed.wav>" --target-lufs 
 
 ```bash
 python3 "<craft>/helpers/edl_preview_build.py" "<edit>"
-python3 "<craft>/helpers/edl_review_surface.py" "<edit>" --surface-only
 ```
+
+面上缝（`edl_review_surface.py --surface-only`）见 [tools.md](references/tools.md)「审阅」。
 
 DSH 有 `review_open` 时，把返回的 **surface 绝对路径**交给 `review_open`；没有插件时去掉 `--surface-only`，使用公共 review-core 本地宿主。不要自己另起一份 Craft 专用宿主。
 
@@ -252,12 +247,10 @@ python3 "<craft>/helpers/render.py" "<edit>/edl.json" -o "<edit>/_engineering/cu
 已有实测字幕时用 `timeline_derive.py`；只有外部剪好音频和 SRT 时：
 
 ```bash
-python3 "<craft>/visual/scripts/align-visual-plan.py" \
-  --plan "<visual-plan.json>" --script "<script.md>" --srt "<audio.srt>" \
-  --output "<project>/timeline/alignment.json"
-python3 "<craft>/helpers/import_srt_timeline.py" "<project>" \
-  --srt "<audio.srt>" --alignment "<project>/timeline/alignment.json"
+python3 "<craft>/visual/scripts/align-visual-plan.py" --plan "<visual-plan.json>" --script "<script.md>" --srt "<audio.srt>" --output "<project>/timeline/alignment.json"
 ```
+
+外部 SRT 的时间脊柱（`import_srt_timeline.py`）见 [tools.md](references/tools.md)「SVG 与视觉时间」。
 
 对齐工具写绝对来源路径；`srt-import` 只证明“这份 SRT 与这份内容契约完成了对齐”，不证明 EDL 实测。
 
@@ -275,7 +268,7 @@ python3 "<craft>/helpers/import_srt_timeline.py" "<project>" \
 把原页当**信息源**，按拆解逐条演出来 —— 不重画模型图，不把截图当 SVG。原页元素若已有
 `data-step` / `data-anim` / `id`，沿用它们；只有元素级动效才需要稳定 id。
 
-- HyperFrames：读 `$hyperframes`。整片 composition 由 `film.py` 的拆解驱动、手写 `src/scenes/*.js`（不再用已存档的 `generate-composition.py`）；单层动效也先在 composition 中预览。只有最终合成需要独立透明视频，才用 `helpers/render_layer.py` 输出 `.mov`；兼容旧媒体叠层面时可同时输出 `.webm`。预览与渲染前先 `hyperframes check`。**任何 `hyperframes render` 之前先跑 `python3 "<craft>/helpers/probe_env.py" "<project>"` 报告能力（libass/字体预算/残留进程；只报告不阻断），再跑 `python3 "<craft>/helpers/check_render_env.py" "<project>/composition"`** —— 它报 RAM、可用内存与建议的 `--workers` 值（默认从 1 起）；并先过 `references/timing-lock.md`：`--verify` 退 0，且 `feedback/*.jsonl` 的未决项已清或显式接受。缺一不渲。
+- HyperFrames：读 `$hyperframes`。整片 composition 由 `film.py` 的拆解驱动、手写 `src/scenes/*.js`（不再用已存档的 `generate-composition.py`）；单层动效也先在 composition 中预览。只有最终合成需要独立透明视频，才用 `helpers/render_layer.py` 输出 `.mov`；兼容旧媒体叠层面时可同时输出 `.webm`。预览与渲染前先 `hyperframes check`。**任何 `hyperframes render` 之前先跑 `python3 "<craft>/helpers/probe_env.py" "<project>"` 报告能力（libass/字体预算/残留进程；只报告不阻断），再跑 `python3 "<craft>/helpers/check_render_env.py" "<project>/composition"`** —— 它报 RAM、可用内存与建议的 `--workers` 值（默认从 1 起）；并先过 `references/timing-lock.md`：`film.py verify` 退 0，且 `feedback/*.jsonl` 的未决项已清或显式接受。缺一不渲。
   **动效的源是 composition，不是那段视频**：层要能改、能预览，才谈得上「先审后渲」。
 - Manim：只有严密数学或技术动画才调用 `$manim-video`。
 - 自定义逐帧：读 `references/frame-animation-pipeline.md`。
@@ -304,9 +297,7 @@ python3 "<craft>/helpers/check_live_stage.py" "<project>"   # 退 0 才继续
 通常调用：
 
 ```bash
-python3 "<craft>/helpers/live_stage.py" "<project>" --json
-python3 "<craft>/helpers/build_review.py" "<project>" --mode auto --slices off
-python3 "<craft>/helpers/review_surface.py" "<project>" --surface-only
+python3 "<craft>/helpers/review.py" "<project>"      # 一条命令出审阅页（含活舞台、构建、运行时判据）
 ```
 
 **建完之后必须跑运行时检查，它才是"这页能给人看"的判据**：
@@ -347,17 +338,20 @@ python3 "<craft>/helpers/review_inbox.py" "<project>"
 
 ### 10. 核验与交付
 
-**先跑一条命令出成片，别手写 ffmpeg**：
+**默认停在第 9 步。** 审阅的交付物是**工程态审阅页**（KR3），不是成片。只有当作者明确说"出片/交付"时才进入本节；在此之前任何 `hyperframes render` 或 `deliver`（不带 `--render`）都不该发生。
+
+作者确认后，出片是一条命令（**显式** `--render`，别手写 ffmpeg）：
 
 ```bash
-python3 "<craft>/helpers/deliver.py" "<project>"        # 画面层 + 人物贴回 + 声音 + 核验报告
-python3 "<craft>/helpers/deliver.py" "<project>" --visuals "<已有画面层.mp4>"   # 跳过渲染
+python3 "<craft>/helpers/deliver.py" "<project>" --render        # 渲染画面层 + 人物贴回 + 声音 + 核验报告
+python3 "<craft>/helpers/deliver.py" "<project>" --visuals "<已有画面层.mp4>"   # 画面层已存在，跳过渲染
 ```
 
 它按 `recompose.json` 的 `personSlot` / `captionSafe` 贴回人物、接声音、核验分辨率/帧率/时长/音轨/
 首中尾帧/字幕安全区，并写 `<成品>/<片名>_核验报告.json`；第一件事是跑 `render_gate.py`
 （没人审覆盖当前快照就拒绝出片）。**没有人物轨的片子加 `--no-person`**（纯画面 + 旁白是合法形态，
-不是缺素材）；`composition/_render/visuals.mp4` 比 composition 源旧时会自动重渲，交付的才是刚审过的那一版。
+不是缺素材）。缺画面层或画面层比 composition 旧时 **deliver 默认拒绝**，不会自动渲染——那会把审阅变成导出；
+重渲必须显式 `--render`。
 契约见 [delivery.md](references/delivery.md)。
 
 **渲染前的第一步是渲染闸门，不是 render。** 它要求 `review/review-submissions.json`（或
@@ -372,22 +366,36 @@ python3 "<craft>/helpers/render_gate.py" "<project>" --out "<实际成片路径>
 它不能改个文件名当成交付成片。口头规则拦不住渲染，这条闸门才是判据。
 
 ```bash
-python3 "<craft>/helpers/check_parity.py" "<project>"          # 有 choreography.json 的 spec 驱动项目
-python3 "<craft>/helpers/check_motion_targets.py" "<project>"  # 手写 GSAP 时间轴的项目：替代上一行
-python3 "<craft>/helpers/verify_delivery.py" "<edit>" --video "<final-video>"
-python3 "<craft>/helpers/export_deliverables.py" "<edit>" \
-    --out "<project>/成品" --videos "final.mp4=01_人物口播_成片.mp4" \
-    --srt   "subtitles.srt=04_字幕文件.srt"
-python3 "<craft>/helpers/state_fingerprint.py" capture "<project>"   # 交付自带来源指纹
+python3 "<craft>/helpers/check_motion_targets.py" "<project>"
 ```
 
-两选一，不是都跑：有 `timeline/choreography.json` 的项目跑 `check_parity.py`；动效是手写 GSAP 时间轴的项目（没有 spec 可比）跑 `check_motion_targets.py` —— 它断言时间轴里的每个 selector 都命中、且页面自带的静态 `transform` 没有被 x/y/scale/rotation 补间覆盖（GSAP 会把 attribute 重写掉，位移静默丢失）。
+其余交付核验（`verify_delivery.py` / `export_deliverables.py` / `state_fingerprint.py`）与 `check_parity.py`（仅老 page 项目）见 [tools.md](references/tools.md)「渲染、核验、包装」。
 
-`check_parity.py` 断言 spec（`choreography.json`）里的每个效果 kind 在 composition 与审阅页两条路径都有实现、每个 selector 在目标页面上真的命中元素。这两类失配**不会让 `hyperframes check` 失败、也不会让页面报错**，只会让某一步静默不演 —— 交付前必须过。
+交付前一律跑 `check_motion_targets.py`：recompose 项目没有 `timeline/choreography.json`——它的唯一生产者 `auto_choreography.py` 已随 page 路线归档。这条检查断言时间轴里的每个 selector 都命中、且页面自带的静态 `transform` 没有被 x/y/scale/rotation 补间覆盖（GSAP 会把 attribute 重写掉，位移静默丢失）。
+
+只有复活老 page 项目、且项目里真有 `choreography.json` 时才跑 `check_parity.py`（断言 spec 里的每个效果 kind 在 composition 与审阅页两条路径都有实现）。两类失配都**不会让 `hyperframes check` 失败、也不会让页面报错**，只会让某一步静默不演 —— 交付前必须过。
 
 **指纹不是渲染前置，是交付过期信号**：已有交付先跑 `state_fingerprint.py verify` 判断是否过期；改源后过期正是**需要重新输出**的信号，不拦住新渲染，只拦住**发送**。 重新输出并核验后 `capture` 新指纹，发送前再 `verify`，不一致就不能发送。工程态的渲染与预览一律落 `edit/_engineering/`，**不进 `edit/` 根**，免得被当成当前底片（GOTCHAS #56）。
 
 核验实际成片，不核验预览假象：声音、首 / 中 / 尾画面、字幕、关键动效、alpha、画幅、帧率、时长和交付文件名。交付中明确：有声 / 无声、透明 / 不透明、字幕烧录 / 外挂，以及仍未完成的事项。
+
+### 11. 收尾与沉淀
+
+交付核验通过后做这一轮。**默认不打扰作者**：没有重复出现的要求，就只报一句「本轮无新判准」。
+
+**读三处证据**：本片 `feedback/*.jsonl` 的返修理由、项目 `edit/preferences.md` 的处理表、核验报告里的红项。重复出现的要求最强的是返修理由——作者已经在同一件事上纠正过一次。
+
+**只挑重复的**：同一要求在 ≥2 个独立项目、或两次独立返修里出现，才算候选；一次性的留在项目里，不进 Skill。
+
+**给 ≤3 条候选**：每条一句话 + 出处（项目 + 屏号）+ 建议动作（收进 `author-spec.md` / 收进某种风格的 `style-spec.md` / 升进正式文档 / 丢弃）。按 [preferences.md](references/preferences.md) 的两套准入与归位规则处理：否定型硬约束一次即可进正式文档；倾向型判准要复现。有原话证据的自动收，模型推断的要问作者。
+
+**写完校验**：
+
+```bash
+python3 "<craft>/helpers/spec_lint.py"          # 条数、篇幅、字段、执行点、类型枚举；退 0 才算收尾完成
+```
+
+**完成标准**：候选处理结果可追溯（收了哪条、放在哪、替代了谁，或明确没收）；`spec_lint.py` 退 0；没有留下悬空执行点。
 
 ## 故障表
 
@@ -408,17 +416,20 @@ python3 "<craft>/helpers/state_fingerprint.py" capture "<project>"   # 交付自
 
 ## 文件与参考入口
 
-- 一条流程与两种构建方式：`references/recompose-mode.md`
+- 制作路线（唯一一条）：`references/recompose-mode.md`
+- **九个制作阶段的契约与脚本合并地图**：`references/stages.md`（每段做什么/何时用/输入/产出/坏了怎么认）
+- **开工必读（作者判准与本片偏好）**：`references/author-spec.md`（全局判准，全篇）、`references/preferences.md`（准入与归位规则）、`references/creative-direction.md`（接住意图）、`references/visual-direction.md`（画面与动画的对齐顺序）
+- **第 2 步定完风格再读**：`references/style-spec.md`（`line-art` 线稿 / `business-report` 商业报告 / `collage` 拼贴）
 - 画面入口：`references/film.md`；交付入口：`references/delivery.md`
 - 历史（存档，不要照做）：`references/capability-packs.md`、`references/legacy-page-route.md`
 - 可执行命令与产物目录：`references/tools.md`
-- 上游交接与责任边界：`references/content-to-production.md`
+- 上游交接与责任边界：`references/content-to-production.md`；素材身份区分：`references/media-first.md`
 - 视觉时间绑定：`references/visual-timeline.md`
 - **卡点对齐（词在第几秒）：`helpers/align.py`** —— 优先真实词级时间戳（`edit/transcripts/*.json`），命中不到才退回比例估算并标注 `estimated`。**卡点不要手算比例**：`edit/caption_words.json` 的字时间是段内插值，是假的
-- 字幕契约：`references/caption-article-first.md`
+- 字幕契约：`references/caption-article-first.md`；字幕三模式与断句原则：`references/caption-modes.md`（第 5 步前读）
 - SVG 动效契约：`references/svg-animation-contract.md`
-- 合成与渲染：`references/composition-craft.md`、`references/visual-rendering.md`
-- **渲染前闸门**：`references/timing-lock.md` —— `--verify` 退 0 且 `feedback/*.jsonl` 未决项已清或显式接受，才谈得上渲染；`helpers/check_render_env.py` 是环境判据
+- 合成与渲染：`references/composition-craft.md`、`references/visual-rendering.md`；三个合成事实的字段契约：`references/composition-facts-contract.md`
+- **渲染前闸门**：`references/timing-lock.md` —— `film.py verify` 退 0 且 `feedback/*.jsonl` 未决项已清或显式接受，才谈得上渲染；`helpers/check_render_env.py` 是环境判据
 - **审阅页硬约定（改审阅页前必读）**：`references/review-ui.md`、`references/hyperframes-review-adapter.md`；桥、宿主与收件：`$planners-review-core`
 - **活舞台契约（build_review 前必过）**：`references/live-stage-contract.md` —— 根 `data-composition-id` + 同名 `window.__timelines[...]`、逻辑脚本全在 `src/*.js`、`assets/composition-embed-bridge.js`、媒体预算；自检 `helpers/check_live_stage.py`
 - **渲染闸门（render 前第一步）**：`helpers/render_gate.py` —— 人工提交必须覆盖当前审阅快照；工程态 `--engineering` 只能落 `edit/_engineering/`
@@ -435,7 +446,7 @@ python3 "<craft>/helpers/state_fingerprint.py" capture "<project>"   # 交付自
 2. `python3 helpers/check_review_template.py`（0 项不通过）与 `--prove`（全响）。
 3. `python3 <planning-before-create-skill>/scripts/lint_skill.py .` → 无确定错误。
 4. **接真实项目跑一遍三条命令**：`review.py <project>`（退 0，且运行时判据「能播 / 有画面 / 有声音」全绿）、
-   `deliver.py <project>`（成片真有音轨、核验报告 `ok=true`）。**单测绿 ≠ 真实项目绿，这条不可省。**
+   `deliver.py <project> --render`（成片真有音轨、核验报告 `ok=true`）。**单测绿 ≠ 真实项目绿，这条不可省。**
 5. 发布前确认工作区干净、本地与 GitHub 一致；发布后再用同一现场重跑第 4 条。
 
 不许做：把上一次的绿灯当成本次状态；把没跑过的写成"已验证"；红了先发布再修。

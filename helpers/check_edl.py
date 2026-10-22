@@ -49,24 +49,16 @@ CUE_SYNC_TOLERANCE = 0.05      # seconds; cue stamp vs the caption contract
 
 def _srt_tail(path: Path) -> float | None:
     """End timestamp (seconds) of the last cue in an SRT, or None."""
-    text = path.read_text(encoding="utf-8", errors="replace")
-    stamps = re.findall(r"-->\s*(\d\d):(\d\d):(\d\d),(\d\d\d)", text)
-    if not stamps:
-        return None
-    h, m, s, ms = (int(x) for x in stamps[-1])
-    return h * 3600 + m * 60 + s + ms / 1000
+    from _timecode import parse_srt_file_loose
+    cues = parse_srt_file_loose(path)
+    return cues[-1]["endMs"] / 1000 if cues else None
 
 
 def _srt_cues(path: Path) -> list[tuple[float, float]]:
     """(start, end) seconds of every cue in an SRT, in file order."""
-    text = path.read_text(encoding="utf-8", errors="replace")
-    out = []
-    for m in re.finditer(r"(\d\d):(\d\d):(\d\d),(\d\d\d)\s*-->\s*"
-                         r"(\d\d):(\d\d):(\d\d),(\d\d\d)", text):
-        g = [int(x) for x in m.groups()]
-        out.append((g[0] * 3600 + g[1] * 60 + g[2] + g[3] / 1000,
-                    g[4] * 3600 + g[5] * 60 + g[6] + g[7] / 1000))
-    return out
+    from _timecode import parse_srt_file_loose
+    return [(cue["startMs"] / 1000, cue["endMs"] / 1000)
+            for cue in parse_srt_file_loose(path)]
 
 
 def _cue_contract_mismatches(edit_dir: Path, srt_file: Path) -> list[str]:
@@ -219,14 +211,16 @@ def check(edit_dir: Path, max_pause: float = DEFAULT_MAX_PAUSE) -> dict:
     # iteration order over the keys the project accumulated (`poc`, `draft`,
     # `final`). Reading `poc` here printed "成片 12.000s" for an 84s film.
     tag, entry, how = render_record(edit_dir)
+    projected_entry = None
     if entry is None:
         ptag, pentry, _phow = render_record(edit_dir, allow_projected=True)
+        projected_entry = pentry
         if pentry is not None:
             warn.append(f"segment_durations.json[{ptag}] 只是解析预演（projected），"
                         "不是渲染证据——可用于审阅，交付前必须真实渲染")
     if how == "unparsable":
         warn.append("segment_durations.json 无法解析")
-    elif how == "none" and (edit_dir / "segment_durations.json").exists():
+    elif how == "none" and projected_entry is None and (edit_dir / "segment_durations.json").exists():
         warn.append("segment_durations.json 是旧格式（没有 durations/edl_sha256 结构），"
                     "字幕不能据此对齐时间轴——重新渲染一次即可升级")
     if entry is not None:

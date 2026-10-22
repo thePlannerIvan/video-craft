@@ -1,9 +1,6 @@
 # 从创意内容到制作
 
-> **老路线存档**：本文里凡涉及 `import_svg_page` / `generate-composition` / `check_parity`
-> 或「保真页面(page)」的段落，都是 **page 十步路线的存档说明**，新项目不要照做。
-> 画面的唯一入口是 `helpers/film.py`（见 [film.md](film.md)），存档总览见
-> [legacy-page-route.md](legacy-page-route.md)。
+> 本文涉及 page 路线的段落已归档（见 [legacy-page-route.md](legacy-page-route.md)）；现行 recompose 路线见 [film.md](film.md) 与 [recompose-mode.md](recompose-mode.md)。命令集中在 [tools.md](tools.md)。
 
 
 ## 接手先形成当前制作依据
@@ -85,9 +82,7 @@ find "<画面源目录>" -name '*.svg' -print0 | sort -z | xargs -0 shasum -a 25
 
 本 Skill 这一侧：
 
-```bash
-python3 helpers/check_script_hash.py <项目目录>
-```
+`check_script_hash.py` 的命令见 [tools.md](tools.md)「接上游」。
 
 - **相符**：继续。
 - **不符**：**停下来问作者**。口播改了意味着绑在改动 Beat 上的那几屏画面可能整屏作废，

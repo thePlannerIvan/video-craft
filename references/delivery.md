@@ -12,22 +12,7 @@
 
 ## 用法
 
-```bash
-# 完整流程：渲染画面层 → 贴人物 → 接声音 → 核验
-python3 helpers/deliver.py <project>
-
-# 已有画面层（跳过渲染，快）
-python3 helpers/deliver.py <project> --visuals composition/_render/visuals.mp4
-
-# 指定素材与输出
-python3 helpers/deliver.py <project> --person <mp4> --audio <m4a> --srt <srt> --out <目录>
-
-# 没有人物（纯画面 + 旁白）：画面层全幅交付
-python3 helpers/deliver.py <project> --no-person
-
-# 夹具/调试：跳过人工提交闸门
-python3 helpers/deliver.py <project> --skip-gate
-```
+出片只跑 `deliver.py <project> --render`（缺画面层时默认拒绝，渲染必须显式）；`--visuals` / `--person` / `--audio` / `--srt` / `--out` / `--no-person` 的完整选项见 [tools.md](tools.md)「渲染、核验、包装」。
 
 人物素材按 `--person` → `composition/assets/person.mp4` → `edit/_engineering/person_master.mp4`
 顺序找；找不到就是红项，**除非显式说这片没有人物**（`--no-person`，对应 recompose-mode 的
@@ -71,3 +56,23 @@ deliver.py→ 成片 + 核验报告（人审之后才允许）
 
 `deliver.py` 的第一件事是跑 `render_gate.py`：没有人审覆盖当前快照就拒绝出片。
 这条闸门是硬的，不是因为流程好看——2026-10-21 就发生过"确认前渲染了 43 秒成片"。
+
+## 交件的叫法
+
+一件片子按交付形态叫三个名字，文档与对话统一用它们：
+
+- **成片**：人物 + 画面 + 声音 + 字幕合成后的那一条
+- **人物成片**：只含口播人物轨
+- **画面成片**：只含画面层（没有人物、没有烧字幕）
+
+程序当前的输出文件名这轮不改（改名会让老项目和已有习惯失效）；新项目按这三个名字命名。
+
+## 时间轴对不对齐，报告里要看得到
+
+`timeline_derive` 按**当前剪辑的指纹**找对应的渲染记录，不看文件名。三种情况：
+
+- 找到指纹一致的记录 → 时间脊柱按实测总长对齐；
+- 只找到没有指纹的老记录（含老式"每段秒数"格式）→ 按推定值对齐，`timeline_derive` 输出里标 `!`，交付报告的 notes 里写"推定"；
+- 完全找不到（还没渲，或渲的是旧版剪辑）→ 时间轴按名义时长走，两边同样标注。
+
+字幕与画面时间点读同一份记录；优先保证字幕对齐，画面时间点按标注复核。

@@ -1,9 +1,6 @@
 # SVG 动效预埋与跨 Skill 交接契约（`svg-animation-contract.md`）
 
-> **老路线存档**：本文里凡涉及 `import_svg_page` / `generate-composition` / `check_parity`
-> 或「保真页面(page)」的段落，都是 **page 十步路线的存档说明**，新项目不要照做。
-> 画面的唯一入口是 `helpers/film.py`（见 [film.md](film.md)），存档总览见
-> [legacy-page-route.md](legacy-page-route.md)。
+> 本文涉及 page 路线的段落已归档（见 [legacy-page-route.md](legacy-page-route.md)）；现行 recompose 路线见 [film.md](film.md) 与 [recompose-mode.md](recompose-mode.md)。命令集中在 [tools.md](tools.md)。
 
 
 > **适用条件（先读）**：这是**可选**的元素级动效契约。页面没有 `data-step`、`data-anim` 或稳定 `id` 时，仍可作为整页画面导入和合成；只有明确要做元素级动效时才需要按本文加钩子。
@@ -61,7 +58,7 @@
 ### 左人右画分栏的虚拟摄像机安全锁（`data-speaker-width`）
 
 当画面采用「左侧竖屏人物 + 右侧 SVG 舞台」合成（如 `x: 0..608` 为人物列，`x: 608..1920` 为视觉区）时，在根 `<svg>` 上声明 `data-speaker-width="608"`：
-- `svg-anim-engine.js` 与 `visual/scripts/auto_choreography.py` 会自动锁定全局全景镜头（`camera: "none", scale: 1, tx: 0, ty: 0`），**严禁把右侧元素平移进左侧人物列造成遮挡**。
+- `svg-anim-engine.js` 会自动锁定全局全景镜头（`camera: "none", scale: 1, tx: 0, ty: 0`），**严禁把右侧元素平移进左侧人物列造成遮挡**。（`auto_choreography.py` 曾做同一件事，已随 page 路线归档；recompose 手写时间轴时要自己守住这条。）
 
 > **引擎另支持 4 个别名值**（`visual/assets/svg-anim-engine.js` 里与上表原语**同分支**处理，写哪个都能跑）：`bar-wipe` = `cursor-wipe`、`slot-expand` = `slot-push`、`z-stack-drop` = `polaroid-slap`、`pop-card` = `stagger-cards`。**新页面一律写上表的正名**，别名只为兼容既有页面。
 

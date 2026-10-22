@@ -77,21 +77,13 @@ else:
 
 
 def parse_srt(path: Path) -> list[dict]:
-    txt = path.read_text(encoding="utf-8", errors="replace")
-    cues, cur = [], None
-    for line in txt.splitlines():
-        m = re.match(r"(\d+):(\d+):(\d+)[,.](\d+) --> (\d+):(\d+):(\d+)[,.](\d+)", line)
-        if m:
-            def to_sec(a, b, c, d):
-                return int(a) * 3600 + int(b) * 60 + int(c) + int(d) / 1000
-            s0, s1 = to_sec(*m.groups()[:4]), to_sec(*m.groups()[4:])
-            cur = {"s": round(s0, 3), "e": round(s1, 3), "t": ""}
-            cues.append(cur)
-        elif cur is not None and line.strip() and not line.strip().isdigit():
-            cur["t"] += line.strip()
-        elif cur is not None and not line.strip():
-            cur = None
-    return cues
+    """统一实现见 `helpers/_timecode.py`（合并地图 M1）；输出 {"s","e","t"} 形状不变。"""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _timecode import flatten as _flatten, parse_srt_file as _parse_srt_file
+    return [{"s": round(cue["startMs"] / 1000, 3),
+             "e": round(cue["endMs"] / 1000, 3),
+             "t": _flatten(cue, "")}
+            for cue in _parse_srt_file(path)]
 
 
 cues = []

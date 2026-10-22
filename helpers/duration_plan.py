@@ -103,7 +103,9 @@ def plan_durations(edit_dir: Path, fps: float | None = None) -> tuple[list[float
         # ceil, not round: the encoder lands ON or AFTER the requested time.
         # The inner round only removes float noise (8.8*30 = 264.00000000000006
         # must stay 264, not become 265).
-        frames = max(1, math.ceil(round(raw * rate, 6)))
+        # 1e-3 frame of noise is below any real frame boundary but above
+        # the error a six-decimal source duration can introduce (0.5e-6*30).
+        frames = max(1, math.ceil(raw * rate - 1e-3))
         durations.append(round(frames / rate, 6))
     return durations, rate
 

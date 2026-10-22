@@ -67,11 +67,9 @@ def _fail(message: str) -> None:
 
 
 def _srt_timestamp(seconds: float) -> str:
-    total_ms = int(round(seconds * 1000))
-    h, rem = divmod(total_ms, 3600_000)
-    m, rem = divmod(rem, 60_000)
-    s, ms = divmod(rem, 1000)
-    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+    """统一实现见 `helpers/_timecode.py`（合并地图 M1）。"""
+    from _timecode import format_time as _format_time
+    return _format_time(int(round(seconds * 1000)))
 
 
 def _sha256(path: Path) -> str:
@@ -213,6 +211,20 @@ def _measured_durations(edit_dir: Path, edl_file: Path, count: int,
     digest produced different caption timelines (audit evidence:
     caption [1.1, 0.9] vs delivery [1.0, 1.0], same EDL, same total).
     """
+    # 单一时间源：画面由 timeline.json 驱动，字幕必须跟同一条时间轴。
+    # 时间轴声明 measured 时才用渲染记录；声明 nominal/projected 时用标称段时长。
+    from _paths import timeline_file, timeline_source
+    timeline = timeline_file(edit_dir)
+    timeline_source_name = None
+    if timeline is not None:
+        timeline_source_name = timeline_source(timeline)
+        if timeline_source_name is None:
+            print("  · 旧时间轴没有 timeSource：按画面时间轴（nominal）处理")
+            timeline_source_name = "nominal"
+        if timeline_source_name == "nominal":
+            print("  · 字幕时间轴跟随画面时间轴（nominal）：用标称段时长，不取渲染记录")
+            return None, None
+
     path = edit_dir / "segment_durations.json"
     if not path.exists():
         print("  · 还没有渲染结果，也没有解析预演，字幕按 EDL 标称时间轴生成"
@@ -223,7 +235,11 @@ def _measured_durations(edit_dir: Path, edl_file: Path, count: int,
     except json.JSONDecodeError:
         print("  · segment_durations.json 无法解析，按标称时间轴生成")
         return None, None
-    durations, source, tag, problem = _edl.duration_record(edit_dir, count, edl_path=edl_file)
+    want_projected = timeline_source_name == "projected"
+    durations, source, tag, problem = _edl.duration_record(
+        edit_dir, count, edl_path=edl_file, require_projected=want_projected)
+    if durations is not None and want_projected and source != "projected":
+        durations, problem = None, "时间轴声明 projected，但没有可用的预演记录"
     if durations is not None:
         total = sum(durations)
         if source == "measured":
@@ -610,31 +626,27 @@ def build_article_srt(edit_dir: Path, edl_path: Path | None = None,
 
 
 def parse_srt(path: Path) -> list[tuple[float, float, str]]:
-    timestamp_re = re.compile(r"(\d+):(\d+):(\d+),(\d+) --> (\d+):(\d+):(\d+),(\d+)")
+    """统一实现见 `helpers/_timecode.py`（合并地图 M1）；返回 (起秒, 止秒, 文本)。"""
+    from _timecode import flatten as _flatten, parse_srt_file as _parse_srt_file
+    return [(cue["startMs"] / 1000, cue["endMs"] / 1000, _flatten(cue, "\n"))
+            for cue in _parse_srt_file(path)]
 
-    def seconds(parts: tuple[str, ...]) -> float:
-        h, m, s, ms = (int(value) for value in parts)
-        return h * 3600 + m * 60 + s + ms / 1000
 
-    cues: list[tuple[float, float, str]] = []
-    lines = path.read_text(encoding="utf-8").splitlines()
-    index = 0
-    while index < len(lines):
-        if lines[index].strip().isdigit() and index + 1 < len(lines):
-            match = timestamp_re.fullmatch(lines[index + 1].strip())
-            if match:
-                start = seconds(match.groups()[:4])
-                end = seconds(match.groups()[4:])
-                text_lines: list[str] = []
-                cursor = index + 2
-                while cursor < len(lines) and lines[cursor].strip():
-                    text_lines.append(lines[cursor].strip())
-                    cursor += 1
-                cues.append((start, end, "\n".join(text_lines)))
-                index = cursor
-                continue
-        index += 1
-    return cues
+def timeline_drift_message(edit_dir: Path, last_cue_end: float) -> str | None:
+    """字幕末条与画面时间轴末段是否对得上；对不上就是两条时间源。"""
+    from _paths import timeline_file, timeline_span_ms
+    timeline = timeline_file(edit_dir)
+    if timeline is None:
+        return None
+    span_ms = timeline_span_ms(timeline)
+    if span_ms is None:
+        return None
+    drift = last_cue_end - span_ms / 1000
+    # 只拦“字幕超出画面”：最后一句之后留收尾静音是正常的（v3 实测尾静音 0.327s）。
+    if drift <= 0.1:
+        return None
+    return (f"字幕末条 {last_cue_end:.3f}s 超出画面时间轴末段 {span_ms / 1000:.3f}s "
+            f"（{drift:+.3f}s）——字幕和画面不是同一条时间轴，必须重建字幕后再交付")
 
 
 def check_article_srt(edit_dir: Path, edl_path: Path | None = None,
@@ -669,6 +681,11 @@ def check_article_srt(edit_dir: Path, edl_path: Path | None = None,
         if abs(actual_start - expected["start"]) > 0.002 or abs(actual_end - expected["end"]) > 0.002:
             _fail(f"SRT cue {index} timestamp differs from kept word boundaries; rebuild instead of patching")
         previous_end = actual_end
+    if actual_cues:
+        drift = timeline_drift_message(edit_dir, actual_cues[-1][1])
+        if drift:
+            _fail(drift)
+
     total = float(stored["total_duration"])
     if actual_cues and actual_cues[-1][1] > total + 0.05:
         _fail(f"SRT ends at {actual_cues[-1][1]:.3f}s beyond EDL duration {total:.3f}s")

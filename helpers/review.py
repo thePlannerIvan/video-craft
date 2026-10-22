@@ -109,6 +109,16 @@ def _served_timeline_duration(stage_url: str) -> float | None:
         return None
 
 
+def _require_recompose(project: Path) -> None:
+    """旧十步审阅页已退休：审阅只走 recompose 布局。"""
+    if (project / "recompose.json").is_file():
+        return
+    print("✗ 这个工程还没有 recompose.json —— 旧十步审阅页已退休，审阅页只保留 recompose 布局。",
+          file=sys.stderr)
+    print(f"  先跑：python3 helpers/recompose_plan.py init {project}", file=sys.stderr)
+    raise SystemExit(2)
+
+
 def review(project: Path, open_surface: bool = True, live: bool = True,
            as_json: bool = False, port: int | None = None) -> int:
     steps: list[dict] = []
@@ -229,7 +239,9 @@ def main(argv=None) -> int:
                         help="编译服务端口；默认自动挑空闲端口。三条片共用同一 project id，"
                              "挤在默认端口会互相顶掉（会把 A 片的画面当 B 片交出去）")
     args = parser.parse_args(argv)
-    return review(args.project.expanduser().resolve(), args.open_surface, args.live,
+    project = args.project.expanduser().resolve()
+    _require_recompose(project)
+    return review(project, args.open_surface, args.live,
                   args.json, args.port)
 
 

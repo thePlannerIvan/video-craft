@@ -1,13 +1,13 @@
-# Recompose build mode — 板子是参考，成片允许重排
+# Recompose build mode — 默认遵循原构图，原片不适合动画时重排
 
-这是 Video Craft 的**内部构建模式**，不是用户要选的路线。工作方式没有变：作者仍在
-`planners-ppt-hell` 里确认大概画面、录制，然后交给 Craft 做成片。区别只有一条：
+这是 Video Craft 的**主制作路线**：作者在 `planners-ppt-hell` 里确认画面、录制，Craft 把
+board 当视觉参考重做成片。判据只有一条：
 
-> **最终成片是否严格保留那版画面。**
-> `page` 保留；`recompose` 只把 board 当视觉参考，允许为了动效重排。
+> **画面内容不重写。默认遵循原构图，只有原片不适合作为视频动画呈现时才重排。**
+> 口播稿、事实、结论归作者与上游；怎么画、怎么动归 Craft。重排要在拆解表写明理由。
 
-作者不需要在开工前选。`page` 是默认和 fallback；只有当作者明确要“更大自由度”或项目类型
-适合连续动画时，才在项目里开 `recompose`。作者说“这版别改”时回 `page`。
+`page` 十步路线已于 2026-10-21 整条归档（见 [legacy-page-route.md](legacy-page-route.md)），
+不再维护。新项目一律走 recompose，作者不需要在开工前选路线；只有复活旧项目时才读那份存档。
 
 ## 三条不变量
 
@@ -61,10 +61,7 @@ recompose 的交付是**画面层**；人物与字幕要么在 composition 里�
 
 改几何时改 `recompose.json`，然后：
 
-```bash
-python3 "<craft>/helpers/recompose_plan.py" check "<project>"     # 超画幅会报出来
-python3 "<craft>/helpers/check_live_stage.py" "<project>"         # 契约仍成立
-```
+改几何后跑 `recompose_plan.py check`；活舞台契约用 `check_live_stage.py` 复核。两命令的参数见 [tools.md](tools.md)「recompose 主路线」与「免渲染的工程态」。
 
 不要在场景文件里手算一套新的 `500` / `620` / `880`：数值只有一个家，场景从
 `recompose.json` 读取。
@@ -108,20 +105,13 @@ stage_bottom = cfg["captionSafe"]["y"]
 ### 1. 锁事实
 
 - 声音：已锁的 `edit/cut.mp4` 或音轨。
-- 剪辑与字幕：`edit/edl.json`、`edit/subtitles.srt`；未锁时先走 page 路线第 3–5 步。
+- 剪辑与字幕：`edit/edl.json`、`edit/subtitles.srt`；未锁时先走 `SKILL.md` 第 3–5 步（共用事实层，不属于任何一条画面路线）。
 - 时间脊柱：`timeline/timeline.json`（自动派生）。
 - 词级锚点：`edit/caption_words.json`。
 - board：PPT Hell 视频路线导出的页面 / 快照，作为视觉参考。
 - 人物孔位、字幕安全区、画幅。
 
-```bash
-python3 "<craft>/helpers/recompose_plan.py" init "<project>" \
-    --composition "<project>/composition" \
-    --draft "<project>/recompose/draft.mp4" \
-    --person-slot "0,0,620,1080" \
-    --caption-safe "0,885,1920,195"
-python3 "<craft>/helpers/recompose_plan.py" check "<project>"
-```
+初始化与检查命令见 [tools.md](tools.md)「recompose 主路线」；`init` 的两个前置文件见下。
 
 **`init` 的两个前置文件（缺一个它就退 1）**：
 
@@ -140,18 +130,12 @@ python3 "<craft>/helpers/recompose_plan.py" check "<project>"
 - **不要** `import_svg_page.py`、`generate-composition.py`、`auto_choreography.py`；
 - 直接写 composition：共享 core（时间轴、HUD、转场）、art 图元库、每个 beat 一个 scene；
 - 从 `anchors.js` 读绝对时间；clip 窗口读 `timeline/timeline.json`；
-- board 只当参考：概念、顺序、每 beat 的一两个关键图元；不复制页面几何；
+- board 是参考，不是几何契约：**默认遵循原构图**（模型图、层级、排布），只有原片不适合作为视频动画呈现时才重排或重做，并在拆解表写明理由；每片重新拆解，不维护跨项目元素库；
 - 人物位按 `recompose.json` 的 `personSlot`；画面不能进这个区域。
 
 ### 3. 审阅：左侧预览 + 右侧整栏反馈
 
-```bash
-# 工程态：起 composition 的活舞台（不渲染），再用同一份 URL 建审阅
-python3 "<craft>/helpers/check_live_stage.py" "<project>" --composition "<composition-dir>"
-python3 "<craft>/helpers/live_stage.py" "<project>" --composition "<composition-dir>"
-python3 "<craft>/helpers/build_review.py" "<project>" --mode auto
-python3 "<craft>/helpers/review_surface.py" "<project>" --surface-only
-```
+审阅只用一条命令：`python3 "<craft>/helpers/review.py" "<project>"`（内部完成编译 → 构建 → surface → 运行时判据）；细节见 [tools.md](tools.md)「免渲染的工程态」。
 
 审阅期间保持 `live_stage` 进程运行：它给工程态预览提供编译路由。停掉后页面会提示
 「预览暂时无法启动」；要恢复就重跑 `live_stage.py ... --composition <dir>` 再刷新。
@@ -180,9 +164,7 @@ recompose 模式下，`build_review.py` 把 `recompose/lines.json` 写进
 
 ### 4. 收件与定点返修
 
-```bash
-python3 "<craft>/helpers/review_inbox.py" "<project>"
-```
+收件：`review_inbox.py <project>`；参数、收据字段与 rejected 处理见 [tools.md](tools.md)「审阅」。
 
 `review_inbox.py` 识别 `phase: "density"` 记录，校验 line id / state，追加
 `feedback/density.jsonl`，把 `state` / `note` 回写 `recompose/lines.json`，输出收据。被拒的
@@ -202,17 +184,17 @@ python3 "<craft>/helpers/review_inbox.py" "<project>"
 recompose **不跑** `check_parity.py`（只有一条实现时没有对象），用 `check_motion_targets.py`
 与真实成片核验。
 
-## 与 page 路线的关系
+## 与已归档 page 路线的差异
 
-| 共用 | 不共用 |
+| 继续共用 | 不再使用 |
 |---|---|
 | 声音、EDL、字幕、词级锚点 | 静态 SVG 快照作为最终几何 |
 | timeline 章节 / step 边界 | `import_svg_page.py` / `generate-composition.py` |
-| review-core、审阅页、收件 | `check_parity.py`（single-source 时） |
+| review-core、审阅页、收件 | `check_parity.py`（single-source 时没有对象） |
 | 交付核验、指纹、render env | 页面几何契约 |
 
-`page` 仍是默认与 fallback。recompose 失败、作者要求逐像素保留、或项目需要 PPTX 时回 page；
-两者可以同一项目里先双跑，比较质量 / 时间 / 返工，再决定默认。
+老路线的说明只在 [legacy-page-route.md](legacy-page-route.md) 里，标明为存档。
+recompose 是默认且唯一维护的路线；不存在"日常回 page"这个选择。
 
 ## 不要做什么
 

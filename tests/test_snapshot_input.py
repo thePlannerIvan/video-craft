@@ -100,24 +100,6 @@ class SnapshotTests(unittest.TestCase):
                 lambda: choreography.build_choreography(self.project),
                 lambda: review.find_svg_scenes(self.project, self.project / 'edit')]
 
-    def test_all_consumers_read_same_order_and_pinned_assets(self):
-        root, _ = self.snapshot()
-        directory, boundary = pages.resolve_pages(self.project)
-        self.assertEqual(directory, root / 'scenes')
-        self.assertEqual(boundary, root)
-        self.assertEqual(pages.list_pages(directory), ['beat-02', 'beat-01'])
-        imported = pages.import_page('beat-01', page_dir=directory, asset_root=boundary, project=self.project)
-        self.assertTrue(imported.verbatim)
-        reviewed = review.find_svg_scenes(self.project, self.project / 'edit')
-        self.assertEqual(list(reviewed), ['beat-02', 'beat-01'])
-        self.assertIn('../composition/assets/pages/beat-01/', reviewed['beat-01'])
-        doc = choreography.build_choreography(self.project)
-        self.assertEqual(doc['snapshot']['snapshot_id'], 'snap_first')
-        generator.generate(self.project, 'midnight-press', None)
-        manifest = json.loads((self.project / 'composition/pages/manifest.json').read_text())
-        self.assertEqual(manifest['snapshot']['sha256'], resolve_snapshot(self.project).digest)
-        self.assertEqual(self.timeline.read_bytes(), self.timeline_bytes)
-
     def test_order_only_change_invalidates_timeline_and_rejects_stale_composition(self):
         root, data = self.snapshot()
         previous = resolve_snapshot(self.project).binding()
@@ -312,34 +294,6 @@ class SnapshotTests(unittest.TestCase):
                 f'<text id="{key}-text">original</text></g></svg>')
         return ppt, live_asset
 
-    def test_store_reorder_and_collection_reach_video_consumers(self):
-        ppt, _ = self.actual_store_project()
-        result = store.commit(ppt, {'op':'order','operation_id':'drag_order',
-            'base_order':['beat-01','beat-02'],'order':['beat-02','beat-01']}, browser=True)
-        self.assertTrue(result['ok'])
-        frozen = store.snapshot(ppt, 'video')
-        (self.project / '.pages').write_text(frozen['path'])
-        directory, _ = pages.resolve_pages(self.project)
-        self.assertEqual(pages.list_pages(directory), ['beat-02','beat-01'])
-        generator.generate(self.project, 'midnight-press', None)
-        candidate = ppt / 'extra.svg'
-        candidate.write_text('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080"><text>Extra</text></svg>')
-        added = store.commit(ppt, {'op':'add_page','operation_id':'add_extra',
-            'candidate':str(candidate),'page':{'page_key':'extra','title':'Extra'},
-            'base_order':['beat-02','beat-01']})
-        self.assertTrue(added['ok'])
-        removed = store.commit(ppt, {'op':'delete_page','operation_id':'delete_beat',
-            'page_key':'beat-01','base_revision':store.get_page(ppt,'beat-01')['revision'],
-            'base_order':['beat-02','beat-01','extra']})
-        self.assertTrue(removed['ok'])
-        frozen = store.snapshot(ppt, 'video')
-        (self.project / '.pages').write_text(frozen['path'])
-        parsed = resolve_snapshot(self.project)
-        self.assertEqual(parsed.order, ['beat-02','extra'])
-        self.assertEqual(parsed.data['collection_delta'], {'added':['extra'],'removed':['beat-01']})
-        with self.assertRaisesRegex(SnapshotError, 'timeline_order_changed'):
-            generator.generate(self.project, 'midnight-press', None)
-
     def test_actual_store_snapshot_with_text_change_and_byte_pinned_image(self):
         ppt, live_asset = self.actual_store_project()
         first = store.snapshot(ppt, 'video')
@@ -378,18 +332,6 @@ class SnapshotTests(unittest.TestCase):
         data['pages'][0]['svg_sha256'] = sha256(scene.read_bytes())
         self.write_manifest(root, data)
         return root, data, record
-
-    def test_nested_svg_dependencies_copy_byte_identically(self):
-        root, data, parent = self.nested_snapshot()
-        page_dir, boundary = pages.resolve_pages(self.project)
-        result = pages.import_page('beat-01', page_dir=page_dir, asset_root=boundary, project=self.project)
-        self.assertTrue(result.verbatim)
-        for asset in asset_records([parent]):
-            source = root / asset['path']
-            output = self.project / 'composition/assets/pages/beat-01' / source.name
-            self.assertEqual(output.read_bytes(), source.read_bytes())
-        review.find_svg_scenes(self.project, self.project / 'edit')
-        generator.generate(self.project, 'midnight-press', None)
 
     def test_nested_svg_missing_or_mutated_child_is_rejected_by_all_consumers(self):
         root, data, parent = self.nested_snapshot()

@@ -383,8 +383,15 @@ def run(project: Path, points: list[float], keep_host: bool, verbose: bool) -> i
                                }"""
                         )
                         if comp_dur is not None:
+                            # 不认某一种页面结构（旧实现只数 `.scene-root *`，
+                            # 别的 composition 明明建出了 DOM 也被判 0）。
                             rendered = frame.evaluate(
-                                "()=>document.querySelectorAll('.scene-root *').length || 0"
+                                """()=>{
+                                  const root=document.querySelector('[data-composition-id]');
+                                  if(!root) return 0;
+                                  return [...root.querySelectorAll('*')]
+                                    .filter(el=>!['SCRIPT','STYLE'].includes(el.tagName)).length;
+                                }"""
                             )
                             break
                     except Exception:

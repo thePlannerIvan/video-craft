@@ -1,3 +1,7 @@
+> **工程态优先**：有 composition 就必须起活舞台（`review.py` 会做），审阅页面默认演 composition；没有工程态时 `build_review` 退 2，不能静默退回成片态。只有成片轨的工程没有工程态，页面要明说这一点。
+>
+> **公共入口只有 `review.py`**：本文描述它的内部约定（页面、桥、提交、收件）；单独跑 `build_review` 等步骤只用于调试。
+
 # 审阅页：播放与反馈
 
 ## 工程预览是默认入口
@@ -27,7 +31,7 @@ DSH tokens 仍来自 review-core，生成时内联。导航显示分屏标题、
   `review_inbox.py` 校验后追加 `feedback/density.jsonl` 并回写 `recompose/lines.json`。
 - 不要在动效页放 board 参考帧：作者已在 PPT Hell 确认画面，成片页只看成片。
 
-page 模式没有这个 dock，页面与现有流程不变。
+**旧十步审阅页（page 模式）已退休。** `build_review` 默认拒绝 page 模式（退 2），旧项目先跑 `recompose_plan.py init` 转成 recompose 布局；审阅页只保留这一套（左侧大预览 + 横向 Beat + 右侧逐句调整/历史反馈）。
 
 ## 兼容已有项目
 
@@ -41,11 +45,7 @@ Craft 有两个审阅面。视觉面审实际画面、声音与节奏；剪辑�
 
 下面 `<craft>` 是 Skill 根，`<project>` 是项目绝对路径，`<core>` 是 `planners-review-core` 根。
 
-```bash
-python3 "<craft>/helpers/build_review.py" "<project>" --mode auto
-python3 "<craft>/helpers/review_surface.py" "<project>" --surface-only
-node "<core>/scripts/validate-surface.mjs" "<project>/review/review-surface.json" --text
-```
+构建、surface、公共 validator 的命令见 [tools.md](tools.md)「免渲染的工程态」与「审阅」。
 
 构建器输出 `review/review_data.json`、`review/index.html` 和唯一适配器生成的 `review-surface.json`，并调用公共校验器。数据含实际 timeline 位置、媒体、SVG/图片映射与构建快照；新项目只用根 `timeline/`，旧项目显式引用已有位置，不复制出第二份时间轴。
 
@@ -57,10 +57,7 @@ node "<core>/scripts/validate-surface.mjs" "<project>/review/review-surface.json
 
 剪辑面独立打开：
 
-```bash
-python3 "<craft>/helpers/edl_preview_build.py" "<project>/edit"
-python3 "<craft>/helpers/edl_review_surface.py" "<project>/edit" --surface-only
-```
+逐字剪辑面的出页与面上缝命令见 [tools.md](tools.md)「审阅」。
 
 有插件时 `review_open` 接返回的 `edit/edl_review_surface.json`；没有插件去掉 `--surface-only`。视觉页的「逐字剪辑」只请求模型打开独立面，不嵌入另一份审阅桥。
 
@@ -111,10 +108,7 @@ watch 覆盖当前 timeline、审阅数据、页面、SVG 和媒体。文件变�
 
 ## 模型收件
 
-```bash
-python3 "<craft>/helpers/review_inbox.py" "<project>" --dry-run
-python3 "<craft>/helpers/review_inbox.py" "<project>"
-```
+收件命令与 `--dry-run` 见 [tools.md](tools.md)「审阅」。
 
 检查收据 `rejected`、`imported`、`skipped` 和 `legacy_adjustments`。后者暴露旧页面放在提交顶层的微调，防止丢失。新记录的 `adjustments` 与反馈一起进入 JSONL，内容哈希使重复收件幂等，旧文件留 `feedback/.previous/`。
 
@@ -126,9 +120,7 @@ python3 "<craft>/helpers/review_inbox.py" "<project>"
 
 剪辑选择不用视觉 inbox：
 
-```bash
-python3 "<craft>/helpers/apply_selection.py" "<project>/edit"
-```
+应用逐字选择：`apply_selection.py <edit>`；参数见 [tools.md](tools.md)「声音与剪辑」。
 
 它直接消费 `edit/selections.json` 并修改 EDL。随后重建逐字预览、工程字幕和时间绑定；确认后渲染正式底片；剪辑页的整体备注由 wake 回到对话，不混进 selections 的机器区间。
 

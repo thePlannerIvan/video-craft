@@ -78,7 +78,48 @@ def render_record(edit_dir: Path, *, allow_projected: bool = False) -> tuple:
     digest = edl_digest(edl_path) if edl_path.exists() else None
     return select_render_record(blob, digest, allow_projected=allow_projected)
 
-def duration_record(edit_dir: Path, count: int, edl_path: Path | None = None
+def measured_total_ms(edit_dir: Path, edl_path: Path | None = None
+                      ) -> tuple[int | None, str, str | None]:
+    """This EDL's measured total, or why there is none.
+
+    Returns `(total_ms, how, tag)`. `how`:
+
+    - `"digest"`    — a render record whose `edl_sha256` matches this EDL
+    - `"no-digest"` — no record carries a digest; the newest is a best guess (推定)
+    - `"mismatch"`  — records carry digests but none matches: the render is stale
+    - `"none"` / `"unparsable"` — nothing usable
+
+    Identity comes from the digest, never from the render's file name: projects
+    write records as `final`, `preview`, `cut`, `person_master`, … and hard-coding
+    one name silently skipped the measured stretch in most real projects.
+    """
+    edit_dir = Path(edit_dir)
+    edl_file = Path(edl_path) if edl_path is not None else edit_dir / "edl.json"
+    digest = edl_digest(edl_file) if edl_file.exists() else None
+    blob = _load_duration_blob(edit_dir)
+    if blob is None:
+        return None, "none", None
+    tag, entry, how = select_render_record(blob, digest, allow_projected=False)
+    if entry is None and how == "none":
+        # 更老的项目把记录写成 `{输出名: [每段秒数]}`，没有 total_s 也没有指纹。
+        # 按同一策略当"推定"用：取最新一条，总长 = 各段之和。
+        legacy = [(t, e) for t, e in blob.items()
+                  if t != "projected" and isinstance(e, list) and e]
+        if legacy:
+            tag, durations = legacy[-1]
+            total = sum(float(x) for x in durations)
+            if total > 0:
+                return int(round(total * 1000)), "no-digest", tag
+    if entry is None or how in ("mismatch", "none", "unparsable"):
+        return None, how, tag
+    total = entry.get("total_s")
+    if not isinstance(total, (int, float)) or total <= 0:
+        return None, how, tag
+    return int(round(float(total) * 1000)), how, tag
+
+
+def duration_record(edit_dir: Path, count: int, edl_path: Path | None = None,
+                    *, require_projected: bool = False
                     ) -> tuple[list[float] | None, str | None, str | None, str | None]:
     """One answer for "which durations should captions use?".
 
@@ -118,7 +159,9 @@ def duration_record(edit_dir: Path, count: int, edl_path: Path | None = None
             return [(t, e) for t, e in records if not e.get("edl_sha256")]
         return records
 
-    for allow_projected, source in ((False, "measured"), (True, "projected")):
+    passes = ((True, "projected"),) if require_projected else (
+        (False, "measured"), (True, "projected"))
+    for allow_projected, source in passes:
         records = _matching(allow_projected)
         if allow_projected:
             records = [(t, e) for t, e in records if e.get("projected")]

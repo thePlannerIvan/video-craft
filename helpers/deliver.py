@@ -10,7 +10,7 @@
 
 接口
 ----
-    python3 helpers/deliver.py <project>                       # 渲染画面层并合成
+    python3 helpers/deliver.py <project> --render              # 显式渲染画面层并合成
     python3 helpers/deliver.py <project> --visuals <mp4>       # 已有画面层，跳过渲染
     python3 helpers/deliver.py <project> --person <mp4> --audio <m4a> --srt <srt>
     python3 helpers/deliver.py <project> --no-person      # 纯画面 + 旁白：画面层全幅交付
@@ -25,13 +25,17 @@
 4. 逐项核验：分辨率、帧率、时长、音轨、首/中/尾帧非全黑，产出 JSON 报告；
 5. 字幕优先外挂（`--burn-subtitles` 需要 ffmpeg 带 libass，没有就明确报错，不静默降级）。
 
-前置：`render_gate.py` 必须放行（有人工提交且源未漂移）；夹具可用 `--skip-gate`。
-`composition/_render/visuals.mp4` 比 composition 源旧时自动重渲（否则会交付上一版画面）。
+前置：`render_gate.py` 必须放行（有人工提交且源未漂移）。
+默认**不渲染**：缺画面层或画面层比 composition 旧时直接拒绝，要渲染必须显式 `--render`
+（那是交付动作，不是审阅动作）。`--skip-gate` 只对测试进程（`DSH_TEST=1`）开放。
+`composition/_render/visuals.mp4` 比 composition 源旧时**默认拒绝**，显式 `--render` 才重渲
+（否则会交付上一版画面，或把审阅变成导出）。
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -184,7 +188,7 @@ def _render_is_stale(project: Path, visual: Path) -> bool:
 
 def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Path | None,
             srt: Path | None, out_dir: Path | None, burn: bool, skip_gate: bool,
-            as_json: bool, no_person: bool = False) -> int:
+            as_json: bool, no_person: bool = False, render: bool = False) -> int:
     geo = _geometry(project)
     out = (out_dir or project / "成品")
     out.mkdir(parents=True, exist_ok=True)
@@ -201,6 +205,17 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
         if not as_json:
             print(f"{'✓' if ok else '✗'} {name_} — {detail}")
         return ok
+
+    # 0) 时间轴来源：按当前剪辑指纹认渲染记录；认不出就标注，不静默
+    try:
+        from _edl import measured_total_ms as _measured_total
+        _ms, _how, _tag = _measured_total(project / "edit", project / "edit" / "edl.json")
+    except Exception:  # noqa: BLE001 - 报告要出，不能因探测失败卡住
+        _ms, _how, _tag = None, "unavailable", None
+    if _how == "no-digest":
+        note(f"时间轴用的是推定渲染记录（{_tag}，无剪辑指纹）：字幕按同一策略对齐，画面时间点请复核")
+    elif _how != "digest":
+        note(f"时间轴按名义时长：没有与当前剪辑匹配的渲染记录（{_how}）；字幕优先，画面时间点可能偏移")
 
     # 0) 渲染闸门
     if not skip_gate:
@@ -232,11 +247,28 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
     # 2) 画面层：已有就用，没有就渲
     visual_path = _pick(project, visuals, [project / "composition/_render/visuals.mp4"])
     if visual_path is not None and visuals is None and _render_is_stale(project, visual_path):
-        note(f"画面层比 composition 源旧（{visual_path.name}），重新渲染")
+        if not render:
+            detail = (f"{visual_path.name} 比 composition 源旧。审阅停在工程态；"
+                      "要重渲请显式加 --render（交付动作，不是审阅动作）")
+            check("画面层", False, detail)
+            if not as_json:
+                print(f"  ✗ {detail}")
+            report["ok"] = False
+            (out / f"{name}_核验报告.json").write_text(
+                json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            return 1
+        note(f"画面层比 composition 源旧（{visual_path.name}），按 --render 重新渲染")
         visual_path = None
     if visual_path is None:
-        if not as_json:
-            print("  · 没有 --visuals，开始渲染画面层（这是唯一需要等的一步）")
+        if not render:
+            detail = ("没有画面层。工程态审阅不需要它；要出成片请显式加 --render，并先过 render_gate")
+            check("画面层", False, detail)
+            if not as_json:
+                print(f"  ✗ {detail}")
+            report["ok"] = False
+            (out / f"{name}_核验报告.json").write_text(
+                json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            return 1
         env_ok, workers, env_detail = _render_env(project / "composition")
         if not check("渲染环境", env_ok, env_detail):
             print(json.dumps(report, ensure_ascii=False, indent=1))
@@ -333,6 +365,29 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
     else:
         note("没有字幕源；如需字幕请 --srt")
 
+    # 7) 最终签字：交付核验。判据仍归 verify_delivery（它回答"这一版能不能发"），
+    #    deliver 只把它的结论并入报告，不再自己下第二个结论（合并地图 M5-A）。
+    edit_dir = project / "edit"
+    if target.is_file() and (edit_dir / "edl.json").is_file():
+        verdict = subprocess.run(
+            [sys.executable, str(Path(__file__).resolve().parent / "verify_delivery.py"),
+             str(edit_dir), "--video", str(target), "--json"],
+            capture_output=True, text=True)
+        try:
+            payload = json.loads(verdict.stdout) if verdict.stdout.strip().startswith("{") else {}
+        except ValueError:
+            payload = {}
+        hard = payload.get("hard") or []
+        report["delivery_verdict"] = {"ok": verdict.returncode == 0, "hard": hard}
+        if verdict.returncode == 0:
+            note("交付核验（verify_delivery）：通过")
+        else:
+            note("交付核验（verify_delivery）发现问题，报告已记录；"
+                 "是否阻断交付由人决定（用 stage_deliver.py verify 复核）："
+                 + "；".join(str(x) for x in hard[:3]))
+    else:
+        note("跳过交付核验：没有 edit/edl.json，无法把成片对照到时间轴")
+
     report["output"] = str(target)
     report["subtitles"] = str(srt_out) if srt_out.is_file() else None
     report["ok"] = all(c["ok"] for c in report["checks"])
@@ -359,11 +414,16 @@ def main(argv=None) -> int:
                         help="烧录字幕（需要 ffmpeg 带 libass）")
     parser.add_argument("--no-person", action="store_true",
                         help="纯画面 + 旁白：不贴人物，画面层全幅交付")
-    parser.add_argument("--skip-gate", action="store_true", help="夹具用：跳过 render_gate")
+    parser.add_argument("--render", action="store_true",
+                        help="显式渲染画面层（交付动作；默认不渲染，缺画面层时拒绝）")
+    parser.add_argument("--skip-gate", action="store_true", help="测试夹具用：跳过 render_gate")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
+    if args.skip_gate and os.environ.get("DSH_TEST") != "1":
+        parser.error("--skip-gate 只允许测试夹具（DSH_TEST=1）；正式流程必须过 render_gate")
     return deliver(args.project.expanduser().resolve(), args.visuals, args.person, args.audio,
-                   args.srt, args.out, args.burn, args.skip_gate, args.json, args.no_person)
+                   args.srt, args.out, args.burn, args.skip_gate, args.json, args.no_person,
+                   args.render)
 
 
 if __name__ == "__main__":

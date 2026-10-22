@@ -26,13 +26,44 @@ def pix_fmt_has_alpha(pix_fmt: str | None) -> bool:
     return any(tok in fmt for tok in _ALPHA_TOKENS)
 
 
-def _ffprobe_json(path: Path, entries: str, stream: str = "v:0") -> dict:
-    out = subprocess.run(
-        ["ffprobe", "-v", "error", "-select_streams", stream,
-         "-show_entries", entries, "-of", "json", str(path)],
-        capture_output=True, text=True, check=True,
-    )
+def _ffprobe_json(path: Path, entries: str, stream: str | None = "v:0") -> dict:
+    cmd = ["ffprobe", "-v", "error"]
+    if stream is not None:
+        cmd += ["-select_streams", stream]
+    cmd += ["-show_entries", entries, "-of", "json", str(path)]
+    out = subprocess.run(cmd, capture_output=True, text=True, check=True)
     return json.loads(out.stdout)
+
+
+def probe_media(path: Path) -> dict:
+    """路径的“格式 + 全部流”探测，一个实现；缺字段给 None，不抛异常。
+
+    返回 `{"exists", "duration", "size", "streams": [...]}`，每条的流字段是
+    `codec_type` / `codec_name` / `width` / `height` / `channels` /
+    `r_frame_rate` / `duration`。供交付核验、导出包装这类“要整条媒体的形状”的调用方使用。
+    """
+    info: dict = {"exists": Path(path).is_file(), "duration": None,
+                  "size": None, "streams": []}
+    if not info["exists"]:
+        return info
+    try:
+        data = _ffprobe_json(
+            path,
+            "format=duration,size"
+            ":stream=codec_type,codec_name,width,height,channels,r_frame_rate,duration",
+            stream=None)
+    except (subprocess.CalledProcessError, json.JSONDecodeError, OSError):
+        return info
+    fmt = data.get("format") or {}
+    if fmt.get("duration") is not None:
+        info["duration"] = float(fmt["duration"])
+    if fmt.get("size") is not None:
+        info["size"] = int(fmt["size"])
+    for st in data.get("streams") or []:
+        info["streams"].append({key: st.get(key) for key in
+                                ("codec_type", "codec_name", "width", "height",
+                                 "channels", "r_frame_rate", "duration")})
+    return info
 
 
 def probe_video(path: Path) -> dict:

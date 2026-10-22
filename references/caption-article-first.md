@@ -8,9 +8,7 @@ stage followed by a mechanical timing stage. Do not interleave them.
 
 Run:
 
-```bash
-<repo>/.venv/bin/python <repo>/helpers/srt_export.py <edit> --prepare
-```
+srt_export 的 `--prepare` 命令见 [tools.md](tools.md)「语义字幕」。
 
 If the edit already contains an article or word contract, do not overwrite it
 by accident. Use `--force-prepare` only after confirming that the EDL,
@@ -44,9 +42,7 @@ clearly intentional emphasis.
 
 After the article is stable, run:
 
-```bash
-<repo>/.venv/bin/python <repo>/helpers/srt_export.py <edit> --lock
-```
+`--lock` 命令见 [tools.md](tools.md)「语义字幕」。
 
 `--lock` refuses an article whose normalized text does not cover the kept word
 sequence. That failure means the EDL or an explicit word correction needs
@@ -70,10 +66,7 @@ Do not split:
 
 Then run:
 
-```bash
-<repo>/.venv/bin/python <repo>/helpers/srt_export.py <edit> --build
-<repo>/.venv/bin/python <repo>/helpers/srt_export.py <edit> --check
-```
+`--build` / `--check` 命令见 [tools.md](tools.md)「语义字幕」。
 
 The builder walks each segment's kept words in order and matches each line to
 the first and last word. It uses:
@@ -118,3 +111,11 @@ For a separate SRT delivery, render the video with `--no-subtitles`, run the
 normal visual and A/V checks, and copy `subtitles.srt` with the final MP4. A
 legacy sentence or cue-length export must be explicitly requested and must not
 be mixed with the article-first files.
+
+## 时间源只有一条：画面时间轴
+
+字幕的绝对时间跟随 `timeline/timeline.json`（画面的唯一时间脊柱），**不跟渲染记录**。
+
+- 时间轴自报 `timeSource`：`measured`（按实测总长对齐过）/ `measured-guessed`（推定）/ `projected` / `nominal` / `srt-import`。
+- 只有 `measured` 时字幕才取渲染记录的分段时长；其余情况用标称段时长——两条时间源一旦混用，字幕会随片长逐渐偏移（v1/v2/v3 实测偏差 0.44–0.81s）。
+- `srt_export.py --check` 会核对"字幕末条 vs 画面时间轴末段"，相差超过 0.1s 直接退非零。这条闸门是硬性的：不一致就说明画面和字幕不是同一版。

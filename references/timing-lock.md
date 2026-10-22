@@ -1,9 +1,6 @@
 # Timing Lock (v2)
 
-> **老路线存档**：本文里凡涉及 `import_svg_page` / `generate-composition` / `check_parity`
-> 或「保真页面(page)」的段落，都是 **page 十步路线的存档说明**，新项目不要照做。
-> 画面的唯一入口是 `helpers/film.py`（见 [film.md](film.md)），存档总览见
-> [legacy-page-route.md](legacy-page-route.md)。
+> 本文涉及 page 路线的段落已归档（见 [legacy-page-route.md](legacy-page-route.md)）；现行 recompose 路线见 [film.md](film.md) 与 [recompose-mode.md](recompose-mode.md)。命令集中在 [tools.md](tools.md)。
 
 
 Timing Lock verifies the composition is a faithful render of the SRT
@@ -12,11 +9,8 @@ timeline **before anything gets rendered**.
 ## Required Checks
 
 1. `timeline/timeline.json` exists and is SRT-derived.
-2. `python3 visual/scripts/generate-composition.py <project> --verify` exits 0:
-   every clip's `data-start`/`data-duration` matches its step in
-   timeline.json (±50ms), step count matches, root `data-duration`
-   equals `totalDurationMs`, and the `<audio>` duration spans the
-   whole timeline.
+2. `python3 helpers/film.py verify <project>` exits 0 — 原页拆解填满、每个 beat 都有映射。
+   （旧 page 路线的 `generate-composition.py --verify` 已随路线归档，新项目不再要求。）
 3. `cd composition && npm run check` — 0 errors (lint/runtime/layout/
    motion/contrast).
    Hand-authored GSAP timelines: `helpers/check_motion_targets.py <project>` exits 0 —
@@ -35,7 +29,7 @@ If timing feels wrong:
 
 - regroup SRT lines into different visual steps (timeline/grouping.json)
 - rebuild `timeline/timeline.json`
-- re-run the generator: `python3 visual/scripts/generate-composition.py <project>`
-- re-verify with `--verify`
+- 第 7 步手写的场景从新 timeline 取 `data-start`/`data-duration`，再跑 `helpers/check_live_stage.py`
+- 重建审阅页（`helpers/review.py`），旧快照随之失效
 
 SRT remains the time source.

@@ -14,7 +14,7 @@ Idea 在概念发想时、Craft 在接手和视觉遇到瓶颈时读本页。这
 | 强调语气、情绪、转折 | 动态字体、停顿与揭晓、节奏剪接、画面与声音反差 | 外部 `hyperframes-animation` 的文字类 rules、`hyperframes-creative/references/beat-direction.md`；重点文字不等于整段字幕 |
 | 真实素材与抽象解释结合 | 页面拆层、标注、原图转为可理解模型、再回到证据 | 内置 [media-first](media-first.md) + [composition-craft](composition-craft.md)；来源与示意身份分清 |
 | 氛围、质感与声音 | 素材处理、图像、音效、音乐、声音引导注意 | 外部 `media-use`；按需读取对应类型和 provider 配置，授权、账号与费用另行核实 |
-| 风格与全片一致性 | 定制视觉语言或现有主题种子、字体/色彩/运动节奏统一 | 内置 [themes](themes.md) 及 visual/themes；外部 `hyperframes-creative`。主题不是创意方案，不必为了使用库存套一个不合题的主题 |
+| 风格与全片一致性 | 定制视觉语言、字体/色彩/运动节奏统一 | 画面风格归画面侧（`planners-ppt-hell` 的模板与风格文档），本 Skill 不选主题、不维护主题库；动效与节奏按 [author-spec](author-spec.md) / [style-spec](style-spec.md) 与 composition 实现，外部参考 `hyperframes-creative` |
 | 已有组件或复杂动效实现 | 复用可匹配的组件、模板、插值与 seek 方案 | 外部 `hyperframes-registry` 查可用组件；`hyperframes-keyframes` 处理复杂插值。匹配表达后再取资源，不从模板倒推创意 |
 | 静态证据、安静阅读 | 好的排版、裁切、逐项高亮、必要停留 | PIL/HTML/真实素材即可；静止可以是有意设计，复杂工具不自动更好 |
 

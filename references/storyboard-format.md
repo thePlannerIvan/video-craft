@@ -1,5 +1,8 @@
 # Storyboard Format
 
+> **老路线存档**：本页描述 `storyboard.md`（`timeline.json` 的人读伴侣），属于 page 十步路线的产物。
+> recompose 路线用 `recompose/lines.json` 与审阅页代替，新项目不写 storyboard；只有复活旧项目时才读本页。
+
 `storyboard.md` is the human-readable companion to `timeline.json`.
 
 Use this structure:

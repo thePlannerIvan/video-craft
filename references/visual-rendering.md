@@ -1,9 +1,6 @@
 # Rendering (delivery state)
 
-> **老路线存档**：本文里凡涉及 `import_svg_page` / `generate-composition` / `check_parity`
-> 或「保真页面(page)」的段落，都是 **page 十步路线的存档说明**，新项目不要照做。
-> 画面的唯一入口是 `helpers/film.py`（见 [film.md](film.md)），存档总览见
-> [legacy-page-route.md](legacy-page-route.md)。
+> 本文涉及 page 路线的段落已归档（见 [legacy-page-route.md](legacy-page-route.md)）；现行 recompose 路线见 [film.md](film.md) 与 [recompose-mode.md](recompose-mode.md)。命令集中在 [tools.md](tools.md)。
 
 
 `composition/` is the **single source** of the picture track. Review runs on the
@@ -15,7 +12,7 @@ so that one render is reproducible — no screen recording anywhere in the flow.
 
 ## Prerequisites
 
-- `references/timing-lock.md` passed: `python3 visual/scripts/generate-composition.py <project> --verify` exits 0
+- `references/timing-lock.md` passed: `helpers/film.py verify <project>` exits 0
 - All `feedback/*.jsonl` open items resolved or explicitly accepted
 
 ## Render
@@ -23,38 +20,28 @@ so that one render is reproducible — no screen recording anywhere in the flow.
 **`hyperframes` only works inside `composition/`.** It looks for `index.html` in
 the current directory; from the project root it reports "No composition found …
 Run npx hyperframes init to create a new composition" — and running `init` there
-**replaces the skeleton `generate-composition.py` produced**. `init` is not the
+**replaces the skeleton the archived `generate-composition.py` used to produce**. `init` is not the
 fix for anything in this flow.
 
 **Every render is preceded by the environment check — this is a required step, not
 an option:**
 
-```bash
-python3 helpers/check_render_env.py <project>/composition
-```
+环境判据：`check_render_env.py`（命令见 [tools.md](tools.md)「渲染、核验、包装」）。
 
 It fails early on the two things that otherwise surface mid-render: a font cache
 HyperFrames cannot write, and a Node older than 22. It cannot be wired into the
 render as an npm `prerender` hook: `package.json` belongs to `npx hyperframes init`
-(`scaffold.sh` runs it) and `generate-composition.py` never writes it — and the
+(run `npx hyperframes init` yourself) and `generate-composition.py` never writes it — and the
 transparent-overlay variant below calls `npx hyperframes render` directly, without
 npm. So the check is a step you run, and this line is where it is required.
 
-```bash
-cd <project>/composition
-npm run check        # 0 errors required before rendering
-npm run render -- --workers <N>   # → renders/<project>_<timestamp>.mp4
-```
+项目内先 `npm run check` 再 `npm run render`；命令与 workers 取值见 [tools.md](tools.md)「渲染、核验、包装」。
 
 **命令里必须带上 `--workers`。** `npm run render` 的默认值是 `hyperframes render` 自己的默认，
 也就是粗体的 `auto`（按核数开满 Chrome，见下面第 70 行的警告）。把 `check_render_env.py --json`
 报的 `workers` 传进去：
 
-```bash
-W=$(python3 <craft>/helpers/check_render_env.py <project>/composition --json \
-      | python3 -c 'import json,sys; print(json.load(sys.stdin)["workers"])')
-npx hyperframes render --workers "$W" -o /tmp/<name>.mp4 --resolution landscape -f 30 -q delivery
-```
+并发预算：用 `check_render_env.py --json` 的 `workers`，不要按核数开满。
 
 ### 首次渲染的 `compile` 是冷启动，别把它当成「渲不动」
 
@@ -94,9 +81,7 @@ Try --docker for containerized rendering
 
 `--docker` needs Docker. The actual way out is the font cache directory:
 
-```bash
-export HYPERFRAMES_FONT_CACHE_DIR="$PWD/.hyperframes-cache"
-```
+受限沙箱：字体缓存指到项目内（`HYPERFRAMES_FONT_CACHE_DIR`）。
 
 That variable is not in `--help`, and **`hyperframes doctor` does not check it** —
 the nine things `doctor` reports are version / node / memory / disk / frames cache
@@ -138,14 +123,7 @@ H.264/mp4, which has no alpha by design:
 | 网页 `<video>` | WebM/VP9 或 HEVC+alpha | ⚠️ **本机 WebM/VP9 往返丢透明**；HEVC+alpha 只有 Safari 认，Chrome/Firefox 不认 |
 | 平台交付（小红书/抖音/B站） | —— | ❌ 只吃 H.264/H.265，**透明必丢**。透明层只是中间产物：叠好背景后再导出不透明成片 |
 
-```bash
-cd <project>/composition
-npx hyperframes render --no-low-memory-mode --format png-sequence -o /tmp/alpha-frames
-python3 <path-to-skill>/visual/scripts/encode_transparent.py /tmp/alpha-frames \
-  -o renders/overlay.mov                      # PNG-in-MOV, small
-python3 <path-to-skill>/visual/scripts/encode_transparent.py /tmp/alpha-frames \
-  -o renders/overlay_4444.mov --codec prores  # ProRes 4444 for pro pipelines
-```
+透明层：`png-sequence` 渲染后交 `encode_transparent.py`；两条命令见 [tools.md](tools.md)「渲染、核验、包装」。
 
 - `--no-low-memory-mode` is REQUIRED — the low-memory screenshot-capture
   path drops alpha even for alpha-needing compositions (drawElement
@@ -165,17 +143,11 @@ python3 <path-to-skill>/visual/scripts/encode_transparent.py /tmp/alpha-frames \
   `yuva420p` and records `alpha_mode=1` yet round-trips opaque (a bad file
   that looks good).
 
-```bash
-python3 <path-to-skill>/helpers/check_alpha.py renders/overlay.mov   # exit 0 = 透明真的在
-```
+透明层另一条：PNG 序列 → MOV，参数见 [tools.md](tools.md)「渲染、核验、包装」。
 
 ## Verify the render (delivery)
 
-```bash
-ffprobe -v error -show_entries format=duration \
-  -show_entries stream=codec_name,width,height,avg_frame_rate \
-  -of default=noprint_wrappers=1 renders/*.mp4
-```
+以上变体的取舍与限制见本节正文；命令集中在 [tools.md](tools.md)。
 
 Assert:
 
@@ -212,7 +184,7 @@ it with a **root-relative** path (`assets/audio.mp3`); the framework owns playba
 so the render ships with a synced track — no external alignment step, unlike the
 old screen-recording flow. Keep it root-relative: a `../` path is rejected by
 `hyperframes check` (`invalid_parent_traversal_in_asset_path`), and
-`generate-composition.py --verify` now fails on one too.
+`hyperframes check` rejects one for the same reason.
 
 If the audio sounds too quiet/loud versus expectations, normalize the
 source once with ffmpeg loudnorm and re-render; do not touch the

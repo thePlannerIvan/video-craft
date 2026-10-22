@@ -519,6 +519,12 @@
       white-space: nowrap;
       min-width: 110px;
     }
+    #stage-mode-chip {
+      font-size: 11px; font-weight: 700; letter-spacing: .04em;
+      color: var(--amber); border: 1px solid currentColor; border-radius: 999px;
+      padding: 2px 9px; white-space: nowrap;
+    }
+    body[data-stage="live"] #stage-mode-chip { color: var(--lime); }
     .timeline-scrubber-wrap {
       flex: 1 1 auto;
       min-width: 80px;
@@ -1346,6 +1352,7 @@
         <button type="button" class="transport-btn" id="btn-prev-screen" title="上一屏 (快捷键: [)">上一屏</button>
         <button type="button" class="transport-btn" id="btn-next-screen" title="下一屏 (快捷键: ])">下一屏</button>
         <span class="transport-time" id="global-time-display">00:00.0 / 00:00.0</span>
+        <span id="stage-mode-chip" title="当前看到的是工程态（活 composition）还是成片态">成片态</span>
         <div class="timeline-scrubber-wrap" id="timeline-scrubber-wrap" title="拖拽或点击跳转全片时间点">
           <div class="timeline-track" id="timeline-track">
             <div class="timeline-progress" id="timeline-progress"></div>
@@ -2670,7 +2677,13 @@
       // 只是一张空占位。参数就是参数，不许改写。
       if (stageViewMode === "live" && mode !== "live") liveStage.pause();
       stageViewMode = mode;
+      window.__vcStageMode = mode;
       document.body.dataset.stage = mode;
+      const modeChip = document.getElementById("stage-mode-chip");
+      if (modeChip) {
+        const labels = { live: "工程态", composite: "成片态", svg: "动效舞台", verbatim: "逐字剪辑" };
+        modeChip.textContent = labels[mode] || mode;
+      }
       updateChoreoDeckMode(mode);
 
       document.body.classList.toggle("workspace-verbatim", mode === "verbatim");
@@ -3774,6 +3787,10 @@
         }
       }
       if (compVid) {
+        // 成片通道的字幕也按播放时间更新。此前只有 SVG/活舞台走 updateStageSubtitle，
+        // 切到成片后字幕停在旧句子或干脆不显示 —— 用户看到的"字幕不跟视频动"。
+        compVid.addEventListener("timeupdate", () => updateStageSubtitle(null, compVid.currentTime));
+        compVid.addEventListener("seeked", () => updateStageSubtitle(null, compVid.currentTime));
         compVid.addEventListener("loadedmetadata", fitLayerStack);
         compVid.addEventListener("loadeddata", fitLayerStack);
         compVid.addEventListener("timeupdate", syncLayers);
@@ -5257,7 +5274,12 @@
   function watchPreview() {
     setTimeout(() => {
       const live = document.getElementById("live-stage-frame");
+      const liveMedia = RD.media && RD.media.liveStage;
+      // 没有工程态（例如从成品轨搭建的工程）是正常形态：当前就是成片态，
+      // 不许把它显示成"工程预览没有就绪"的报错。
+      if (!liveMedia || !(liveMedia.url || liveMedia.studioUrl || liveMedia.serverUrl)) return;
       if (live && live.ready) return;
+      if (window.__vcStageMode !== "live") return;
       const box = document.querySelector(".player-box");
       if (!box || document.getElementById("preview-fallback")) return;
       const el = document.createElement("div");

@@ -11,24 +11,20 @@ import re
 from difflib import SequenceMatcher
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "helpers"))
+from _timecode import flatten as _flatten, parse_srt_file as _parse_srt_file, parse_time as _parse_time  # noqa: E402
+
 
 def parse_time(value: str) -> int:
-    hours, minutes, rest = value.replace('.', ',').split(':')
-    seconds, millis = rest.split(',')
-    return ((int(hours) * 60 + int(minutes)) * 60 + int(seconds)) * 1000 + int(millis)
+    """统一实现见 `helpers/_timecode.py`（合并地图 M1）。"""
+    return _parse_time(value)
 
 
 def parse_srt(path: Path) -> list[dict]:
-    text = path.read_text(encoding='utf-8-sig').replace('\r\n', '\n')
-    entries = []
-    for block in re.split(r'\n\s*\n', text.strip()):
-        lines = [line.strip() for line in block.splitlines() if line.strip()]
-        time_index = next((i for i, line in enumerate(lines) if '-->' in line), None)
-        if time_index is None:
-            continue
-        start, end = [part.strip() for part in lines[time_index].split('-->', 1)]
-        entries.append({'index': len(entries), 'startMs': parse_time(start), 'endMs': parse_time(end), 'text': ' '.join(lines[time_index + 1:])})
-    return entries
+    """统一实现见 `helpers/_timecode.py`；输出形状保持不变。"""
+    return [{"index": i, "startMs": cue["startMs"], "endMs": cue["endMs"],
+             "text": _flatten(cue, " ")}
+            for i, cue in enumerate(_parse_srt_file(path))]
 
 
 def normalize_id(value: str, index: int) -> str:

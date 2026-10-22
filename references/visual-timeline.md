@@ -1,9 +1,6 @@
 # Visual timeline (EDL-derived)
 
-> **老路线存档**：本文里凡涉及 `import_svg_page` / `generate-composition` / `check_parity`
-> 或「保真页面(page)」的段落，都是 **page 十步路线的存档说明**，新项目不要照做。
-> 画面的唯一入口是 `helpers/film.py`（见 [film.md](film.md)），存档总览见
-> [legacy-page-route.md](legacy-page-route.md)。
+> 本文涉及 page 路线的段落已归档（见 [legacy-page-route.md](legacy-page-route.md)）；现行 recompose 路线见 [film.md](film.md) 与 [recompose-mode.md](recompose-mode.md)。命令集中在 [tools.md](tools.md)。
 
 
 The visual layer's timing comes from **the EDL's measured timeline**, not from a
@@ -18,7 +15,7 @@ edl.json + segment_durations.json + caption_words.json + captions.json
                               ▼
                     timeline/timeline.json
                               │
-                 visual/scripts/generate-composition.py
+                 （已归档）generate-composition.py
                               ▼
                   composition/index.html
 ```
@@ -52,10 +49,7 @@ Optional:
 
 ## Step 1 — derive the cue entries
 
-```bash
-python helpers/timeline_derive.py <edit_dir> --stats
-python helpers/timeline_derive.py <edit_dir> --entries-only > /tmp/entries.json
-```
+派生与统计命令见 [tools.md](tools.md)「SVG 与视觉时间」；`--stats` / `--entries-only` 用于核听。
 
 Each entry carries the SRT-compatible contract (`index`, `startMs`, `endMs`,
 `durationMs`, `text`) **plus** what only the EDL side knows: `segment`,
@@ -114,28 +108,25 @@ cross into another blueprint's beat.
 
 ## Step 3 — build the timeline
 
-```bash
-python helpers/timeline_derive.py <edit_dir> \
-  --grouping timeline/grouping.json \
-  --alignment timeline/content-alignment.json \
-  --output-timeline timeline/timeline.json \
-  --output-durations composition/public/step-durations.json
-```
+完整派生命令（`--grouping` / `--alignment` / `--output-timeline` / `--output-durations`）见 [tools.md](tools.md)「SVG 与视觉时间」。
 
 `timeline.json` is the project-level truth for visual steps. Per step it emits
 `startMs` / `endMs` / `durationMs` / `caption` (computed from the first and last
 cue), the creative fields from `grouping.json`, and the EDL binding
 (`cueRange`, `segments`, `wordCount`, `sourceRange`).
 
-## Step 4 — generate the composition skeleton
+## 时间轴自报时间来源
 
-```bash
-python visual/scripts/generate-composition.py <project> --theme <theme-id>
-```
+`timeline.json` 顶层带 `timeSource`（`measured` / `measured-guessed` / `projected` / `nominal` / `srt-import`）
+与 `measuredTotalMs`。字幕、交付核验都按它取时间基准：只有 `measured` 才用渲染记录的分段时长，
+其余用标称时长。**画面与字幕共用这一条时间轴，不存在第二条。**
 
-It writes one `clip` per step with `data-start` / `data-duration` taken straight
-from `timeline.json`. **Do not edit those attributes by hand** — change the
-grouping and regenerate.
+## Step 4 — hand-write the composition
+
+recompose 路线没有生成器：`composition/src/scenes/*.js` 由 Agent 按 `film.py` 的拆解手写，
+每个 clip 的 `data-start` / `data-duration` 从 `timeline.json` 取。**不要手改这两个属性**——
+改分组、重派生时间轴，再让场景从新 timeline 读数。
+（page 路线的 `generate-composition.py` 已归档，见 [legacy-page-route.md](legacy-page-route.md)。）
 
 ## Checkpoint
 
@@ -144,8 +135,7 @@ Stop after `grouping.json`, `timeline.json` and `storyboard.md` exist, and revie
 composition and open them with `live_stage.py` + `build_review.py`, and let the
 user settle **the layout and the rhythm** in one pass. Only when that route has no
 composition to play (hand-drawn frame-by-frame) do you render those slices.
-The theme was already decided when the picture was made (`themes.md`), so it is
-not re-picked here. A written storyboard asks the user to imagine the thing they
+画面风格在画面侧（`planners-ppt-hell`）已经定了，这里不重新选风格。 A written storyboard asks the user to imagine the thing they
 are being asked to approve.
 
 Before building the rest, confirm:

@@ -61,12 +61,12 @@ BUNDLE_SRC = re.compile(r'<script[^>]+src="(/assets/[^"]+\.js)"')
 
 
 def project_root(arg: str) -> Path:
-    p = Path(arg).resolve()
-    if (p / "composition").is_dir():
-        return p
-    if p.name == "edit" and (p.parent / "composition").is_dir():
-        return p.parent
-    raise SystemExit(f"no composition/ under {p} — nothing to stage")
+    """统一实现见 `helpers/_paths.py`（合并地图 M3）；仍要求项目下有 composition/。"""
+    from _paths import resolve
+    root, _edit = resolve(arg)
+    if not (root / "composition").is_dir():
+        raise SystemExit(f"no composition/ under {root} — nothing to stage")
+    return root
 
 
 def hf_state_env(root: Path) -> dict:

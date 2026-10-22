@@ -104,6 +104,8 @@ def main():
             alignment_dir=alignment.parent,
             project_root=args.project.resolve(),
         )
+        data['timeSource'] = 'srt-import'
+        data['measuredTotalMs'] = None
         path = args.project.resolve() / 'timeline/timeline.json'
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')

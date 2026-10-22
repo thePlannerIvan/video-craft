@@ -32,7 +32,6 @@ import recompose_plan
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "visual" / "scripts"))
 from snapshot_input import resolve_snapshot  # noqa: E402
-from import_svg_page import import_page, _inline_image_hrefs  # noqa: E402
 
 
 _FILE_DIGEST_CACHE: dict = {}
@@ -76,45 +75,22 @@ def find_scene_files(project_root: Path, edit_dir: Path) -> dict:
 
 
 def parse_srt(srt_text: str) -> list[dict]:
-    """解析 SRT 字幕为结构化 cue 列表。"""
-    cues = []
-    pattern = re.compile(
-        r'(\d+)\s*\r?\n(\d{2}:\d{2}:\d{2}[,\.]\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}[,\.]\d{3})\s*\r?\n(.*?)(?=\r?\n\r?\n|\Z)',
-        re.DOTALL
-    )
-    def to_seconds(t_str: str) -> float:
-        t_str = t_str.replace(',', '.')
-        parts = t_str.split(':')
-        return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
-
-    for match in pattern.finditer(srt_text):
-        idx = int(match.group(1))
-        start_sec = to_seconds(match.group(2))
-        end_sec = to_seconds(match.group(3))
-        text = ' '.join(match.group(4).strip().splitlines())
-        cues.append({
-            "id": idx,
-            "start": round(start_sec, 3),
-            "end": round(end_sec, 3),
-            "startMs": int(round(start_sec * 1000)),
-            "endMs": int(round(end_sec * 1000)),
-            "text": text
-        })
-    return cues
+    """解析 SRT 字幕为结构化 cue 列表。统一实现见 `helpers/_timecode.py`（合并地图 M1）。"""
+    from _timecode import flatten as _flatten, parse_srt_text as _parse_srt_text
+    return [{
+        "id": cue["index"],
+        "start": round(cue["startMs"] / 1000, 3),
+        "end": round(cue["endMs"] / 1000, 3),
+        "startMs": cue["startMs"],
+        "endMs": cue["endMs"],
+        "text": _flatten(cue, " "),
+    } for cue in _parse_srt_text(srt_text)]
 
 
 def resolve_project_paths(target: Path) -> tuple[Path, Path]:
-    """根据传入路径识别 project_root 与 edit_dir。"""
-    target = target.resolve()
-    if target.name == "edit":
-        project_root = target.parent
-        edit_dir = target
-    else:
-        project_root = target
-        edit_dir = project_root / "edit"
-        if not edit_dir.exists() and (project_root / "edl.json").exists():
-            edit_dir = project_root
-    return project_root, edit_dir
+    """统一实现见 `helpers/_paths.py`（合并地图 M3）。"""
+    from _paths import resolve
+    return resolve(target)
 
 
 def import_snapshot_scenes(project_root: Path) -> dict[str, dict] | None:
@@ -128,6 +104,10 @@ def import_snapshot_scenes(project_root: Path) -> dict[str, dict] | None:
     snapshot = resolve_snapshot(project_root)
     if not snapshot:
         return None
+
+    # 遗留适配器只在"确实要导入旧快照"时加载：live 路径（recompose）不碰它，
+    # 也不在模块导入期把它拉进 sys.modules。
+    from import_svg_page import import_page, _inline_image_hrefs
 
     result = {}
     for key in snapshot.order:
@@ -1194,6 +1174,10 @@ def main():
                         help="不要自动生成审阅副本（默认复合片超过 80MB 时生成）")
     parser.add_argument("--mode", choices=["auto", "composite", "speaker_only", "animation_only"],
                         default="auto", help="审阅模式（默认 auto 自动识别）")
+    parser.add_argument("--allow-static", action="store_true",
+                        help="允许在没有活舞台时仍构建（默认拒绝：有 composition 却审成片是流程错误）")
+    parser.add_argument("--allow-page", action="store_true",
+                        help="仅旧项目/测试：允许构建已退休的 page 十步审阅页")
     args = parser.parse_args()
 
     project_root, edit_dir = resolve_project_paths(Path(args.project))
@@ -1209,6 +1193,22 @@ def main():
     data = build_review_data(project_root, edit_dir, args.mode,
                              allow_review_copy=not args.no_review_copy,
                              slices=args.slices)
+
+    if data["buildMode"] == "page" and not args.allow_page:
+        print("✗ 旧十步审阅页（page 模式）已退休。审阅页只保留 recompose 布局：", file=sys.stderr)
+        print("  左侧大预览 + 横向 Beat + 右侧逐句调整/历史反馈。", file=sys.stderr)
+        print(f"  先跑：python3 helpers/recompose_plan.py init {project_root}", file=sys.stderr)
+        sys.exit(2)
+
+    # 有 composition 却没有活舞台 = 审的不是当前合成。静默退回成片态是流程错误：
+    # 作者会对着一个“看起来正常”的页面提意见。默认拒绝，只留显式降级。
+    has_composition = (project_root / "composition" / "index.html").is_file()
+    if has_composition and not data["media"].get("liveStage") and not args.allow_static:
+        print("✗ 这个工程有 composition，但活舞台没有就绪——这一版审的不是工程态。", file=sys.stderr)
+        print("  先跑：python3 helpers/review.py <项目>（或先 helpers/live_stage.py <项目> 再重建）", file=sys.stderr)
+        print("  确实只要静态页/成片态时，显式加 --allow-static。", file=sys.stderr)
+        sys.exit(2)
+
     data_path, index_path = write_review_files(project_root, data)
 
     print(f"✓ 审阅数据契约构建完成: {data_path}")

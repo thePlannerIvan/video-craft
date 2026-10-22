@@ -9,17 +9,7 @@
 
 ## 三个动词
 
-```bash
-# 1. 抽原页：从 PPT 导出的 SVG 抽出元素清单，写成 pages/<page>.md 骨架
-python3 helpers/film.py outline <project> --page page_04 --source <原页SVG绝对路径>
-
-# 2. 登记 beat ↔ 原页 的映射（一个 beat 可以指向同一页）
-python3 helpers/film.py pages <project> --map ch01=page_01,ch02=page_04,ch05=page_08b
-python3 helpers/film.py pages <project>          # 只看映射与缺哪页
-
-# 3. 闸门：拆解填满了吗
-python3 helpers/film.py verify <project> [--json]
-```
+三个动词 `outline` / `pages` / `verify`：抽原页元素清单、登记 beat↔原页映射、闸门检查。完整命令、参数与失败信号见 [tools.md](tools.md)「SVG 与视觉时间」。
 
 `outline` 按启发式**预填处置**（页脚/页码/眉标→删、大字→保留、长句→拆），但**「对应口播」
 一列留空**——那一列必须人/模型读着口播稿填，这是这道闸门真正的价值。
@@ -56,5 +46,5 @@ python3 helpers/film.py verify <project> [--json]
 - 强调**不要用荧光外框**（作者 2026-10-21 明确否掉）：用字号放大、极轻位移、字重变化；
 - 装饰性方块阵列换成有含义的图元（刻度尺、散开的答案、断裂的回溯线）；
 - 连接线只表达它真正代表的关系：顺序用直角折线/横向流，层级用竖线，**斜线一律不用**；
-- 画面层只占右侧/上部：左侧 500 给人物、底部 200 给字幕（在合成阶段贴回，见 [delivery.md](delivery.md)）；
-- 原页画得清楚的模型图（四卡、五步流程、架构图、3×3、OKR 环）**按原构图搬**，不重画。
+- 画面层只占右侧/上部：人物位与字幕安全区**只从 `recompose.json` 的 `personSlot` / `captionSafe` 取**（默认 `x=0..620`、`captionSafe.y=885`），不要在场景里手写 500/200 这类坐标；
+- 原页画得清楚的模型图（四卡、五步流程、架构图、3×3、OKR 环）**默认按原构图搬**，不重画。判断标准是它适不适合作为视频动画呈现：适合就遵循原片，不适合才重排或重做，并在拆解表写明理由。拆解每片重做，不维护跨项目元素库。

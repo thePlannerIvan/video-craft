@@ -190,6 +190,7 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
             srt: Path | None, out_dir: Path | None, burn: bool, skip_gate: bool,
             as_json: bool, no_person: bool = False, render: bool = False) -> int:
     geo = _geometry(project)
+    edit_dir = project / "edit"
     out = (out_dir or project / "成品")
     out.mkdir(parents=True, exist_ok=True)
     name = project.name
@@ -356,18 +357,48 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
     check("字幕安全区无内容", not intrusions,
           "空" if not intrusions else f"这些时刻有内容会被字幕压住：{intrusions[:4]}")
 
-    # 6) 字幕：外挂优先
+    # 6) 字幕：外挂优先；交付的字幕必须与成片同一条时间轴
     srt_out = out / f"{name}_字幕.srt"
     if srt_path and srt_path.is_file():
         if srt_path.resolve() != srt_out.resolve():
             shutil.copyfile(srt_path, srt_out)
+        from _cutmap import (DURATION_TOLERANCE_S, compare_srt,
+                             expected_film_duration_s, load as load_cut_map,
+                             paths as cut_paths, validate as validate_cut_map,
+                             verify_srt_pair)
+        from _timecode import parse_srt_file
+        cut_map, cut_problems = load_cut_map(edit_dir)
+        if cut_map is not None:
+            cut_problems += validate_cut_map(cut_map, project)
+        cues = parse_srt_file(srt_out) if srt_out.is_file() else []
+        overrun = bool(cues) and cues[-1]["endMs"] / 1000 > dur + 0.05
+        if cut_problems:
+            check("字幕时间轴", False, "；".join(cut_problems[:2]))
+        elif cut_map is not None:
+            # deliver.py 产出的是渲染时间轴成片；二次剪成片由项目的剪片脚本产出，
+            # 交付字幕只能按 cut-map 逐条复算（项目剪片后应直接用 verify_delivery 核验）。
+            resolved = cut_paths(cut_map, project)
+            pair = verify_srt_pair(resolved["srt_source"], srt_out, cut_map,
+                                   film_duration_s=dur)
+            expected = expected_film_duration_s(cut_map)
+            same_film = expected is not None and abs(dur - expected) <= DURATION_TOLERANCE_S
+            detail = (f"{srt_out.name} 是按 cut-map 复算的剪后字幕，成片 {dur:.3f}s 与 cut-map 一致"
+                      if not pair and same_film else
+                      "；".join((pair or [f"成片 {dur:.3f}s 与 cut-map 推算的 {expected:.3f}s 不一致"])[:2]))
+            check("字幕时间轴", not pair and same_film, detail)
+        else:
+            master = edit_dir / "subtitles.srt"
+            problems = compare_srt(srt_out, master) if master.is_file() else []
+            detail = ("；".join(problems[:2]) if problems else
+                      (f"字幕末条 {cues[-1]['endMs'] / 1000:.3f}s 超出成片 {dur:.3f}s" if overrun else
+                       "与流水线字幕同一条时间轴"))
+            check("字幕时间轴", not problems and not overrun, detail)
         check("字幕交付", True, f"外挂 {srt_out.name}（烧录={burn}）")
     else:
         note("没有字幕源；如需字幕请 --srt")
 
     # 7) 最终签字：交付核验。判据仍归 verify_delivery（它回答"这一版能不能发"），
     #    deliver 只把它的结论并入报告，不再自己下第二个结论（合并地图 M5-A）。
-    edit_dir = project / "edit"
     if target.is_file() and (edit_dir / "edl.json").is_file():
         verdict = subprocess.run(
             [sys.executable, str(Path(__file__).resolve().parent / "verify_delivery.py"),

@@ -562,3 +562,12 @@ deletion from an accidental loss.
 - **原因**：规则是 prose，渲染入口（`render.py` / `hyperframes render` / `npm run render`）都不读审阅状态。只要 agent 想渲，就没有东西拦。
 - **修正原则**：渲染前第一步跑 `render_gate.py`：`review/review_data.json.snapshot` 必须被 `review/review-submissions.json` 或 `feedback/*.jsonl` 里至少一条人工提交覆盖，且 `sourceManifest` 与磁盘一致 —— 源改过但没重建，旧提交不算覆盖「现在这一版」。工程态 `--engineering --out` 被限制在 `edit/_engineering/`，不能改个文件名当交付。返修后必须重新 build、重新提交，不能拿旧提交放行新源码。
 - **证据**：真实 v1 工程 0 条提交时退 1，并列出 `sourceManifest` 的漂移（源改过、未重建）；`tests/test_render_gate.py` 覆盖 0 提交 / 旧快照 / 源漂移 / 匹配放行 / 工程态越界。
+
+## 78. 成片后剪停顿，字幕按剪点顺移：坐标空间混用 → 最多偏 3.2 秒
+- **enforcement**：check:helpers/_cutmap.py
+
+- **module**：`helpers/verify_delivery.py` + 项目侧剪片脚本 ｜ **状态**：已复现
+- **现象**：2026-10-22 XHS 系列 v2：成片 354.8s 渲染后又剪 16 刀停顿（−20.03s）得到 334.2s 交付片；`v2_字幕.srt` 有 31 条偏差 >200ms、最大 3.2s，片尾还超出片长约 0.2s。旧交付核验（字幕末条 vs 总时长、静音、黑帧）全部通过，是作者看片发现的。
+- **原因**：剪片是项目自己写的脚本，字幕顺移在循环里边改边比：`a,b` 已经被前几刀平移过，又拿去和后几刀的**原始坐标**比较；本应「整条窗口之后」的情况被误判成「跨窗口」，于是每条跨刀字幕少扣一次刀长，误差随刀数累积。Skill 没有「成片二次剪」这条交付形态的任何闸门，SRT 只核末条、成片只核与渲染记录的总长，这条路径整个绕过了核验。
+- **修正原则**：二次剪必须声明 `edit/cut-map.json`（母版时长、母版时间轴上的剪点、剪前/剪后字幕）。映射用单调分段函数 `t' = t - 已剪时长(t)`，窗口内部压到窗口起点；剪后字幕必须能被「剪前字幕 + 剪点」逐条复算（条数、文字、起止 ±20ms）。`verify_delivery.py` 见到 cut-map 才按它核片长与字幕；没有声明又比渲染记录短 >0.5s 直接拒绝。判据实现是 `helpers/_cutmap.py`。
+- **证据**：同一份字幕——错误实现偏 31 条（最大 3.2s）；`_cutmap.verify_srt_pair` 对正确重算 0 条问题、对旧文件逐条报「时间对不上 cut-map」并拒绝交付。回归 `tests/test_cut_map.py`；XHS v2/v3 用 cut-map 核验通过（v2 剪 16 刀 −19.91s，v3 剪 7 刀 −4.04s）。

@@ -16,7 +16,14 @@ Checks, in the order a failure would hurt:
   5. the first / middle / last frames are written out for human inspection —
      a green schema is not a picture;
   6. when a delivery directory is given, every copied artefact is byte-identical
-     to its working copy (two valid-looking SRTs in one project is a real trap).
+     to its working copy (two valid-looking SRTs in one project is a real trap);
+  7. a film that was cut AGAIN after rendering must declare its cuts in
+     `edit/cut-map.json`; the delivered SRT must then be reproducible from the
+     pre-cut SRT plus those cuts, cue by cue (`_cutmap.verify_srt_pair`).
+     Matching the master timeline is not the same as matching the delivered
+     film: on the 2026-10-22 XHS series the post-cut SRT drifted up to 3.2s
+     while every old check stayed green. No cut-map + film ≠ render record =
+     refusal, not a guess.
 
 Usage:
   <venv>/python helpers/verify_delivery.py <edit_dir> \
@@ -170,6 +177,56 @@ def check_deliverable_specs(project: Path, deliver_dir: Path,
             hard.append("成品之间音轨不同 —— 多支成片必须共用同一条音轨")
 
 
+def post_cut_problems(edit_dir: Path, duration: float, hard: list, warn: list,
+                      report: dict) -> tuple[dict | None, Path | None]:
+    """二次剪成片的声明与字幕核验；返回 `(cut_map, film_srt)`。
+
+    没有 `edit/cut-map.json` 时返回 `(None, None)`，由调用方按「成片必须是渲染
+    记录那一版」处理。有声明时：成片时长必须与剪点推算一致，交付字幕必须能被
+    「剪前 SRT + 剪点」逐条复算出来——**对得上母版不代表对得上交付成片**。
+    """
+    from _cutmap import (DURATION_TOLERANCE_S, describe, expected_film_duration_s,
+                         load, paths, validate, verify_srt_pair)
+
+    payload, problems = load(edit_dir)
+    if payload is None:
+        hard.extend(problems)
+        return None, None
+    problems += validate(payload, edit_dir.parent)
+    if problems:
+        hard.extend(problems)
+        return payload, None
+
+    resolved = paths(payload, edit_dir.parent)
+    film_srt = resolved["srt_film"]
+    expected = expected_film_duration_s(payload)
+    report["cut_map"] = {
+        "path": str(edit_dir / "cut-map.json"),
+        "summary": describe(payload),
+        "cuts": len(payload.get("cuts") or []),
+        "expected_film_s": expected,
+        "srt_source": str(resolved["srt_source"]),
+        "srt_film": str(film_srt),
+    }
+    print(f"  二次剪声明：{describe(payload)}")
+    if expected is not None and abs(duration - expected) > DURATION_TOLERANCE_S:
+        hard.append(f"成片 {duration:.3f}s 与 cut-map 推算的 {expected:.3f}s 相差 "
+                    f"{duration - expected:+.3f}s——剪点表与实际成片不是同一版")
+    hard.extend(verify_srt_pair(resolved["srt_source"], film_srt, payload,
+                                film_duration_s=duration))
+    cues = srt_cues(film_srt)
+    if cues:
+        report["cues"] = len(cues)
+        report["srt_tail_s"] = round(cues[-1][1], 3)
+        print(f"  交付字幕 {len(cues)} 条（cut-map 声明），末条 {cues[-1][1]:.3f}s")
+        if cues[-1][1] > duration + 0.05:
+            hard.append(f"交付字幕末条 {cues[-1][1]:.3f}s 超出成片时长 {duration:.3f}s")
+        gaps = [p for p in zip(cues, cues[1:]) if p[0][1] > p[1][0] + 0.001]
+        if gaps:
+            warn.append(f"{len(gaps)} 处字幕时间重叠")
+    return payload, film_srt
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("edit_dir", type=Path)
@@ -212,6 +269,13 @@ def main() -> int:
     else:
         hard.append("成片没有音频流")
 
+    cut_map, film_srt = post_cut_problems(edit_dir, duration, hard, warn, report)
+    extra_sources: dict[str, Path] = {}
+    if cut_map is not None:
+        extra_sources[video.name] = video
+    if film_srt is not None:
+        extra_sources[film_srt.name] = film_srt
+
     if args.deliver_dir:
         check_deliverable_specs(edit_dir.parent, args.deliver_dir.resolve(), hard, warn, report)
 
@@ -221,9 +285,13 @@ def main() -> int:
     if timeline_end:
         expected = timeline_end / 1000
         report["timeline_end_s"] = round(expected, 3)
-        if abs(duration - expected) > 0.5:
+        if cut_map is not None:
+            print(f"  画面时间轴（母版）末段 {expected:.3f}s；成片按 cut-map 是 {duration:.3f}s")
+        elif abs(duration - expected) > 0.5:
             hard.append(f"成片 {duration:.3f}s 与画面时间轴末段 {expected:.3f}s "
-                        f"相差 {duration - expected:+.3f}s——画面与时间轴不是同一版")
+                        f"相差 {duration - expected:+.3f}s——画面与时间轴不是同一版"
+                        "（成片被二次剪过？提供 edit/cut-map.json 声明剪点，"
+                        "或把剪点写回 EDL 重渲）")
         else:
             print(f"  时长与画面时间轴一致（{expected:.3f}s）")
 
@@ -235,13 +303,24 @@ def main() -> int:
             hard.append(f"segment_durations.json[{tag}] 记录的是另一次 EDL 的渲染"
                         "（哈希不符）——按当前 EDL 重新渲染，再交付")
         elif abs(duration - measured) > 0.5:
-            hard.append(f"成片 {duration:.3f}s 与渲染记录[{tag}]的实测合计 {measured:.3f}s "
-                        f"相差 {duration - measured:+.3f}s——成片可能被截断或替换过")
+            if cut_map is not None:
+                print(f"  成片 {duration:.3f}s 比渲染记录[{tag}] {measured:.3f}s 短："
+                      f"按 cut-map 二次剪（{report.get('cut_map', {}).get('summary', '')}）")
+            else:
+                hard.append(f"成片 {duration:.3f}s 与渲染记录[{tag}]的实测合计 {measured:.3f}s "
+                            f"相差 {duration - measured:+.3f}s——成片被剪过但没有声明："
+                            "把剪点写回 EDL 重渲，或提供 edit/cut-map.json"
+                            "（schema 见 references/delivery.md）")
         else:
             print(f"  时长与渲染记录（{tag}）一致（{measured:.3f}s）")
 
     srt = edit_dir / "subtitles.srt"
-    if srt.exists():
+    if cut_map is not None:
+        # 交付字幕已由 post_cut_problems 按 cut-map 逐条核过；母版 SRT 不参与这里的比较
+        if srt.exists():
+            warn.append(f"{srt.name} 是剪前字幕（母版时间轴），交付用的是 cut-map 声明的"
+                        f"{film_srt.name if film_srt else '剪后字幕'}")
+    elif srt.exists():
         cues = srt_cues(srt)
         report["cues"] = len(cues)
         if cues:
@@ -323,9 +402,15 @@ def main() -> int:
         candidates = [edit_dir / n for n in ("final.mp4", "preview.mp4", "subtitles.srt")
                       if (edit_dir / n).exists()]
         by_hash = {digest(c)[0]: c for c in candidates}
+        # 二次剪成片的工作区副本不在 edit/ 里：成片与剪后字幕由 cut-map 声明，
+        # 交付目录按名字或内容哈希对回它们，而不是误报「找不到对应文件」。
+        for path in extra_sources.values():
+            by_hash.setdefault(digest(path)[0], path)
         for dst in sorted(p for p in out.glob("*") if p.is_file()):
             src = edit_dir / dst.name
             if not src.exists():
+                src = extra_sources.get(dst.name)
+            if src is None:
                 src = by_hash.get(digest(dst)[0])
             if src is None:
                 warn.append(f"交付目录里的 {dst.name} 在工作区找不到对应文件")

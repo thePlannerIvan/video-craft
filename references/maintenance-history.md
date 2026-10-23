@@ -1,5 +1,16 @@
 # 维护记录（升级，不是 CHANGELOG）
 
+## 2026-10-23 · 成片二次剪的声明与交付闸门（cut-map）
+
+| 做了什么 | 为什么 | 影响了哪些 module | 删了什么 |
+|---|---|---|---|
+| 新增 `edit/cut-map.json` 契约与 `helpers/_cutmap.py`（单调分段映射、剪后字幕逐条复算）；`verify_delivery.py` 见到 cut-map 就核成片时长与 `srt.film`，没有声明又比渲染记录短 >0.5s 直接拒绝；`deliver.py` 交付前核字幕时间轴；文档补齐规则与 schema | 2026-10-22 XHS v2：成片渲染后又剪 16 刀停顿，字幕按剪点顺移写错（坐标空间混用），最大偏 3.2s，旧核验全绿。Skill 没有「成片二次剪」这条交付形态，项目手写脚本两次踩同一坑 | `helpers/_cutmap.py`（新）、`helpers/verify_delivery.py`、`helpers/deliver.py`、`references/delivery.md`、`SKILL.md` 第 10 步、`references/architecture.md`、`references/tools.md`、`GOTCHAS.md`（#78）、`tests/test_cut_map.py`（新） | — |
+
+**验证（本次亲手跑的）**：`Ran 503 tests — OK`（基线 485；新增 18 条 cut-map 用例）；`check_review_template.py` 0 项不通过、`--prove` 9 条全响；`spec_lint.py` 退 0；`lint_skill.py` 无确定错误（10 处路径待人工核对，均为既有）。
+
+**真实项目**：XHS v2/v3 用 `edit/cut-map.json` 通过 `verify_delivery.py`（v2 剪 16 刀 −19.91s，v3 剪 7 刀 −4.04s）；把旧版 `v2_字幕.srt` 放回去会逐条报「时间对不上 cut-map」并拒绝交付。v1 仍被拒绝：`segment_durations.json[v1_recut]` 与当前 `edit/edl.json` 哈希不符（2026-10-22 14:36 重渲后 14:46 又改过 EDL），需先修复 EDL/重渲。
+
+
 ## 2026-10-22 · 新增 `concept-film` 概念电影风格
 
 | 做了什么 | 为什么 | 影响了哪些 module | 删了什么 |

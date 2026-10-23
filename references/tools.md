@@ -342,6 +342,8 @@ python3 "<craft>/helpers/export_video.py" "<project>" --mode composite --final "
 python3 "<craft>/helpers/export_video.py" "<project>" --mode split --animation "<已渲染动画.mp4>" --final "<已渲染整片.mp4>"
 python3 "<craft>/helpers/export_deliverables.py" "<edit>" --videos final.mp4 --srt subtitles.srt --out "<交付目录>"
 python3 "<craft>/helpers/verify_delivery.py" "<edit>" --video "<交付整片>" --deliver-dir "<交付目录>" --json
+# 成片在渲染后被二次剪过（剪停顿等）：先把剪点写进 edit/cut-map.json，再用同一条命令核验——
+# 没有 cut-map 又比渲染记录短 >0.5s 会被拒绝（契约见 references/delivery.md）
 python3 "<craft>/helpers/verify_delivery.py" "<edit>" --video "<画面成片>" --no-audio --json   # 无声画面轨：不要求音轨
 python3 "<craft>/helpers/clean_edit_dir.py" "<edit>"        # 交付确认后才可清理；首次先呈清单
 ```

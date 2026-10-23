@@ -368,6 +368,12 @@ python3 "<craft>/helpers/render_gate.py" "<project>" --out "<实际成片路径>
 ```bash
 python3 "<craft>/helpers/check_motion_targets.py" "<project>"
 ```
+**成片在渲染后被二次剪过（例如剪停顿）不是默认可交付形态。** 剪点必须写进
+`edit/cut-map.json`，剪后字幕必须由剪前字幕 + 同一份剪点逐条复算；`verify_delivery.py`
+会按 cut-map 核成片时长与每一条字幕（条数/文字/起止 ±20ms），没有声明又比渲染记录短就拒绝交付。
+映射是单调分段函数，**禁止边遍历边改时间**（2026-10-22 XHS v2 因此最大偏 3.2 秒）。
+契约见 [delivery.md](references/delivery.md)「成片被二次剪过」。
+
 
 其余交付核验（`verify_delivery.py` / `export_deliverables.py` / `state_fingerprint.py`）与 `check_parity.py`（仅老 page 项目）见 [tools.md](references/tools.md)「渲染、核验、包装」。
 

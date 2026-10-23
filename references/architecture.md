@@ -127,7 +127,7 @@ Craft 默认遵循 board 构图重做动画，原片不适合动画时才重排�
 | `helpers/check_caption_breaks.py` | 字幕断句：量词、孤块、句中切 | `check_caption_breaks.py <path>` | 不判断语义断句好不好（那是读一遍） |
 | `helpers/check_alpha.py` | 交付前透明层是否真的透明（读**抽出的 alpha 平面**） | `check_alpha.py <file>` | 不信 `ffprobe` 的 `pix_fmt`（两个方向都会骗人） |
 | `helpers/verify_av.py` | 渲染文件的轨与尾（响度吃掉结尾字、多机位偏移） | `verify_av.py --tracks a.mp4 b.mp4 ／ --tails a.mp4 ／ --pair face.mp4 base.mp4 ／ --all a.mp4 b.mp4` | 不检查交付副本（那是 `verify_delivery`） |
-| `helpers/verify_delivery.py` | **交付副本**：与工作区逐字节、时长对渲染记录、字幕尾 | `verify_delivery.py <edit_dir> [--video] [--deliver-dir]` | 不看源素材 |
+| `helpers/verify_delivery.py` | **交付副本**：与工作区逐字节、时长对渲染记录、字幕尾；成片被二次剪过时按 `edit/cut-map.json` 核片长与逐条字幕 | `verify_delivery.py <edit_dir> [--video] [--deliver-dir]` | 不看源素材 |
 | `helpers/check_script_hash.py` | `script.md` 与内容契约的 `script_hash` 是否相符 | `check_script_hash.py <项目目录> ／ --script --plan`；退 0／1／2 | 不改任何文件；核不了时**不报成功** |
 | `helpers/check_render_env.py` | 渲染环境：字体缓存可写、Node ≥ 22、composition 在；**并发预算** —— 读总内存／可用内存／swap，`suggest_workers()` 按「总内存÷`WORKER_RAM_GB`、可用内存÷`WORKER_RAM_GB`、核数」三者取低算出这台机器带得起的 `--workers`，可用内存 < `MIN_FREE_GB` 时退非零（`--workers auto` 是按核数开满 Chrome 的那个默认值） | `check_render_env.py [composition] [--json]`（`--json` 出 `{ok, workers, memory}` 给调用方直接消费） | 不渲染；不检查 HyperFrames 的其它 `HYPERFRAMES_*`；**不替 agent 决定要不要渲** —— 它只报这台机器能不能渲、该用几个 worker |
 | `helpers/probe_env.py` | **能力报告，不做决定**：ffmpeg 滤镜（libass/drawtext）、字体与资产预算、残留 `hyperframes preview`/chrome 进程、font cache 可写性 | `probe_env.py [project] --json [--require libass --strict]`；默认退 0；`render.py` 在烧字幕前消费其中 libass 一项 | 不决定降级、不阻断渲染（缺 libass 由 `render.py` 按成片合同报错） |
@@ -152,6 +152,7 @@ Craft 默认遵循 board 构图重做动画，原片不适合动画时才重排�
 | `helpers/stage_deliver.py` | **阶段 6 入口（先行版）**：串闸门 / 出片 / 核验 / 包装 / 指纹；统一退出码与下一步 | `status` / `run` / `verify` / `export` / `fingerprint`；`run --render` 才渲染 | 不替代渲染与判据；`--skip-gate` 只对 `DSH_TEST=1` 测试进程开放 |
 | `helpers/_stage.py` | 阶段脚本的公共壳：项目/edit 解析、子进程执行、错误与退出码翻译、JSON | 被两个 stage 脚本调用（库，非入口） | 不做业务判断 |
 | `helpers/_paths.py` | **项目路径解析的唯一实现**（合并地图 M3）：项目根 / 剪辑目录的识别规则 | `resolve(target)`；被 `render_gate` / `live_stage` / `studio_notes` / `export_video` / `build_review` 调用 | 不判断目录是否存在；不猜画布与人物位（那在 `recompose.json`） |
+| `helpers/_cutmap.py` | **成片二次剪的唯一声明与复算**：`edit/cut-map.json` 校验、单调分段映射、剪后字幕逐条复算 | 被 `verify_delivery.py` / `deliver.py` import（库，非入口） | 不剪片、不生成剪点 |
 | `helpers/_timecode.py` | **时间码与 SRT 解析的唯一实现**（合并地图 M1/M2）：毫秒/时间码互转；严格块解析 + 宽松行抓取（保留旧调用方的跳过语义） | 被 `build_review` / `srt_export` / `recompose_plan` / `edl_preview_build` / `align-visual-plan` / `check_edl` / `verify_delivery` import（库，非入口） | 不排序、不去重、不修错字 |
 | `helpers/recompose_plan.py` | `recompose.json`、`recompose/lines.json` 的唯一写者；逐字行的 state/proposal | `init` / `check` / `lines`；inbox 调 `apply_record` | 不生成 composition、不导入页面、不跑 parity |
 | `helpers/edl_from_keep.py` | **keep-list → edl.json 的唯一生产者**：每条保留区间按实测静音吸附边界（`_silence.measure`），可选从 transcripts 出 `cut_text.md` | `edl_from_keep.py keeps.json --edit-dir <edit> [--snap-tol/--no-snap/--transcripts]` | 不决定留哪句（那是作者的 keep list）；不渲染、不生成字幕 |

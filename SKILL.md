@@ -149,7 +149,7 @@ recompose 路线**不导入页**：PPT Hell 的快照只作视觉参考，用 `f
 
 ### 2. 确定制作方案
 
-在 `production-plan.md` 写清楚**风格**（`line-art` 线稿 / `business-report` 商业报告 / `collage` 拼贴，见 [style-spec.md](references/style-spec.md)）、成片形态（口播 / 动画 / 合成）、声音来源、画幅、画面过程、强调动作、素材、时间依据、字幕形态、交付件和返修范围。路线固定为 recompose，不用选；第 7 步按风格那一节做。
+在 `production-plan.md` 写清楚**风格**（`line-art` 线稿 / `business-report` 商业报告 / `collage` 拼贴 / `concept-film` 概念电影，见 [style-spec.md](references/style-spec.md)）、成片形态（口播 / 动画 / 合成）、声音来源、画幅、画面过程、强调动作、素材、时间依据、字幕形态、交付件和返修范围。路线固定为 recompose，不用选；第 7 步按风格那一节做。
 
 需要改内容意义、必见对象、固定文字或素材关系时回 `$video-idea-system`；需要重做静态画面时回 `$planners-ppt-hell`；需要复用方法时调用 `$planners-method-wiki`，但 Wiki 只提供方法，不提供本项目事实。
 
@@ -419,7 +419,7 @@ python3 "<craft>/helpers/spec_lint.py"          # 条数、篇幅、字段、执
 - 制作路线（唯一一条）：`references/recompose-mode.md`
 - **九个制作阶段的契约与脚本合并地图**：`references/stages.md`（每段做什么/何时用/输入/产出/坏了怎么认）
 - **开工必读（作者判准与本片偏好）**：`references/author-spec.md`（全局判准，全篇）、`references/preferences.md`（准入与归位规则）、`references/creative-direction.md`（接住意图）、`references/visual-direction.md`（画面与动画的对齐顺序）
-- **第 2 步定完风格再读**：`references/style-spec.md`（`line-art` 线稿 / `business-report` 商业报告 / `collage` 拼贴）
+- **第 2 步定完风格再读**：`references/style-spec.md`（`line-art` 线稿 / `business-report` 商业报告 / `collage` 拼贴 / `concept-film` 概念电影）
 - 画面入口：`references/film.md`；交付入口：`references/delivery.md`
 - 历史（存档，不要照做）：`references/capability-packs.md`、`references/legacy-page-route.md`
 - 可执行命令与产物目录：`references/tools.md`

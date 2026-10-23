@@ -98,7 +98,7 @@ Craft 默认遵循 board 构图重做动画，原片不适合动画时才重排�
 | `references/stages.md` | **九个制作阶段的契约**（做什么/何时用/输入/产出/坏了怎么认）＋ 脚本合并地图与红线 | 开工读总表；改脚本前读合并地图 | 不写命令（`tools.md`）；不写规则（`author-spec.md`） |
 | `references/preferences.md` | **偏好契约**：最小记录、两套准入（否定型一次 / 倾向型复现）、归位规则、四条减法、谁批准 | 第 1 步起读；第 11 步按它收尾 | 不装条目（条目在下面两个 spec 里） |
 | `references/author-spec.md` | **全局判准**：跨风格成立的视觉与节奏规则（8 条，`spec_lint.py` 冻结上限） | 第 1 步读全篇 | 不写风格专属规则；不写数值；不引原话 |
-| `references/style-spec.md` | **风格动效规范**：三种风格（`line-art` / `business-report` / `collage`）怎么动、怎么强调 | 第 2 步定风格后读对应节 | 不写静态画面语法（归 `planners-ppt-hell`）；元素级处理不进这里 |
+| `references/style-spec.md` | **风格动效规范**：四种风格（`line-art` / `business-report` / `collage` / `concept-film`）怎么动、怎么强调 | 第 2 步定风格后读对应节 | 不写静态画面语法（归 `planners-ppt-hell`）；元素级处理不进这里 |
 | `references/media-first.md` | 真实证据 / 复刻 / 示意 / 创作的身份区分 | 选素材时读 | 不允许把修辞包装成实测证明 |
 | `references/visual-timeline.md` | **时间脊柱的派生**：`timeline.json` 的输入、Step 分组规则、Checkpoint 只确认版面与节奏 | 第 6 步读；`timeline_derive.py` 是它的可执行形态 | 不重新解析 SRT；不重选主题 |
 | `references/composition-craft.md` | 视觉层怎么落地：`composition/index.html` 的硬规则、字体度量、**画面页来自 planners-ppt-hell 时的动画交接** | 第 7 步读 | 字段语义不在它这里（`composition-facts-contract.md`）；预埋子元素动效配方在 `svg-animation-contract.md` |

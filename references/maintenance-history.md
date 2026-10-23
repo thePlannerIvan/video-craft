@@ -1,5 +1,11 @@
 # 维护记录（升级，不是 CHANGELOG）
 
+## 2026-10-22 · 新增 `concept-film` 概念电影风格
+
+| 做了什么 | 为什么 | 影响了哪些 module | 删了什么 |
+|---|---|---|---|
+| 新增 `concept-film` 概念电影风格，4 条动效规则 S14–S17：一镜一关系；抽象关系转成空间动作；空间连续与可导航；真实与抽象互为证据 | 从参考片提炼可复用的论证与动效判准；与现有三种风格并列，不覆盖 `line-art` | `references/style-spec.md`、`helpers/spec_lint.py`、`SKILL.md`、`references/architecture.md`、`references/preferences.md` | — |
+
 ## 2026-10-22 · 判准双层落地、主题库退役、跨 Skill 解耦
 
 | 做了什么 | 为什么 | 影响了哪些 module | 删了什么 |

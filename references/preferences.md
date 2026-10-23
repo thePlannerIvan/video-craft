@@ -5,7 +5,7 @@
 | 目的地 | 装什么 | 谁读 |
 |---|---|---|
 | [`author-spec.md`](author-spec.md) | 跨风格都成立的全局判准（≤8 条） | 第 1 步读全篇 |
-| [`style-spec.md`](style-spec.md) | 某一种风格的动效规则：`line-art` 线稿 / `business-report` 商业报告 / `collage` 拼贴（每种 ≤5 条） | 第 2 步定风格后读对应节 |
+| [`style-spec.md`](style-spec.md) | 某一种风格的动效规则：`line-art` 线稿 / `business-report` 商业报告 / `collage` 拼贴 / `concept-film` 概念电影（每种 ≤5 条） | 第 2 步定风格后读对应节 |
 | 本片 `edit/preferences.md` | 这一支片子的决定，不跨项目 | 第 1 步起读 |
 | `film.md`、`composition-craft.md` 等正式文档 | 否定型硬约束 | 做对应那一步时读 |
 | `GOTCHAS.md` | 会稳定导致错误的行为 | 开工前读 |

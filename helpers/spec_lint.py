@@ -43,7 +43,7 @@ MAX_PER_STYLE = 5
 MAX_TOTAL_ENTRIES = 25
 MAX_ENTRY_BODY_LINES = 9
 
-STYLE_SLUGS = ("line-art", "business-report", "collage")
+STYLE_SLUGS = ("line-art", "business-report", "collage", "concept-film")
 
 AUTHOR_ENTRY_RE = re.compile(r"^##\s+(G\d{2})\s+(.+?)\s*$")
 SECTION_RE = re.compile(r"^##\s+([a-z][a-z0-9-]+)\s*(?:·\s*(.+?))?\s*$")

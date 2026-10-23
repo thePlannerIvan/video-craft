@@ -28,7 +28,7 @@ from _stage import (EXIT_OK, EXIT_PREREQ, Failed, Prereq, Stage,  # noqa: E402
 
 def _state(project: Path, edit: Path) -> dict:
     out = project / "成品"
-    return {
+    state = {
         "review_submissions": (project / "review" / "review-submissions.json").is_file(),
         "feedback": sorted(p.name for p in (project / "feedback").glob("*.jsonl"))
         if (project / "feedback").is_dir() else [],
@@ -39,16 +39,41 @@ def _state(project: Path, edit: Path) -> dict:
         "subtitles": (edit / "subtitles.srt").is_file(),
     }
 
+    from render_gate import evaluate
+    from state_fingerprint import capture, compare, entry, source_entries
+    state["gate"] = evaluate(project, None, False)
+    state["fingerprint_current"] = False
+    state["report_current"] = False
+    try:
+        sources = source_entries(project)
+        report = json.loads((out / f"{project.name}_核验报告.json").read_text(encoding="utf-8"))
+        state["report_current"] = (report.get("ok") is True and report.get("delivery_ok") is True
+             and report.get("source_fingerprint") == sources
+             and report.get("output_identity") == entry(Path(report["output"]))
+             and isinstance(report.get('input_identities'), dict) and bool(report['input_identities'])
+             and all(record and record == entry(Path(record['path'])) for record in report['input_identities'].values()))
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    if state["fingerprint"]:
+        try:
+            state["fingerprint_current"] = not compare(json.loads((out / "delivery.json").read_text(encoding="utf-8")), capture(project))
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+    state["stage_complete"] = bool(state["gate"]["ok"] and state["report_current"] and state["fingerprint_current"])
+    state["human_approval"] = "status 不推断出片批准或反馈已解决"
+    return state
+
 
 def _next_step(project: Path, state: dict) -> str:
-    if not state["review_submissions"]:
-        return (f"阶段交付物是工程态审阅页：review.py {project}；"
-                "作者确认出片后再 run --render")
+    if not state["gate"]["ok"]:
+        return "重建并核对当前审阅版本；render_gate 的原因见 state.gate；作者确认出片后再 run"
     if not state["deliverables"]:
         return f"作者确认后出片：stage_deliver.py run --render --project {project}"
-    if not state["fingerprint"]:
-        return f"记来源：stage_deliver.py fingerprint capture --project {project}"
-    return "发送前再核对：stage_deliver.py fingerprint verify --project <项目>"
+    if not state["report_current"]:
+        return "现有文件不证明交付已完成；重新输出或核验当前文件及来源，失败时不要 capture"
+    if not state["fingerprint_current"]:
+        return f"本版核验报告有效；包装后核验副本，再记来源：stage_deliver.py fingerprint --fingerprint-action capture --project {project}"
+    return "当前机械核验与指纹一致；发送前确认作者出片指令和未决意见已处理"
 
 
 def do_status(project: Path, edit: Path, as_json: bool) -> int:
@@ -67,17 +92,14 @@ def do_status(project: Path, edit: Path, as_json: bool) -> int:
 
 
 def do_run(args) -> int:
+    if args.no_audio:
+        raise Prereq("--no-audio 只支持 verify；run 仍要求声音素材，无声合成未在此入口提供")
     project, edit = resolve_project(args.project)
     out_dir = Path(args.out).expanduser().resolve() if args.out else project / "成品"
     target = out_dir / f"{project.name}_成片.mp4"
     stage = Stage("deliver")
-    if not args.skip_gate:
-        stage.run("render_gate.py", project, "--out", target)
-        stage.note("闸门通过：这一版有人审覆盖当前快照")
-    else:
-        if os.environ.get("DSH_TEST") != "1":
-            raise Failed("--skip-gate 只允许测试夹具（DSH_TEST=1）；正式流程必须过 render_gate")
-        stage.note("已按 --skip-gate 跳过闸门（仅测试夹具）")
+    if args.skip_gate and os.environ.get("DSH_TEST") != "1":
+        raise Failed("--skip-gate 只允许测试夹具（DSH_TEST=1）；正式流程必须过 render_gate")
     forward = ["--visuals", args.visuals] if args.visuals else []
     forward += ["--person", args.person] if args.person else []
     forward += ["--audio", args.audio] if args.audio else []
@@ -85,11 +107,12 @@ def do_run(args) -> int:
     forward += ["--out", str(out_dir)]
     forward += ["--burn-subtitles"] if args.burn_subtitles else []
     forward += ["--no-person"] if args.no_person else []
-    forward += ["--no-audio"] if args.no_audio else []
     forward += ["--render"] if args.render else []
+    forward += ['--visuals-confirm-current'] if args.visuals_confirm_current else []
     forward += ["--json"] if args.json else []
+    forward += ["--skip-gate"] if args.skip_gate else []
     stage.run("deliver.py", project, *forward)
-    stage.next = f"发送前：stage_deliver.py fingerprint capture --project {project}"
+    stage.next = f"本次合成与严格核验通过；包装后核验副本，再记指纹：stage_deliver.py fingerprint --fingerprint-action capture --project {project}"
     return stage.finish("run", args.json)
 
 
@@ -97,6 +120,9 @@ def do_verify(args) -> int:
     project, edit = resolve_project(args.project)
     forward = ["--video", args.video] if args.video else []
     forward += ["--deliver-dir", args.deliver_dir] if args.deliver_dir else []
+    forward += ["--no-audio"] if args.no_audio else []
+    forward += ['--media', args.audio] if args.audio else []
+    forward += ['--srt', args.srt_run] if args.srt_run else []
     forward += ["--json"] if args.json else []
     stage = Stage("deliver")
     stage.run("verify_delivery.py", edit, *forward)
@@ -111,7 +137,7 @@ def do_export(args) -> int:
     forward += ["--srt", *args.srt] if args.srt else []
     stage = Stage("deliver")
     stage.run("export_deliverables.py", edit, *forward)
-    stage.next = f"记来源：stage_deliver.py fingerprint capture --project {project}"
+    stage.next = f"先 verify --deliver-dir 核验包装副本，通过后记来源：stage_deliver.py fingerprint --fingerprint-action capture --project {project}"
     return stage.finish("export", args.json)
 
 
@@ -130,6 +156,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("action", choices=("status", "run", "verify", "export", "fingerprint"))
     ap.add_argument("--project", required=True, help="项目根目录")
     ap.add_argument("--visuals", default=None, help="run 时：已有画面层，跳过渲染")
+    ap.add_argument('--visuals-confirm-current', action='store_true', help='run 时：明确人工确认已有画面属于当前版，补记来源')
     ap.add_argument("--person", default=None, help="run 时：人物轨")
     ap.add_argument("--audio", default=None, help="run 时：声音")
     ap.add_argument("--srt", nargs="+", default=None,

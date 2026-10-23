@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from pathlib import Path
 
 
@@ -119,7 +120,7 @@ def measured_total_ms(edit_dir: Path, edl_path: Path | None = None
 
 
 def duration_record(edit_dir: Path, count: int, edl_path: Path | None = None,
-                    *, require_projected: bool = False
+                    *, require_projected: bool = False, time_source: str = "auto"
                     ) -> tuple[list[float] | None, str | None, str | None, str | None]:
     """One answer for "which durations should captions use?".
 
@@ -132,12 +133,18 @@ def duration_record(edit_dir: Path, count: int, edl_path: Path | None = None,
     `edl_path` matters: `srt_export --edl` may point at a different file than
     `edit_dir/edl.json`; the digest must be taken from the EDL actually in use.
     """
+    if time_source not in ("auto", "measured", "projected"):
+        raise ValueError(f"invalid duration source: {time_source}")
+    if require_projected:
+        if time_source == "measured":
+            raise ValueError("require_projected conflicts with measured")
+        time_source = "projected"
     edit_dir = Path(edit_dir)
     edl_file = Path(edl_path) if edl_path is not None else edit_dir / "edl.json"
     digest = edl_digest(edl_file) if edl_file.exists() else None
     blob = _load_duration_blob(edit_dir)
     if blob is None:
-        return None, None, None, None
+        return None, None, None, "缺少有效 segment_durations.json" if time_source != "auto" else None
 
     def _candidates(allow_projected: bool):
         return [(tag, entry) for tag, entry in blob.items()
@@ -149,7 +156,7 @@ def duration_record(edit_dir: Path, count: int, edl_path: Path | None = None,
     # digest at all (pre-digest projects), the newest record is the best guess; if
     # records carry digests but none matches, the render is stale — do not silently
     # fall back to a no-digest record.
-    use_no_digest = not hashed and bool(digest)
+    use_no_digest = not hashed and bool(digest) and time_source == "auto"
 
     def _matching(allow_projected: bool):
         records = _candidates(allow_projected)
@@ -159,20 +166,32 @@ def duration_record(edit_dir: Path, count: int, edl_path: Path | None = None,
             return [(t, e) for t, e in records if not e.get("edl_sha256")]
         return records
 
-    passes = ((True, "projected"),) if require_projected else (
-        (False, "measured"), (True, "projected"))
+    passes = ((True, "projected"),) if time_source == "projected" else (
+        ((False, "measured"),) if time_source == "measured" else
+        ((False, "measured"), (True, "projected")))
+    count_problem = None
     for allow_projected, source in passes:
         records = _matching(allow_projected)
         if allow_projected:
             records = [(t, e) for t, e in records if e.get("projected")]
-        count_problem = None
         for tag, entry in reversed(records):
-            durations = [float(x) for x in entry["durations"]]
+            try:
+                durations = [float(x) for x in entry["durations"]]
+            except (ValueError, TypeError):
+                count_problem = f"{tag}: 段时长不是数值"
+                continue
+            if not durations or not all(math.isfinite(x) and x > 0 for x in durations):
+                count_problem = f"{tag}: 段时长必须是有限正数"
+                continue
             if len(durations) == count:
-                return durations, source, tag, None
+                if time_source != "auto" and (not digest or entry.get("edl_sha256") != digest):
+                    continue
+                return durations, "measured-guessed" if use_no_digest and source == "measured" else source, tag, None
             count_problem = f"{tag}: {len(durations)} 段，EDL 有 {count} 段"
-        if count_problem:
-            return None, None, None, count_problem
+    if count_problem:
+        return None, None, None, count_problem
+    if time_source != "auto":
+        return None, None, None, f"没有与当前 EDL 指纹/段数匹配的 {time_source} 记录（不降级）"
 
     hashed = [tag for tag, entry in blob.items()
               if isinstance(entry, dict) and entry.get("edl_sha256")]

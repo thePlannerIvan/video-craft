@@ -1095,6 +1095,16 @@ def write_review_files(project_root: Path, review_data: dict) -> tuple[Path, Pat
     review_dir = project_root / "review"
     review_dir.mkdir(parents=True, exist_ok=True)
 
+    from state_fingerprint import source_paths
+    existing_sources = {item['path'] for item in review_data['sourceManifest']}
+    for path in source_paths(project_root, include_review=False).values():
+        if path.is_relative_to(project_root):
+            rel = path.relative_to(project_root).as_posix()
+            if rel not in existing_sources:
+                review_data['sourceManifest'].append(snapshot_file(path, project_root))
+                existing_sources.add(rel)
+    review_data['snapshot'] = hashlib.sha256(json.dumps(review_data['sourceManifest'], sort_keys=True).encode()).hexdigest()
+
     player_script = ""
     if review_data.get("media", {}).get("liveStage"):
         # Report capabilities where the compile actually happens; a font dump or a
@@ -1116,7 +1126,7 @@ def write_review_files(project_root: Path, review_data: dict) -> tuple[Path, Pat
         review_data["snapshot"] = hashlib.sha256((review_data["snapshot"] + live["composition"]["sourceHash"]).encode()).hexdigest()[:20]
         existing = {item["path"] for item in review_data["sourceManifest"]}
         for path in sorted((project_root / live.get("compositionDir", "composition")).rglob("*")):
-            if path.is_file() and not any(part in {"node_modules", ".hyperframes", "renders", ".git"} for part in path.parts):
+            if path.is_file() and not path.name.endswith('.sources.json') and not any(part in {"node_modules", ".hyperframes", "renders", "_render", ".git"} for part in path.parts):
                 rel = path.relative_to(project_root).as_posix()
                 if rel not in existing and (path.suffix in {".html", ".js", ".css", ".json"} or rel in live["composition"]["assets"].values()):
                     review_data["sourceManifest"].append(snapshot_file(path, project_root))

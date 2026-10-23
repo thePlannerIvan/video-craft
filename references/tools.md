@@ -73,7 +73,7 @@ page 十步路线已归档（见 [legacy-page-route.md](legacy-page-route.md)）
 
 ## 现有阶段适配器（覆盖有限）
 
-stage_cut 提供分动作编排；stage_deliver 保留兼容分动作调用。它们尚不保证整个阶段事务完成：prepare 不替模型建 EDL；apply 后要重建；run 后仍须严格 verify。已知参数缺口见 delivery.md 和 implementation-brief.md。
+stage_cut 提供分动作编排：prepare 没有 EDL 时只完成转写打包并指回模型取舍；apply 写选择消费回执并重建逐字页，相同选择重试不再次剪 EDL。status 区分文件存在、内容是否当前与人的确认。stage_deliver run 调用 deliver 并聚合严格核验，包装后仍需核副本；各动作和下一步不代替作者批准。
 
 ```bash
 python3 "<craft>/helpers/stage_cut.py" status  --project "<项目>"
@@ -88,7 +88,9 @@ python3 "<craft>/helpers/stage_deliver.py" export  --project "<项目>" [--out "
 python3 "<craft>/helpers/stage_deliver.py" fingerprint --fingerprint-action capture --project "<项目>"
 ```
 
-退出码：0 完成 · 1 命令失败（含闸门拒绝）· 2 前置条件不满足。加 `--json` 得到 `steps` 与 `next`。
+现有画面来源缺记录时，人工核对后可用 `deliver --visuals <视频> --visuals-confirm-current`（stage_deliver run 同名选项）。不确认则显式 --render 重新生成，不能靠改 mtime 放行。
+
+退出码：0 动作完成（status 只表示查询成功）· 1 命令失败（含闸门拒绝）· 2 前置条件不满足。加 `--json` 得到 `steps` 与 `next`。
 阶段职责与现有实现覆盖，见 [stages.md](stages.md)。
 
 ## 接上游
@@ -210,7 +212,7 @@ capture，所以预览与交付不可能各走各的；分格式各渲一遍既�
 
 `duration_plan.py` 写的记录带 `"projected": true`。它**可以**支撑字幕、时间脊柱与审阅页，
 但**不是交付证据**：`_edl.render_record` 默认跳过它，所以 `verify_delivery.py` 永远拿真实
-文件对真实渲染；交付前仍必须渲染并用 `srt_export.py --prepare --lock --build` 重建字幕。
+文件对真实渲染；交付前取得真实实测记录后，按下节显式升级字幕与 timeline。
 
 `preview_layers.py` 产出的 `.webm` 只服务预览，交付合成仍走 MOV。审阅页据此在成片上叠层，
 所以改一层不必重渲整片。
@@ -230,9 +232,13 @@ python3 "<craft>/helpers/srt_export.py" "<edit>" --check
 python3 "<craft>/helpers/check_caption_breaks.py" "<edit>/subtitles.srt" --json
 ```
 
+旧项目或预演升级实测时，显式运行 `srt_export.py <edit> --prepare --force-prepare --time-source measured`，再分别 lock、build、派生 timeline 与 check。`--time-source` 支持 auto/projected/measured/nominal；缺有效当前 EDL 指纹/段数的 measured 记录会失败，不降级。force-prepare 保留 semantic_lines 已审文字，需核对其覆盖范围。
+
 输出 article/词契约/lock/cue/SRT。底片剪点变化后重新 prepare、核对语义行、lock、build，不沿用已失效锁。无录音预演不进入这条实测路径。
 
-字幕的时间基准跟随画面时间轴（`timeline.json` 的 `timeSource`）；`--check` 会核对字幕末条与时间轴末段，字幕末条超出时间轴末段 >0.1s 退非零；允许正常尾静音，不证明逐段来源一致。
+字幕派生使用已选来源合同；默认兼容旧 timeline 的口径，显式 `--time-source measured` 可以升级旧 projected/nominal 项目。后续 lock/build/check 跟随词契约。只改视觉 CSS 不改变字幕时间。`--check` 核 SRT 与 cue 契约及末条越界；timeline 派生同时核当前实测段时长，不能只改来源标签。
+
+外部来源导入的 `timeline.sourceEvidence` v1 保存 `media`（path/sha256/bytes/durationMs）、`srt`、`alignment`、`sourcePlan` 与 `sourceScript`。总长保留实测音频尾部，`measuredTotalMs` 保持 null。旧项目缺记录时，用原 SRT、原 alignment 和现有音频重跑导入；不要求重新剪辑或转写。核验可显式给 `verify_delivery --media <本次音频> --srt <本次字幕>`；stage_deliver verify 对应使用 `--audio`、`--srt`。
 
 ## SVG 与视觉时间
 
@@ -257,7 +263,7 @@ python3 "<craft>/helpers/timeline_derive.py" "<edit>" --grouping "<project>/time
 已剪音频 + 对应 SRT 用 `align-visual-plan.py --srt <SRT>` 替代 `--edit-dir`，输出候选绑定标 `srt-import`。它不是 measured 契约，不能交给 `timeline_derive.py` 假装通过。核对后由 `import_srt_timeline.py` 生成统一时间轴（调用见下），原 SRT 与声音保持来源绑定。
 
 ```bash
-python3 "<craft>/helpers/import_srt_timeline.py" "<project>" --srt "<已剪SRT>" --alignment "<project>/timeline/content-alignment.json"
+python3 "<craft>/helpers/import_srt_timeline.py" "<project>" --srt "<已剪SRT>" --alignment "<project>/timeline/content-alignment.json" --media "<现有剪好音频>"
 ```
 
 制作画面（recompose 主路线）：

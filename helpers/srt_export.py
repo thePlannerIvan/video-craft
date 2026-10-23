@@ -202,7 +202,7 @@ def _edl_paths(edit_dir: Path, edl_path: Path | None = None) -> tuple[Path, dict
 
 
 def _measured_durations(edit_dir: Path, edl_file: Path, count: int,
-                        strict: bool) -> tuple[list[float] | None, str | None]:
+                        strict: bool, time_source: str = "auto") -> tuple[list[float] | None, str | None]:
     """Per-segment durations the last render actually produced.
 
     The policy lives in `_edl.duration_record` — one answer shared with the
@@ -211,35 +211,22 @@ def _measured_durations(edit_dir: Path, edl_file: Path, count: int,
     digest produced different caption timelines (audit evidence:
     caption [1.1, 0.9] vs delivery [1.0, 1.0], same EDL, same total).
     """
-    # 单一时间源：画面由 timeline.json 驱动，字幕必须跟同一条时间轴。
-    # 时间轴声明 measured 时才用渲染记录；声明 nominal/projected 时用标称段时长。
     from _paths import timeline_file, timeline_source
-    timeline = timeline_file(edit_dir)
-    timeline_source_name = None
-    if timeline is not None:
-        timeline_source_name = timeline_source(timeline)
-        if timeline_source_name is None:
-            print("  · 旧时间轴没有 timeSource：按画面时间轴（nominal）处理")
-            timeline_source_name = "nominal"
-        if timeline_source_name == "nominal":
-            print("  · 字幕时间轴跟随画面时间轴（nominal）：用标称段时长，不取渲染记录")
-            return None, None
-
-    path = edit_dir / "segment_durations.json"
-    if not path.exists():
-        print("  · 还没有渲染结果，也没有解析预演，字幕按 EDL 标称时间轴生成"
-              "（可先跑 helpers/duration_plan.py 得到预演时间轴）")
-        return None, None
     try:
-        json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        print("  · segment_durations.json 无法解析，按标称时间轴生成")
+        timeline = timeline_file(edit_dir)
+    except ValueError as exc:
+        _fail(str(exc))
+    mode = time_source
+    if mode == "auto" and timeline is not None:
+        declared = timeline_source(timeline)
+        mode = declared if declared in ("projected", "measured") else "nominal"
+    if mode == "nominal":
+        print("  · 字幕采用 nominal；要升级请 --prepare --force-prepare --time-source measured，随后 lock/build")
         return None, None
-    want_projected = timeline_source_name == "projected"
+    if mode not in ("auto", "projected", "measured"):
+        _fail(f"不支持时间来源 {mode}；外部 SRT 请走 import_srt_timeline")
     durations, source, tag, problem = _edl.duration_record(
-        edit_dir, count, edl_path=edl_file, require_projected=want_projected)
-    if durations is not None and want_projected and source != "projected":
-        durations, problem = None, "时间轴声明 projected，但没有可用的预演记录"
+        edit_dir, count, edl_path=edl_file, time_source=mode)
     if durations is not None:
         total = sum(durations)
         if source == "measured":
@@ -249,7 +236,7 @@ def _measured_durations(edit_dir: Path, edl_file: Path, count: int,
                   "可在渲染前用于审阅；交付前必须真实渲染并重建字幕")
         return durations, source
     if problem:
-        if strict:
+        if strict or mode != "auto":
             _fail(f"没有找到与当前 EDL 匹配的段时长记录（{problem}）——"
                   "先跑 helpers/duration_plan.py 得到预演时间轴，或重新渲染后再生成字幕")
         print(f"  ! 没有找到与当前 EDL 匹配的段时长记录（{problem}）——"
@@ -261,10 +248,10 @@ def _measured_durations(edit_dir: Path, edl_file: Path, count: int,
 
 def _load_timeline_words(edit_dir: Path, edl_path: Path | None = None,
                          corrections_path: Path | None = None,
-                         strict_render: bool = False) -> tuple[dict, list[dict]]:
+                         strict_render: bool = False, time_source: str = "auto") -> tuple[dict, list[dict]]:
     edl_file, edl = _edl_paths(edit_dir, edl_path)
     measured, timeline_source = _measured_durations(
-        edit_dir, edl_file, len(edl["ranges"]), strict_render)
+        edit_dir, edl_file, len(edl["ranges"]), strict_render, time_source=time_source)
     corrections, corrections_sha256 = _load_corrections(edit_dir, corrections_path)
     transcripts_dir = edit_dir / "transcripts"
     if not transcripts_dir.is_dir():
@@ -358,9 +345,7 @@ def _words_contract_path(edit_dir: Path, override: Path | None = None) -> Path:
 def _load_words_contract(edit_dir: Path, edl_path: Path | None = None,
                          words_path: Path | None = None,
                          corrections_path: Path | None = None,
-                         strict_render: bool = False) -> tuple[dict, list[dict]]:
-    contract, current_words = _load_timeline_words(edit_dir, edl_path, corrections_path,
-                                                   strict_render=strict_render)
+                         strict_render: bool = False, time_source: str = "auto") -> tuple[dict, list[dict]]:
     path = _words_contract_path(edit_dir, words_path)
     if not path.exists():
         _fail(f"no {WORDS_NAME}; run --prepare before locking or building")
@@ -368,6 +353,10 @@ def _load_words_contract(edit_dir: Path, edl_path: Path | None = None,
         stored = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         _fail(f"invalid {path.name}: {exc}")
+    if time_source == "auto" and stored.get("timeline_source") in ("measured", "projected", "nominal"):
+        time_source = stored["timeline_source"]
+    contract, current_words = _load_timeline_words(edit_dir, edl_path, corrections_path,
+                                                   strict_render=strict_render, time_source=time_source)
     for key in ("version", "edl_sha256", "transcript_sha256", "corrections_sha256", "segments", "words"):
         if key not in stored:
             _fail(f"{path.name} is missing required field {key}")
@@ -400,8 +389,8 @@ def prepare_article(edit_dir: Path, edl_path: Path | None = None,
                     article_path: Path | None = None,
                     words_path: Path | None = None,
                     corrections_path: Path | None = None,
-                    force: bool = False) -> None:
-    contract, words = _load_timeline_words(edit_dir, edl_path, corrections_path)
+                    force: bool = False, time_source: str = "auto") -> None:
+    contract, words = _load_timeline_words(edit_dir, edl_path, corrections_path, time_source=time_source)
     article_file = (article_path or (edit_dir / ARTICLE_NAME)).resolve()
     words_file = _words_contract_path(edit_dir, words_path)
     if not force and (article_file.exists() or words_file.exists()):
@@ -443,8 +432,8 @@ def _article_sequence(words: list[dict], segments: list[dict]) -> str:
 def lock_article(edit_dir: Path, edl_path: Path | None = None,
                  article_path: Path | None = None,
                  words_path: Path | None = None,
-                 corrections_path: Path | None = None) -> None:
-    stored, words = _load_words_contract(edit_dir, edl_path, words_path, corrections_path)
+                 corrections_path: Path | None = None, time_source: str = "auto") -> None:
+    stored, words = _load_words_contract(edit_dir, edl_path, words_path, corrections_path, time_source=time_source)
     article_file, article = _load_article(edit_dir, article_path)
     expected = _article_sequence(words, stored["segments"])
     actual = _match_text(article)
@@ -602,11 +591,11 @@ def build_article_srt(edit_dir: Path, edl_path: Path | None = None,
                       lines_path: Path | None = None,
                       words_path: Path | None = None,
                       out_path: Path | None = None,
-                      corrections_path: Path | None = None) -> int:
+                      corrections_path: Path | None = None, time_source: str = "auto") -> int:
     # Delivery path: refuse to emit cues when the render no longer matches this
     # EDL, because they would be timed against a timeline that does not exist.
     stored, words = _load_words_contract(edit_dir, edl_path, words_path, corrections_path,
-                                         strict_render=True)
+                                         strict_render=True, time_source=time_source)
     article_file, article = _load_article(edit_dir, article_path)
     words_file = _words_contract_path(edit_dir, words_path)
     _assert_lock(edit_dir, stored, article_file, words_file)
@@ -654,9 +643,9 @@ def check_article_srt(edit_dir: Path, edl_path: Path | None = None,
                       lines_path: Path | None = None,
                       words_path: Path | None = None,
                       out_path: Path | None = None,
-                      corrections_path: Path | None = None) -> None:
+                      corrections_path: Path | None = None, time_source: str = "auto") -> None:
     stored, words = _load_words_contract(edit_dir, edl_path, words_path, corrections_path,
-                                         strict_render=True)
+                                         strict_render=True, time_source=time_source)
     article_file, article = _load_article(edit_dir, article_path)
     words_file = _words_contract_path(edit_dir, words_path)
     _assert_lock(edit_dir, stored, article_file, words_file)
@@ -777,6 +766,8 @@ def main() -> None:
     parser.add_argument("--lines", type=Path, default=None, help=f"semantic line plan (default: {LINES_NAME})")
     parser.add_argument("--words", type=Path, default=None, help=f"word contract (default: {WORDS_NAME})")
     parser.add_argument("--corrections", type=Path, default=None, help=f"explicit ASR/filler corrections (default: {CORRECTIONS_NAME} if present)")
+    parser.add_argument("--time-source", choices=("auto", "projected", "measured", "nominal"), default="auto",
+                        help="显式选择来源；measured 只接受同版指纹/段数实测，不回退预演；升级后须重建 timeline")
     parser.add_argument("--force-prepare", action="store_true", help="allow --prepare to replace an existing article/word contract")
     parser.add_argument("-o", "--output", type=Path, default=None, help=f"SRT output path (default: {SRT_NAME})")
     parser.add_argument("--check", action="store_true", help="validate the generated article-first SRT; may follow --build")
@@ -786,18 +777,18 @@ def main() -> None:
     edl_path = args.edl.resolve() if args.edl else None
 
     if args.prepare:
-        prepare_article(edit_dir, edl_path, args.article, args.words, args.corrections, args.force_prepare)
+        prepare_article(edit_dir, edl_path, args.article, args.words, args.corrections, args.force_prepare, time_source=args.time_source)
         return
     if args.lock:
-        lock_article(edit_dir, edl_path, args.article, args.words, args.corrections)
+        lock_article(edit_dir, edl_path, args.article, args.words, args.corrections, time_source=args.time_source)
         return
     if args.build:
-        build_article_srt(edit_dir, edl_path, args.article, args.lines, args.words, args.output, args.corrections)
+        build_article_srt(edit_dir, edl_path, args.article, args.lines, args.words, args.output, args.corrections, time_source=args.time_source)
         if args.check:
-            check_article_srt(edit_dir, edl_path, args.article, args.lines, args.words, args.output, args.corrections)
+            check_article_srt(edit_dir, edl_path, args.article, args.lines, args.words, args.output, args.corrections, time_source=args.time_source)
         return
     if args.check:
-        check_article_srt(edit_dir, edl_path, args.article, args.lines, args.words, args.output, args.corrections)
+        check_article_srt(edit_dir, edl_path, args.article, args.lines, args.words, args.output, args.corrections, time_source=args.time_source)
         return
     if args.legacy_sentence or args.cue_len:
         cue_len = None

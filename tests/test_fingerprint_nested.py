@@ -11,6 +11,8 @@ import importlib.util
 import sys
 import tempfile
 import unittest
+import json
+import os
 from pathlib import Path
 
 HELPERS = Path(__file__).parents[1] / "helpers"
@@ -29,6 +31,21 @@ fingerprint = _load("state_fingerprint")
 
 
 class NestedDeliverables(unittest.TestCase):
+    def test_source_deletion_nested_css_and_selected_external_audio_are_tracked(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            project=Path(tmp); (project/'composition/src').mkdir(parents=True); (project/'成品').mkdir()
+            css=project/'composition/src/style.css'; css.write_bytes(b'old')
+            audio=project/'external.wav'; audio.write_bytes(b'voice')
+            report=project/'成品'/f'{project.name}_核验报告.json'
+            report.write_text(json.dumps({'input_identities':{'audio':fingerprint.entry(audio)}}))
+            saved=fingerprint.capture(project)
+            stat=css.stat(); css.write_bytes(b'new'); os.utime(css,ns=(stat.st_atime_ns,stat.st_mtime_ns))
+            self.assertTrue(fingerprint.compare(saved,fingerprint.capture(project)))
+            saved=fingerprint.capture(project); css.unlink()
+            self.assertTrue(fingerprint.compare(saved,fingerprint.capture(project)))
+            saved=fingerprint.capture(project); audio.write_bytes(b'other')
+            self.assertTrue(any('合成' in d for d in fingerprint.compare(saved,fingerprint.capture(project))))
+
     def test_nested_subtitle_is_tracked_and_changes_are_seen(self):
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp)

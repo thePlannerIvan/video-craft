@@ -112,7 +112,7 @@ python3 "<craft>/helpers/duration_plan.py" "<edit>"     # 解析预演（帧量�
 
 `projected` 记录可以支撑第 6 步的时间脊柱、字幕和审阅页，但**不是交付证据**——
 `_edl.render_record` 默认跳过它，`verify_delivery.py` 永远拿真实文件对真实渲染。
-交付前必须取得正式输出的实测证据并重建依赖产物。已有 projected/nominal 时间轴升级时先核来源选择，已知迁移缺口见 implementation-brief B8；不能只改 timeSource 标签。下面的工程底片命令不代表正式交付完成。
+交付前必须取得正式输出的实测证据并重建依赖产物。已有 projected/nominal 项目通过 `srt_export --prepare --force-prepare --time-source measured` 明确升级，再 lock/build、重派生 timeline 和 check；保留已审 semantic_lines，不能只改来源标签。下面的工程底片命令不代表正式交付完成。
 
 剪点确认后，用会记录实测段时长的渲染路径先出工程态底片（`--preview`）；这既不是开始制作画面的前置，也不是交付底片：
 
@@ -247,12 +247,12 @@ python3 "<craft>/helpers/deliver.py" "<project>" --render        # 渲染画面�
 python3 "<craft>/helpers/deliver.py" "<project>" --visuals "<已有画面层.mp4>"   # 画面层已存在，跳过渲染
 ```
 
-当前实现的限制和人工补位见 [delivery.md](delivery.md)「当前交付顺序与完成线」；`deliver.py` 退出 0 本身不证明严格交付核验通过。
+交付成功语义与人工完成线见 [delivery.md](delivery.md)：`deliver.py` 退出 0 表示本次合成及适用严格核验通过，包装副本与发送前指纹仍须独立核对。
 
 它按 `recompose.json` 的 `personSlot` / `captionSafe` 贴回人物、接声音、核验分辨率/帧率/时长/音轨/
 首中尾帧/字幕安全区，并写 `<成品>/<片名>_核验报告.json`；第一件事是跑 `render_gate.py`
 （没人审覆盖当前快照就拒绝出片）。**没有人物轨的片子加 `--no-person`**（纯画面 + 旁白是合法形态，
-不是缺素材）。缺画面层或画面层比 composition 旧时 **deliver 默认拒绝**，不会自动渲染——那会把审阅变成导出；
+不是缺素材）。缺画面层、缺来源证明或来源内容已变化时 **deliver 默认拒绝**，不会自动渲染——那会把审阅变成导出；
 重渲必须显式 `--render`。
 契约见 [delivery.md](delivery.md)。
 

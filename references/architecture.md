@@ -46,7 +46,7 @@
 | 共享机械能力 | `_paths.py`、`_timecode.py`、`_probe.py`、`_words.py`、`_silence.py`、`_cutmap.py` 复用各自的路径、时间码、媒体探测、词、静音和剪后映射实现 | 不新增第二份通用解析器或项目事实源 |
 | 外部执行环境 | HyperFrames 拥有新 composition 的播放时钟、媒体同步与 clip 显隐；FFmpeg 执行编码；planners-review-core 拥有审阅桥与宿主 | Craft 不复制官方播放器时钟或公共宿主 |
 
-`stage_cut.py` 与 `stage_deliver.py` 是现有阶段适配器，不是完整工作流引擎。`status` 的命令成功只说明查询成功；它不能单凭文件存在断言阶段已完成。各自当前缺口与修复 owner 见 Brief B1–B5。
+`stage_cut.py` 与 `stage_deliver.py` 是现有阶段适配器，不是完整工作流引擎。`status` 的命令成功只说明查询成功；它不能单凭文件存在断言阶段已完成。当前完成线和修复证据见 Brief B1–B5；作者确认不从文件存在或提交记录自动推断。
 
 ## 4. 跨 Skill 与外部接缝
 
@@ -91,9 +91,9 @@
 | `review/review_data.json` 与提交 | 构建器生成快照；作者/页面生成提交 | 快照和提交绑定到当时版本；收件回执只表示处理状态，不自动等于出片批准 |
 | 最终媒体与报告 | `deliver.py` 及交付工具链 | 真实文件的严格检查通过后才可报告交付；输出指纹只证明其绑定状态 |
 
-时间来源含义只在 [visual-timeline.md](visual-timeline.md) 定义。工程预演、EDL 实测与外部 SRT 是不同的证据链；字幕词时间、时间轴来源标记与实际记录必须相符。现有字幕选择器对旧 timeline 的依赖及从 projected 升为 measured 的迁移缺口见 Brief B8，不通过手改来源标签解决。
+时间来源含义只在 [visual-timeline.md](visual-timeline.md) 定义。工程预演、EDL 实测与外部 SRT 是不同证据链；词时间、时间轴来源与记录必须相符。B8 已支持显式来源升级与冲突路径拒绝；恢复项目按 tools 的迁移步骤操作，不手改标签。
 
-当前版本证明也有边界：`render_gate` 的来源漂移检查使用 size/mtime，并不等价于逐字节内容哈希；提交覆盖当前快照不代表未决意见已获作者确认；相关实现增强见 Brief B7 与交付文档。
+当前版本证明使用 SHA-256：`render_gate` 拒绝缺清单、缺关键来源或内容漂移；视觉缓存与本次选用的合成素材分别记录内容身份。提交覆盖当前快照仍不代表未决意见已获作者确认；详见 Brief B7 与交付文档。
 
 ## 6. 改动的失效范围
 

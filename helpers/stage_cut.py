@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import hashlib
+import re
 import sys
 from pathlib import Path
 
@@ -23,17 +25,36 @@ from _stage import (EXIT_OK, EXIT_PREREQ, Failed, Prereq, Stage,  # noqa: E402
                     report_error, resolve_project)
 
 
+def _receipt(edit: Path) -> dict:
+    try:
+        data = json.loads((edit / "selections.applied.json").read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _digest(path: Path) -> str | None:
+    return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
+
+
 def _state(edit: Path) -> dict:
     transcripts = sorted((edit / "transcripts").glob("*.json")) if (edit / "transcripts").is_dir() else []
+    page = edit / "edl_preview.html"
+    digest = _digest(edit / "edl.json")
+    marker = re.search(r'video-craft-edl-sha256" content="([a-f0-9]+)"', page.read_text(encoding="utf-8")) if page.is_file() else None
+    receipt = _receipt(edit)
+    applied = bool(digest and receipt.get("edl_sha256") == digest
+                   and receipt.get("selection_sha256") == _digest(edit / "selections.json"))
+    current = bool(digest and marker and marker[1] == digest)
     return {
-        "transcripts": [p.name for p in transcripts],
-        "takes_packed": (edit / "takes_packed.md").is_file(),
-        "edl": (edit / "edl.json").is_file(),
-        "selections": (edit / "selections.json").is_file(),
-        "preview_page": (edit / "edl_preview.html").is_file(),
+        "transcripts": [p.name for p in transcripts], "takes_packed": (edit / "takes_packed.md").is_file(),
+        "edl": bool(digest), "selections": (edit / "selections.json").is_file(),
+        "preview_page": page.is_file(), "preview_current": current,
+        "selection_applied": applied, "stage_complete": False,
+        "ready_for_time": current and applied,
         "subtitles": (edit / "subtitles.srt").is_file(),
-        "timeline": ((edit / "timeline" / "timeline.json").is_file()
-                     or (edit.parent / "timeline" / "timeline.json").is_file()),
+        "timeline": ((edit / "timeline/timeline.json").is_file() or (edit.parent / "timeline/timeline.json").is_file()),
+        "human_confirmation": "需作者核对当前逐字页；status 不推断批准",
     }
 
 
@@ -41,12 +62,12 @@ def _next_step(state: dict) -> str:
     if not state["transcripts"]:
         return "先转写：stage_cut.py prepare --project <项目> --source <原始视频>"
     if not state["edl"]:
-        return "建 EDL：stage_cut.py prepare --project <项目>"
-    if not state["preview_page"]:
+        return "模型先确定取舍，再用 edl_from_keep.py / edl_edit.py 建 EDL；prepare 不代做剪辑决定"
+    if not state["preview_current"]:
         return "出逐字审阅页：stage_cut.py review --project <项目>"
-    if state["selections"]:
+    if state["selections"] and not state["selection_applied"]:
         return "应用作者选择：stage_cut.py apply --project <项目>"
-    return "去「时间与字幕」阶段（见 references/stages.md 第 3 段）"
+    return "核对当前逐字审阅页；作者确认剪点后进入时间与字幕（stages 步骤 5–6）"
 
 
 def do_status(project: Path, edit: Path, as_json: bool) -> int:
@@ -85,8 +106,9 @@ def do_prepare(project: Path, edit: Path, source: str | None, backend: str, as_j
         else:
             stage.run("check_edl.py", edit, "--max-pause", "0.8")
     else:
-        stage.note("还没有 edl.json：先用转录结果定取舍，再回来跑一次 prepare")
-    stage.next = f"出逐字审阅页：stage_cut.py review --project {project}"
+        stage.note("转写已打包；还没有 edl.json，剪辑尚未完成")
+    stage.next = (f"出逐字审阅页：stage_cut.py review --project {project}" if edl_file.is_file() else
+                  "模型先确定取舍，再用 edl_from_keep.py / edl_edit.py 建 EDL；完成后再 review")
     return stage.finish("prepare", as_json)
 
 
@@ -104,9 +126,23 @@ def do_apply(project: Path, edit: Path, as_json: bool) -> int:
     if not (edit / "selections.json").is_file():
         raise Prereq(f"还没有 {edit / 'selections.json'}：先让作者在逐字审阅页提交选择")
     stage = Stage("cut")
-    stage.run("apply_selection.py", edit)
-    stage.note("EDL 已按选择更新；这一步不改底片")
-    stage.next = "去「时间与字幕」阶段（references/stages.md 第 3 段）"
+    receipt = _receipt(edit)
+    selection_digest = _digest(edit / "selections.json")
+    same_selection = receipt.get("selection_sha256") == selection_digest
+    if same_selection and receipt.get("edl_sha256") != _digest(edit / "edl.json"):
+        raise Prereq("这份选择已应用过，但 EDL 后来又改变；先重建逐字页并确认新选择，避免重复剪辑")
+    if same_selection:
+        stage.note("相同选择已应用，本次仅重建逐字面，不再次改 EDL")
+    else:
+        stage.run("apply_selection.py", edit)
+        (edit / "selections.applied.json").write_text(json.dumps({
+            "selection_sha256": selection_digest, "edl_sha256": _digest(edit / "edl.json"),
+            "selection": json.loads((edit / "selections.json").read_text(encoding="utf-8")),
+        }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    stage.run("edl_preview_build.py", edit)
+    stage.run("edl_review_surface.py", edit, "--surface-only")
+    stage.note("逐字页已重建；这一步不渲染底片")
+    stage.next = "核对重建后的逐字面；作者确认剪点后进入时间与字幕（stages 步骤 5–6）"
     return stage.finish("apply", as_json)
 
 

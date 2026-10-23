@@ -123,9 +123,9 @@ cue), the creative fields from `grouping.json`, and the EDL binding
 
 ## 时间轴字段与现有实现
 
-顶层 `timeSource` 与 `measuredTotalMs` 记录来源状态。当前字幕导出器也会读取已有 timeline 的 `timeSource` 选择口径，这是现有实现耦合，不能据此倒过来手改视觉末帧驱动字幕。另有一项未闭合的实现边界：普通时长记录查询在找不到匹配实测记录时可能回退到 `projected`；因此不能仅凭 timeline 写着 `measured` 就宣称字幕 cues 都由实测记录生成，详见 [implementation-brief.md](implementation-brief.md) B8。恢复项目先核来源、旧 timeline 和记录是否同版，再按步骤 5–6 重建。
+顶层 `timeSource` 与 `measuredTotalMs` 记录来源状态。显式 `srt_export --time-source measured` 只接受当前 EDL 指纹、正确段数、有限正数的真实记录；缺证据失败，不降级到 projected。auto 默认保留旧项目口径，未带指纹记录仅标 measured-guessed。显式 prepare 可覆盖旧 timeline 的口径，后续动作跟随词契约；timeline 派生重新核对逐段实测来源，不能用视觉末帧或手改标签驱动字幕。
 
-新项目显式传 --output-timeline 写入 project/timeline/timeline.json。旧项目若还存在 edit/timeline/timeline.json，_paths 当前优先读取它；只写项目根不会消除歧义，须先核消费者并保留备份，统一采用位置再重建，见 Brief B8。当前 timeline_derive 的 --alignment 是可选参数；有 EDL cues 的项目不因没有上游内容包就只能手写 timeline。
+新项目显式 `--output-timeline` 写 project/timeline/timeline.json。两处 timeline 冲突会报各自路径与来源；先备份、选采用版并迁到唯一落点，不覆盖唯一旧文件。相同副本可读取，但写入仍要求消除第二份。`--alignment` 保持可选，有 EDL cues 的项目可继续按原入口派生。
 
 ## Step 4 — hand-write the composition
 

@@ -27,7 +27,7 @@
 - [阶段契约](references/stages.md)：11 步的输入、完成条件与返回路径。
 - [工具手册](references/tools.md)：现有入口与调试命令。
 - [架构与 Debug](references/architecture.md)：职责、失效范围、局部优化和验证。
-- [实现 Brief](references/implementation-brief.md)：尚未落地的机械修复与验收；不等于现有能力。
+- [实现 Brief](references/implementation-brief.md)：B1–B8 的实现范围、兼容方式与实际验收记录。
 
 EDL 时间与外部 SRT 来源分别登记；工程态 projected 不冒充实测。新视觉制作固定走 recompose，先拆批准原页，再手写 composition；旧 page 路线隔离恢复。
 

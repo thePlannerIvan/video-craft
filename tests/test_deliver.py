@@ -14,12 +14,145 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import io
+import os
+from contextlib import redirect_stdout
+from unittest.mock import patch
 from pathlib import Path
 
 HELPERS = Path(__file__).parents[1] / "helpers"
 sys.path.insert(0, str(HELPERS))
 
 import deliver  # noqa: E402
+
+
+class DeliveryVerdict(unittest.TestCase):
+    def test_burn_without_libass_fails_before_encoder(self):
+        with tempfile.TemporaryDirectory() as td:
+            project = Path(td); (project / 'edit').mkdir()
+            visual = project / 'v.mp4'; audio = project / 'a.wav'; srt = project / 'captions.srt'
+            visual.touch(); audio.touch(); srt.write_text('subtitle')
+            with patch.object(deliver, '_preflight', return_value=(True, 1)), \
+                 patch('probe_env.ffmpeg_capabilities', return_value={'filters':{}}), \
+                 patch.object(deliver, '_run') as encoder, redirect_stdout(io.StringIO()):
+                code = deliver.deliver(project, visual, None, audio, srt, None, True, True, True, no_person=True)
+            self.assertNotEqual(code, 0); encoder.assert_not_called()
+
+    def test_failed_preflight_environment_selector_or_film_never_encodes(self):
+        for failure in ('environment', 'film', 'hyperframes', 'selector'):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as td:
+                project = Path(td); (project/'edit').mkdir(); (project/'composition').mkdir(); (project/'pages').mkdir()
+                (project/'composition/index.html').write_text('<script src="anim.js"></script>')
+                (project/'composition/anim.js').write_text('gsap.to(".missing", {x:1})')
+                calls=[]
+                def run(cmd):
+                    calls.append(cmd)
+                    failed = ((failure == 'film' and 'film.py' in ' '.join(cmd))
+                              or (failure == 'hyperframes' and cmd[:2] == ['hyperframes','check'])
+                              or (failure == 'selector' and 'check_motion_targets.py' in ' '.join(cmd)))
+                    return subprocess.CompletedProcess(cmd, 1 if failed else 0, 'invalid source' if failed else '{}', '')
+                with patch.object(deliver, '_run', side_effect=run), \
+                     patch.object(deliver, '_render_env', return_value=(failure!='environment',1,'fixture')), \
+                     redirect_stdout(io.StringIO()):
+                    code=deliver.deliver(project,None,None,None,None,None,False,True,True,no_person=True,render=True)
+                self.assertNotEqual(code,0)
+                self.assertFalse(any(c[0]=='ffmpeg' or c[:2]==['hyperframes','render'] for c in calls),calls)
+
+    def test_explicit_unproven_visuals_are_blocked_before_encoding(self):
+        with tempfile.TemporaryDirectory() as td:
+            project = Path(td); (project / 'edit').mkdir()
+            visual = project / 'external.mp4'; audio = project / 'voice.wav'
+            visual.write_bytes(b'visual'); audio.write_bytes(b'audio')
+            with patch.object(deliver, '_preflight', return_value=(True, 1)), \
+                 patch.object(deliver, '_run') as encoder, redirect_stdout(io.StringIO()):
+                code = deliver.deliver(project, visual, None, audio, None, None, False, True, True, no_person=True)
+            self.assertNotEqual(code, 0); encoder.assert_not_called()
+
+    def test_visual_proof_detects_same_metadata_change_and_source_deletion(self):
+        with tempfile.TemporaryDirectory() as td:
+            project = Path(td); (project / 'composition').mkdir()
+            css = project / 'composition/style.css'; css.write_bytes(b'old')
+            visual = project / 'external.mp4'; visual.write_bytes(b'visual')
+            self.assertTrue(deliver._render_is_stale(project, visual))
+            deliver._record_visual_source(project, visual, 'manual-confirmation')
+            self.assertFalse(deliver._render_is_stale(project, visual))
+            stat = css.stat(); css.write_bytes(b'new'); os.utime(css, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+            self.assertTrue(deliver._render_is_stale(project, visual))
+            deliver._record_visual_source(project, visual, 'manual-confirmation'); css.unlink()
+            self.assertTrue(deliver._render_is_stale(project, visual))
+
+    def run_verdict(self, result=None, *, edl=True):
+        with tempfile.TemporaryDirectory() as td:
+            project = Path(td)
+            (project / "edit").mkdir()
+            if edl:
+                (project / "edit/edl.json").write_text('{"ranges": []}')
+            visual, audio = project / "visual.mp4", project / "audio.m4a"
+            visual.touch(); audio.touch()
+            def compose(cmd):
+                Path(cmd[-1]).touch()
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+            video = {"width": 1920, "height": 1080, "r_frame_rate": "30/1"}
+            with patch.object(deliver, "_run", side_effect=compose), \
+                 patch.object(deliver, "_preflight", return_value=(True, 1)), \
+                 patch.object(deliver, "_streams", return_value=(video, {"codec_name": "aac"})), \
+                 patch.object(deliver, "_duration", return_value=1.0), \
+                 patch.object(deliver, "_frame_luma", side_effect=lambda p,t,crop=None: 10), \
+                 patch.object(deliver.subprocess, "run", side_effect=result if isinstance(result, Exception) else None,
+                              return_value=result), redirect_stdout(io.StringIO()):
+                code = deliver.deliver(project, visual, None, audio, None, None,
+                                       False, True, True, no_person=True, visuals_confirm_current=True)
+            report = json.loads((project / "成品" / f"{project.name}_核验报告.json").read_text())
+            return code, report
+
+    def test_strict_failure_blocks_overall_success(self):
+        result = subprocess.CompletedProcess([], 1, json.dumps({"ok": False, "hard": ["wrong timeline"], "warn": []}), "")
+        code, report = self.run_verdict(result)
+        self.assertNotEqual(code, 0, report)
+        self.assertFalse(report["ok"])
+        self.assertTrue(report["composition_ok"])
+        self.assertIn("wrong timeline", report["delivery_verdict"]["hard"])
+
+    def test_strict_success_accepts_existing_diagnostic_preamble(self):
+        payload = {"ok": True, "hard": [], "warn": []}
+        code, report = self.run_verdict(subprocess.CompletedProcess([], 0, "diagnostic\n" + json.dumps(payload), ""))
+        self.assertEqual(code, 0, report)
+        self.assertTrue(report["delivery_ok"])
+
+    def test_invalid_or_crashed_verifier_cannot_pass(self):
+        for result in (subprocess.CompletedProcess([], 0, "not JSON", ""),
+                       subprocess.CompletedProcess([], 0, '{}', ""),
+                       subprocess.CompletedProcess([], 0, '{"ok":true,"hard":["bad"],"warn":[]}', ""),
+                       OSError("verifier unavailable")):
+            with self.subTest(result=result):
+                code, report = self.run_verdict(result)
+                self.assertNotEqual(code, 0, report)
+                self.assertFalse(report["delivery_ok"])
+
+    def test_missing_edl_is_explicitly_unverified(self):
+        code, report = self.run_verdict(edl=False)
+        self.assertNotEqual(code, 0, report)
+        self.assertEqual(report["delivery_verdict"]["status"], "not-run")
+
+    def test_explicit_visuals_do_not_bypass_failed_film_preflight(self):
+        with tempfile.TemporaryDirectory() as td:
+            project = Path(td); (project / "edit").mkdir(); (project / "composition").mkdir()
+            (project / "composition/index.html").write_text('<div data-duration="1"></div>')
+            (project / "pages").mkdir(parents=True)
+            visual, audio = project / "visual.mp4", project / "audio.m4a"
+            visual.touch(); audio.touch()
+            encoded = []
+            def run(cmd):
+                if cmd[0] in ("ffmpeg", "hyperframes") and "render" in cmd or cmd[0] == "ffmpeg":
+                    encoded.append(cmd)
+                return subprocess.CompletedProcess(cmd, 1, "missing film mapping", "")
+            with patch.object(deliver, "_run", side_effect=run), \
+                 patch.object(deliver, "_render_env", return_value=(True, 1, "ok")), \
+                 patch.object(deliver, "_streams", return_value=({"width": 1920,"height":1080,"r_frame_rate":"30/1"}, {"codec_name":"aac"})), redirect_stdout(io.StringIO()):
+                code = deliver.deliver(project, visual, None, audio, None, None,
+                                       False, True, True, no_person=True)
+            self.assertNotEqual(code, 0)
+            self.assertEqual(encoded, [])
 
 
 def _have(tool: str) -> bool:
@@ -50,9 +183,21 @@ class DeliverIntegration(unittest.TestCase):
             "personSlot": {"x": 0, "y": 0, "w": 500, "h": 1080},
             "captionSafe": {"x": 0, "y": 880, "w": 1920, "h": 200},
         }), encoding="utf-8")
+        self._edl(tmp)
         return tmp
 
+    def _edl(self, tmp: Path):
+        from _edl import edl_digest
+        edit = tmp / "edit"
+        edit.mkdir(exist_ok=True)
+        edl = edit / "edl.json"
+        edl.write_text(json.dumps({"ranges": [{"start": 0, "end": 1}]}))
+        (edit / "segment_durations.json").write_text(json.dumps({"final": {"durations": [1.0], "total_s": 1.0, "edl_sha256": edl_digest(edl)}}))
+        visual = tmp / 'composition/_render/visuals.mp4'
+        if visual.is_file(): deliver._record_visual_source(tmp, visual, 'manual-confirmation')
+
     def _run(self, tmp: Path) -> dict:
+        self._edl(tmp)
         code = deliver.deliver(tmp, None, None, None, None, tmp / "成品", False, True, True)
         report = tmp / "成品" / f"{tmp.name}_核验报告.json"
         data = json.loads(report.read_text(encoding="utf-8")) if report.is_file() else {}
@@ -86,6 +231,8 @@ class DeliverIntegration(unittest.TestCase):
             for path in comp.rglob("*"):
                 if path.is_file() and "_render" not in path.parts and path.suffix != ".mp4":
                     os.utime(path, (now - 900, now - 900))
+            self.assertTrue(deliver._render_is_stale(tmp, visual))  # mtime cannot prove provenance
+            deliver._record_visual_source(tmp, visual, 'manual-confirmation')
             self.assertFalse(deliver._render_is_stale(tmp, visual))
 
     def test_no_person_layer_delivers_without_person(self):
@@ -95,6 +242,7 @@ class DeliverIntegration(unittest.TestCase):
             tmp = self._fixture(Path(td) / "demo", band_content=False)
             tmp.mkdir(parents=True, exist_ok=True)
             (tmp / "composition/assets/person.mp4").unlink()
+            deliver._record_visual_source(tmp, tmp / 'composition/_render/visuals.mp4', 'manual-confirmation')
             code = deliver.deliver(tmp, None, None, None, None, tmp / "成品",
                                    False, True, True, no_person=True)
             report = tmp / "成品" / f"{tmp.name}_核验报告.json"
@@ -171,6 +319,34 @@ class DeliverIntegration(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertFalse(data["ok"])
             self.assertTrue([c for c in data["checks"] if c["name"] == "画面层" and not c["ok"]])
+
+    def test_burned_subtitle_is_visible_for_both_person_routes(self):
+        # A locally installed libass build exercises actual encoded pixels.
+        libass_dir = Path("/opt/homebrew/opt/ffmpeg@7/bin")
+        with patch.dict(os.environ, {"PATH": str(libass_dir) + os.pathsep + os.environ["PATH"]}):
+            import probe_env
+            if not probe_env.ffmpeg_capabilities()["filters"].get("subtitles"):
+                self.skipTest("libass unavailable")
+            for no_person in (False, True):
+                with self.subTest(no_person=no_person), tempfile.TemporaryDirectory() as td:
+                    project = self._fixture(Path(td) / "demo 空格", False)
+                    srt = project / "edit" / "字幕 '含冒号:.srt"
+                    srt.write_text("1\n00:00:00,200 --> 00:00:00,750\nCAPTION\n")
+                    (project / "edit/subtitles.srt").write_bytes(srt.read_bytes())
+                    deliver._record_visual_source(project, project / 'composition/_render/visuals.mp4', 'manual-confirmation')
+                    values = []
+                    for burn in (False, True):
+                        out = project / ("burn" if burn else "sidecar")
+                        with redirect_stdout(io.StringIO()):
+                            code = deliver.deliver(project, None, None, None, srt, out,
+                                                   burn, True, True, no_person=no_person)
+                        self.assertEqual(code, 0, (out / f"{project.name}_核验报告.json").read_text())
+                        video = out / f"{project.name}_成片.mp4"
+                        values.append(deliver._frame_luma(video, .5, (1920, 200, 0, 880)))
+                        if burn:
+                            before = deliver._frame_luma(video, .1, (1920, 200, 0, 880))
+                            self.assertGreater(values[-1], before + .3)
+                    self.assertGreater(values[1], values[0] + .3, values)
 
 
 if __name__ == "__main__":

@@ -10,6 +10,8 @@ import json
 import sys
 import tempfile
 import unittest
+import subprocess
+import shutil
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -104,6 +106,78 @@ class CaptionFollowsPictureTimeline(unittest.TestCase):
         durations, source = srt_export._measured_durations(self.edit, self.edl, 2, strict=False)
         self.assertIsNone(durations)
         self.assertIsNone(source)
+
+    def test_explicit_measured_upgrade_ignores_old_projected_timeline(self):
+        self.write_timeline(10_000, "projected")
+        self.assertEqual(srt_export._measured_durations(self.edit, self.edl, 2, True,
+                                                       time_source="measured"),
+                         ([5.2, 5.3], "measured"))
+
+    def test_measured_label_cannot_fall_back_to_projection(self):
+        self.write_timeline(10_000, "measured")
+        path = self.edit / "segment_durations.json"
+        data = json.loads(path.read_text()); data["final"]["projected"] = True
+        path.write_text(json.dumps(data))
+        with self.assertRaises(SystemExit):
+            srt_export._measured_durations(self.edit, self.edl, 2, True)
+
+    def test_measured_request_refuses_missing_or_weak_evidence(self):
+        path = self.edit / "segment_durations.json"
+        original = json.loads(path.read_text())
+        for change in ({"edl_sha256": "stale"}, {"edl_sha256": None},
+                       {"durations": [5.2]}, {"durations": [0, float('nan')]}):
+            data = json.loads(json.dumps(original)); data["final"].update(change)
+            path.write_text(json.dumps(data))
+            with self.subTest(change=change), self.assertRaises(SystemExit):
+                srt_export._measured_durations(self.edit, self.edl, 2, True,
+                                               time_source="measured")
+
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "needs ffmpeg/ffprobe")
+    def test_cli_projected_to_measured_preserves_reviewed_lines(self):
+        self.edl.write_text(json.dumps({"sources": {"A": "/tmp/A.mp4"}, "ranges": [
+            {"source": "A", "start": 0, "end": 1}, {"source": "A", "start": 1, "end": 2}]}))
+        (self.edit / "transcripts").mkdir()
+        (self.edit / "transcripts/A.json").write_text(json.dumps({"words": [
+            {"type": "word", "text": "你好", "start": .1, "end": .8},
+            {"type": "word", "text": "世界", "start": 1.1, "end": 1.8}]}))
+        record = {"projected": {"durations": [1., 1.], "total_s": 2.,
+                                "projected": True, "edl_sha256": _edl.edl_digest(self.edl)}}
+        duration_file = self.edit / "segment_durations.json"
+        duration_file.write_text(json.dumps(record))
+        timeline = self.edit / "timeline/timeline.json"
+        timeline.parent.mkdir()
+        grouping = timeline.parent / "grouping.json"
+        grouping.write_text(json.dumps({"chapters": [{"id": "ch", "steps": [
+            {"id": "one", "cueIndices": [0]}, {"id": "two", "cueIndices": [1]}]}]}))
+        def cli(tool, *args):
+            p = subprocess.run([sys.executable, str(ROOT / "helpers" / tool), str(self.edit), *map(str,args)],
+                               capture_output=True, text=True)
+            self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        cli("srt_export.py", "--prepare", "--time-source", "projected")
+        lines = self.edit / "semantic_lines.txt"; lines.write_text("你好\n\n世界\n")
+        cli("srt_export.py", "--lock"); cli("srt_export.py", "--build")
+        cli("timeline_derive.py", "--grouping", grouping, "--output-timeline", timeline)
+        self.assertEqual(json.loads(timeline.read_text())["timeSource"], "projected")
+        measured = []
+        for index, length in enumerate((1.1, 1.2)):
+            media = self.edit / f"measured-{index}.mp4"
+            subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i",
+                            f"color=c=white:s=64x64:r=10:d={length}", "-c:v", "libx264", str(media)], check=True)
+            p = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                                "-of", "default=nw=1:nk=1", str(media)], capture_output=True, text=True, check=True)
+            measured.append(float(p.stdout))
+        record["real"] = {"durations": measured, "total_s": sum(measured), "edl_sha256": _edl.edl_digest(self.edl)}
+        duration_file.write_text(json.dumps(record))
+        cli("srt_export.py", "--prepare", "--force-prepare", "--time-source", "measured")
+        self.assertEqual(lines.read_text(), "你好\n\n世界\n")
+        cli("srt_export.py", "--lock"); cli("srt_export.py", "--build")
+        words = json.loads((self.edit / "caption_words.json").read_text())
+        self.assertEqual(words["timeline_source"], "measured")
+        self.assertAlmostEqual(words["segments"][1]["output_start"], 1.1)
+        self.assertAlmostEqual(words["total_duration"], 2.3)
+        cli("timeline_derive.py", "--grouping", grouping, "--output-timeline", timeline)
+        cli("srt_export.py", "--check")
+        self.assertEqual(json.loads(timeline.read_text())["measuredTotalMs"], 2300)
 
 
 if __name__ == "__main__":

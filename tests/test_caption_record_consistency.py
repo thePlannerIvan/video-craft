@@ -94,14 +94,13 @@ class CaptionRecordConsistency(unittest.TestCase):
 
 
     def test_legacy_record_without_digest_is_used(self):
-        # pre-digest projects: verify_delivery accepts the newest no-digest record
-        # via select_render_record; captions must not fall back to nominal time.
+        # Legacy editing remains readable but lacks strong measured provenance.
         (self.edit / "segment_durations.json").write_text(json.dumps({
             "final": {"durations": [0.9, 1.1]},
         }), encoding="utf-8")
         durations, source, tag, problem = _edl.duration_record(self.edit, 2)
         self.assertEqual(durations, [0.9, 1.1])
-        self.assertEqual(source, "measured")
+        self.assertEqual(source, "measured-guessed")
         self.assertEqual(tag, "final")
         self.assertIsNone(problem)
 

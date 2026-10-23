@@ -9,6 +9,11 @@ from __future__ import annotations
 
 import sys
 import unittest
+import tempfile
+import json
+import io
+from contextlib import redirect_stdout
+from unittest.mock import patch
 from pathlib import Path
 
 HELPERS = Path(__file__).parents[1] / "helpers"
@@ -68,6 +73,18 @@ class UsableAudio(unittest.TestCase):
 
 
 class ServedProjectGuard(unittest.TestCase):
+    def test_actual_route_proof_rejects_other_directory_even_with_same_body(self):
+        import live_stage
+        with tempfile.TemporaryDirectory() as td:
+            comp = Path(td); (comp / 'index.html').write_text('<div data-duration="10"></div>')
+            def response(url):
+                if url.endswith('/api/projects'):
+                    return json.dumps({'projects':[{'id':'composition', 'dir':'/another/composition'}]})
+                return '<script data-hf-gsap-fallback></script><div data-duration="10"></div>'
+            with patch.object(live_stage, 'fetch', side_effect=response):
+                ok, reason = live_stage.prove_stage_route('http://localhost:9000', 'composition', comp)
+            self.assertFalse(ok); self.assertIn('目录', reason)
+
     """端口上端出来的必须是本工程：三条片同 id `composition`，挤同一端口会互相顶掉。"""
 
     def test_same_duration_counts_as_same_project(self):
@@ -83,6 +100,41 @@ class ServedProjectGuard(unittest.TestCase):
         import review as rv
         self.assertIsNone(rv._same_project(None, 367.61))
         self.assertIsNone(rv._same_project(354.10, None))
+
+    def test_current_timeline_wins_over_old_snapshot(self):
+        import review as rv
+        with tempfile.TemporaryDirectory() as td:
+            project = Path(td)
+            (project / "review").mkdir(); (project / "timeline").mkdir(); (project / "edit").mkdir()
+            (project / "review/review_data.json").write_text('{"totalDurationMs":10000}')
+            (project / "timeline/timeline.json").write_text('{"totalDurationMs":12000,"chapters":[{"steps":[{"endMs":12000}]}]}')
+            self.assertEqual(rv._expected_duration(project), 12.0)
+
+    def test_old_snapshot_is_not_current_duration_evidence(self):
+        import review as rv
+        with tempfile.TemporaryDirectory() as td:
+            project = Path(td); (project / "review").mkdir()
+            (project / "review/review_data.json").write_text('{"totalDurationMs":10000}')
+            self.assertIsNone(rv._expected_duration(project))
+
+    def test_same_length_foreign_identity_fails_with_machine_readable_reason(self):
+        import review as rv
+        with tempfile.TemporaryDirectory() as td:
+            project = Path(td)
+            (project / "review").mkdir(); (project / "edit").mkdir()
+            (project / "review/index.html").touch(); (project / "review/review-surface.json").write_text('{}')
+            (project / "review/review_data.json").write_text('{"totalDurationMs":10000}')
+            info = {"ok": True, "stageUrl": "http://localhost:9000/stage", "identity": {
+                "verified": True, "projectRoot": "/another/project", "compositionRoot": "/another/project/composition"}}
+            def run(args):
+                return 0, json.dumps(info) if "live_stage.py" in args[0] else '{}'
+            output = io.StringIO()
+            with patch.object(rv,"_run",side_effect=run), patch.object(rv,"_served_timeline_duration",return_value=10.), redirect_stdout(output):
+                code = rv.review(project, open_surface=False, as_json=True, port=9000)
+            self.assertNotEqual(code, 0)
+            result = json.loads(output.getvalue())
+            self.assertFalse(result["ok"])
+            self.assertTrue(result["steps"][-1]["fix"])
 
 
 if __name__ == "__main__":

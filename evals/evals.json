@@ -4,7 +4,7 @@
     "prompt": "这是录好的音频、句子级 SRT、最终口播和 video-idea-system 的 visual-plan.json。内容契约只写了画面必须呈现的信息，请完成动画视频。",
     "must_do": [
       "核对内容采用版和已批准参考页；缺页面决定时回 PPT Hell，不代替上游重新设计静态页",
-      "外部 SRT 先对齐 Speech Beat，人工处理 low/unmatched，再导入 srt-import 时间轴",
+      "外部 SRT 先对齐 Speech Beat，人工处理 low/unmatched，再用现有音频 --media 登记 srt-import 来源",
       "film 拆原页并映射 Beat，模型按已定内容设计动作、强调与时间绑定",
       "每个视觉 Step 保留单一 sourceBlueprintId，来源边界不跨 Beat",
       "review 构建工程态审阅并检查运行时画面/声音，不先渲整片"
@@ -72,12 +72,13 @@
     "must_do": [
       "明确还不能称严格核验通过",
       "按 delivery.md 复核实际产物和严格错误原因",
-      "来源变更则重建受影响产物；验证后再记录指纹"
+      "来源变更则重建受影响产物；验证后再记录指纹",
+      "当前修复版应非零退出并拒绝总成功；若仍矛盾，核对实际运行版本和 verifier 报告，不静默放行"
     ],
     "must_not_do": [
       "只看顶层 ok 宣布可发送",
       "把有反馈记录等同批准出片",
-      "宣称 Brief 中的修复已实现"
+      "因历史矛盾报告而绕开当前严格核验"
     ]
   },
   {
@@ -100,8 +101,8 @@
     "must_do": [
       "拒绝仅修改标签当作实测证据",
       "对照当前 EDL、实测记录、字幕来源与两处 timeline 的实际读写位置",
-      "按 B8 定位现有 owner 的升级缺口；未修复和验证前明确未完成",
-      "在项目复制件复现再局部修复，保留已审的语义行方案"
+      "用现有 --prepare --force-prepare --time-source measured 升级，再 lock/build、派生 timeline 和 check；缺实测明确失败",
+      "保留已审 semantic_lines；双 timeline 冲突先备份并统一采用位置，不重复新建时间工具"
     ],
     "must_not_do": [
       "手拉字幕比例或手写 measured 标签掩盖来源失配",

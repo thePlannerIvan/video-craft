@@ -22,11 +22,20 @@ PROJECT_SUBDIRS = ("edit", "review", "成品")
 def timeline_file(edit_dir: str | Path) -> Path | None:
     """找这份工程的画面时间轴：`<edit>/timeline/` 或 `<project>/timeline/`。"""
     edit = Path(edit_dir).expanduser().resolve()
-    for candidate in (edit / "timeline" / "timeline.json",
-                      edit.parent / "timeline" / "timeline.json"):
-        if candidate.is_file():
-            return candidate
-    return None
+    import json
+    candidates = [p for p in (edit / "timeline/timeline.json",
+                             edit.parent / "timeline/timeline.json") if p.is_file()]
+    if len(candidates) < 2:
+        return candidates[0] if candidates else None
+    try:
+        docs = [json.loads(p.read_text(encoding="utf-8")) for p in candidates]
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"两处时间轴无法确认一致：{candidates}；先备份并统一采用位置") from exc
+    if docs[0] != docs[1]:
+        detail = "；".join(f"{p} ({d.get('timeSource') or d.get('source') or 'unmarked'})"
+                           for p, d in zip(candidates, docs))
+        raise ValueError(f"时间轴冲突：{detail}；先备份两份，明确采用版并迁移到唯一位置，不自动覆盖")
+    return candidates[-1]
 
 
 def timeline_span_ms(path: str | Path) -> int | None:
@@ -42,6 +51,16 @@ def timeline_span_ms(path: str | Path) -> int | None:
         return None
     end = steps[-1].get("endMs")
     return int(end) if isinstance(end, (int, float)) else None
+
+
+def check_timeline_output(edit_dir: str | Path, output: str | Path) -> None:
+    """A writer must not leave a second timeline for other consumers to select."""
+    edit, target = Path(edit_dir).resolve(), Path(output).resolve()
+    timeline_file(edit)  # report conflicting versions with their declared sources
+    others = [p for p in (edit / "timeline/timeline.json", edit.parent / "timeline/timeline.json")
+              if p.is_file() and p.resolve() != target]
+    if others:
+        raise ValueError(f"写入 {target} 会留下另一处时间轴 {others}；先备份并迁移到唯一采用位置")
 
 
 def timeline_source(path: str | Path) -> str | None:

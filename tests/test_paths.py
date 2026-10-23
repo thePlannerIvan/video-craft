@@ -47,6 +47,21 @@ class Resolve(unittest.TestCase):
         self.assertEqual(root, flat.resolve())
         self.assertEqual(edit, flat.resolve())
 
+    def test_conflicting_timelines_are_explicitly_rejected(self):
+        for base, source in ((self.project / "edit", "projected"), (self.project, "measured")):
+            path = base / "timeline/timeline.json"
+            path.parent.mkdir(parents=True)
+            path.write_text('{"timeSource":"' + source + '"}')
+        with self.assertRaisesRegex(ValueError, "projected.*measured"):
+            _paths.timeline_file(self.project / "edit")
+
+    def test_identical_duplicate_timelines_use_canonical_location(self):
+        for base in (self.project / "edit", self.project):
+            path = base / "timeline/timeline.json"
+            path.parent.mkdir(parents=True)
+            path.write_text('{"timeSource":"measured"}')
+        self.assertEqual(_paths.timeline_file(self.project / "edit"), (self.project / "timeline/timeline.json").resolve())
+
 
 if __name__ == "__main__":
     unittest.main()

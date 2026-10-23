@@ -1836,6 +1836,8 @@ html, _ = inline(html, tokens)
 check(html, tokens)
 
 out = EDIT / "edl_preview.html"
+from _edl import edl_digest
+html = html.replace("</head>", f'<meta name="video-craft-edl-sha256" content="{edl_digest(EDIT / "edl.json")}"></head>', 1)
 out.write_text(html, encoding="utf-8")
 print(f"edl_preview.html written ({out.stat().st_size/1024:.0f} KB, {len(segments)} segments, "
       f"{total}s, {len(cues)} caption cues, {gidx} words, {len(deleted)} deleted chunks, "

@@ -139,13 +139,14 @@ def audio_fingerprint(path: Path) -> str:
 
 
 def check_deliverable_specs(project: Path, deliver_dir: Path,
-                            hard: list, warn: list, report: dict) -> None:
+                            hard: list, warn: list, report: dict,
+                            source_audio: Path | None = None) -> None:
     """交付规格门禁：与源音轨的声道/采样率一致、成品之间等长、共用同一音轨。
 
     为什么要有：本轮把 24 段音轨处理成了单声道（源是立体声）✗，而**没有任何检查发现** ——
     声道布局这种东西在最终交付上是听得出、看不出的。
     """
-    src = next(iter(sorted((project / "input").glob("audio*.*"))), None)
+    src = source_audio or next(iter(sorted((project / "input").glob("audio*.*"))), None)
     src_ch = src_rate = None
     if src and src.is_file():
         a = next((x for x in probe(src)["streams"] if x["codec_type"] == "audio"), None)
@@ -154,7 +155,7 @@ def check_deliverable_specs(project: Path, deliver_dir: Path,
         report["source_audio"] = {"file": src.name, "channels": src_ch, "sample_rate": src_rate}
 
     specs: dict = {}
-    for v in sorted(deliver_dir.glob("*.mp4")):
+    for v in sorted(deliver_dir.rglob("*.mp4")):
         info = probe(v)
         a = next((x for x in info["streams"] if x["codec_type"] == "audio"), None) or {}
         specs[v.name] = {"duration_s": round(float(info["format"]["duration"]), 3),
@@ -232,6 +233,8 @@ def main() -> int:
     ap.add_argument("edit_dir", type=Path)
     ap.add_argument("--video", type=Path, default=None)
     ap.add_argument("--deliver-dir", type=Path, default=None)
+    ap.add_argument("--media", type=Path, help="本次选用的外部剪好音频；与 srt-import 来源记录比对")
+    ap.add_argument("--srt", type=Path, help="本次选用的字幕；默认 edit/subtitles.srt 或外部来源字幕")
     ap.add_argument("--max-pause", type=float, default=1.0)
     ap.add_argument("--max-black", type=float, default=2.0,
                     help="成片里累计纯黑画面的秒数预算（超过即失败）。深色设计天然含近黑帧，"
@@ -276,11 +279,39 @@ def main() -> int:
     if film_srt is not None:
         extra_sources[film_srt.name] = film_srt
 
-    if args.deliver_dir:
-        check_deliverable_specs(edit_dir.parent, args.deliver_dir.resolve(), hard, warn, report)
-
     from _paths import timeline_file, timeline_span_ms
     timeline = timeline_file(edit_dir)
+    timeline_doc = json.loads(timeline.read_text(encoding='utf-8')) if timeline else {}
+    external = timeline_doc.get('source') == 'srt-import' or timeline_doc.get('timeSource') == 'srt-import'
+    external_srt = None
+    current_measured = None
+    if external:
+        from import_srt_timeline import source_problems
+        hard.extend(source_problems(edit_dir.parent, timeline_doc, media=args.media, srt=args.srt))
+        report['timeSource'] = 'srt-import'
+        source_srt = timeline_doc.get('sourceSrt')
+        external_srt = Path(source_srt) if source_srt else None
+        if external_srt and external_srt.is_file():
+            extra_sources[external_srt.name] = external_srt
+        extra_sources[video.name] = video
+    elif (edit_dir / 'edl.json').is_file():
+        from _edl import duration_record
+        try:
+            edl_path = edit_dir / 'edl.json'
+            count = len(json.loads(edl_path.read_text(encoding='utf-8')).get('ranges') or [])
+            durations, source, _tag, problem = duration_record(edit_dir, count, edl_path, time_source='measured')
+            if problem or source != 'measured' or not durations:
+                hard.append(f'正式交付缺当前 EDL 的实测证据：{problem or source}')
+            else:
+                current_measured = (round(sum(durations), 3), _tag, 'digest')
+            if timeline_doc.get('timeSource') == 'projected':
+                hard.append('当前画面时间轴仍是 projected；先显式升级实测字幕并重建 timeline')
+        except (ValueError, OSError) as exc:
+            hard.append(f'正式交付缺当前 EDL 的实测证据：{exc}')
+    if args.deliver_dir:
+        media_record = (timeline_doc.get('sourceEvidence') or {}).get('media') or {}
+        selected_audio = args.media or (Path(media_record['path']) if external and media_record.get('path') else None)
+        check_deliverable_specs(edit_dir.parent, args.deliver_dir.resolve(), hard, warn, report, selected_audio)
     timeline_end = timeline_span_ms(timeline) if timeline is not None else None
     if timeline_end:
         expected = timeline_end / 1000
@@ -295,7 +326,7 @@ def main() -> int:
         else:
             print(f"  时长与画面时间轴一致（{expected:.3f}s）")
 
-    measured, tag, how = measured_total(edit_dir)
+    measured, tag, how = (None, None, 'srt-import') if external else (current_measured or measured_total(edit_dir))
     if measured is not None:
         report["measured_total_s"] = measured
         report["measured_tag"] = tag
@@ -314,7 +345,12 @@ def main() -> int:
         else:
             print(f"  时长与渲染记录（{tag}）一致（{measured:.3f}s）")
 
-    srt = edit_dir / "subtitles.srt"
+    srt = args.srt or (external_srt if external else edit_dir / "subtitles.srt")
+    srt = srt or edit_dir / "subtitles.srt"
+    if external and (edit_dir / 'subtitles.srt').is_file() and external_srt:
+        from state_fingerprint import sha256
+        if sha256(edit_dir / 'subtitles.srt') != sha256(external_srt):
+            hard.append('edit/subtitles.srt 与外部时间轴登记字幕不是同一版；采用当前字幕后重新导入')
     if cut_map is not None:
         # 交付字幕已由 post_cut_problems 按 cut-map 逐条核过；母版 SRT 不参与这里的比较
         if srt.exists():
@@ -401,19 +437,27 @@ def main() -> int:
         # delivered SRT might legitimately be the 2-word-chunk legacy file.
         candidates = [edit_dir / n for n in ("final.mp4", "preview.mp4", "subtitles.srt")
                       if (edit_dir / n).exists()]
+        if external:
+            candidates = [video] + ([external_srt] if external_srt and external_srt.is_file() else [])
         by_hash = {digest(c)[0]: c for c in candidates}
         # 二次剪成片的工作区副本不在 edit/ 里：成片与剪后字幕由 cut-map 声明，
         # 交付目录按名字或内容哈希对回它们，而不是误报「找不到对应文件」。
         for path in extra_sources.values():
             by_hash.setdefault(digest(path)[0], path)
-        for dst in sorted(p for p in out.glob("*") if p.is_file()):
+        for dst in sorted(p for p in out.rglob("*") if p.is_file()):
             src = edit_dir / dst.name
             if not src.exists():
+                src = None
+            if src is None:
                 src = extra_sources.get(dst.name)
             if src is None:
                 src = by_hash.get(digest(dst)[0])
             if src is None:
-                warn.append(f"交付目录里的 {dst.name} 在工作区找不到对应文件")
+                message = f"交付目录里的 {dst.name} 在工作区找不到当前对应文件（可能是旧版本）"
+                (hard if external and dst.suffix.lower() in ('.mp4', '.srt') else warn).append(message)
+                continue
+            if external and src not in candidates:
+                hard.append(f'{dst.name} 不是当前外部 SRT 项目的核验交付源')
                 continue
             src_hash, src_full = digest(src)
             dst_hash, _ = digest(dst)

@@ -1,6 +1,6 @@
 # 渲染前置：时间、画面与审阅
 
-作者明确出片后、启动生产编码前读本页。它规定所需证据，不表示 deliver 已自动执行全部检查；当前自动化缺口见 implementation-brief B2，合成后的完成线见 delivery.md。
+作者明确出片后、启动生产编码前读本页。`deliver` 自动执行适用机械检查；人工判断仍按本页完成，合成后的完成线见 delivery.md。
 
 1. 读取当前 timeline 的来源与绑定。EDL 项目区分 projected 与 measured，交付必须完成同版实测核验；外部 SRT 保持 srt-import 并核真实音频；未录音 planned 不进入成片。来源规则归 visual-timeline.md。
 2. 有参考页动画时 film verify 通过；拆解表与 Beat 映射完整。纯剪辑不伪造参考页来通过此检查。

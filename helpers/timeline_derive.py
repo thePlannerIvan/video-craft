@@ -375,6 +375,13 @@ def main() -> int:
     args = ap.parse_args()
 
     edit_dir = args.edit_dir.resolve()
+    from _paths import timeline_file, check_timeline_output
+    try:
+        timeline_file(edit_dir)
+        if args.output_timeline:
+            check_timeline_output(edit_dir, args.output_timeline)
+    except ValueError as exc:
+        ap.error(str(exc))
     entries = derive_entries(edit_dir, edl_path=args.edl)
     words_source = (_read_json(edit_dir / WORDS_NAME).get("timeline_source")
                     if (edit_dir / WORDS_NAME).exists() else None)
@@ -396,7 +403,17 @@ def main() -> int:
             check_alignment(entries, grouping, _read_json(args.alignment))
         measured_total = None
         if words_source == "measured":
-            measured_total, how, tag = _measured_total_ms(edit_dir, args.edl)
+            from _edl import duration_record
+            segments = _read_json(edit_dir / WORDS_NAME).get('segments') or []
+            measured, selected_source, tag, problem = duration_record(edit_dir, len(segments), args.edl,
+                                                                     time_source='measured')
+            if problem or not measured or selected_source != 'measured':
+                _fail(f'当前实测证据无效：{problem}；重新实测后升级字幕')
+            for segment, duration in zip(segments, measured):
+                span = float(segment.get('output_end', 0)) - float(segment.get('output_start', 0))
+                if abs(span - duration) > .001:
+                    _fail('字幕使用的实测段时长已过期；srt_export --prepare --force-prepare --time-source measured 后 lock/build')
+            measured_total, how = round(sum(measured) * 1000), 'digest'
             if measured_total and how == "digest":
                 print(f"  · 时间脊柱按实测总长对齐：{measured_total / 1000:.3f}s，"
                       f"记录 {tag}（与当前剪辑指纹一致），步骤首尾相接")

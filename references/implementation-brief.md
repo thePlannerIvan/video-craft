@@ -1,6 +1,6 @@
 # 工具实现 Brief 与验收
 
-状态：**待执行**。2026-10-23 只完成架构与文档更新，没有修改 Python/JS/HTML、没有完成下列修复。下一模型按工作包推进，不重写架构，不新建统一 CLI。当前使用的补位规则见 delivery.md；模块 owner 与 Debug 方法见 architecture.md。
+状态：**B1–B8 已完成实现与本地验收**（2026-10-23）。保留下列范围、验收与回退合同，实际结果见本页末尾。未新建统一 CLI、stage 脚本或状态数据库；模块 owner 与 Debug 方法见 architecture.md。DSH 宿主未实测，不能把本地宿主结果视为双宿主通过。
 
 ## 执行范围与保护
 
@@ -121,3 +121,24 @@
 4. 报告实际改动、原故障复现、修复后正常/失败结果、未覆盖宿主或场景、CLI 兼容、是否增加文件及必要性。
 5. 仅在行为已通过验收后，修改 delivery/tools/stages 的对应补位说明，把本包标完成并链接验证证据；保持未实现包的待执行状态。
 6. 按 AGENTS/PUBLISHING 发布完整 Skill：本地 dry-run → all → 三端核对；GitHub 密钥闸门与显式提交身份 → 推送验证。没有验收通过不以“已写代码”标完成。
+
+## 2026-10-23 实际验收
+
+基线在允许本地宿主/浏览器的隔离副本运行：503 项通过（131.740s）。最终全量：**537 项通过，99.063s，无 skip**。新增 34 项，没有减少既有覆盖；无指纹旧记录的断言改为 measured-guessed，保留可读性但不充当强实测。早期受限沙箱 EPERM 与错误复制布局不计为通过。
+
+| 包 | 实际结果与证据 |
+|---|---|
+| B1 | strict 非零、崩溃、坏 JSON、缺字段、矛盾报告均阻断总成功；正常合成与严格核验分别报告。手冲咖啡成片复制件正常通过，刻意追加超长字幕失败；旧交付指纹不妨碍重新核验。`test_deliver` |
+| B2 | 默认入口在编码前核环境、适用 film、HyperFrames、selector/transform 与来源；显式已有画面也不能绕过。wrapper 不重复 gate；失败用例断言生产编码未启动。`test_deliver`、`test_render_env`、`test_render_gate`、`test_film` |
+| B3 | verify --no-audio 端到端传递，真实无声轨不声明失败、声明后通过；run 明确拒绝。FFmpeg7/libass 真实输出帧证明人物/无人物两种烧录，默认外挂不改画面；缺滤镜提前失败，中文/空格/引号/冒号路径通过。`test_deliver`、`test_import_srt_timeline`、`test_stage_scripts` |
+| B4 | 当前源 12s 不再读取旧 10s 快照；本机项目 API 的实际服务目录证明身份，同长异工程拒绝；缺证据不放行。手冲咖啡隔离副本通过真实编译、定位、2x 播放、旁白时钟、字幕切换、提交、inbox、改源重建和旧快照拒绝。副本中仅将原有内联执行代码移至外部文件以满足现行契约；母版未改。检查器另修复注册名写死 main，采用 composition 根的实际注册名。DSH 未实测。`test_review_playable`、`browser_review_smoke.py` |
+| B5 | 无 EDL 的 prepare 指向模型取舍；apply 写一次消费回执、重建逐字面，相同选择重试不重剪；EDL 后续变化要求重新确认。status 区分文件存在、当前性、机械完成及人工确认。`test_stage_scripts`、`test_edl_review` |
+| B6 | 用户确认 --media 合同，旧外部项目补选现有音频即可；真实小媒体从旧导入失败 → 补选音频通过。换音频、SRT/alignment/来源/绑定失配、字幕超长、旧交付副本失败；结果保持 srt-import。未引入 EDL 假证据。`test_import_srt_timeline`、`test_edit_contracts` |
+| B7 | 同大小/同 mtime 换内容、来源删除、清单/关键条目/哈希缺失、显式未证实画面均拒绝；有效 proof 可复用，人工确认可补记旧缓存/外部画面。v3 指纹覆盖嵌套交付和实际选用素材，按引用/现有来源清单哈希使用素材，不扫描无关原片。`test_render_gate`、`test_fingerprint_nested`、`test_deliver` |
+| B8 | 真实 FFmpeg 小夹具 projected [1,1] → measured [1.1,1.2]，词 offset=1.1、总长=2.3、字幕与 timeline 同步，已审文字不变；keywords-video 元数据复制件通过同一升级链。缺/旧指纹、坏段数、假 measured 标签失败；双路径冲突要求保留备份后统一。`test_time_source`、`test_paths`、`test_timeline_equivalence` |
+
+模板静态检查与 9 个缺陷自证、spec_lint、planning lint、链接/JSON/diff 检查均通过。planning lint 的 4 处提示已核为工程资产、公共 tokens 及两个既有示例。未执行付费转写、生产成片渲染或伪造生产批准；未做新的独立创作质量模型评测。
+
+原始红/绿日志、完整差异和真实副本证据保存在 `/private/tmp/video-craft-implementation-20261023`（临时目录可能被清理）；B1 原始单包 diff 为 B1.patch，后续按 owner 和工作包整理审阅差异。永久回归在本 Skill tests/；未来更改必须重跑，不能继承本次绿灯。
+
+兼容与迁移：旧 CLI 保留；新增可选 --time-source、--media、--visuals-confirm-current。旧项目可读取，正式 measured/外部来源/缓存使用需补足对应证据；旧 v2 delivery 指纹在实际文件核验后重新 capture v3。新增持久文件仅为 `selections.applied.json`（避免重复应用同一选择）和 `<visuals>.sources.json`（绑定缓存内容与来源），没有新增平行验证器或中心状态库。

@@ -63,6 +63,6 @@ description: 承接 Video Idea System 的内容包、PPT Hell 的静态 SVG 或�
 
 ## 维护入口
 
-遇到故障、准备优化或新增工具，先读 [architecture.md](references/architecture.md)：它规定模块归属、依赖失效范围、Debug 流程、新脚本准入与验证分级。待实现的机械工作只登记在 [implementation-brief.md](references/implementation-brief.md)，不能把设计目标说成现有能力。
+遇到故障、准备优化或新增工具，先读 [architecture.md](references/architecture.md)：它规定模块归属、依赖失效范围、Debug 流程、新脚本准入与验证分级。机械工作包及其实际验收记录只登记在 [implementation-brief.md](references/implementation-brief.md)，不能把设计目标说成现有能力。
 
-当前关键限制：deliver 的总 ok 不包含所有严格核验结论；render_gate 检查快照覆盖，不理解“修改意见”等于批准；stage_deliver 尚不是完整的交付事务。按 delivery.md 的补位顺序执行，脚本修复后再按 Brief 验收移除补位。
+当前机械交付入口聚合合成与严格核验，只有二者通过才输出总 ok。render_gate 只检查当前快照的提交覆盖及内容来源，不理解意见是否已解决；作者出片指令与未决项处理仍由模型核对。stage_deliver 保留分动作调用，包装后仍须核副本并记录新指纹。

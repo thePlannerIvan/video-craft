@@ -9,6 +9,8 @@ and a source tree that has not drifted since that review was built.
 from __future__ import annotations
 
 import json
+import hashlib
+import os
 import sys
 import tempfile
 import unittest
@@ -38,7 +40,7 @@ class RenderGateTests(unittest.TestCase):
         self.source.write_text("<html><body>draft</body></html>", encoding="utf-8")
         stat = self.source.stat()
         self.manifest = [{"path": "composition/index.html", "size": stat.st_size,
-                          "mtime_ns": stat.st_mtime_ns, "sha256": "x"}]
+                          "mtime_ns": stat.st_mtime_ns, "sha256": hashlib.sha256(self.source.read_bytes()).hexdigest()}]
 
     def tearDown(self) -> None:
         self._tmp.cleanup()
@@ -95,6 +97,20 @@ class RenderGateTests(unittest.TestCase):
         report = render_gate.evaluate(self.project, None, False)
         self.assertFalse(report["ok"])
         self.assertTrue(any("源又改过" in r for r in report["reasons"]), report)
+
+    def test_same_size_and_mtime_changed_content_blocks(self):
+        self._review(); self._submissions(SNAPSHOT)
+        stat = self.source.stat()
+        self.source.write_bytes(self.source.read_bytes().replace(b'draft', b'other'))
+        os.utime(self.source, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        self.assertFalse(render_gate.evaluate(self.project, None, False)['ok'])
+
+    def test_missing_manifest_hash_or_critical_entry_blocks(self):
+        for manifest in (None, [], [{}], [{k:v for k,v in self.manifest[0].items() if k != 'sha256'}]):
+            with self.subTest(manifest=manifest):
+                self.manifest = manifest
+                self._review(); self._submissions(SNAPSHOT)
+                self.assertFalse(render_gate.evaluate(self.project, None, False)['ok'])
 
     def test_surface_declared_feedback_file_is_read(self):
         self._review()

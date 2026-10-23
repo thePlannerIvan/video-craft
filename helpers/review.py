@@ -41,7 +41,15 @@ def _free_port() -> int:
         return int(sock.getsockname()[1])
 
 
-def _expected_duration(project: Path) -> float | None:
+def _expected_duration(project: Path, *, fresh_snapshot: bool = False) -> float | None:
+    from _paths import timeline_file, timeline_span_ms
+    timeline = timeline_file(project / "edit")
+    if timeline is not None:
+        span = timeline_span_ms(timeline)
+        if span is not None and span > 0:
+            return span / 1000
+    if not fresh_snapshot:
+        return None
     path = project / "review" / "review_data.json"
     if path.is_file():
         try:
@@ -72,7 +80,7 @@ def _json_tail(text: str) -> dict:
     return {}
 
 
-# 端口上"是不是本工程"的判据：时长差 2s 以内算同一片。
+# 时长相容性检查，不承担工程身份判定；身份由 live_stage 的路由核验证据提供。
 # 用 2s 而不是 0.5s，是因为同一份工程的 composition data-duration 与 timeline 允许有小漂移
 # （V2 实测 354.85 vs 354.10 = 0.75s）；真正的"端错工程"是十几秒级（V1 367.61 vs V2 354.10）。
 SAME_PROJECT_TOLERANCE = 2.0
@@ -82,7 +90,7 @@ DRIFT_WARN = 0.5
 
 def _same_project(expected: float | None, served: float | None,
                   tolerance: float = SAME_PROJECT_TOLERANCE) -> bool | None:
-    """端口上的 composition 是不是本工程：用时长的可比性判断（None=无法判断）。"""
+    """时长是否相容（None=缺证据），不证明工程身份。"""
     if expected is None or served is None:
         return None
     return abs(served - expected) <= tolerance
@@ -129,13 +137,20 @@ def review(project: Path, open_surface: bool = True, live: bool = True,
             print(f"{'✓' if ok else '✗'} {name}" + (f" — {detail}" if detail else ""))
         return ok
 
+    def stop() -> int:
+        print(json.dumps({"ok": False, "steps": steps, "failed": steps[-1] if steps else None,
+                          "next": "按失败步骤的 fix 修复后重建工程审阅"}, ensure_ascii=False, indent=1))
+        return 1
+
+    info = {}
     # 1) 静态契约：这份 composition 能不能进活舞台
     if live:
         code, out = _run([str(HELPERS / "check_live_stage.py"), str(project)])
         if not step("活舞台契约（静态）", code == 0, out.strip().splitlines()[-1] if out.strip() else "",
                     "composition/src：会执行逻辑的脚本必须在外部文件；注册名 = data-composition-id"):
-            print("\n".join(out.strip().splitlines()[-8:]))
-            return 1
+            if not as_json:
+                print("\n".join(out.strip().splitlines()[-8:]))
+            return stop()
         # 端口是这轮最大的静默陷阱：三条片同 id `composition`，谁占住默认端口谁被端出来。
         # 所以默认自动挑空闲端口；并且起服务后**核对端出来的确实是本工程**。
         use_port = port or _free_port()
@@ -144,52 +159,62 @@ def review(project: Path, open_surface: bool = True, live: bool = True,
         info = _json_tail(out)
         if not step("编译服务", code == 0 and info.get("ok", False),
                     f"port={use_port} stageUrl={info.get('stageUrl', '')}", "live_stage.py 的报错原文"):
-            print(out.strip().splitlines()[-6:])
-            return 1
+            if not as_json:
+                print(out.strip().splitlines()[-6:])
+            return stop()
 
-        # 硬核对：这个端口端出来的 composition 时长必须与本工程 timeline 一致。
-        # 不一致 = 端的是别的工程的画面（静默错误，会把 A 片的画面当 B 片交出去）。
-        expect = _expected_duration(project)
-        served = _served_timeline_duration(info.get("stageUrl", ""))
-        if expect is not None and served is not None:
-            same = _same_project(expect, served)
-            detail = (f"项目={project.name} 期望时长={expect:.2f}s "
-                      f"端口回报={served:.2f}s port={use_port}")
-            if not step("端口上的工程就是本工程", same, detail,
-                        f"换端口重跑：review.py {project} --port <空闲端口>"
-                        f"（这一端口被另一份 composition 占着）"):
-                return 1
-            drift = abs(served - expect)
-            if drift > DRIFT_WARN:
-                step("composition data-duration 与 timeline 对得上", False,
-                     f"差 {drift:.2f}s（{served:.2f} vs {expect:.2f}）：会把这条谎报带进交付核验",
-                     "把 composition 的 data-duration 与 config.total 改成内容真实结束（最后一句字幕的结尾）")
-                return 1
-        else:
-            step("端口上的工程就是本工程", True,
-                 f"项目={project.name} 无法比对时长（期望={expect} 端口回报={served}）")
+        identity = info.get("identity") or {}
+        ours = (identity.get("verified") is True
+                and identity.get("projectRoot") == str(project.resolve())
+                and identity.get("compositionRoot") == str((project / "composition").resolve()))
+        if not step("工程路由身份", ours, json.dumps(identity, ensure_ascii=False),
+                    "live_stage.py：重新证明当前工程的编译路由；时长相同不证明身份"):
+            return stop()
 
     # 2) 构建审阅页
     code, out = _run([str(HELPERS / "build_review.py"), str(project), "--mode", "auto", "--slices", "off"])
     built = (project / "review" / "index.html").is_file()
     if not step("审阅页构建", code == 0 and built, "review/index.html",
                 "build_review.py（看它报的 mediaNotes / 缺的输入）"):
-        print("\n".join(out.strip().splitlines()[-10:]))
-        return 1
+        if not as_json:
+            print("\n".join(out.strip().splitlines()[-10:]))
+        return stop()
+
+    # Only a successful build may supply snapshot duration; never read last round's snapshot.
+    try:
+        expect = _expected_duration(project, fresh_snapshot=True)
+    except (OSError, ValueError) as exc:
+        step("当前时间依据", False, str(exc), "_paths / timeline：统一采用版后重建")
+        return stop()
+    if live:
+        served = _served_timeline_duration(info.get("stageUrl", ""))
+        compatible = _same_project(expect, served)
+        if not step("当前工程时长", compatible is True,
+                    f"当前={expect}s，编译路由={served}s", "当前 timeline / composition data-duration；缺证据不能放行"):
+            return stop()
+        drift = abs(served - expect)
+        if not step("composition 与时间轴一致", drift <= DRIFT_WARN,
+                    f"差 {drift:.3f}s", "更新 composition 时间绑定后重建，不改字幕时间掩盖漂移"):
+            return stop()
 
     # 3) surface：有插件交给 review_open，没有就起本地宿主
     code, out = _run([str(HELPERS / "review_surface.py"), str(project), "--surface-only"])
     surface = (project / "review" / "review-surface.json")
     if not step("surface 契约", code == 0 and surface.is_file(), str(surface),
                 "review_surface.py 的校验报错"):
-        print("\n".join(out.strip().splitlines()[-8:]))
-        return 1
+        if not as_json:
+            print("\n".join(out.strip().splitlines()[-8:]))
+        return stop()
 
     # 4) 运行时判据：这页到底能不能给人看
     code, out = _run([str(HELPERS / "check_review_playable.py"), str(project), "--quiet"])
-    playable = code == 0
     detail = ""
     verdict = _json_tail(out)
+    playable = (code == 0 and verdict.get('ok') is True
+                and verdict.get('channel') in ('live', 'speaker', 'composite')
+                and isinstance(verdict.get('checks'), list) and bool(verdict['checks'])
+                and all(c.get('ok') is True for c in verdict['checks'])
+                and verdict.get('failures') == [])
     if verdict:
         fails = verdict.get("failures") or []
         detail = f"channel={verdict.get('channel')}；" + (
@@ -197,8 +222,9 @@ def review(project: Path, open_surface: bool = True, live: bool = True,
     step("运行时判据（能播 / 有画面 / 有声音）", playable, detail,
          "看上一行的 layer 提示：composition 或审阅装配")
     if not playable:
-        print("\n".join(l for l in out.splitlines() if l.startswith(("✗", "  ")))[:2000])
-        return 1
+        if not as_json:
+            print("\n".join(l for l in out.splitlines() if l.startswith(("✗", "  ")))[:2000])
+        return stop()
 
     # 5) 交付给人
     if open_surface:

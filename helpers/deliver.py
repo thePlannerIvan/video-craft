@@ -39,6 +39,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 HELPERS = Path(__file__).resolve().parent
@@ -143,58 +144,153 @@ def _render_env(composition: Path) -> tuple[bool, int, str]:
         data = json.loads((proc.stdout or "").strip() or "{}")
     except json.JSONDecodeError:
         data = {}
+    if not isinstance(data, dict) or type(data.get("ok")) is not bool or not data.get("workers"):
+        return False, 1, "check_render_env 报告无效；修复环境探测后重试"
     workers = max(1, int(data.get("workers") or 1))
-    if bool(data.get("ok")):
+    if data.get('ok') is True and proc.returncode == 0:
         return True, workers, f"check_render_env 退 0（workers={workers}）"
+    if data.get('ok') is True:
+        return False, workers, f'check_render_env 退出 {proc.returncode}，报告与退出码矛盾'
     plain = _run([sys.executable, str(HELPERS / "check_render_env.py"), str(composition)])
     lines = [ln.strip() for ln in (plain.stdout or "").splitlines() if ln.strip().startswith("x")]
     blocked = [ln for ln in lines if "workers:" not in ln]
-    if blocked:
+    if blocked or not lines:
         return False, workers, "；".join(blocked[:2])
     mem = data.get("memory") or {}
     avail = mem.get("availableGb")
     return True, workers, (f"内存偏紧（可用 {avail} GB < 门槛），按建议 --workers {workers} 渲染")
 
 
-def _render_is_stale(project: Path, visual: Path) -> bool:
-    """画面层是不是比 composition 源旧。
+def _preflight(project: Path, check, note) -> tuple[bool, int]:
+    """Mechanical timing-lock checks, before any production encoder starts."""
+    import probe_env
+    env = probe_env.build(project)
+    ffmpeg_ok = env.get("ffmpeg", {}).get("present") and bool(shutil.which("ffprobe"))
+    if not check("编码能力", bool(ffmpeg_ok), "probe_env：需要 ffmpeg/ffprobe"):
+        return False, 1
+    composition = project / "composition"
+    if not (composition / "index.html").is_file():
+        note("已有独立画面素材：没有 composition 源，不适用 film/动效检查；来源仍须经 render_gate")
+        return True, 1
+    env_ok, workers, detail = _render_env(composition)
+    if not check("渲染环境", env_ok, detail):
+        return False, workers
+    if "内存偏紧" in detail:
+        note(detail)
+    from _paths import timeline_file
+    timeline = timeline_file(project / "edit")
+    data = json.loads(timeline.read_text(encoding="utf-8")) if timeline else {}
+    references = any(s.get("sourcePageKey") for ch in data.get("chapters", []) for s in ch.get("steps", []))
+    if references or (project / "pages").exists() or (project / ".pages").exists():
+        proc = _run([sys.executable, str(HELPERS / "film.py"), "verify", str(project), "--json"])
+        if not check("原页拆解", proc.returncode == 0, (proc.stdout + proc.stderr)[-2000:]):
+            return False, workers
+    proc = _run(["hyperframes", "check", str(composition), "--json"])
+    if not check("HyperFrames check", proc.returncode == 0, (proc.stdout + proc.stderr)[-2000:]):
+        return False, workers
+    scripts = [composition / "index.html", *composition.rglob("*.js")]
+    has_gsap = any("gsap" in p.read_text(encoding="utf-8", errors="ignore")
+                   for p in scripts if not any(x in p.parts for x in ("node_modules", "_render", ".hyperframes")))
+    if has_gsap:
+        proc = _run([sys.executable, str(HELPERS / "check_motion_targets.py"), str(project),
+                     "--strict-transform", "--json"])
+        if not check("动效目标", proc.returncode == 0 and "SKIP" not in proc.stdout,
+                     (proc.stdout + proc.stderr)[-2000:]):
+            return False, workers
+    return True, workers
 
-    `composition/_render/visuals.mp4` 是上一次渲染的缓存。改过 composition、
-    重新审阅、再跑 deliver 时会静默拿旧画面出片 —— 审阅看的是新的、交付的是旧的。
-    这里按源文件 mtime 判新旧，旧了就重渲。
-    """
-    comp = project / "composition"
-    if not (comp / "index.html").is_file():
-        return False
+
+def _render_is_stale(project: Path, visual: Path) -> bool:
+    """Missing provenance is unproven, even when file timestamps look current."""
+    from state_fingerprint import entry, source_entries
     try:
-        vis_mtime = visual.stat().st_mtime
-    except OSError:
+        proof = json.loads(visual.with_suffix(visual.suffix + '.sources.json').read_text(encoding='utf-8'))
+        return not (proof.get('version') == 1 and proof.get('origin') in ('composition-render', 'manual-confirmation')
+                    and proof.get('sources') == source_entries(project)
+                    and proof.get('visual') == entry(visual))
+    except (OSError, ValueError, TypeError):
         return True
-    newest = (comp / "index.html").stat().st_mtime
-    for path in comp.rglob("*"):
-        if not path.is_file():
-            continue
-        rel = path.relative_to(comp)
-        if rel.parts and rel.parts[0] in ("_render", ".hyperframes", "node_modules"):
-            continue
-        if path.suffix.lower() in (".mp4", ".mov", ".webm"):
-            continue
-        try:
-            newest = max(newest, path.stat().st_mtime)
-        except OSError:
-            continue
-    return newest > vis_mtime + 1e-6
+
+
+def _record_visual_source(project: Path, visual: Path, origin: str, sources: dict | None = None) -> None:
+    from state_fingerprint import entry, source_entries
+    proof = {'version': 1, 'origin': origin, 'sources': source_entries(project) if sources is None else sources,
+             'visual': entry(visual)}
+    visual.with_suffix(visual.suffix + '.sources.json').write_text(
+        json.dumps(proof, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+
+
+def _delivery_verdict(edit_dir: Path, target: Path, media: Path | None = None,
+                      srt: Path | None = None) -> dict:
+    """Keep strict criteria in verify_delivery; validate its transport contract."""
+    result = {"ok": False, "status": "not-run", "hard": [],
+              "owner": "verify_delivery.py", "next": "修复来源/时间依据后重新核验，不要 capture 指纹"}
+    if not (edit_dir / "edl.json").is_file():
+        from _paths import timeline_file
+        timeline = timeline_file(edit_dir)
+        doc = json.loads(timeline.read_text(encoding='utf-8')) if timeline else {}
+        if doc.get('timeSource') != 'srt-import':
+            result["hard"] = ["未完成严格核验：缺少 EDL 或 srt-import 时间轴；补选现有音频并导入外部字幕"]
+            return result
+    try:
+        extra = (['--media', str(media)] if media else []) + (['--srt', str(srt)] if srt else [])
+        proc = subprocess.run([sys.executable, str(HELPERS / "verify_delivery.py"),
+                               str(edit_dir), "--video", str(target), "--json", *extra],
+                              capture_output=True, text=True)
+        result.update(status="failed", code=proc.returncode)
+        # The legacy verifier prints diagnostics before its final JSON object.
+        decoder = json.JSONDecoder()
+        payload = None
+        output = proc.stdout or ""
+        for start in range(len(output)):
+            if output[start] != "{" or (start and output[start - 1] != "\n"):
+                continue
+            try:
+                candidate, end = decoder.raw_decode(output[start:])
+            except ValueError:
+                continue
+            if not output[start + end:].strip():
+                payload = candidate
+                break
+        valid = (isinstance(payload, dict) and type(payload.get("ok")) is bool
+                 and isinstance(payload.get("hard"), list)
+                 and isinstance(payload.get("warn"), list)
+                 and all(isinstance(x, str) for x in payload["hard"]))
+        if not valid:
+            result["hard"] = ["严格核验报告不可解析或缺少 ok/hard/warn 字段"]
+        else:
+            result["hard"] = payload["hard"]
+            result["report"] = payload
+            result["ok"] = proc.returncode == 0 and payload["ok"] and not payload["hard"]
+            if not result["ok"] and not result["hard"]:
+                result["hard"] = [f"严格核验未通过（exit={proc.returncode}, ok={payload['ok']}）"]
+        if proc.stderr:
+            result["stderr"] = proc.stderr[-2000:]
+        if result["ok"]:
+            result.update(status="passed", next="包装后核验交付副本，再 capture 新指纹")
+    except (OSError, subprocess.SubprocessError) as exc:
+        result.update(status="error", hard=[f"严格核验进程异常：{exc}"])
+    return result
 
 
 def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Path | None,
             srt: Path | None, out_dir: Path | None, burn: bool, skip_gate: bool,
-            as_json: bool, no_person: bool = False, render: bool = False) -> int:
+            as_json: bool, no_person: bool = False, render: bool = False,
+            visuals_confirm_current: bool = False) -> int:
     geo = _geometry(project)
     edit_dir = project / "edit"
     out = (out_dir or project / "成品")
     out.mkdir(parents=True, exist_ok=True)
     name = project.name
-    report: dict = {"project": str(project), "geometry": geo, "checks": [], "notes": []}
+    report: dict = {"project": str(project), "geometry": geo, "checks": [], "notes": [],
+                    "ok": False, "composition_ok": False, "delivery_ok": False,
+                    "delivery_verdict": {"ok": False, "status": "not-run"}}
+
+    def stop() -> int:
+        (out / f"{name}_核验报告.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        if as_json:
+            print(json.dumps(report, ensure_ascii=False, indent=1))
+        return 1
 
     def note(text: str) -> None:
         report["notes"].append(text)
@@ -223,10 +319,17 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
         code, = (_run([sys.executable, str(HELPERS / "render_gate.py"), str(project)]).returncode,)
         if code != 0:
             if not check("渲染闸门", False, "没有人审覆盖当前快照（先 review.py 交给人审；夹具用 --skip-gate）"):
-                print(json.dumps(report, ensure_ascii=False, indent=1))
-                return 1
+                return stop()
         else:
             check("渲染闸门", True, "有人审覆盖当前快照")
+
+    try:
+        preflight_ok, workers = _preflight(project, check, note)
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        check("交付前置", False, f"{type(exc).__name__}: {exc}；修复对应工具/来源后再交付")
+        return stop()
+    if not preflight_ok:
+        return stop()
 
     # 1) 三路素材
     person_path = _pick(project, person, [project / "composition/assets/person.mp4",
@@ -235,29 +338,49 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
                                         project / "edit/_engineering/review_audio.m4a"])
     srt_path = _pick(project, srt, [project / "edit/subtitles.srt",
                                     project / "成品" / f"{name}_字幕.srt"])
+    if burn:
+        import probe_env
+        if not check("烧录字幕能力", bool(srt_path) and probe_env.ffmpeg_capabilities()["filters"].get("subtitles", False),
+                     "烧录需要有效 SRT 和 libass subtitles 滤镜；不支持时可显式改用默认外挂"):
+            return stop()
     if no_person:
         if person_path is not None:
             note(f"声明无人物轨：忽略 {person_path.name}，画面层全幅交付")
         person_path = None
     elif not check("人物素材", person_path is not None,
                    str(person_path or "缺（用 --person 指；纯画面 + 旁白的片子加 --no-person）")):
-        return 1
+        return stop()
     if not check("声音素材", audio_path is not None, str(audio_path or "缺（用 --audio 指）")):
-        return 1
+        return stop()
+    from _paths import timeline_file
+    try:
+        current_timeline = timeline_file(edit_dir)
+        time_doc = json.loads(current_timeline.read_text(encoding='utf-8')) if current_timeline else {}
+        if time_doc.get('timeSource') == 'srt-import':
+            from import_srt_timeline import source_problems
+            problems = source_problems(project, time_doc, media=audio_path, srt=srt_path)
+            if not check('外部音频与字幕来源', not problems, '；'.join(problems) if problems else '当前媒体、字幕、alignment 与 timeline 一致'):
+                return stop()
+    except (OSError, ValueError, TypeError) as exc:
+        check('当前时间依据', False, str(exc))
+        return stop()
 
     # 2) 画面层：已有就用，没有就渲
     visual_path = _pick(project, visuals, [project / "composition/_render/visuals.mp4"])
-    if visual_path is not None and visuals is None and _render_is_stale(project, visual_path):
+    if visual_path is not None and visuals_confirm_current:
+        _record_visual_source(project, visual_path, 'manual-confirmation')
+        note('执行者明确确认现有画面层属于当前来源；已记录人工确认及文件内容身份')
+    if visual_path is not None and _render_is_stale(project, visual_path):
         if not render:
-            detail = (f"{visual_path.name} 比 composition 源旧。审阅停在工程态；"
-                      "要重渲请显式加 --render（交付动作，不是审阅动作）")
+            detail = (f"{visual_path.name} 来源缺记录或已过期。重渲用 --render；"
+                      "旧缓存/外部画面经人工核对属于当前版后，用 --visuals-confirm-current 补记一次来源")
             check("画面层", False, detail)
             if not as_json:
                 print(f"  ✗ {detail}")
             report["ok"] = False
             (out / f"{name}_核验报告.json").write_text(
                 json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-            return 1
+            return stop()
         note(f"画面层比 composition 源旧（{visual_path.name}），按 --render 重新渲染")
         visual_path = None
     if visual_path is None:
@@ -269,14 +392,10 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
             report["ok"] = False
             (out / f"{name}_核验报告.json").write_text(
                 json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-            return 1
-        env_ok, workers, env_detail = _render_env(project / "composition")
-        if not check("渲染环境", env_ok, env_detail):
-            print(json.dumps(report, ensure_ascii=False, indent=1))
-            return 1
-        if workers != 1:
-            note(env_detail)
+            return stop()
         (project / "composition/_render").mkdir(parents=True, exist_ok=True)
+        from state_fingerprint import source_entries
+        rendering_sources = source_entries(project)
         render = _run(["hyperframes", "render", str(project / "composition"),
                        "-o", str(project / "composition/_render/visuals.mp4"),
                        "--workers", str(workers), "-q", "looks"])
@@ -284,10 +403,14 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
         if render.returncode != 0 or not visual_path.is_file():
             check("画面层渲染", False, (render.stderr or render.stdout or "")[-400:])
             print(json.dumps(report, ensure_ascii=False, indent=1))
-            return 1
+            return stop()
+        if rendering_sources != source_entries(project):
+            check('画面层来源', False, '渲染期间来源改变；核对当前版本后重新渲染')
+            return stop()
+        _record_visual_source(project, visual_path, 'composition-render', rendering_sources)
     v_video, _ = _streams(visual_path)
     if not check("画面层可读", bool(v_video), f"{visual_path.name} {v_video.get('width')}×{v_video.get('height')}"):
-        return 1
+        return stop()
 
     # 3) 合成：人物 cover 贴回 + 声音（无人物轨时画面层全幅交付）
     slot = geo["person"]
@@ -303,27 +426,37 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
     if vis_dur > 0:
         tail += ["-t", f"{vis_dur:.3f}"]
     tail.append(str(target))
-    if burn:
-        probe = _run(["ffmpeg", "-hide_banner", "-filters"])
-        if " ass " not in (probe.stdout or ""):
-            if not check("烧字幕", False, "本机 ffmpeg 没有 libass；改外挂 SRT（默认行为）"):
-                print(json.dumps(report, ensure_ascii=False, indent=1))
-                return 1
+    # libavfilter has several escaping layers. A private ASCII filename avoids
+    # interpreting punctuation in the user's path; the SRT bytes stay unchanged.
+    subtitle_tmp = tempfile.TemporaryDirectory(prefix="craft-subtitles-") if burn else None
+    subtitle_filter = None
+    if subtitle_tmp is not None:
+        staged_srt = Path(subtitle_tmp.name) / "captions.srt"
+        shutil.copyfile(srt_path, staged_srt)
+        subtitle_filter = f"subtitles=filename='{staged_srt.as_posix()}'"
     if person_path is None:
         note("无人物轨：画面层全幅交付，personSlot 区域保持画面层原样")
         cmd = ["ffmpeg", "-y", "-v", "error", "-i", str(visual_path), "-i", str(audio_path),
-               "-map", "0:v", "-map", "1:a"] + tail
+               "-map", "0:v", "-map", "1:a"]
+        if subtitle_filter:
+            cmd += ["-vf", subtitle_filter]
+        cmd += tail
     else:
         vf = (f"[1:v]scale={pw}:{ph}:force_original_aspect_ratio=increase,"
               f"crop={pw}:{ph},setsar=1[person];"
-              f"[0:v][person]overlay={px}:{py}:format=auto[v]")
+              f"[0:v][person]overlay={px}:{py}:format=auto[composed]")
+        vf += f";[composed]{subtitle_filter or 'null'}[v]"
         cmd = ["ffmpeg", "-y", "-v", "error", "-i", str(visual_path), "-i", str(person_path),
                "-i", str(audio_path), "-filter_complex", vf, "-map", "[v]", "-map", "2:a"] + tail
-    proc = _run(cmd)
+    try:
+        proc = _run(cmd)
+    finally:
+        if subtitle_tmp is not None:
+            subtitle_tmp.cleanup()
     if not check("合成", proc.returncode == 0 and target.is_file(),
                  (proc.stderr or "ok")[-300:] if proc.returncode != 0 else target.name):
         print(json.dumps(report, ensure_ascii=False, indent=1))
-        return 1
+        return stop()
 
     # 4) 核验
     v, a = _streams(target)
@@ -399,29 +532,20 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
 
     # 7) 最终签字：交付核验。判据仍归 verify_delivery（它回答"这一版能不能发"），
     #    deliver 只把它的结论并入报告，不再自己下第二个结论（合并地图 M5-A）。
-    if target.is_file() and (edit_dir / "edl.json").is_file():
-        verdict = subprocess.run(
-            [sys.executable, str(Path(__file__).resolve().parent / "verify_delivery.py"),
-             str(edit_dir), "--video", str(target), "--json"],
-            capture_output=True, text=True)
-        try:
-            payload = json.loads(verdict.stdout) if verdict.stdout.strip().startswith("{") else {}
-        except ValueError:
-            payload = {}
-        hard = payload.get("hard") or []
-        report["delivery_verdict"] = {"ok": verdict.returncode == 0, "hard": hard}
-        if verdict.returncode == 0:
-            note("交付核验（verify_delivery）：通过")
-        else:
-            note("交付核验（verify_delivery）发现问题，报告已记录；"
-                 "是否阻断交付由人决定（用 stage_deliver.py verify 复核）："
-                 + "；".join(str(x) for x in hard[:3]))
-    else:
-        note("跳过交付核验：没有 edit/edl.json，无法把成片对照到时间轴")
+    report["composition_ok"] = all(c["ok"] for c in report["checks"])
+    report["delivery_verdict"] = _delivery_verdict(edit_dir, target, audio_path, srt_path)
+    report["delivery_ok"] = report["delivery_verdict"]["ok"]
+    note("交付核验（verify_delivery）：" + ("通过" if report["delivery_ok"] else
+         "失败：" + "；".join(report["delivery_verdict"]["hard"][:3])))
 
+    from state_fingerprint import source_entries, entry
+    report["source_fingerprint"] = source_entries(project)
+    report["output_identity"] = entry(target)
+    report['input_identities'] = {key: entry(path) for key, path in (
+        ('visuals', visual_path), ('audio', audio_path), ('person', person_path), ('srt', srt_path)) if path}
     report["output"] = str(target)
     report["subtitles"] = str(srt_out) if srt_out.is_file() else None
-    report["ok"] = all(c["ok"] for c in report["checks"])
+    report["ok"] = report["composition_ok"] and report["delivery_ok"]
     (out / f"{name}_核验报告.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     if not as_json:
@@ -437,6 +561,8 @@ def main(argv=None) -> int:
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("project", type=Path)
     parser.add_argument("--visuals", type=Path, help="已有画面层 mp4（跳过渲染）")
+    parser.add_argument('--visuals-confirm-current', action='store_true',
+                        help='明确人工确认现有画面层属于当前来源；旧缓存/外部画面补记来源，不代替审阅闸门')
     parser.add_argument("--person", type=Path, help="人物素材")
     parser.add_argument("--audio", type=Path, help="声音")
     parser.add_argument("--srt", type=Path, help="字幕（默认外挂）")
@@ -454,7 +580,7 @@ def main(argv=None) -> int:
         parser.error("--skip-gate 只允许测试夹具（DSH_TEST=1）；正式流程必须过 render_gate")
     return deliver(args.project.expanduser().resolve(), args.visuals, args.person, args.audio,
                    args.srt, args.out, args.burn, args.skip_gate, args.json, args.no_person,
-                   args.render)
+                   args.render, args.visuals_confirm_current)
 
 
 if __name__ == "__main__":

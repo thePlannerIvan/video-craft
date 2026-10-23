@@ -10,7 +10,10 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import math
 from pathlib import Path
+from _probe import probe_media
+from state_fingerprint import entry
 
 ALIGNER = Path(__file__).parents[1] / 'visual/scripts/align-visual-plan.py'
 spec = importlib.util.spec_from_file_location('craft_aligner', ALIGNER)
@@ -89,24 +92,85 @@ def build_timeline(srt: Path, alignment: dict, *, alignment_dir: Path | None = N
             'totalDurationMs': entries[-1]['endMs'], 'chapters': chapters}
 
 
+def import_timeline(project: Path, srt: Path, alignment: Path,
+                    media: Path | None = None) -> dict:
+    project, srt, alignment = project.resolve(), srt.resolve(), alignment.resolve()
+    aligned = json.loads(alignment.read_text(encoding='utf-8'))
+    data = build_timeline(srt, aligned, alignment_dir=alignment.parent, project_root=project)
+    data.update(timeSource='srt-import', measuredTotalMs=None)
+    if media is not None:
+        media = media.resolve()
+        info = probe_media(media)
+        duration = info.get('duration')
+        if (not isinstance(duration, (float, int)) or not math.isfinite(duration) or duration <= 0
+                or not any(s.get('codec_type') == 'audio' for s in info.get('streams', []))):
+            raise ValueError(f'无法实测有效音频：{media}；补选现有剪好音频，不需要重新剪辑')
+        duration_ms = round(duration * 1000)
+        if data['totalDurationMs'] > duration_ms + 50:
+            raise ValueError(f"字幕末条 {data['totalDurationMs']}ms 超出音频 {duration_ms}ms；核对音频/字幕版本")
+        evidence = {'version': 1, 'media': {**entry(media), 'durationMs': duration_ms},
+                    'srt': entry(srt), 'alignment': entry(alignment)}
+        for key in ('sourcePlan', 'sourceScript'):
+            path = resolve_alignment_path(aligned[key], alignment_dir=alignment.parent, project_root=project)
+            evidence[key] = entry(path)
+        data['sourceEvidence'] = evidence
+        data['totalDurationMs'] = duration_ms
+    return data
+
+
+def source_problems(project: Path, timeline: dict, *, media: Path | None = None,
+                    srt: Path | None = None) -> list[str]:
+    """Validate the existing import contract, not a parallel delivery verdict."""
+    evidence = timeline.get('sourceEvidence')
+    fix = ('重新运行 import_srt_timeline.py <project> --srt <当前字幕> '
+           '--alignment <当前对齐> --media <现有剪好音频>；旧项目只需补选一次音频')
+    if not isinstance(evidence, dict) or evidence.get('version') != 1:
+        return ['外部 SRT 项目缺媒体来源记录；' + fix]
+    paths, problems = {}, []
+    for key in ('media', 'srt', 'alignment', 'sourcePlan', 'sourceScript'):
+        record = evidence.get(key)
+        if not isinstance(record, dict) or not record.get('path') or not record.get('sha256'):
+            problems.append(f'{key} 来源记录缺失；{fix}')
+            continue
+        path = Path(record['path'])
+        if not path.is_absolute(): path = project / path
+        current = entry(path)
+        if current is None or current['sha256'] != record['sha256']:
+            problems.append(f'{key} 来源已改变或不存在：{path}；{fix}')
+        paths[key] = path
+    for key, selected in (('media', media), ('srt', srt)):
+        if selected is not None:
+            actual = entry(selected)
+            if actual is None or actual['sha256'] != (evidence.get(key) or {}).get('sha256'):
+                problems.append(f'本次选用 {key} 与时间轴登记的版本不同；{fix}')
+    if problems: return problems
+    try:
+        rebuilt = import_timeline(project, paths['srt'], paths['alignment'], paths['media'])
+        if rebuilt['sourceEvidence'] != evidence:
+            problems.append('外部音频实测时长/来源记录失配；' + fix)
+        for key in ('source', 'sourceSrt', 'entriesHash', 'timeSource', 'measuredTotalMs',
+                    'totalChapters', 'totalSteps', 'totalDurationMs', 'chapters'):
+            if timeline.get(key) != rebuilt.get(key):
+                problems.append(f'timeline.{key} 与当前 SRT/alignment/音频绑定不符；{fix}')
+    except (ValueError, OSError, KeyError, TypeError) as exc:
+        problems.append(f'外部来源无法复核：{exc}；{fix}')
+    return problems
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('project', type=Path)
     parser.add_argument('--srt', type=Path, required=True)
     parser.add_argument('--alignment', type=Path, required=True)
+    parser.add_argument('--media', type=Path, help='现有剪好音频；正式交付必需，旧项目补选一次即可')
     args = parser.parse_args()
     try:
         srt = args.srt.resolve()
         alignment = args.alignment.resolve()
-        data = build_timeline(
-            srt,
-            json.loads(alignment.read_text(encoding='utf-8')),
-            alignment_dir=alignment.parent,
-            project_root=args.project.resolve(),
-        )
-        data['timeSource'] = 'srt-import'
-        data['measuredTotalMs'] = None
+        data = import_timeline(args.project, srt, alignment, args.media)
         path = args.project.resolve() / 'timeline/timeline.json'
+        from _paths import check_timeline_output
+        check_timeline_output(args.project.resolve() / 'edit', path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     except (ValueError, OSError, KeyError) as error:

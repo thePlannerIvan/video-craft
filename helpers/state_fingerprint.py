@@ -21,7 +21,7 @@
 
 默认指纹路径 `<project>/成品/delivery.json`。`verify` 退出码非 0 = 交付过期或成品被改过。
 
-**两个调用点**：渲染前（拒绝渲过期的工程态）与交付前（拒绝发过期的成品）——同一个检查，不必两套。
+交付前比对当前来源和成品；旧交付指纹不能阻止重新渲染或重新核验。
 """
 from __future__ import annotations
 
@@ -29,19 +29,28 @@ import argparse
 import hashlib
 import json
 import sys
+import re
+from urllib.parse import unquote, urlparse
 from datetime import datetime, timezone
 from pathlib import Path
 
 SCHEMA = "video-craft/delivery-fingerprint"
-VERSION = 2
+VERSION = 3
+_HASH_CACHE = {}
 
 
 def sha256(path: Path) -> str:
+    stat = path.stat()
+    key = (str(path.resolve()), stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_ino)
+    if key in _HASH_CACHE:
+        return _HASH_CACHE[key]
     h = hashlib.sha256()
     with path.open("rb") as fh:
         for chunk in iter(lambda: fh.read(1 << 20), b""):
             h.update(chunk)
-    return h.hexdigest()
+    value = h.hexdigest()
+    _HASH_CACHE[key] = value
+    return value
 
 
 def entry(path: Path) -> dict | None:
@@ -61,6 +70,53 @@ def head_revisions(project: Path) -> dict[str, str]:
     return {k: (v or {}).get("revision") for k, v in (doc.get("pages") or {}).items()}
 
 
+def source_paths(project: Path, *, include_review: bool = True) -> dict[str, Path]:
+    """Track authored files and used media, excluding render caches and unused footage."""
+    paths = {}
+    for rel in ('recompose.json', 'edit/edl.json', 'edit/segment_durations.json',
+                'edit/subtitles.srt', 'edit/caption_words.json', 'edit/captions.json',
+                'timeline/timeline.json', 'timeline/choreography.json', 'edit/timeline/timeline.json'):
+        p = project / rel
+        if p.is_file(): paths[rel] = p
+    comp = project / 'composition'
+    excluded = {'_render', 'renders', 'node_modules', '.hyperframes', '.git'}
+    for p in sorted(comp.rglob('*')):
+        if not p.is_file() or p.name.endswith('.sources.json') or excluded.intersection(p.relative_to(comp).parts): continue
+        if p.suffix.lower() in {'.html', '.js', '.css', '.json', '.svg'}:
+            paths[p.relative_to(project).as_posix()] = p
+            body = p.read_text(encoding='utf-8', errors='replace')
+            for raw in re.findall(r'''(?:src|href)\s*=\s*["']([^"']+)|url\(\s*["']?([^)'"\s]+)''', body):
+                ref = next((x for x in raw if x), '')
+                parsed = urlparse(ref)
+                if not ref or ref.startswith(('#', '//')) or parsed.scheme: continue
+                target = (p.parent / unquote(parsed.path)).resolve()
+                if target.is_file() and target.is_relative_to(project.resolve()):
+                    paths[target.relative_to(project.resolve()).as_posix()] = target
+    for name in ('audio.m4a', 'audio.mp3', 'audio.wav', 'person.mp4'):
+        p = comp / 'assets' / name
+        if p.is_file(): paths[p.relative_to(project).as_posix()] = p
+    # Existing review/import contracts cover dynamic assets not visible in markup.
+    contracts = [project / 'timeline/timeline.json']
+    if include_review: contracts.append(project / 'review/review_data.json')
+    for path in contracts:
+        try: data = json.loads(path.read_text(encoding='utf-8'))
+        except (OSError, ValueError): continue
+        records = data.get('sourceManifest') or []
+        records += list((data.get('sourceEvidence') or {}).values())
+        for record in records:
+            if not isinstance(record, dict) or not record.get('path'): continue
+            p = Path(record['path'])
+            p = p if p.is_absolute() else project / p
+            if p.is_file() and '_render' not in p.parts:
+                key = p.relative_to(project).as_posix() if p.is_relative_to(project) else str(p)
+                paths[key] = p
+    return paths
+
+
+def source_entries(project: Path) -> dict:
+    return {key: entry(path) for key, path in sorted(source_paths(project).items())}
+
+
 def capture(project: Path) -> dict:
     """采集当前工程态。只读，不改任何东西。"""
     wb = project / "visual_screens" / "_internal" / "06_workbench" / "revisions"
@@ -69,16 +125,17 @@ def capture(project: Path) -> dict:
         svg = wb / str(rev) / "page.svg"
         pages[page] = {"revision": rev, "svg": entry(svg)}
 
-    sources = {
-        "composition": entry(project / "composition" / "index.html"),
-        "choreography": entry(project / "timeline" / "choreography.json"),
-        "timeline": entry(project / "timeline" / "timeline.json"),
-        "audio": entry(project / "composition" / "assets" / "audio.mp3"),
-        "subtitles": entry(project / "edit" / "subtitles.srt"),
-        "render_record": entry(project / "edit" / "segment_durations.json"),
-    }
+    sources = source_entries(project)
     out_dir = project / "成品"
     deliverables = [entry(p) for p in sorted(out_dir.rglob("*")) if p.is_file() and p.name != "delivery.json"]
+    inputs = {}
+    try:
+        report = json.loads((out_dir / f'{project.name}_核验报告.json').read_text(encoding='utf-8'))
+        for key, record in (report.get('input_identities') or {}).items():
+            if isinstance(record, dict) and record.get('path'):
+                inputs[key] = entry(Path(record['path']))
+    except (OSError, ValueError, TypeError):
+        pass
     return {
         "schema": SCHEMA,
         "version": VERSION,
@@ -86,6 +143,7 @@ def capture(project: Path) -> dict:
         "captured_at": datetime.now(timezone.utc).isoformat(),
         "sources": sources,
         "pages": pages,
+        'inputs': inputs,
         "deliverables": [d for d in deliverables if d],
     }
 
@@ -93,12 +151,15 @@ def capture(project: Path) -> dict:
 def compare(saved: dict, now: dict) -> list[str]:
     """逐项比对，返回人类可读的差异列表（空 = 一致）。"""
     diff: list[str] = []
+    if saved.get('inputs') != now.get('inputs'):
+        diff.append('本次合成选用的画面/音频/人物/字幕已改变或缺失 → 交付过期')
     if saved.get("schema") != SCHEMA:
         diff.append(f"指纹文件不是本工具写的（schema={saved.get('schema')!r}）")
     elif saved.get("version") != VERSION:
         diff.append(f"指纹是旧版本（v{saved.get('version')}）采集的，嵌套交付件可能没被记录——重新 capture 后再 verify")
 
-    for key, cur in (now.get("sources") or {}).items():
+    for key in sorted(set(now.get('sources') or {}) | set(saved.get('sources') or {})):
+        cur = (now.get('sources') or {}).get(key)
         old = (saved.get("sources") or {}).get(key)
         if old is None and cur is None:
             continue
@@ -109,8 +170,12 @@ def compare(saved: dict, now: dict) -> list[str]:
         elif old["sha256"] != cur["sha256"]:
             diff.append(f"源 {key} 已变 → 交付过期：指纹 {old['sha256'][:12]} / 当前 {cur['sha256'][:12]}")
 
-    for page, cur in (now.get("pages") or {}).items():
+    for page in sorted(set(now.get('pages') or {}) | set(saved.get('pages') or {})):
+        cur = (now.get('pages') or {}).get(page)
         old = (saved.get("pages") or {}).get(page)
+        if cur is None:
+            diff.append(f'页 {page}：当前已删除 → 交付过期')
+            continue
         if old is None:
             diff.append(f"页 {page}：指纹里没有记录（当前 revision {cur.get('revision')}）")
             continue

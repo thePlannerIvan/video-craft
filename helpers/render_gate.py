@@ -95,24 +95,32 @@ def load_records(project: Path) -> tuple[list[dict], list[str]]:
 def manifest_drift(project: Path, manifest) -> list[str]:
     """sourceManifest 与磁盘不一致的条目（文件被改 / 被删 / 被换）。"""
     drift = []
-    if not isinstance(manifest, list):
-        return drift
+    if not isinstance(manifest, list) or not manifest:
+        return ['缺 sourceManifest；旧审阅请重新 build_review.py 并核对新版本']
+    from state_fingerprint import sha256, source_paths
+    known = {str(x.get('path')) for x in manifest if isinstance(x, dict)}
+    critical = [key for key in source_paths(project, include_review=False) if key.startswith('composition/')]
+    critical += [key for key in ('edit/edl.json', 'edit/subtitles.srt', 'timeline/timeline.json',
+                                  'edit/timeline/timeline.json') if (project / key).is_file()]
+    for key in critical:
+        if key not in known: drift.append(f'{key}（缺关键来源记录；重新 build_review.py）')
     for item in manifest:
         if not isinstance(item, dict):
+            drift.append('sourceManifest 条目无效；重新 build_review.py')
             continue
         rel = str(item.get("path") or "")
         if not rel:
+            drift.append('sourceManifest 缺 path；重新 build_review.py')
             continue
         path = project / rel
         if not path.is_file():
             drift.append(f"{rel}（不在了）")
             continue
-        size = path.stat().st_size
-        mtime = path.stat().st_mtime_ns
-        if item.get("size") != size:
-            drift.append(f"{rel}（大小 {item.get('size')} → {size}）")
-        elif item.get("mtime_ns") != mtime:
-            drift.append(f"{rel}（mtime 变了）")
+        digest = item.get('sha256')
+        if not isinstance(digest, str) or len(digest) != 64:
+            drift.append(f'{rel}（缺内容哈希；旧清单需重新 build_review.py）')
+        elif item.get('size') != path.stat().st_size or digest != sha256(path):
+            drift.append(f'{rel}（内容已变）')
     return drift
 
 

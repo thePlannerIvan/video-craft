@@ -114,6 +114,6 @@ be mixed with the article-first files.
 
 ## 时间来源与字幕绑定
 
-字幕绝对时间消费 `timeline/timeline.json` 这条下游时间脊柱；它不把渲染记录当成第二份独立时间轴。EDL 项目由 `srt_export.py` 按当前 EDL 选择匹配记录：`projected` 使用帧量化预演，`measured` 应优先使用匹配实测记录；外部 SRT 路径保留 `srt-import`，不伪装成 EDL 实测。完整来源含义见 [visual-timeline.md](visual-timeline.md)。
+字幕绝对时间消费 `timeline/timeline.json` 这条下游时间脊柱；它不把渲染记录当成第二份独立时间轴。EDL 项目由 `srt_export.py` 按当前 EDL 选择匹配记录：`projected` 使用帧量化预演，`measured` 只接受匹配实测记录；外部 SRT 路径保留 `srt-import`，不伪装成 EDL 实测。完整来源含义见 [visual-timeline.md](visual-timeline.md)。
 
-实现边界需要说清：当前 `_edl.duration_record()` 在普通选择模式下找不到匹配实测记录时还可能回退到匹配的 `projected` 记录；因此仅看 timeline 的 `timeSource: "measured"` 不能证明每条字幕 cue 实际取自实测记录。`srt_export.py --check` 会检查 SRT 末条是否超出 timeline 末段（超出 >0.1s 失败，允许正常尾静音），但该检查不证明逐段时长来源完全一致。收紧这条选择合同列入 [implementation-brief.md](implementation-brief.md) B8；B8 完成前不得把不满足来源证据的输出报告为严格 measured 字幕。
+显式 measured 模式严格要求当前 EDL 指纹/段数与真实时长；不会回退到 projected。旧 timeline 可通过 `--prepare --force-prepare --time-source measured` 升级，保留 semantic_lines 后重新核对、lock/build。只改 CSS 不重建字幕。`--check` 核 cue/SRT 合同与末条越界；正式交付还要核真实输出与来源，不能单凭字段写 measured 宣布通过。

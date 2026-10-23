@@ -377,7 +377,9 @@ def run(project: Path, points: list[float], keep_host: bool, verbose: bool) -> i
                     try:
                         comp_dur = frame.evaluate(
                             """()=>{
-                                 const t=window.__timelines && window.__timelines.main;
+                                 const root=document.querySelector('[data-composition-id]');
+                                 const id=root && root.getAttribute('data-composition-id');
+                                 const t=id && window.__timelines && window.__timelines[id];
                                  if(!t || typeof t.duration!=='function') return null;
                                  return t.duration();
                                }"""

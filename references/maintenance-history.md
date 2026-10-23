@@ -1,5 +1,18 @@
 # 维护记录（升级，不是 CHANGELOG）
 
+## 2026-10-23 · B1–B8 机械保证落地
+
+按既有 architecture / implementation-brief 局部修复 owner，保留此前 cut-map 与 concept-film 修改，没有新建总 CLI、stage 脚本、播放器或状态库。旧 CLI 保留；新增可选 --time-source、--media、--visuals-confirm-current，旧项目可读取，正式交付补当前来源证据。用户确认：外部剪好音频/SRT 旧项目缺记录时补选一次现有音频。
+
+- deliver 总成功纳入严格 verifier；失败、异常或坏报告不再提示成功 capture。默认入口编码前核环境、适用 film、HyperFrames、动效目标与来源，wrapper 不再重复 gate。
+- verify --no-audio 接通，run 明确拒绝；烧录在人物/无人物分支实际执行字幕滤镜，中文及特殊字符路径通过真实输出帧验证。
+- 审阅按当前时间轴重建，服务目录证明工程身份；实际复制件发现 checker 写死 main，改用根元素注册名。没有改播放器协议。apply 写消费回执并重建逐字页，相同选择重试不重剪；status 不从文件存在推断批准。
+- 外部 SRT 保持 srt-import，通过媒体/SRT/alignment/上游身份和实测总长核验；旧项目补选现有音频。内容哈希替代 mtime 证明，缓存显式声明来源，v3 交付指纹包括嵌套交付及实际选用素材。
+- projected/nominal 可显式升级 measured，缺当前指纹/段数/有效时长不降级；词契约持有后续选择，保留已审 semantic_lines，timeline 双位置冲突要求先备份统一。
+
+验收：基线 503/503，最终 537/537（99.063s，无 skip）；模板 9 项静态与 9 个反例自证、spec/planning lint、链接/JSON/diff 通过。手冲咖啡交付复制件正常/错字幕对照、keywords-video 实测升级复制件、本地活舞台编译→定位/倍速/声音→真实测试提交→inbox→改源重建→旧快照拒绝均完成。DSH 宿主未实测；无生产渲染、付费调用或生产批准。完整包级事实见 [implementation-brief.md](implementation-brief.md) 的实际验收表；原始日志 `/private/tmp/video-craft-implementation-20261023` 供本机复核，不作为未来绿灯。
+
+
 ## 2026-10-23 · 模型决策与工具职责分层（仅文档）
 
 用户确认：本轮完成架构和文档；机械脚本优化交下一模型按 Brief 执行。

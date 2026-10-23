@@ -113,31 +113,36 @@ def main():
                 assert abs(video[0]['t']-(args.recording_at-video[0]['start']+video[0]['offset']))<0.5,video
                 passed('recording seeks to its source offset and decodes a frame')
             player.evaluate('(p,t)=>p.seek(t)',caption['start']+0.2);f.wait_for_timeout(200)
-            f.locator('#mode-step').click()
-            f.locator('#tool-box').click()
-            box=f.locator('#annotation-overlay').bounding_box()
-            page.mouse.move(box['x']+box['width']*.55,box['y']+box['height']*.3)
-            page.mouse.down();page.mouse.move(box['x']+box['width']*.75,box['y']+box['height']*.5);page.mouse.up()
-            passed('box annotation can be drawn over live composition')
+            recompose = bool(data.get('density', {}).get('enabled'))
+            if not recompose:
+                f.locator('#mode-step').click()
+                f.locator('#tool-box').click()
+                box=f.locator('#annotation-overlay').bounding_box()
+                page.mouse.move(box['x']+box['width']*.55,box['y']+box['height']*.3)
+                page.mouse.down();page.mouse.move(box['x']+box['width']*.75,box['y']+box['height']*.5);page.mouse.up()
+                passed('box annotation can be drawn over live composition')
             if args.write:
-                f.locator('#fb-text').fill('浏览器验收：保留文字，调整此处动画。')
-                f.locator('#fb-save').click()
-                f.wait_for_function('document.querySelector("#fb-text").value===""',timeout=5000)
+                text_selector, save_selector = ('#vfb-text', '#vfb-save') if recompose else ('#fb-text', '#fb-save')
+                f.locator(text_selector).fill('浏览器验收：保留文字，调整此处动画。')
+                f.locator(save_selector).click()
+                f.wait_for_function('(selector)=>document.querySelector(selector).value===""',arg=text_selector,timeout=5000)
                 record=json.loads((review/'review-submissions.json').read_text())['records'][-1]
                 assert record.get('unitId') and record['playbackTimeMs']>0,record
-                assert record['animationAnchor']['cueIndex'] is not None,record
-                assert record['adjustments']['annotations'],record
-                evidence['record']={k:record[k] for k in ['unitId','stepId','playbackTimeMs','animationAnchor','snapshot']}
-                passed('real host persists unit, time, cue and annotation')
-            f.locator('#tool-director').click()
+                if not recompose:
+                    assert record['animationAnchor']['cueIndex'] is not None,record
+                    assert record['adjustments']['annotations'],record
+                evidence['record']={k:record.get(k) for k in ['unitId','stepId','playbackTimeMs','animationAnchor','snapshot']}
+                passed('real host persists current unit, time and snapshot feedback')
+            if not recompose: f.locator('#tool-director').click()
             page.screenshot(path=str(args.output/(args.mode+'-light.png')))
-            f.locator('#theme-mode').select_option('dark')
-            page.screenshot(path=str(args.output/(args.mode+'-dark.png')))
-            f.locator('#theme-mode').select_option('light')
-            page.set_viewport_size({'width':650,'height':1000})
-            page.screenshot(path=str(args.output/(args.mode+'-narrow.png')))
-            assert f.evaluate('document.documentElement.scrollWidth <= innerWidth+1')
-            passed('narrow layout has no horizontal overflow')
+            if not recompose:
+                f.locator('#theme-mode').select_option('dark')
+                page.screenshot(path=str(args.output/(args.mode+'-dark.png')))
+                f.locator('#theme-mode').select_option('light')
+                page.set_viewport_size({'width':650,'height':1000})
+                page.screenshot(path=str(args.output/(args.mode+'-narrow.png')))
+                assert f.evaluate('document.documentElement.scrollWidth <= innerWidth+1')
+                passed('narrow layout has no horizontal overflow')
             assert not evidence['errors'],evidence['errors']
             assert not evidence['networkFailures'],evidence['networkFailures']
             evidence['ok']=True

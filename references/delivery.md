@@ -14,12 +14,14 @@
 
 模型先核对作者明确出片指令、当前版本人工审阅与未决意见处理；render_gate 仅检查快照有提交及 manifest 变化，不能推断反馈内容是否批准。
 
-1. 按 [timing-lock.md](timing-lock.md) 执行适用前置；其中 film/动效等尚未全部由 deliver 自动串联。
-2. 调用 deliver 合成。当前总 ok 只汇总本地合成 checks，delivery_verdict 的严格失败仍可能只记 notes；退出 0 不能直接交件。
-3. EDL 项目对实际视频单独运行 verify_delivery，必须退 0；需要包装时用 export_deliverables，再对包装目录复核。无声画面轨直接给 verify_delivery --no-audio；当前 stage_deliver verify 未传该参数，run 又会误传给不支持它的 deliver。
-4. 所有适用核验通过后 state_fingerprint capture；发送前 verify。旧指纹只拦发送，不能阻止重新制作。
+1. `deliver` 编码前执行环境探测、适用的 film verify、HyperFrames check 和 GSAP selector/transform 检查；显式 `--visuals` 也须通过来源与版本检查。
+2. 合成后调用同一份 `verify_delivery`，报告分别给出 `composition_ok`、`delivery_ok` 和 `delivery_verdict`；严格失败、进程异常、报告无效或适用核验未执行时，总 `ok=false` 并非零退出。
+3. 需要包装时运行 `export_deliverables`，再对实际视频与 `--deliver-dir` 核验副本。`stage_deliver verify --no-audio` 支持无声画面轨；`run --no-audio` 明确拒绝不支持的动作组合。
+4. 全部适用核验通过后 `state_fingerprint capture`；发送前 `verify`。旧交付指纹只拦发送，不能阻止重新制作。
 
-外部 SRT 无 EDL 项目的严格交付验证尚不完整：核对真实音轨、实际片长、逐条字幕和当前源身份，记录检查范围；不能因 deliver 跳过 verifier 就宣布完整核验通过。烧录选项当前只检测 libass，缺少可据以保证画面确实烧字的链路；已有要求烧录的任务必须实际看输出帧，未实现时明确未完成，不能擅自改为外挂交付。机械修复与验收在 [implementation-brief.md](implementation-brief.md) B1–B3、B6；工程预演升级为实测的来源迁移见 B8。
+外部剪好音频与 SRT 通过 `import_srt_timeline --media` 登记媒体、SRT、alignment 及其来源内容哈希和实测时长。时间来源仍是 `srt-import`，不伪造 EDL。旧项目可以继续读取；正式交付前补选一次现有音频，见 [tools.md](tools.md) 的导入命令。缺记录、当前文件/对齐绑定失配、字幕超长及交付目录中无法对应当前源的 MP4/SRT 均拒绝。
+
+默认外挂字幕；`--burn-subtitles` 在两种人物路径都实际执行 libass subtitles 滤镜，缺滤镜在编码前失败。自动检查不替代对成片的审听审看，尤其内容正确性与美术质量。
 
 ## 用法
 
@@ -42,13 +44,13 @@
 | 首 / 中 / 尾帧 | 抽样检查平均亮度；抽样不证明整片正确，且探测失败的当前实现需人工核实 |
 | **字幕安全区** | 抽样亮度启发式；不能单凭亮度证明安全区无语义内容，需检查实际构图 |
 | 人物贴回 | 按 `personSlot` 做 cover 裁切（先等比放大再居中裁，不挤压）；`--no-person` 时跳过并在 notes 写明「无人物轨」 |
-| 字幕 | 默认外挂 SRT；烧录能力限制见上；没有 libass 会报错，有 libass 不等于已经烧录成功 |
+| 字幕 | 默认外挂 SRT；显式烧录执行字幕滤镜，缺 libass 在编码前拒绝；仍需抽帧核对样式与构图 |
 
 任何一项红 → 退出码 1，并保留报告，便于回修画面层（改 composition 重渲）而不是手改成品。
 
 ## 画面层缓存与显式渲染
 
-默认缓存不存在或比 composition 源旧时拒绝；显式 --render 才允许重新编码。当前新旧判定基于 mtime，且显式 --visuals 不走同一默认缓存判断：使用外部视觉层要核来源版本，不能仅凭文件存在复用。来源证明加强见 Brief B7。
+默认缓存和显式 `--visuals` 都核对内容来源。自动渲染写 `<visuals>.sources.json`，记录来源指纹与画面文件哈希；缺证明或来源变化默认拒绝，显式 `--render` 才重新编码。旧缓存/外部画面经人工核对确属当前版后，加 `--visuals-confirm-current` 补记一次人工确认。这个声明不替代 render_gate，不自动证明创作内容正确。仅改文件时间不能使旧画面放行。
 
 要渲染时它会先跑 `check_render_env.py`：font cache / node / npx / composition 这些真问题拦下来；
 **只有「可用内存 < 门槛」一条红时不拦**，按 `check_render_env --json` 给的 `workers`（1 起）渲染

@@ -166,8 +166,15 @@ def prove_stage_route(server: str, pid: str, comp: Path) -> tuple[bool, str]:
     """
     url = server.rstrip("/") + STAGE_ROUTE.format(pid=pid)
     try:
+        # The existing HyperFrames project API exposes the actual served directory.
+        # Equal durations or equal asset names cannot establish project identity.
+        projects = json.loads(fetch(server.rstrip('/') + '/api/projects'))
+        record = next((p for p in projects.get('projects', []) if p.get('id') == pid), None)
+        if (not record or not isinstance(record.get('dir'), str)
+                or Path(record['dir']).resolve() != comp.resolve()):
+            return False, f'预览服务不是当前工程 {comp}：project id={pid}，目录证据={record}；停止旧服务后重启 live_stage.py'
         body = fetch(url)
-    except (urllib.error.URLError, OSError) as exc:
+    except (urllib.error.URLError, OSError, ValueError, TypeError) as exc:
         return False, f"{url} unreachable: {exc}"
     if "data-hf-gsap-fallback" not in body:
         return False, (f"{url} returned something that is not a staged composition "
@@ -284,6 +291,8 @@ def main() -> int:
     payload = {"ok": True, "started": started, "serverUrl": server,
                "stageUrl": stage, "projectId": pid,
                "composition": str(comp.relative_to(root)),
+               "identity": {"verified": True, "projectRoot": str(root.resolve()),
+                            "compositionRoot": str(comp.resolve()), "proof": "prove_stage_route"},
                "studioUrl": stated.get("studioUrl"), "pid": stated.get("pid"),
                "log": stated.get("log"), "port": args.port}
     state = root / STATE_FILE

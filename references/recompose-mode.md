@@ -26,7 +26,7 @@ board 当视觉参考重做成片。判据只有一条：
   feedback/density.jsonl    # review_inbox.py 收件后追加
 ```
 
-`recompose.json` 是模式标记；没有它，Craft 走 `page`。`recompose/lines.json` 的每一行来自
+`recompose.json` 是当前 recompose 项目的模式与几何配置；缺少它时，`review.py` 会拒绝构建并提示先初始化，不会自动选择 `page`。`page` 仅是旧项目兼容形态，见归档说明。`recompose/lines.json` 的每一行来自
 字幕 / caption cue，按 `beatId` 分组；`state` 是人的决定，`proposal` 是模型的建议。
 
 ## 画布与人物区
@@ -105,9 +105,9 @@ stage_bottom = cfg["captionSafe"]["y"]
 ### 1. 锁事实
 
 - 声音：已锁的 `edit/cut.mp4` 或音轨。
-- 剪辑与字幕：`edit/edl.json`、`edit/subtitles.srt`；未锁时先走 `SKILL.md` 第 3–5 步（共用事实层，不属于任何一条画面路线）。
+- 剪辑与字幕：`edit/edl.json`、`edit/subtitles.srt`；未锁时先走 `stages.md` 第 3–5 步（共用事实层，不属于任何一条画面路线）。
 - 时间脊柱：`timeline/timeline.json`（自动派生）。
-- 词级锚点：`edit/caption_words.json`。
+- 词级锚点：优先 edit/transcripts 经 align.py；caption_words 是字幕插值依据，不能替代真实词时间。
 - board：PPT Hell 视频路线导出的页面 / 快照，作为视觉参考。
 - 人物孔位、字幕安全区、画幅。
 
@@ -117,9 +117,7 @@ stage_bottom = cfg["captionSafe"]["y"]
 
 - `timeline/timeline.json` 必须有非空 `chapters[].steps[]`（每步 `startMs` / `endMs`）。
   EDL 项目用 `timeline_derive.py` 产；外部剪好音频 + SRT 的项目用 `import_srt_timeline.py`
-  （需要 `--alignment`，来自上游 visual-plan）。**没有上游内容包的项目（自己录 / TTS 配音）
-  这两条都用不了，只能手写 timeline.json** —— 手写时把顶层 `totalChapters` / `totalSteps` /
-  `totalDurationMs` 一起写上：审阅页顶栏与播放器总时长读的就是这三个字段。
+  （需要 `--alignment`，来自上游 visual-plan）。有 EDL cues 时 timeline_derive 的 --alignment 可选，缺上游包不构成必须手写的理由。外部 SRT 且缺对齐契约时先明确该接口缺口，不伪造 alignment。审阅消费者还读取 totalChapters / totalSteps / totalDurationMs，核派生产物完整性。
 - `edit/subtitles.srt` 或 `edit/captions.json`，至少一条字幕行。
 
 `init` 从字幕生成逐行预算：默认 `state: auto`、`proposal: still`。模型可以在
@@ -180,7 +178,7 @@ recompose 模式下，`build_review.py` 把 `recompose/lines.json` 写进
 
 ### 5. 渲染与核验
 
-与 page 路线共用交付门槛；详见 `SKILL.md` 第 10 步与 `references/tools.md`。
+与旧项目共用适用的交付门槛；当前顺序和完成线见 [stages.md](stages.md) 第 10 步，命令见 [tools.md](tools.md)。
 recompose **不跑** `check_parity.py`（只有一条实现时没有对象），用 `check_motion_targets.py`
 与真实成片核验。
 

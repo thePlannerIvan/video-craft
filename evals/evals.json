@@ -3,11 +3,11 @@
     "id": "video-story-knowledge-handoff",
     "prompt": "这是录好的音频、句子级 SRT、最终口播和 video-idea-system 的 visual-plan.json。内容契约只写了画面必须呈现的信息，请完成动画视频。",
     "must_do": [
-      "先把 script.md 的 Speech Beat 对齐 SRT 并输出 visual-plan-alignment.json",
-      "人工处理 low 或 unmatched Beat",
-      "根据 must_show / must_express 自主设计画面模型、Visual Step、动画状态和精确时间",
-      "在 grouping、timeline 和 storyboard 中为每个 Step 保留单一 sourceBlueprintId",
-      "在 Checkpoint Plan 审阅实际画面方案与动画时序"
+      "核对内容采用版和已批准参考页；缺页面决定时回 PPT Hell，不代替上游重新设计静态页",
+      "外部 SRT 先对齐 Speech Beat，人工处理 low/unmatched，再导入 srt-import 时间轴",
+      "film 拆原页并映射 Beat，模型按已定内容设计动作、强调与时间绑定",
+      "每个视觉 Step 保留单一 sourceBlueprintId，来源边界不跨 Beat",
+      "review 构建工程态审阅并检查运行时画面/声音，不先渲整片"
     ],
     "must_not_do": [
       "向 video-idea-system 索要构图、State、动画方式或时间码",
@@ -22,8 +22,8 @@
     "prompt": "素材和录音都齐了，先把片子做出来给我看。",
     "must_do": [
       "先确认剪点（EDL），把取舍写进 edl.json 而不是手改底片",
-      "在不渲一帧的前提下出工程态：duration_plan.py 的 projected 预演 + 活 composition 预览",
-      "把「工程态可审、交付态才是实测」这条分界讲清楚，并说明哪些产物还不算交付证据",
+      "先出工程态：duration_plan 的 projected 时间与活 composition；必要素材准备单独缓存，不先渲最终整片",
+      "明确 projected 只支持工程审阅，未完成真实文件核验不能称交付完成",
       "剪点与动效确认后，才走渲染路径；渲染前先跑 check_render_env.py 拿 --workers"
     ],
     "must_not_do": [
@@ -39,7 +39,7 @@
     "must_do": [
       "先清点输入事实：录屏、SVG 目录（含是否存在 PPT 快照/id）、是否要保真、画幅、字幕内烧还是外挂、是否需要 BGM",
       "先跑 probe_env.py 报告能力（libass 缺失时如实说烧录不可用），再决定字幕形态",
-      "用现成的 SVG 目录走页面导入（无 id 时按整页导入），不要把“没找到页面源”当成需要自造新路线的信号",
+      "现成 SVG 作为 film 原页拆解参考，核版本后写 recompose composition；新项目不走旧 page 导入器",
       "剪点走 EDL：keep-list 经实测静音吸附后写入 edl.json，字幕时间轴与交付核验引用同一渲染记录",
       "人像小窗在渲染后用 FFmpeg 合成（不把正在播放的 <video> 放进浏览器抓帧）"
     ],
@@ -47,8 +47,66 @@
       "不盘点既有能力就自己写一套项目内脚本（尤其重写页面合成/头像/字幕/BGM）",
       "把“长录屏 + 现成 SVG”当成 video-craft 没有覆盖的新路线",
       "在 PDF/PPT 目录里找了一圈没看见 SVG 就直接下结论",
-      "用未经实测的标称时长生成字幕",
+      "把 projected 工程时间或 nominal 记录冒充正式交付实测证据",
       "把烧录字幕的合同在没有 libass 的机器上静默降级"
+    ]
+  },
+  {
+    "id": "architecture-local-debug",
+    "prompt": "审阅页黑屏了，帮我优化 Skill，以后别再这样。",
+    "must_do": [
+      "保留项目版本和日志，定位首个错误事实及现有 owner",
+      "区分工程问题、工具行为、文档路由和语义判断",
+      "先做最小复现，项目验证完成后按授权集中更新现有模块",
+      "列正常、失败与受影响接缝验收；已实现规则替换旧说明"
+    ],
+    "must_not_do": [
+      "直接新建播放器或宿主",
+      "因故障再加一份重复检查脚本",
+      "引用历史绿灯当成本次通过"
+    ]
+  },
+  {
+    "id": "delivery-verdict-is-not-render-success",
+    "prompt": "deliver 退出 0，但 delivery_verdict.ok 是 false，可以交了吗？",
+    "must_do": [
+      "明确还不能称严格核验通过",
+      "按 delivery.md 复核实际产物和严格错误原因",
+      "来源变更则重建受影响产物；验证后再记录指纹"
+    ],
+    "must_not_do": [
+      "只看顶层 ok 宣布可发送",
+      "把有反馈记录等同批准出片",
+      "宣称 Brief 中的修复已实现"
+    ]
+  },
+  {
+    "id": "planned-without-audio",
+    "prompt": "稿子定了但我还没录音，先做制作方案。",
+    "must_do": [
+      "完成接入、缺口与 production-plan",
+      "需要时给 planned 独立预演",
+      "暂缓依赖录音的 EDL/字幕/逐字审阅"
+    ],
+    "must_not_do": [
+      "因没录音退回重写内容",
+      "创建伪实测字幕",
+      "强行凑齐成片交付 KR"
+    ]
+  },
+  {
+    "id": "projected-to-measured-recovery",
+    "prompt": "底片刚重新渲染过，但工程里 timeline 还是 projected，字幕还是旧的。直接把标签改成 measured 就能交了吗？",
+    "must_do": [
+      "拒绝仅修改标签当作实测证据",
+      "对照当前 EDL、实测记录、字幕来源与两处 timeline 的实际读写位置",
+      "按 B8 定位现有 owner 的升级缺口；未修复和验证前明确未完成",
+      "在项目复制件复现再局部修复，保留已审的语义行方案"
+    ],
+    "must_not_do": [
+      "手拉字幕比例或手写 measured 标签掩盖来源失配",
+      "新建另一套时间轴脚本",
+      "把现有旧快照当作新版本批准"
     ]
   }
 ]

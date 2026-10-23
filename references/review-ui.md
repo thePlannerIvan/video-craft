@@ -1,6 +1,6 @@
 > **工程态优先**：有 composition 就必须起活舞台（`review.py` 会做），审阅页面默认演 composition；没有工程态时 `build_review` 退 2，不能静默退回成片态。只有成片轨的工程没有工程态，页面要明说这一点。
 >
-> **公共入口只有 `review.py`**：本文描述它的内部约定（页面、桥、提交、收件）；单独跑 `build_review` 等步骤只用于调试。
+> **构建入口为 `review.py`，正式收件入口为 `review_inbox.py`**：两者独立；本文描述页面、桥、提交与收件业务。单独跑 build_review 等构建内部步骤只用于调试。
 
 # 审阅页：播放与反馈
 
@@ -26,7 +26,7 @@ DSH tokens 仍来自 review-core，生成时内联。导航显示分屏标题、
 - 单位是**口播逐字稿的行**（字幕 cue），不是 beat；beat 只是分组与批量入口。
 - 状态：`auto`（跟 `proposal`）/ `off`（无画面）/ `still`（仅配图）/ `light`（轻动效）/ `full`（完整动效）。
 - 播放时当前行高亮；点行 seek；`0/1/2/3/a` 设状态；单击 / Shift 连选 / Cmd-Ctrl 加选 / 按住拖选多行；批量条应用到选中；beat 标题一键“全字幕/全完整”；可撤销。
-- 「动效细节」是同一 dock 的第二个 tab，只在选中“有图”的句子时使用。
+- 当前 recompose 右栏使用逐句调整与历史反馈；动效细节由模型修改 composition，旧 SVG 的参数抽屉只作兼容。
 - 提交写入同一份 `review/review-submissions.json` 的 `phase: "density"` 记录；
   `review_inbox.py` 校验后追加 `feedback/density.jsonl` 并回写 `recompose/lines.json`。
 - 不要在动效页放 board 参考帧：作者已在 PPT Hell 确认画面，成片页只看成片。
@@ -126,4 +126,4 @@ watch 覆盖当前 timeline、审阅数据、页面、SVG 和媒体。文件变�
 
 ### 分步动效抽屉的边界
 
-「分步动效」仍然保留，用于没有活 HyperFrames composition 的旧 SVG 审阅面：可以逐个 Step 试听，切换预埋原语、镜头焦点、子动作延迟和口播分句卡点，并把调整写入反馈记录。新工程进入 HyperFrames 官方播放器后，播放器拥有 clip 显隐和时间轴；抽屉会明确显示“HyperFrames 工程预览”，只保留本屏连播、最终态、定位和倍速等播放器控制，不在页面里伪造一套会与工程时钟分叉的动画参数编辑器。要调整新工程的原语、镜头或子延迟，应改 composition 的 `choreography.json`，重新构建审阅，再提交反馈。
+「分步动效」仍然保留，用于没有活 HyperFrames composition 的旧 SVG 审阅面：可以逐个 Step 试听，切换预埋原语、镜头焦点、子动作延迟和口播分句卡点，并把调整写入反馈记录。新工程进入 HyperFrames 官方播放器后，播放器拥有 clip 显隐和时间轴；抽屉会明确显示“HyperFrames 工程预览”，只保留本屏连播、最终态、定位和倍速等播放器控制，不在页面里伪造一套会与工程时钟分叉的动画参数编辑器。要调整新工程的原语、镜头或子延迟，应改 composition 的实际场景源或其显式声明的配置（若项目已有 `choreography.json` 才使用它），重新构建审阅，再提交反馈。

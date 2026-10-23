@@ -1,35 +1,12 @@
-# Timing Lock (v2)
+# 渲染前置：时间、画面与审阅
 
-> 本文涉及 page 路线的段落已归档（见 [legacy-page-route.md](legacy-page-route.md)）；现行 recompose 路线见 [film.md](film.md) 与 [recompose-mode.md](recompose-mode.md)。命令集中在 [tools.md](tools.md)。
+作者明确出片后、启动生产编码前读本页。它规定所需证据，不表示 deliver 已自动执行全部检查；当前自动化缺口见 implementation-brief B2，合成后的完成线见 delivery.md。
 
+1. 读取当前 timeline 的来源与绑定。EDL 项目区分 projected 与 measured，交付必须完成同版实测核验；外部 SRT 保持 srt-import 并核真实音频；未录音 planned 不进入成片。来源规则归 visual-timeline.md。
+2. 有参考页动画时 film verify 通过；拆解表与 Beat 映射完整。纯剪辑不伪造参考页来通过此检查。
+3. composition 通过 HyperFrames check；手写 GSAP 还跑 check_motion_targets（selector 与静态 transform）。两者检查不同问题。
+4. 读取项目实际声音路径，核音轨、时长与字幕覆盖；不强制输入必须叫 input/audio.mp3。明确有声/无声、人物/无人物、外挂/烧录合同。
+5. review 运行时检查通过；人工提交对应当前快照；模型读取反馈，未决项已经处理或由作者明确接受；作者指令覆盖当前出片版本。render_gate 放行不能替代这三个人工判断。
+6. probe_env 报能力；check_render_env 给预算。环境硬错误阻断；内存预算例外按 delivery.md 记录，不自行扩大并发。
 
-Timing Lock verifies the composition is a faithful render of the SRT
-timeline **before anything gets rendered**.
-
-## Required Checks
-
-1. `timeline/timeline.json` exists and is SRT-derived.
-2. `python3 helpers/film.py verify <project>` exits 0 — 原页拆解填满、每个 beat 都有映射。
-   （旧 page 路线的 `generate-composition.py --verify` 已随路线归档，新项目不再要求。）
-3. `cd composition && npm run check` — 0 errors (lint/runtime/layout/
-   motion/contrast).
-   Hand-authored GSAP timelines: `helpers/check_motion_targets.py <project>` exits 0 —
-   it catches selectors that no longer resolve and page `transform`s a tween rewrites.
-4. When the project has narration audio: `input/audio.mp3` exists and
-   `ffprobe` duration ≥ SRT span.
-5. All `feedback/*.jsonl` open items are fixed or explicitly accepted.
-6. Optional but recommended: `npx hyperframes snapshot --at <midpoints>`
-   and eyeball the frames (or hand them to the user).
-
-## Timing Changes
-
-Never edit `data-start`/`data-duration` by hand — that is the same
-"stretch a screen to feel right" anti-pattern, moved into a new file.
-If timing feels wrong:
-
-- regroup SRT lines into different visual steps (timeline/grouping.json)
-- rebuild `timeline/timeline.json`
-- 第 7 步手写的场景从新 timeline 取 `data-start`/`data-duration`，再跑 `helpers/check_live_stage.py`
-- 重建审阅页（`helpers/review.py`），旧快照随之失效
-
-SRT remains the time source.
+时间发生变化：改来源或分组 → 重派生 timeline → 更新场景绑定 → 重建审阅 → 新版本人审。允许模型编写消费 timeline 的场景代码；不允许手调最终数字掩盖源不一致。要验证像素时优先工程播放器截图；生产 render 只在本页条件满足后执行。

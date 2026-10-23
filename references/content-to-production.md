@@ -52,19 +52,9 @@ find "<画面源目录>" -name '*.svg' -print0 | sort -z | xargs -0 shasum -a 25
    `<ppt>/_internal/03_png_preview/`。**PNG 预览不是源**：它证明"当时长这样"，不能导入、
    不能改字、不能挂元素动效。
 
-### 两条路的区别
+### 两种输入的证据区别
 
-| | `planners-ppt-hell` 的视频路线 snapshot | 直接用现成 SVG 目录 |
-|---|---|---|
-| 交接物 | 一份 snapshot（页面清单 + revision + 资产） | 一个目录，通常是 `_internal/02_svg_source` |
-| 导入 | `import_svg_page.py --pages <snapshot.json>` | `import_svg_page.py --pages <目录>` |
-| 版本 | snapshot 自带 revision，可核对"批准的是哪一版" | 只能靠目录哈希 + `design_direction.md`；没有批准记录 |
-| 返修 | 回 PPT Hell 改页、重新导出 snapshot | 直接改 SVG 会让"源"与"已导入副本"分叉，仍应回 PPT Hell 改 |
-| 能声称什么 | 页面经作者批准、可追溯到具体版本 | 只能说"用了这套 SVG"，不能声称已批准或可返修 |
-
-一句话区分：**snapshot 是带 revision 与批准记录的交接物；现成 SVG 目录只是页面源，没有版本与批准。**
-两条路导入后都以项目内副本为准；画面源一变，重新导入、重建 composition、重新 build review。
-审阅快照的 `sourceManifest` 会带每个源文件的 sha256，旧意见因此能对上"它当时看的是哪一版"。
+snapshot 带 revision、页面清单与批准记录；裸 SVG 目录需要另核目录哈希和作者采用决定。两者在新 recompose 项目都作为 film 拆解的参考，均不调用旧 page 导入器。源变更后重核版本、受影响拆解、composition 和审阅快照；旧工程导入恢复见 legacy-page-route.md。
 
 ## 核 `script_hash`：两处都核，各管自己那一段
 
@@ -94,7 +84,7 @@ find "<画面源目录>" -name '*.svg' -print0 | sort -z | xargs -0 shasum -a 25
 
 ## 承接阶段要交出什么
 
-> **完成标准的家是 `SKILL.md` 的 Process 步 1–4**；这一节只列产物与顺序，不另立判据。
+> **完成标准在 stages.md 的步骤 1–2；剪辑审阅是后续 3–4 步**；这一节只列产物与顺序，不另立判据。
 
 **没有音频也要把承接做完。** 产物是这四件：
 
@@ -104,19 +94,11 @@ find "<画面源目录>" -name '*.svg' -print0 | sort -z | xargs -0 shasum -a 25
 3. **独立代表切片** `previs/`，标 planned —— 没有音频照样做得出来：真实素材 + 清楚标注的临时声音或估时。
 4. **分段录制稿，以及需要额外留出的动作/演示空间**（目标是作者口播且尚未录制时）。
 
-**「等录音」不是停止整个项目的理由。** 声音获取是一条明确的依赖，要到第 5 步
-（`edl.json`，要求实测时长）才拦人；第 1–4 步照常推进到有可审的样片。
+未录音先完成接入、制作方案和 planned 预演。依赖真实录音的转写/EDL/逐字审阅暂缓，不为走到步骤 4 生成假转写；获得录音后从步骤 3 继续。
 
-## 不伪造 measured 字幕契约
+## 时间来源
 
-预演的时长是估计，不是实测。`caption_words.json` 记着自己建在哪条时间轴上，
-`timeline_derive.py` 对 `timeline_source` 不是 `measured` 的直接拒绝：
-
-> **这条闸门管的是「制作时间」那一态。** 有真实录音之后，字幕 cue 与 timeline 只能从底片
-> 实测派生，不许拿预演、剧本估时或旧 SRT 顶替——标称时间轴上的 cue 最多会早一秒，
-> 挂在它上面的每个视觉步骤都会早于它自己的旁白。
-
-预演那一态停在 `production-plan.md` 与 `previs/` 里（标 planned），不进字幕契约。
+来源定义只维护在 [visual-timeline.md](visual-timeline.md)：planned 是未录音预演；有录音的 EDL 路径允许 projected 支撑工程审阅；measured 才是匹配剪辑指纹的实测证据；外部 SRT 标 srt-import。记录当前属于哪种，不把预演或无指纹旧记录写成 measured。
 
 ## Craft 必须做出的设计
 
@@ -129,10 +111,9 @@ find "<画面源目录>" -name '*.svg' -print0 | sort -z | xargs -0 shasum -a 25
 没有声音时，素材准备、场景设计和独立代表切片照做（完成标准见上）。
 TTS 仅在已获授权的方式和声音范围使用；不得擅自克隆声音或把临时配音交付为作者实录。
 
-## 两种时间状态
+## 预演转制作
 
-- **预演时间**：记录在 `production-plan.md` 和独立 `previs/` 下，用于设计、估时和可审样片。标注 planned，不创建虚假的 measured 字幕契约。
-- **制作时间**：有真实录制/授权生成声音后，通过 EDL、底片实测、字幕 cue 和 timeline 派生。设计仍由 Craft 决定，但数值必须与实际音画一致。
+声音录好后保留已有视觉设计，按当前来源重新绑定时间；状态和交付资格按 visual-timeline.md，不另立一套两态判据。
 
 无口播片段按画面动作和实际素材/渲染长度设计，不能伪造字幕 cue。把它作为明确的 EDL 窗口与独立视觉槽，并在制作计划保留与 Beat/Screen 的关联；字幕时间派生只覆盖有语音的部分，不要求每帧都有字幕。若现有渲染入口不能承载某种窗口，先做最小接口验证，不声称任意多轨编排已经支持。
 

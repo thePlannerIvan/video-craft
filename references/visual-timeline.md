@@ -3,28 +3,34 @@
 > 本文涉及 page 路线的段落已归档（见 [legacy-page-route.md](legacy-page-route.md)）；现行 recompose 路线见 [film.md](film.md) 与 [recompose-mode.md](recompose-mode.md)。命令集中在 [tools.md](tools.md)。
 
 
-The visual layer's timing comes from **the EDL's measured timeline**, not from a
-re-parse of the subtitles. SRT is a *view* of the same cues; deriving from it a
-second time threw away what the EDL already knew and re-computed the same numbers
-from a lossier source.
+## 时间来源与证据等级（权威定义）
 
+| 来源/标记 | 证明什么 | 可以做什么 |
+|---|---|---|
+| planned | 内容估时，尚无录音事实；项目计划状态，不冒充 timeline 字段 | 制作方案与独立预演 |
+| projected | 当前 EDL 的帧量化解析预演 | 工程字幕/时间轴/审阅；不证明成片实测 |
+| measured | 渲染时长记录与当前 EDL 指纹一致 | EDL 路径的正式时间依据，仍须核真实交付文件 |
+| measured-guessed / nominal | 无匹配指纹或历史降级依据 | 明确风险、恢复项目；不能替代正式交付证据 |
+| srt-import | 外部音频与 SRT 经内容对齐 | 外部来源的制作绑定；交付另核实际媒体，绝不声称 EDL measured |
+
+唯一时间脊柱是下游消费接口，不是所有事实的原始生产者。EDL 路径由当前 EDL + 时长记录 + 锁定字幕 cues 派生；外部路径由音频/SRT/对齐派生。SRT 在前者是导出视图，在后者是输入，不能用一句“SRT 永远是真相”或“EDL 是所有项目的唯一来源”混同。
+
+```text
+EDL + 同版时长记录 → 字幕 cues ── timeline_derive ──┐
+外部音频 + SRT + alignment ── import_srt_timeline ─┤
+                                                  ↓
+                        project/timeline/timeline.json
+                                  ↓
+                        手写 composition / 工程审阅
 ```
-edl.json + segment_durations.json + caption_words.json + captions.json
-                              │
-                 helpers/timeline_derive.py + timeline/grouping.json
-                              ▼
-                    timeline/timeline.json
-                              │
-                 （已归档）generate-composition.py
-                              ▼
-                  composition/index.html
-```
+
+字幕字级插值（caption_words）不同于真实 ASR 词级时间。精确卡词调用 align，优先 transcripts，退估算时标 estimated；不手算比例。
 
 ## Inputs
 
 Required:
 - `edit/captions.json` — the cue list, written by `srt_export.py --build`
-- `edit/caption_words.json` — the word contract, `timeline_source: "measured"`
+- `edit/caption_words.json` — the word contract, `timeline_source: "measured"` 或 `"projected"`
 
 The deriver accepts `measured` or `projected` and **refuses a nominal timeline**.
 `projected` comes from `duration_plan.py`: the frame-quantised `ceil(raw × fps) / fps`
@@ -39,13 +45,13 @@ re-run `srt_export.py --prepare --lock --build`; only delivery verification need
 a real render.
 
 Optional:
-- `edit/timeline/grouping.json` — the per-beat visual decision (`visualModel` /
+- `<project>/timeline/grouping.json`（调用时显式指定；旧项目可能保存在 edit/timeline） — the per-beat visual decision (`visualModel` /
   `modelStructure` / `screenIntent` / `onScreenTextRule`) that Step 2 turns into
   `timeline.json`. This is **not** the upstream `deliverable/visual-plan.json`,
   which is the content contract (`video-story-handoff.md`).
 - `edit/assets/` — images, screenshots, frames, logos, charts.
 
-**Never edit a cue's time.** Times are measured facts about the render.
+**Never edit a cue's time.** Times are derived facts with the declared evidence level above.
 
 ## Step 1 — derive the cue entries
 
@@ -115,11 +121,11 @@ cross into another blueprint's beat.
 cue), the creative fields from `grouping.json`, and the EDL binding
 (`cueRange`, `segments`, `wordCount`, `sourceRange`).
 
-## 时间轴自报时间来源
+## 时间轴字段与现有实现
 
-`timeline.json` 顶层带 `timeSource`（`measured` / `measured-guessed` / `projected` / `nominal` / `srt-import`）
-与 `measuredTotalMs`。字幕、交付核验都按它取时间基准：只有 `measured` 才用渲染记录的分段时长，
-其余用标称时长。**画面与字幕共用这一条时间轴，不存在第二条。**
+顶层 `timeSource` 与 `measuredTotalMs` 记录来源状态。当前字幕导出器也会读取已有 timeline 的 `timeSource` 选择口径，这是现有实现耦合，不能据此倒过来手改视觉末帧驱动字幕。另有一项未闭合的实现边界：普通时长记录查询在找不到匹配实测记录时可能回退到 `projected`；因此不能仅凭 timeline 写着 `measured` 就宣称字幕 cues 都由实测记录生成，详见 [implementation-brief.md](implementation-brief.md) B8。恢复项目先核来源、旧 timeline 和记录是否同版，再按步骤 5–6 重建。
+
+新项目显式传 --output-timeline 写入 project/timeline/timeline.json。旧项目若还存在 edit/timeline/timeline.json，_paths 当前优先读取它；只写项目根不会消除歧义，须先核消费者并保留备份，统一采用位置再重建，见 Brief B8。当前 timeline_derive 的 --alignment 是可选参数；有 EDL cues 的项目不因没有上游内容包就只能手写 timeline。
 
 ## Step 4 — hand-write the composition
 
@@ -130,11 +136,10 @@ recompose 路线没有生成器：`composition/src/scenes/*.js` 由 Agent 按 `f
 
 ## Checkpoint
 
-Stop after `grouping.json`, `timeline.json` and `storyboard.md` exist, and review
+After grouping and timeline exist, review representative work when the visual decision needs confirmation:
 **at the pixels** rather than in prose: build 2–3 representative steps into the
-composition and open them with `live_stage.py` + `build_review.py`, and let the
-user settle **the layout and the rhythm** in one pass. Only when that route has no
-composition to play (hand-drawn frame-by-frame) do you render those slices.
+composition and open them with `review.py`, and let the
+user settle **the layout and the rhythm** in one pass. For frame-by-frame media preparation, follow frame-animation-pipeline.md and label previews as engineering assets.
 画面风格在画面侧（`planners-ppt-hell`）已经定了，这里不重新选风格。 A written storyboard asks the user to imagine the thing they
 are being asked to approve.
 

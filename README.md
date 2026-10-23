@@ -19,16 +19,17 @@
 
 四种都是 `时间脊柱 → 视觉层 → 一个合成器`。
 
-## 结构
+## 使用与维护
 
-```
-L1 剪辑层    edit/edl.json               保留哪些段、怎么调色
-L2 时间脊柱  edit/segment_durations.json 实测时钟（字幕与视觉层共用的真相）
-L3a 字幕     srt_export.py               article-first，只认实测时间轴
-L3b 视觉层   visual/                     HyperFrames / PIL / Manim / Remotion
-合成         render.py                   底片 + 覆盖层 + 字幕最后
-交付         成品/                       在渲染文件上验证过的视频与 SRT
-```
+默认先交工程态审阅；作者明确出片后再合成与核验。逐字剪辑和动效审阅是两种制作界面，均使用公共审阅宿主。
+
+- [SKILL.md](SKILL.md)：按输入和本轮目标选阶段。
+- [阶段契约](references/stages.md)：11 步的输入、完成条件与返回路径。
+- [工具手册](references/tools.md)：现有入口与调试命令。
+- [架构与 Debug](references/architecture.md)：职责、失效范围、局部优化和验证。
+- [实现 Brief](references/implementation-brief.md)：尚未落地的机械修复与验收；不等于现有能力。
+
+EDL 时间与外部 SRT 来源分别登记；工程态 projected 不冒充实测。新视觉制作固定走 recompose，先拆批准原页，再手写 composition；旧 page 路线隔离恢复。
 
 ## 为什么覆盖层要单独有校验器
 
@@ -114,16 +115,15 @@ git clone --depth 1 https://github.com/thePlannerIvan/<模组名>.git \
 git clone https://github.com/thePlannerIvan/video-craft.git ~/.claude/skills/video-craft
 ```
 
-本地开发、在本仓库内使用时：
+在 monorepo 中开发时，runtime 同步使用仓库发布器：
 
 ```bash
-cd 02-skills-library/03-design-delivery/video-craft
-npm install                   # ws，给 SeedASR 的 WebSocket 用
-
-# 三处同步（见仓库 AGENTS.md）
-ln -sfn "$PWD" ~/.codex/skills/video-craft
-ln -sfn "$PWD" ~/.claude/skills/video-craft
+cd 02-skills-library
+python3 publish_skills.py --dry-run
+python3 publish_skills.py --target all
 ```
+
+发布器是 runtime 同步的唯一入口；不要手动复制或链接 Codex、Claude Code、Antigravity 目录。先按测试与发布规则验收，再从 `02-skills-library` 发布。
 
 Python 用 `02-skills-library/.venv/bin/python`（3.9.6，`pptx` / `lxml` / `PIL` /
 `playwright` / `numpy` 齐，本类别共用，离线可用）；系统 `python3` 同样能跑测试套件。
@@ -160,20 +160,16 @@ python3 planners_modules_install_test.py
 ```
 
 
-覆盖：剪辑契约、SRT 链、实测时间轴、帧率解析与归一化、人像探测、
-覆盖层契约，"渲染器真的会拒绝坏覆盖层"，以及视觉审阅的反馈直存
-（服务真起来、记录按原 schema 落进 `feedback/<chapterId>.jsonl`、旧版本留底、
-端口被占不冒充旧项目）、上屏文字闸门扫得到做画面产出的 SVG、
-画面页导入的逐字保真与 id 碰撞、主题库校验（`theme.json` 能不能解析、
-每个 `var()` 有没有解析到值、正文对比度、节奏只由 `mood` 承载）、
-`script_hash` 与 `script.md` 的比对、抽段完整性（坏段重抽 / 硬失败 / 总长断言）、
-渲染记录按 EDL 哈希选取、HyperFrames 渲染环境的字体缓存预检。
+覆盖：剪辑契约、SRT/时间来源与时间轴、帧率解析、人像探测、覆盖层契约及坏覆盖层拒绝、
+视觉审阅的实际播放/反馈/收件、上屏文字闸门、`script_hash` 比对、抽段完整性、
+按 EDL 哈希选取渲染记录、交付与二次剪映射、HyperFrames 环境预检。
+SVG page 导入用例只保护旧项目兼容，不代表它是新项目路线；旧 page 流程见归档说明。
 
 单独跑某一项，例如：
 
 ```bash
 cd tests
-PYTHONPATH=..:../helpers ../.venv/bin/python -m unittest test_themes test_svg_page_import -v
+PYTHONPATH=..:../helpers "${CATEGORY_PY:?set CATEGORY_PY as described in install.md}" -m unittest test_time_source test_svg_page_import -v
 ```
 
 ## 血统

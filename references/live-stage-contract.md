@@ -81,10 +81,9 @@ window.__timelines["main"] = HF.tl;     // 名字必须等于 #root 的 data-com
 <composition>/assets/composition-embed-bridge.js
 ```
 
-由手写 composition 时按 `visual/assets/composition-embed-bridge.js` 拷进 `composition/assets/`，并在 `index.html` reference；生成器已归档，`check_live_stage.py` 会验这一份在不在
-里以 `src=` 引用。审阅页跑在不透明源的 sandbox iframe 里，够不着子页 DOM，`postMessage`
-是唯一通道；bridge 是 composition 自己的控制面。缺文件时页面不会报错，只是**不能定位、
-不能播放**。
+源工程当前仍保留该文件及引用，因为 check_live_stage 的静态兼容检查要求文件存在；不要直接删除。它来自 visual/assets/composition-embed-bridge.js。
+
+**这不是新审阅播放器的时钟 owner**：live_preview 在传输到官方 player 时过滤这份旧桥，播放/定位由官方 player 负责。文件存在只证明当前静态检查兼容，不证明工程能播；若后续取消这项要求，必须同包更新源检查、传输和旧工程兼容测试，不能只改文档或只删文件。可选参数控制另见 [hyperframes-review-adapter.md](hyperframes-review-adapter.md)。
 
 ### 5. 媒体尺寸策略
 
@@ -138,7 +137,7 @@ warning（不拦路）：画布/时长属性缺失、bridge 未被引用、注�
 
 静态检查只能证明"这一版不会被静默改写"，证明不了"页面打开就能看、能听"。实测判据是：
 
-运行时校验只跑 `check_review_playable.py <project>`；它断言的三件事见下。
+运行时校验只跑 `check_review_playable.py <project>`；它断言的检查见下。
 
 它自己起本地宿主、用 Playwright 打开审阅页，断言四件事，任一失败退出 1 并指出该修哪一层：
 

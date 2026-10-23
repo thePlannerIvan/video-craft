@@ -18,17 +18,18 @@
 > 例外：`visual/assets/` 下本 Skill 自己的脚本（`svg-anim-engine.js`、`composition-embed-bridge.js`）
 > 不是打包产物，可以正常读。
 
-## 免渲染审阅入口
+## 日常调用与诊断边界
 
-- `check_live_stage.py <project>`：进入 `build_review` 前的活舞台契约静态检查（前置条件，见 [live-stage-contract.md](live-stage-contract.md)）。
-- `render_gate.py <project>`：渲染闸门；至少一条人工提交覆盖当前审阅快照才放行。
-- `live_stage.py <project> --json`：启动/复用 HyperFrames 编译服务。
-- `build_review.py <project> --mode auto --slices off`：编译工程预览、内联对应官方 player 和素材清单。
-- `live_preview.py`：上项内部使用的纯传输模块；`compile_preview(project, stage_url)` 返回 HTML、素材映射和 sourceHash。
-- `review_surface.py <project> --surface-only`：把 surface 交 DSH；无插件时去掉该选项。
-- `edl_preview_build.py <edit>`：按源媒体即时预览当前 EDL。
+| 任务 | 日常入口 | 何时下钻 |
+|---|---|---|
+| 剪辑准备、出逐字面、应用选择 | stage_cut；取舍后用 edl_from_keep / edl_edit 建或改 EDL | 定位转写、EDL、表面回执的问题时 |
+| 时间与字幕 | duration_plan / srt_export / timeline_derive；外部来源用 import_srt_timeline | 尚无统一 time 命令，按 stages 5–6 顺序调用 |
+| 原页拆解与画面 | film / recompose_plan；模型写 composition | 检查具体映射或场景 |
+| 动效审阅构建 | review.py | check_live_stage/live_stage/build_review/review_surface/check_review_playable 是内部步骤，仅定位故障时单跑 |
+| 正式反馈收件 | review_inbox.py | 它不包含在 review.py 内；拒收先解决绑定 |
+| 成片合成、严格核验、包装、指纹 | deliver → verify_delivery → 按需 export_deliverables → state_fingerprint | 顺序与适用限制见 delivery.md；stage_deliver 是兼容的分动作入口 |
 
-编辑后重建上述相应审阅页，无需先渲整片。旧媒体交付与转码工具保留如下。
+私有库（下划线文件、helpers/lib、live_preview）由工具调用。扩展参数查 --help；维护工具时可以读实现，日常制作先用入口与报告定位。
 
 ## recompose 主路线（composition 为源）
 
@@ -39,9 +40,7 @@ python3 "<craft>/helpers/recompose_plan.py" init "<project>" \
 python3 "<craft>/helpers/recompose_plan.py" check "<project>"
 python3 "<craft>/helpers/recompose_plan.py" lines "<project>"
 
-python3 "<craft>/helpers/live_stage.py" "<project>" --composition "<composition>"  # 工程态，不渲染
-python3 "<craft>/helpers/build_review.py" "<project>" --mode auto             # 底部分段工作区
-python3 "<craft>/helpers/review_surface.py" "<project>" --surface-only
+python3 "<craft>/helpers/review.py" "<project>"                  # 构建并验证工程审阅
 python3 "<craft>/helpers/review_inbox.py" "<project>"               # 密度记录落到 feedback/density.jsonl
 ```
 
@@ -52,7 +51,7 @@ page 十步路线已归档（见 [legacy-page-route.md](legacy-page-route.md)）
 
 # 工具调用手册
 
-九个制作阶段各做什么、按什么顺序、坏了怎么认，见 [stages.md](stages.md)；本页只回答"跑哪条命令"。
+七个职责阶段对应的 11 步做什么、按什么顺序、坏了怎么认，见 [stages.md](stages.md)；本页只回答"跑哪条命令"。
 
 按任务选入口，不逐个跑完。本页的 `<craft>`、`<idea>`、`<ppt>`、`<core>` 分别替换为对应 Skill 的绝对根目录；`<project>`、`<edit>`、`<pages>` 是项目、剪辑目录与 PPT Hell 画面项目。Python 用安装时确认的解释器；每条 Python 命令都可将 `python3` 换为该解释器。扩展参数用该命令的 `--help`，不读实现。
 
@@ -61,20 +60,20 @@ page 十步路线已归档（见 [legacy-page-route.md](legacy-page-route.md)）
 | 位置 | 拥有的内容 | 下一消费者 |
 |---|---|---|
 | `_idea/current.md`、`deliverable/` 或 `input/` | Idea 的作者决定、脚本、内容契约、资产与制作说明 | Craft 承接；原始内容版本保留 |
-| `<pages>/_internal/02_svg_source/`、`design_direction.md` | PPT Hell 的 SVG、可选稳定 id、可选合成提示 | 页面导入器与动画层；无 id 时整页可用，不阻塞导入 |
+| `<pages>/_internal/02_svg_source/`、`design_direction.md` | PPT Hell 的 SVG、可选稳定 id、可选合成提示 | film 原页拆解与动画；新项目不走 page 导入器 |
 | `edit/project.md`、`production-plan.md` | 本次采用版、输入路径、当前决定和计划 | 制作、恢复与交接 |
 | `edit/transcripts/`、`takes_packed.md` | 转写缓存、Take 阅读视图 | EDL 编辑和字幕 |
 | `edit/edl.json`、`segment_durations.json` | 剪辑决定与该版底片实测记录 | 渲染、字幕与核验 |
 | `edit/captions_article.txt`、`semantic_lines.txt`、`caption_lock.json` | 字幕校对与断句决定 | `srt_export.py` |
-| `edit/caption_words.json`、`captions.json`、`subtitles.srt` | 实测词、cue 与字幕导出视图 | 时间绑定、画面审阅、合成 |
-| `timeline/grouping.json`、`content-alignment.json`、`timeline.json` | 屏/Beat 对齐、cue 分组与唯一视觉时钟 | composition 生成器与审阅 |
+| `edit/caption_words.json`、`captions.json`、`subtitles.srt` | 字幕字级插值、cue 与导出视图；真实词锚点用 align/transcripts | 时间绑定、画面审阅、合成 |
+| `timeline/grouping.json`、`content-alignment.json`、`timeline.json` | 屏/Beat 对齐、cue 分组与唯一视觉时钟 | 手写 composition 与审阅 |
 | `composition/`、`edit/overlays/` | 渲染源与已渲染视觉层 | 渲染器、EDL 合成 |
 | `review/`、`feedback/` | 页面、surface、提交、独立草稿、收件后反馈 | 宿主只传输，Craft inbox 解释 |
 | `edit/verify/`、`creative-check.md`、`成品/` | 实际编码结果检查与交付 | 用户与下轮恢复 |
 
-## 阶段脚本（先行版）
+## 现有阶段适配器（覆盖有限）
 
-两个阶段的固定流程已经串成一条命令（内部仍调用下面的工具，不改行为；旧命令继续可用）：
+stage_cut 提供分动作编排；stage_deliver 保留兼容分动作调用。它们尚不保证整个阶段事务完成：prepare 不替模型建 EDL；apply 后要重建；run 后仍须严格 verify。已知参数缺口见 delivery.md 和 implementation-brief.md。
 
 ```bash
 python3 "<craft>/helpers/stage_cut.py" status  --project "<项目>"
@@ -90,7 +89,7 @@ python3 "<craft>/helpers/stage_deliver.py" fingerprint --fingerprint-action capt
 ```
 
 退出码：0 完成 · 1 命令失败（含闸门拒绝）· 2 前置条件不满足。加 `--json` 得到 `steps` 与 `next`。
-九个阶段各自做什么、为什么这样切，见 [stages.md](stages.md)。
+阶段职责与现有实现覆盖，见 [stages.md](stages.md)。
 
 ## 接上游
 
@@ -158,14 +157,13 @@ python3 "<craft>/helpers/edl_edit.py" "<edit>" --restore "<起秒>,<止秒>=<期
 
 ## 免渲染的工程态（先审后渲）
 
-审阅的**唯一公共入口是 `review.py`**；本节的 `check_live_stage` / `live_stage` / `build_review` / `review_surface` / `check_review_playable` 是它的内部步骤，只在调试或需要持久舞台时单跑（合并地图 M6）。
+审阅的**唯一公共入口是 `review.py`**；本节的 `check_live_stage` / `live_stage` / `build_review` / `review_surface` / `check_review_playable` 是它的内部步骤，只在调试或需要持久舞台时单跑（模块归属见 architecture.md）。
 
 渲染不再是「能开始干活」的前提。段时长可以解析算出来，覆盖层可以有浏览器可合成的载体，
 **画面可以直接演活的 composition**，于是剪辑、字幕、时间脊柱、审阅都先跑起来，确认后才渲染。
 
 审阅台的首选舞台是**活的 composition**：`live_stage.py` 起 HyperFrames 预览服务并给出可嵌入地址，
-`build_review.py` 把它写进 `media.liveStage`，页面 iframe 进去直接演。零渲染、零等待，改一行动效
-刷新即变 —— 这一条见 `SKILL.md`「工程预览与最终交付」与 `GOTCHAS.md` 第 57–59 条。
+`build_review.py` 把它写进 `media.liveStage`，页面 iframe 进去直接演。不需渲整片；改源后重新构建审阅快照，再刷新才反映本轮修改 —— 这一条见 [stages.md](stages.md) 第 8 步与 `GOTCHAS.md` 第 57–59 条。
 
 ```bash
 python3 "<craft>/helpers/check_live_stage.py" "<project>" # build_review 前必过：活舞台契约
@@ -234,7 +232,7 @@ python3 "<craft>/helpers/check_caption_breaks.py" "<edit>/subtitles.srt" --json
 
 输出 article/词契约/lock/cue/SRT。底片剪点变化后重新 prepare、核对语义行、lock、build，不沿用已失效锁。无录音预演不进入这条实测路径。
 
-字幕的时间基准跟随画面时间轴（`timeline.json` 的 `timeSource`）；`--check` 会核对字幕末条与时间轴末段，相差 >0.1s 退非零。
+字幕的时间基准跟随画面时间轴（`timeline.json` 的 `timeSource`）；`--check` 会核对字幕末条与时间轴末段，字幕末条超出时间轴末段 >0.1s 退非零；允许正常尾静音，不证明逐段来源一致。
 
 ## SVG 与视觉时间
 
@@ -281,7 +279,7 @@ composition 由 Agent 按 [film.md](film.md) 的拆解手写 `src/scenes/*.js`�
 **composition 路线的音频**：进 composition 之前先用 `audio_mix.py`/`audio_fix.py` 归一（HyperFrames 不会替你做响度；实测直接塞母版会得到 -16.9 LUFS）。
 **响度唯一标准**：成片混音由 `audio_mix.py` 产出一个文件（-14 LUFS / -1.5 dBTP，可带 BGM duck；用它时 render 加 `--no-loudnorm`）；没有预混音时 `render.py` 自己归一化。`audio_fix.py --target-lufs` 只用于素材预处理。
 
-**指纹不是渲染前置，是交付过期信号**：已有交付时先跑 `state_fingerprint.py verify` 判断它有没有过期 —— 改源之后「过期」正是**需要重新输出**的信号，它不拦住新渲染。重新输出并核验后再 `capture` 新指纹，发送前再 `verify`，不一致就不能**发送**。与 `SKILL.md` 第 10 步是同一句。
+**指纹不是渲染前置，是交付过期信号**：已有交付时先跑 `state_fingerprint.py verify` 判断它有没有过期 —— 改源之后「过期」正是**需要重新输出**的信号，它不拦住新渲染。重新输出并核验后再 `capture` 新指纹，发送前再 `verify`，不一致就不能**发送**。阶段顺序见 [stages.md](stages.md) 第 10 步。
 渲染前先过 [timing-lock](timing-lock.md)：`film.py verify` 退 0，且 `feedback/*.jsonl` 的未决项已清或显式接受。
 
 工程态底片预览（`--preview` 产物属于工程态，落 `_engineering/`；`edit/cut.mp4` 这个正式底片名只留给确认后的交付态渲染）：

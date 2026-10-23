@@ -112,10 +112,8 @@ normal visual and A/V checks, and copy `subtitles.srt` with the final MP4. A
 legacy sentence or cue-length export must be explicitly requested and must not
 be mixed with the article-first files.
 
-## 时间源只有一条：画面时间轴
+## 时间来源与字幕绑定
 
-字幕的绝对时间跟随 `timeline/timeline.json`（画面的唯一时间脊柱），**不跟渲染记录**。
+字幕绝对时间消费 `timeline/timeline.json` 这条下游时间脊柱；它不把渲染记录当成第二份独立时间轴。EDL 项目由 `srt_export.py` 按当前 EDL 选择匹配记录：`projected` 使用帧量化预演，`measured` 应优先使用匹配实测记录；外部 SRT 路径保留 `srt-import`，不伪装成 EDL 实测。完整来源含义见 [visual-timeline.md](visual-timeline.md)。
 
-- 时间轴自报 `timeSource`：`measured`（按实测总长对齐过）/ `measured-guessed`（推定）/ `projected` / `nominal` / `srt-import`。
-- 只有 `measured` 时字幕才取渲染记录的分段时长；其余情况用标称段时长——两条时间源一旦混用，字幕会随片长逐渐偏移（v1/v2/v3 实测偏差 0.44–0.81s）。
-- `srt_export.py --check` 会核对"字幕末条 vs 画面时间轴末段"，相差超过 0.1s 直接退非零。这条闸门是硬性的：不一致就说明画面和字幕不是同一版。
+实现边界需要说清：当前 `_edl.duration_record()` 在普通选择模式下找不到匹配实测记录时还可能回退到匹配的 `projected` 记录；因此仅看 timeline 的 `timeSource: "measured"` 不能证明每条字幕 cue 实际取自实测记录。`srt_export.py --check` 会检查 SRT 末条是否超出 timeline 末段（超出 >0.1s 失败，允许正常尾静音），但该检查不证明逐段时长来源完全一致。收紧这条选择合同列入 [implementation-brief.md](implementation-brief.md) B8；B8 完成前不得把不满足来源证据的输出报告为严格 measured 字幕。

@@ -10,9 +10,20 @@
 
 这种形态以前没有入口，交付方只能手写 ffmpeg overlay。现在它是一条命令。
 
+## 当前交付顺序与完成线
+
+模型先核对作者明确出片指令、当前版本人工审阅与未决意见处理；render_gate 仅检查快照有提交及 manifest 变化，不能推断反馈内容是否批准。
+
+1. 按 [timing-lock.md](timing-lock.md) 执行适用前置；其中 film/动效等尚未全部由 deliver 自动串联。
+2. 调用 deliver 合成。当前总 ok 只汇总本地合成 checks，delivery_verdict 的严格失败仍可能只记 notes；退出 0 不能直接交件。
+3. EDL 项目对实际视频单独运行 verify_delivery，必须退 0；需要包装时用 export_deliverables，再对包装目录复核。无声画面轨直接给 verify_delivery --no-audio；当前 stage_deliver verify 未传该参数，run 又会误传给不支持它的 deliver。
+4. 所有适用核验通过后 state_fingerprint capture；发送前 verify。旧指纹只拦发送，不能阻止重新制作。
+
+外部 SRT 无 EDL 项目的严格交付验证尚不完整：核对真实音轨、实际片长、逐条字幕和当前源身份，记录检查范围；不能因 deliver 跳过 verifier 就宣布完整核验通过。烧录选项当前只检测 libass，缺少可据以保证画面确实烧字的链路；已有要求烧录的任务必须实际看输出帧，未实现时明确未完成，不能擅自改为外挂交付。机械修复与验收在 [implementation-brief.md](implementation-brief.md) B1–B3、B6；工程预演升级为实测的来源迁移见 B8。
+
 ## 用法
 
-出片只跑 `deliver.py <project> --render`（缺画面层时默认拒绝，渲染必须显式）；`--visuals` / `--person` / `--audio` / `--srt` / `--out` / `--no-person` 的完整选项见 [tools.md](tools.md)「渲染、核验、包装」。
+合成入口为 `deliver.py <project> --render`（缺画面层时默认拒绝，渲染必须显式）；`--visuals` / `--person` / `--audio` / `--srt` / `--out` / `--no-person` 的完整选项见 [tools.md](tools.md)「渲染、核验、包装」。
 
 人物素材按 `--person` → `composition/assets/person.mp4` → `edit/_engineering/person_master.mp4`
 顺序找；找不到就是红项，**除非显式说这片没有人物**（`--no-person`，对应 recompose-mode 的
@@ -27,19 +38,17 @@
 | 项 | 判据 |
 |---|---|
 | 分辨率 / 帧率 / 时长 | 与 `recompose.json` 的 canvas 一致；时长与画面层差 ≤ 0.5s |
-| 音轨 | 成片真的有音频流（不是静音轨） |
-| 首 / 中 / 尾帧 | 平均亮度 ≥ 6，不是全黑 |
-| **字幕安全区** | 画面层在 `captionSafe` 区域内**没有内容**（有就会报出是哪几个时刻） |
+| 音轨 | 检查音频流存在；有流不证明非静音，仍需审听/音频核验 |
+| 首 / 中 / 尾帧 | 抽样检查平均亮度；抽样不证明整片正确，且探测失败的当前实现需人工核实 |
+| **字幕安全区** | 抽样亮度启发式；不能单凭亮度证明安全区无语义内容，需检查实际构图 |
 | 人物贴回 | 按 `personSlot` 做 cover 裁切（先等比放大再居中裁，不挤压）；`--no-person` 时跳过并在 notes 写明「无人物轨」 |
-| 字幕 | 默认外挂 SRT；`--burn-subtitles` 在 ffmpeg 没有 libass 时**明确报错**，不静默降级 |
+| 字幕 | 默认外挂 SRT；烧录能力限制见上；没有 libass 会报错，有 libass 不等于已经烧录成功 |
 
 任何一项红 → 退出码 1，并保留报告，便于回修画面层（改 composition 重渲）而不是手改成品。
 
-## 画面层缓存：源比成品新就重渲
+## 画面层缓存与显式渲染
 
-`composition/_render/visuals.mp4` 是上一次渲染的画面层缓存，**改过 composition 之后再跑
-deliver 会复用它**。所以 deliver 交付前按源文件 mtime 判新旧：composition 的 `index.html`、
-`src/*`、`assets/*` 任一比缓存新就重新渲染并写一条 note（缓存不能手删才更新）。
+默认缓存不存在或比 composition 源旧时拒绝；显式 --render 才允许重新编码。当前新旧判定基于 mtime，且显式 --visuals 不走同一默认缓存判断：使用外部视觉层要核来源版本，不能仅凭文件存在复用。来源证明加强见 Brief B7。
 
 要渲染时它会先跑 `check_render_env.py`：font cache / node / npx / composition 这些真问题拦下来；
 **只有「可用内存 < 门槛」一条红时不拦**，按 `check_render_env --json` 给的 `workers`（1 起）渲染
@@ -79,7 +88,7 @@ deliver.py→ 成片 + 核验报告（人审之后才允许）
 
 ## 成片被二次剪过：`edit/cut-map.json`
 
-Skill 的时间轴只有一条：剪点由 EDL 表达、一次渲染、字幕从同一份实测时间轴生成。
+EDL 项目的默认时间关系是：剪点由 EDL 表达、字幕从同版时间证据派生，画面消费派生时间脊柱。
 如果成片是在渲染之后**又剪过一次**（例如为了省一次重渲，把成片里的停顿直接剪掉），
 交付物其实有两条时间轴：母版（EDL 渲染的那一版）和成片。**这条路径不是默认做法**；
 真要做，剪点必须声明在 `edit/cut-map.json` 里，否则 `verify_delivery.py` 直接拒绝交付。

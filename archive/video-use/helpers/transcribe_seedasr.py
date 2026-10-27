@@ -13,10 +13,11 @@ Usage:
 Requirements:
   - Node.js 22+ and the `ws` npm package (npm install ws) in the video-use repo
     (or anywhere node can resolve it).
-  - Credentials in <repo>/.env (speech console, old-style):
-      DOUBAO_APP_ID=8796768107
-      DOUBAO_ACCESS_TOKEN=...
-    (Secret Key not needed for streaming.)
+  - Credentials of your own in <repo>/.env (speech console, old-style):
+      DOUBAO_APP_ID=<your speech-console AppID>
+      DOUBAO_ACCESS_TOKEN=<your speech-console access token>
+    Secret Key is not needed for streaming. This repository ships no
+    credentials — see install.md step 5.
 
 Writes <edit_dir>/transcripts/<name>.json in the Scribe-compatible word format
 ({text,type,start,end,speaker}), cached per source (no re-transcription unless

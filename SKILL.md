@@ -16,6 +16,20 @@ description: 承接 Video Idea System 的内容包、PPT Hell 的静态 SVG 或�
 
 先剪点、后最终画面绑定。剪点改变时重新派生时间、字幕和画面锚点，并重建审阅；只改动效时保留不受影响的剪辑与字幕。未录音仍可做制作方案和 planned 预演，不能伪造实测字幕。
 
+## 转录：优先在线服务，环境在 Skill 仓库根
+
+词级时间同时决定剪辑、字幕和交付，**优先用在线转录服务**：豆包流式语音识别 2.0（SeedASR SAUC，`volc.seedasr.sauc.duration`），入口 `helpers/transcribe_seedasr.py`。它给逐词毫秒时间戳；`transcribe.py --backend ark`（doubao-seed-2.0-lite）是通用多模态模型，**不是 ASR**，不能拿来出词级时间（理由见 GOTCHAS #1）。Scribe 只作第二引擎交叉校验，本地 mlx-whisper 是最后手段；`transcribe.py --backend auto` 的 Scribe→Ark→mlx 是历史顺序，不代表推荐顺位。
+
+**环境（本机这份 Skill 的所在）**：凭据写在本 Skill 仓库根的 `.env`，即 `02-skills-library/03-design-delivery/video-craft/.env`（Codex/Claude/Antigravity 三份 runtime 副本各读自己那份 `.env`）。不写进用户的视频目录，不写进任何文档、示例或提交。
+
+| 键 | 属于 | 用途 |
+|---|---|---|
+| `DOUBAO_APP_ID` / `DOUBAO_ACCESS_TOKEN` | 火山引擎**语音技术**控制台（旧式 AppID/Token 对） | 首选：SeedASR 流式识别 |
+| `ELEVENLABS_API_KEY` | ElevenLabs | 可选：Scribe 交叉校验 |
+| `ARK_API_KEY` | 火山方舟 | 只作历史回退；**与语音控制台不是同一个账号**，替代不了 SeedASR |
+
+运行环境：Node 22+，且 `ws` 必须装在**实际运行的那份副本**里（`cd <skill> && npm install ws`）。缺凭据或 `ws` 时脚本会硬失败并说明缺哪个；完整准备与排错见 [install.md](install.md) 第 5 步。没有可用凭据时如实停下问用户，**不许用别的模型伪造词级时间或字幕**。
+
 ## 接手时选入口与本轮终点
 
 所有路径使用绝对路径；先读项目 `_idea/current.md`、`edit/project.md`、`production-plan.md`、已有反馈，再核采用版本。接手细节见 [content-to-production.md](references/content-to-production.md)。

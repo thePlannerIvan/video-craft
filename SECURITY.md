@@ -23,9 +23,11 @@ What actually separates human approval from model-generated state is the review 
 
 This Skill talks to speech-to-text and model providers, so it needs real credentials at runtime. They belong in a local `.env` and are read from the environment:
 
-- `ELEVENLABS_API_KEY`
-- `ARK_API_KEY`
-- `DOUBAO_APP_ID` / `DOUBAO_ACCESS_TOKEN`
+- `DOUBAO_APP_ID` / `DOUBAO_ACCESS_TOKEN` — 火山引擎 speech console; the preferred SeedASR word-level transcription path
+- `ELEVENLABS_API_KEY` — optional second engine (Scribe)
+- `ARK_API_KEY` — 火山方舟 LLM key, historical fallback only; a separate account from the speech-console pair
+
+These are **bring-your-own**: the repository ships no credentials, and no document, example, or test carries a real value. `.env.example` lists the key names with empty values, and the docs describe which service each one comes from. Anyone cloning this Skill must obtain a transcription service of their own (or use the local offline fallback) before transcription works.
 
 The shipped `.gitignore` blocks `.env`, `.env.*` (with `.env.example` allowed through), `*.pem`, and `*.key`. No credential is hardcoded in any source file; if a helper cannot find one it fails loudly rather than calling a provider with an empty value.
 

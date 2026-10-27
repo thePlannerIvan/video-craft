@@ -15,7 +15,7 @@ Three things must exist on this machine:
 
 1. The `video-craft` skill directory, synced to a stable path.
 2. `ffmpeg` on `$PATH` (plus optional `yt-dlp` for online sources).
-3. At least one transcription key in `.env` at the repo root — `ELEVENLABS_API_KEY` (Scribe) and/or `ARK_API_KEY` (火山方舟 doubao multimodal); without either, transcription falls back to local mlx-whisper (`pip install -e '.[mlx]'`).
+3. A transcription service of the user's own: online preferred — `DOUBAO_APP_ID` + `DOUBAO_ACCESS_TOKEN` for 豆包流式语音识别 2.0 (SeedASR) in `.env`. Optional alternatives: `ELEVENLABS_API_KEY` (Scribe, cross-check) or the local mlx-whisper extra. **The repo ships no credentials**; without any, transcription cannot run — see step 5.
 
 And one thing must be true about the current agent:
 
@@ -23,7 +23,7 @@ And one thing must be true about the current agent:
 
 ## Install prompt contract
 
-- Do everything yourself. Only ask the user for things you cannot generate — the ElevenLabs API key, and confirmation before `brew install`.
+- Do everything yourself. Only ask the user for things you cannot generate — **their own** transcription-service credentials, and confirmation before `brew install`. A credential goes into `<skill>/.env` only: never into a document, an example, a chat reply, a runtime copy checked into git, or a commit.
 - The skill lives in the skills library. Symlink it into each agent's skills
   directory — do not make a second copy, or the three locations drift and
   `manifest.json` version numbers will agree while the contents do not.
@@ -109,42 +109,51 @@ Figure out which agent you are running under, and register once. A symlink of th
 
 If you can't tell which agent you're in, ask the user once: "which agent am I running under — Claude Code, Codex, or something else?" Then pick the right target.
 
-### 5. Transcription keys
+### 5. Transcription: an online service is the default
 
-Transcription backends, in `transcribe.py --backend auto` order:
+Word-level timing is the spine of cutting, captions, and delivery, so the default backend is an **online transcription service**: 豆包流式语音识别 2.0 (SeedASR SAUC, `volc.seedasr.sauc.duration`), driven by `helpers/transcribe_seedasr.py`. It returns per-word millisecond timestamps and does not invent words in silence. Read `GOTCHAS.md` #1 before choosing anything else.
 
-1. **Scribe (ElevenLabs)** — highest quality (word timestamps, diarization, audio events). Needs `ELEVENLABS_API_KEY`.
-2. **Ark (火山方舟 multimodal, doubao-seed-2.0-lite)** — hosted fallback when Scribe quota is exhausted. Needs `ARK_API_KEY` (ark.cn-beijing.volces.com). The audio-capable model must be activated in the Ark console first (ModelNotOpen otherwise).
-3. **mlx-whisper (local)** — last resort, zero cost, runs on Apple Silicon. Needs `pip install -e '.[mlx]'` in the shared interpreter to install `mlx-whisper`.
+| # | backend | credentials / runtime | role |
+|---|---|---|---|
+| 1 | **SeedASR 2.0 (online, `transcribe_seedasr.py`)** | `DOUBAO_APP_ID` + `DOUBAO_ACCESS_TOKEN` in `.env` — 火山引擎 **语音技术** console, old-style AppID/token pair — plus Node 22 and `ws` in the copy you run | **preferred**: the word-level source |
+| 2 | Scribe (ElevenLabs, `transcribe.py --backend scribe`) | `ELEVENLABS_API_KEY` | optional second engine for cross-checking (its tokens merge — GOTCHAS #2) |
+| 3 | mlx-whisper (local, `mlx_transcribe.py`) | `pip install -e '.[mlx]'` | offline last resort |
+| — | Ark (`--backend ark`, doubao-seed-2.0-lite) | `ARK_API_KEY` (火山方舟 console) | **not an ASR**: a generic multimodal model that drifts 0.5–2 s, garbles fast Chinese, and hallucinates in silence. Never use it for word-level timing |
 
-Check existing keys in this order and stop at the first hit:
+`transcribe.py --backend auto` still walks Scribe → Ark → mlx; that order is a legacy implementation detail, **not** a recommendation. Word-level transcription always goes through `transcribe_seedasr.py`. The SeedASR pair and the Ark key are **different accounts** — an Ark key cannot stand in for the speech-console pair.
 
-```bash
-# a) env vars already exported
-[ -n "$ELEVENLABS_API_KEY" ] && echo "elevenlabs env"
-[ -n "$ARK_API_KEY" ] && echo "ark env"
-# b) .env at repo root already has them
-grep -q '^ELEVENLABS_API_KEY=..' "$CRAFT_SRC"/.env 2>/dev/null && echo "elevenlabs dotenv"
-grep -q '^ARK_API_KEY=..' "$CRAFT_SRC"/.env 2>/dev/null && echo "ark dotenv"
-```
-
-If neither is set, ask the user exactly once for whichever they have. When the user pastes keys, write them to `"$CRAFT_SRC"/.env`:
+Check what the user already has before asking for anything:
 
 ```bash
-printf 'ELEVENLABS_API_KEY=%s\n' "$KEY" > "$CRAFT_SRC"/.env
-printf 'ARK_API_KEY=%s\n' "$ARK_KEY" >> "$CRAFT_SRC"/.env
-chmod 600 "$CRAFT_SRC"/.env
+# a) already exported?
+[ -n "$DOUBAO_APP_ID" ] && echo "seedasr app id env"
+[ -n "$DOUBAO_ACCESS_TOKEN" ] && echo "seedasr token env"
+# b) .env at the skill root?
+grep -qE '^DOUBAO_APP_ID=.+' "$CRAFT_SRC"/.env 2>/dev/null && echo "seedasr app id dotenv"
+grep -qE '^DOUBAO_ACCESS_TOKEN=.+' "$CRAFT_SRC"/.env 2>/dev/null && echo "seedasr token dotenv"
+# c) the WebSocket bridge resolves from the copy you actually run
+(cd "$CRAFT_SRC" && node -e "require.resolve('ws')") 2>/dev/null && echo "ws OK" \
+  || echo "ws missing: cd $CRAFT_SRC && npm install ws"
 ```
 
-Never echo a key back in tool output. Never commit `.env`.
-
-To enable the local mlx fallback (needed when both hosted keys are absent or exhausted):
+If the pair is missing, ask the user once for **their own** speech-console credentials (they must open the 语音技术 console and enable 流式语音识别 themselves — you cannot generate one), and write only the missing keys rather than clobbering the file:
 
 ```bash
-"$CATEGORY_PY" -m pip install -e "$CRAFT_SRC[mlx]"   # installs mlx-whisper
+touch "$CRAFT_SRC"/.env && chmod 600 "$CRAFT_SRC"/.env
+grep -q '^DOUBAO_APP_ID=' "$CRAFT_SRC"/.env \
+  || printf 'DOUBAO_APP_ID=%s\n' "$DOUBAO_APP_ID" >> "$CRAFT_SRC"/.env
+grep -q '^DOUBAO_ACCESS_TOKEN=' "$CRAFT_SRC"/.env \
+  || printf 'DOUBAO_ACCESS_TOKEN=%s\n' "$DOUBAO_ACCESS_TOKEN" >> "$CRAFT_SRC"/.env
 ```
 
-Sanity checks that do not burn credits:
+Rules that make this safe to publish:
+
+- Never echo a credential in tool output, a document, an example, or a commit. `.env` is gitignored — keep it that way, and never put a credential in a user's footage directory.
+- Each runtime copy reads its **own** `.env` — fill the copy you actually run from (`~/.codex/skills/video-craft`, `~/.claude/skills/video-craft`, or the library source).
+- No transcript without a credential: if the user has none, say so and stop. Never substitute a generic model and present its output as word-level timing.
+- These docs and `.env.example` carry placeholders only. Publishing this Skill publishes the service choice and the key names — not anyone's account.
+
+Optional second engine (only if the user supplies that key too):
 
 ```bash
 # ElevenLabs: ask for a model list with the key. 200 = usable.
@@ -153,18 +162,17 @@ Sanity checks that do not burn credits:
 curl -s -o /dev/null -w '%{http_code}\n' \
   -H "xi-api-key: $(sed -n 's/^ELEVENLABS_API_KEY=//p' "$CRAFT_SRC"/.env)" \
   https://api.elevenlabs.io/v1/models
-
-# Ark: a JSON model list means the key is accepted (per-model access still
-# requires activation in the Ark console):
-curl -s -H "Authorization: Bearer $(sed -n 's/^ARK_API_KEY=//p' "$CRAFT_SRC"/.env)" \
-  https://ark.cn-beijing.volces.com/api/v3/models | head -c 400
 ```
 
-`200` for ElevenLabs means the key is usable; a JSON list for Ark means the key
-is accepted. `401` means wrong/expired key — ask once more and stop. Anything
-else (network, 5xx), move on and verify during first real transcription. A
-model list only proves the KEY is accepted, not that the account may CALL a
-given model — see GOTCHAS #2.
+`200` for ElevenLabs means the key is usable. `401` means wrong/expired key — ask once more and stop. Anything else (network, 5xx), move on and verify during first real transcription.
+
+There is no credit-free handshake probe for SeedASR: the honest check is one 2–5 s clip through `transcribe_seedasr.py`, and it bills a call — run it only when the user asks, not during routine install.
+
+To enable the local mlx fallback (only when the user wants an offline path):
+
+```bash
+"$CATEGORY_PY" -m pip install -e "$CRAFT_SRC[mlx]"   # installs mlx-whisper
+```
 
 ### 6. Verify end-to-end
 
@@ -175,7 +183,7 @@ Run one real thing. Prefer the lightest verification that still proves the pipel
 ffprobe -version | head -1
 ```
 
-Full transcription test is optional at install time — it burns Scribe credits. Better to wait until the user hands you their first clip.
+Full transcription test is optional at install time — SeedASR and Scribe both bill per call. Better to wait until the user hands you their first clip.
 
 ### 7. Hand off
 
@@ -208,7 +216,7 @@ Tell the user, in one short message:
   three synced copies of the skill existed, only one had `node_modules/ws`, and
   the run had to borrow it via `NODE_PATH`. Install it in whatever copy you
   actually run from.
-- The SeedASR path also needs a speech-console `DOUBAO_APP_ID` + `DOUBAO_ACCESS_TOKEN` pair in `.env` (an Ark LLM key is a different account and will not work).
+- The preferred SeedASR backend needs a speech-console `DOUBAO_APP_ID` + `DOUBAO_ACCESS_TOKEN` pair in `.env` (an Ark LLM key is a different account and will not work; the full check list is step 5).
 - HyperFrames, Remotion, and Manim are optional animation engines. Don't install or prefer one globally during setup; pick the engine per animation slot in `SKILL.md`. HyperFrames can run through `npx --yes hyperframes ...` **from inside the composition directory** — it reads `index.html` from the current directory, and `hyperframes init` would replace the generated skeleton rather than fix anything. Remotion can be scaffolded with `npx create-video@latest` or installed inside the slot before rendering.
 - **HyperFrames needs a writable font cache.** It downloads fonts under the home directory; in a sandbox or on a read-only home the render dies partway with `EPERM: operation not permitted, mkdir '~/.cache/hyperframes/fonts/...'` and only suggests `--docker`. Point it somewhere writable:
 
@@ -217,7 +225,7 @@ Tell the user, in one short message:
   ```
 
   `HYPERFRAMES_FONT_CACHE_DIR` is not in `--help` and **`hyperframes doctor` does not check it**. Run `python3 helpers/check_render_env.py <project>/composition` **before every render** — it fails early on this and on a Node older than 22. It cannot be an npm `prerender` hook: `package.json` is written by `npx hyperframes init`, not by this Skill.
-- Never run transcription as part of install verification unless the user explicitly asks — Scribe costs real money.
+- Never run transcription as part of install verification unless the user explicitly asks — SeedASR and Scribe both bill per call.
 - If the user is on Linux without a package manager Claude recognizes, print the manual `ffmpeg` install URL and wait rather than guessing.
 
 ### Note on the venv path

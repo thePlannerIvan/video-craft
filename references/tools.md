@@ -150,7 +150,7 @@ python3 "<craft>/helpers/edl_edit.py" "<edit>" --restore "<起秒>,<止秒>=<期
 | 派生副机位 | `python3 <craft>/helpers/mirror_edl.py <edl> -o <副EDL> --source CAM2 --path <副机位绝对路径> --offset <秒>` | 同剪点的第二机位，不重写独立取舍 |
 | 音质诊断 | `python3 <craft>/helpers/audio_diag.py <媒体> --json` | 指标/问题，先诊断再处理 |
 | 音质处理 | `python3 <craft>/helpers/audio_fix.py <媒体> -o <处理.wav> --target-lufs -16.5` | 新音频；原件保留 |
-| 替代 ASR | `python3 <craft>/helpers/transcribe_seedasr.py <视频> --edit-dir <edit>` | 豆包词级转写；需对应凭据 |
+| 首选 ASR（在线） | `python3 <craft>/helpers/transcribe_seedasr.py <视频> --edit-dir <edit>` | 豆包流式语音识别 2.0 词级转写；需 `.env` 的 `DOUBAO_APP_ID` / `DOUBAO_ACCESS_TOKEN`（语音技术控制台，非方舟）与 `node ws`，见 install.md 第 5 步 |
 | 本地 ASR | `python3 <craft>/helpers/mlx_transcribe.py <视频> --edit-dir <edit>` | 本地转写；需 MLX 模型 |
 | 调色 | `python3 <craft>/helpers/grade.py --help` | 选适合本项目的预设/参数，调用输入与 `-o` 输出 |
 | 素材联系图 | `python3 <craft>/helpers/timeline_view.py <视频> <起秒> <止秒> -o <filmstrip.png>` | 声音/帧联合定位，供剪辑取舍 |

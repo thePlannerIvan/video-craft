@@ -50,6 +50,18 @@ alpha 是不是被烘成了不透明、帧率对得上底片吗、时长等于�
 npx skills add https://github.com/thePlannerIvan/video-craft --skill video-craft
 ```
 
+### 开源：自备转录服务
+
+这个仓库**不随带任何 API key、账号或运行环境**，也从不包含维护者本人的凭据。词级转写默认走**在线服务**（豆包流式语音识别 2.0 / SeedASR），用之前先自己开通：
+
+| 情况 | 你要做的 |
+|---|---|
+| 有火山引擎账号（推荐） | 在「语音技术」控制台开通**流式语音识别**，拿到 AppID + Access Token |
+| 想再加一个交叉校验引擎 | 开通 ElevenLabs Scribe |
+| 暂时都不开 | 装本地 mlx-whisper 兜底（只作最后手段） |
+
+把凭据写进本 Skill 根目录的 `.env`（模板见 `.env.example`）。`.env` 已进 `.gitignore`：不要提交它，也不要把 key 贴进 issue、文档或截图——仓库里的文档与示例只有键名和占位符。没有凭据时如实报缺，不会伪造词级时间。
+
 ## 公共模组（缺了会自动装）
 
 同族**公共模组**（独立发布的条目，不是本仓库的一部分）。**本 Skill 只解析 `planners-review-core`**（见 `helpers/lib/planners_modules.py --check`），其余三个是同一族的邻居、本 Skill 不需要：
@@ -129,16 +141,19 @@ Python 用 `02-skills-library/.venv/bin/python`（3.9.6，`pptx` / `lxml` / `PIL
 `playwright` / `numpy` 齐，本类别共用，离线可用）；系统 `python3` 同样能跑测试套件。
 需要单独装依赖时用 `pip install -e .`，清单见 `pyproject.toml`。
 
-密钥放本 skill 的 `.env`（**不要**放进用户的视频目录）：
+密钥放本 skill 的 `.env`（**不要**放进用户的视频目录；`.env` 已被 gitignore）：
 
 ```
-ELEVENLABS_API_KEY=...
-ARK_API_KEY=...
+# 首选：豆包流式语音识别 2.0（SeedASR），来自火山引擎「语音技术」控制台
 DOUBAO_APP_ID=...
 DOUBAO_ACCESS_TOKEN=...
+# 可选：ElevenLabs Scribe，第二引擎交叉校验
+ELEVENLABS_API_KEY=...
+# 仅历史回退：火山方舟。方舟 key 与语音控制台那对不是同一个账号，替代不了 SeedASR
+ARK_API_KEY=...
 ```
 
-详见 `install.md`；日常用法见 `SKILL.md`。
+详见 `install.md` 第 5 步；日常用法见 `SKILL.md`。
 
 ## 测试
 

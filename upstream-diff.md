@@ -33,7 +33,10 @@ them. All three are now covered by tests in `tests/`.
   `archive/video-use/` copy: shipping a live credential would put it in git
   history permanently, which is far harder to undo than a two-line change. If you
   diff the archive against upstream and these lines are the only difference, that
-  is expected and intentional.
+  is expected and intentional. The same sweep removed a real App ID that sat as
+  a usage example in the `transcribe_seedasr.py` docstring (live and archive
+  copies): every shipped document and example now carries key names and
+  placeholders only.
 - **`normalize_output_rate`** (local addition, 5 tests). Upstream preserves the
   observed `avg_frame_rate` verbatim, which is right for a genuine `30000/1001`.
   It is wrong for a phone whose clock is 0.025 % off: this fork's own footage

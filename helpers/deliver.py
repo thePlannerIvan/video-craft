@@ -396,9 +396,12 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
         (project / "composition/_render").mkdir(parents=True, exist_ok=True)
         from state_fingerprint import source_entries
         rendering_sources = source_entries(project)
+        # --workers 1：多 worker 截图通道会在长片的后半段静默丢内容
+        # （2026-11-04 品牌屋：4 worker 渲染 78s 之后整栋画面不画，退出码仍为 0；见 GOTCHAS #79）。
+        # 单 worker 慢一倍，但交付只渲这一次；一致性由下面的 check_render_fidelity 核。
         render = _run(["hyperframes", "render", str(project / "composition"),
                        "-o", str(project / "composition/_render/visuals.mp4"),
-                       "--workers", str(workers), "-q", "looks"])
+                       "--workers", "1", "-q", "looks"])
         visual_path = project / "composition/_render/visuals.mp4"
         if render.returncode != 0 or not visual_path.is_file():
             check("画面层渲染", False, (render.stderr or render.stdout or "")[-400:])
@@ -411,6 +414,33 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
     v_video, _ = _streams(visual_path)
     if not check("画面层可读", bool(v_video), f"{visual_path.name} {v_video.get('width')}×{v_video.get('height')}"):
         return stop()
+
+    # 画面层真的等于 composition 吗？渲染通道会静默丢内容（GOTCHAS #79），
+    # 运动/黑帧/分辨率都量不出来：抽 12 个时间点和 composition 的快照逐帧比结构。
+    if (project / "composition" / "hyperframes.json").is_file():
+        fid = _run([sys.executable, str(HELPERS / "check_render_fidelity.py"), str(project),
+                    "--video", str(visual_path), "--samples", "12", "--json"])
+        fid_report: dict = {}
+        try:
+            fid_report = json.loads(fid.stdout)
+        except json.JSONDecodeError:
+            fid_report = {}
+        failed_t = fid_report.get("failed") or []
+        if fid.returncode == 0 and fid_report.get("ok"):
+            check("画面层与 composition 一致", True,
+                  f"{len(fid_report.get('samples') or [])} 个采样一致")
+        elif fid.returncode == 1:
+            if not check("画面层与 composition 一致", False,
+                         f"{len(failed_t)} 个采样对不上：{failed_t[:6]}"
+                         f"（--workers 1 重渲后仍不一致，才是 composition 的问题）"):
+                (out / f"{name}_核验报告.json").write_text(
+                    json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+                return stop()
+        else:
+            # 检查跑不起来（没有可用的 snapshot 通道）与「跑通了但内容不一致」不是一件事
+            note(f"画面一致性检查未能执行：{(fid.stderr or '')[-200:].strip() or '未知原因'}")
+    else:
+        note("composition 不是 HyperFrames 工程（无 hyperframes.json）：跳过画面一致性检查")
 
     # 3) 合成：人物 cover 贴回 + 声音（无人物轨时画面层全幅交付）
     slot = geo["person"]

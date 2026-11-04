@@ -319,13 +319,16 @@ python3 "<craft>/helpers/check_overlay.py" "<edit>" --json
 python3 "<craft>/helpers/render.py" "<edit>/edl.json" -o "<edit>/final.mp4"
 python3 "<craft>/helpers/verify_av.py" "<edit>" --help
 python3 "<craft>/helpers/check_motion_targets.py" "<project>" --json   # 手写 GSAP 时间轴的门禁
+python3 "<craft>/helpers/check_render_fidelity.py" "<project>" --video "<画面文件>"   # 渲染 vs composition 逐帧一致（渲染后必跑）
+python3 "<craft>/helpers/probe_stage.py" "<project>/composition" --type-table          # 字号/基线一屏看全
+python3 "<craft>/helpers/probe_stage.py" "<project>/composition" --at 0.6,64.6 --ids t-rtb-ds   # 某一刻的真实 opacity/位置
 python3 "<craft>/helpers/check_parity.py" "<project>"                # 仅老 page 项目（真有 choreography.json）
 python3 "<craft>/helpers/check_motion.py" "<编码视频>" --json
 python3 "<craft>/helpers/check_screen_text.py" "<project>" --help
 python3 "<craft>/helpers/verify_delivery.py" "<edit>" --video "<实际成片>" --json
 ```
 
-alpha/overlay 只用于对应分支；有意静止片段用 `check_motion.py --expect-still`。`verify_av.py --help` 与 `check_screen_text.py --help` 给当前画面/EDL的精确选项，按需要调用，不把工具报告当作者观感。
+alpha/overlay 只用于对应分支；有意静止片段用 `check_motion.py --expect-still`。段的缓存键含 `--preview` / `--draft` 标志：从预览切到交付态渲染不需要 `--no-cache`，只有 EDL、调色或编码参数变了才需要。`verify_av.py --help` 与 `check_screen_text.py --help` 给当前画面/EDL的精确选项，按需要调用，不把工具报告当作者观感。
 
 出片与交付（先过渲染闸门，再交付）：
 

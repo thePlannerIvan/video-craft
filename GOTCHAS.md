@@ -336,6 +336,7 @@ deletion from an accidental loss.
 - **证据**：同一条录音，实测 129.79 处为 −73.8dB 房间底噪（真语音 130.00 起）、210.62 处为 −65dB（真语音 210.80 起），两处都被旧判据误杀。回归测试 `tests/test_edl_silence_gate.py`。
 
 **同根并入**（合并后仍按本条处理）：
+- 2026-11-04「洞察」：SeedASR 把脏话打码成「嗯 / NR」，同一句在两个位置对称出现（「什么**嗯啊**是**嗯啊**的洞察」与另一遍的「什么 **NR** 的是 **NR** 的洞察」）——打码不报错、不留标记，字面看只是两个怪词，而且很容易被当成口误去剪（那会切掉真实语音）。判据是**同义位置对称出现**；修法是在 `edit/caption_corrections.json` 里按 `transcript_index` 还原原文，音频与剪点都不动；拿不准时字幕写能读通的保守版本并在交付说明里点出。参考 [caption-article-first](references/caption-article-first.md)。
 - 2026-10-21 XHS 三条片的逐字剪辑页：`transcripts/<source>.json` 被写成「一句一个 token」，页面按 token 命中，拖选只能整句删（实测 11.3s / 3.2s / 20.9s），`selections.json` 也写整句区间。页面与 `selections.json` 契约都没坏，**坏的是词框粒度**。修法是用 `helpers/refine_transcript.py` 保留确认稿文字、用词级 ASR + `takes_packed.md` 短语锚点补字/词级 `start/end`；页面构建时对「≥6 个汉字且 >1.5s」的 token 打红条（不能用单纯的 >1.5s，`Disruption` 这种长英文词会假阳）。`apply_selection.py` 的词选择只做边界 snap，**绝不能**走 silence-edge 的串联扩展——字符级转写下那会把整句走完。回归 `tests/test_edl_word_granularity.py`（粗转写红灯 + 精修后拖选 <1s + 单字删除只动该段）。
 
 ## 43. 渲染器的帧格是 ceil，不是 round
@@ -571,3 +572,12 @@ deletion from an accidental loss.
 - **原因**：剪片是项目自己写的脚本，字幕顺移在循环里边改边比：`a,b` 已经被前几刀平移过，又拿去和后几刀的**原始坐标**比较；本应「整条窗口之后」的情况被误判成「跨窗口」，于是每条跨刀字幕少扣一次刀长，误差随刀数累积。Skill 没有「成片二次剪」这条交付形态的任何闸门，SRT 只核末条、成片只核与渲染记录的总长，这条路径整个绕过了核验。
 - **修正原则**：二次剪必须声明 `edit/cut-map.json`（母版时长、母版时间轴上的剪点、剪前/剪后字幕）。映射用单调分段函数 `t' = t - 已剪时长(t)`，窗口内部压到窗口起点；剪后字幕必须能被「剪前字幕 + 剪点」逐条复算（条数、文字、起止 ±20ms）。`verify_delivery.py` 见到 cut-map 才按它核片长与字幕；没有声明又比渲染记录短 >0.5s 直接拒绝。判据实现是 `helpers/_cutmap.py`。
 - **证据**：同一份字幕——错误实现偏 31 条（最大 3.2s）；`_cutmap.verify_srt_pair` 对正确重算 0 条问题、对旧文件逐条报「时间对不上 cut-map」并拒绝交付。回归 `tests/test_cut_map.py`；XHS v2/v3 用 cut-map 核验通过（v2 剪 16 刀 −19.91s，v3 剪 7 刀 −4.04s）。
+
+## 79. 渲染退出 0、check 全绿，画面却从第 78 秒起整段没画：多 worker 截图丢内容
+- **enforcement**：check:helpers/check_render_fidelity.py
+
+- **module**：`hyperframes render --workers N` 的截图通道 ｜ **状态**：已复现
+- **现象**：2026-11-04 品牌屋，`hyperframes render -w 4` 退 0，`hyperframes check` 0 error，文件 1920×1080 / 30fps / 310.333s / 有音轨；作者一看：**后半段品牌屋整栋没画出来**，只剩零星几个标签。抽帧确认：约 78s 之后（大致等于第 2 个 worker 的起始帧）画面只剩标签与装饰层。
+- **原因**：那条渲染是 4 个 worker 并行截图，每个 worker 从自己那一段的中间开始取帧；从第 2 段开始，页面只重绘了很小的脏区，`#board` 里的整棵子树留在旧合成里没被画上。等价的独立证据：同一个 composition 用浏览器逐帧看、用 `hyperframes snapshot` 抽帧、用 `check` 的 runtime 探针，三处都正常——**只有渲染产物错**。去掉 SVG 滤镜、去掉 `will-change` 都不解决；`-w 1` 一次通过。
+- **修正原则**：① 长片渲染一律 `--workers 1`（`deliver.py` 默认已改）；② 任何要交付的画面文件（包括不经过 `deliver.py` 的「画面成片」单独导出）渲染后必须跑 `check_render_fidelity.py`：它用 `hyperframes snapshot --at a,b,c --no-end` 取 composition 在同样时刻的样子，和成片逐帧比结构相关 + 墨量，内容塌掉直接红；③ `deliver.py` 已接这条检查；独立渲染（含只交画面成片）要自己跑；④ 现有三条闸门都量不出这类失败——`check_motion` 看到的是标签还在动，`verify_delivery` 看到的是没有黑帧，`check_render_env` 看到的是机器健康。
+- **证据**：同一份 composition——`-w 4` 产物在 t=90/200/240/280 的墨量只有 composition 的 1/10 且结构相关 0.0x；`-w 1` 产物 20 个采样相关系数 ≥0.99、墨量差 <15%，PASS。故意黑掉 20–40s 的对照视频（t=25/31/35）被 `check_render_fidelity.py` 判为「内容丢失」。

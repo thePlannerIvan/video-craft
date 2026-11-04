@@ -14,7 +14,8 @@
 
 模型先核对作者明确出片指令、当前版本人工审阅与未决意见处理；render_gate 仅检查快照有提交及 manifest 变化，不能推断反馈内容是否批准。
 
-1. `deliver` 编码前执行环境探测、适用的 film verify、HyperFrames check 和 GSAP selector/transform 检查；显式 `--visuals` 也须通过来源与版本检查。
+0. 画面层渲染用 `--workers 1`（多 worker 截图通道会在长片后半段静默丢内容，见 GOTCHAS #79）；独立导出「画面成片」这类不经 `deliver` 的产物，渲染完先跑 `check_render_fidelity.py`。渲染前先停预览服务（`pkill -f "hyperframes preview"`，`probe_env` 的 stray 计数应归 0）：预览服务抢 GPU，实测抓帧会从 25fps 掉到 0.9fps；顺序上等作者在页面提交之后再停。作者口头说「可以导出」不产生提交记录——先请作者在审阅页提交一次（内容写「可以导出」即可），再跑 `render_gate.py`。
+1. `deliver` 编码前执行环境探测、适用的 film verify、HyperFrames check 和 GSAP selector/transform 检查；显式 `--visuals` 也须通过来源与版本检查。画面层可读之后立刻跑 `check_render_fidelity.py`：抽样时间点与 composition 的 `hyperframes snapshot` 逐帧比结构相关与墨量，红即停（这一步抓的是「渲染产物与 composition 不一致」，运动/黑帧/分辨率都量不出来）。
 2. 合成后调用同一份 `verify_delivery`，报告分别给出 `composition_ok`、`delivery_ok` 和 `delivery_verdict`；严格失败、进程异常、报告无效或适用核验未执行时，总 `ok=false` 并非零退出。
 3. 需要包装时运行 `export_deliverables`，再对实际视频与 `--deliver-dir` 核验副本。`stage_deliver verify --no-audio` 支持无声画面轨；`run --no-audio` 明确拒绝不支持的动作组合。
 4. 全部适用核验通过后 `state_fingerprint capture`；发送前 `verify`。旧交付指纹只拦发送，不能阻止重新制作。
@@ -43,6 +44,7 @@
 | 音轨 | 检查音频流存在；有流不证明非静音，仍需审听/音频核验 |
 | 首 / 中 / 尾帧 | 抽样检查平均亮度；抽样不证明整片正确，且探测失败的当前实现需人工核实 |
 | **字幕安全区** | 抽样亮度启发式；不能单凭亮度证明安全区无语义内容，需检查实际构图 |
+| **画面层与 composition 一致** | 抽样时刻逐帧比结构相关（≥0.93）与墨量（成片墨量 < 快照 1/3 判丢失）；这一项抓渲染通道静默丢内容，性能上约 10–20 秒 |
 | 人物贴回 | 按 `personSlot` 做 cover 裁切（先等比放大再居中裁，不挤压）；`--no-person` 时跳过并在 notes 写明「无人物轨」 |
 | 字幕 | 默认外挂 SRT；显式烧录执行字幕滤镜，缺 libass 在编码前拒绝；仍需抽帧核对样式与构图 |
 
@@ -77,6 +79,32 @@ deliver.py→ 成片 + 核验报告（人审之后才允许）
 - **画面成片**：只含画面层（没有人物、没有烧字幕）
 
 程序当前的输出文件名这轮不改（改名会让老项目和已有习惯失效）；新项目按这三个名字命名。
+
+## 两腿交付：画面层与口播层分开
+
+画面层与口播层分开交是合法形态（[recompose-mode.md](recompose-mode.md) 的「仅画面层」）。顺序固定，每一步都核实际文件：
+
+```bash
+# 0 闸门：作者在页面上提交过当前快照
+python3 "<craft>/helpers/render_gate.py" "<project>" --out "<project>/成品/03_画面成片.mp4"
+
+# 1 画面层：单 worker 渲，去掉音轨，再核 render fidelity
+(cd "<project>/composition" && HYPERFRAMES_FONT_CACHE_DIR="$PWD/.hf-fontcache" \
+   npx hyperframes render . -w 1 -q delivery -o renders/03_animation.mp4)
+ffmpeg -i "<project>/composition/renders/03_animation.mp4" -an -c:v copy "<edit>/03_画面成片.mp4"
+python3 "<craft>/helpers/check_render_fidelity.py" "<project>" --video "<edit>/03_画面成片.mp4"
+
+# 2 口播层：交付态（CRF20 / −14 LUFS）重渲
+python3 "<craft>/helpers/render.py" "<edit>/edl.json" -o "<edit>/cut.mp4" --no-subtitles
+
+# 3 打包（字幕自动修剪映导入空隙）+ 指纹
+python3 "<craft>/helpers/export_deliverables.py" "<edit>" \
+  --videos "cut.mp4=01_口播成片.mp4" "03_画面成片.mp4=03_画面成片.mp4" \
+  --srt "subtitles.srt=02_字幕.srt" --out "<project>/成品"
+python3 "<craft>/helpers/state_fingerprint.py" capture "<project>"
+```
+
+画面成片是**纯画面轨**（合成时铺在口播之上）；口播成片带声音；字幕只外挂不烧录。三条都核真实文件的时长/帧率/音轨/首中尾帧后再交付。
 
 ## 时间轴对不对齐，报告里要看得到
 

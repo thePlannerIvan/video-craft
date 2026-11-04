@@ -95,6 +95,8 @@ python3 "<craft>/helpers/edl_preview_build.py" "<edit>"
 
 DSH 有 `review_open` 时，把返回的 **surface 绝对路径**交给 `review_open`；没有插件时去掉 `--surface-only`，使用公共 review-core 本地宿主。不要自己另起一份 Craft 专用宿主。
 
+**素材大时先选宿主**：源媒体超过约 200MB、或机器可用内存低于约 8GB 时，逐字剪辑面直接走本地宿主（不带 `--surface-only`），不交给 `review_open` —— 侧栏桥按整份字节传，几百 MB 的源片会把内存吃穿。判据与说明归 [review-ui.md](review-ui.md)「剪辑面独立打开」。
+
 **人可以做的事**：播放、上一刀 / 下一刀、拖时间轨、点词定位、拖选删除词、选择或恢复气口、改字、提交剪辑选择、另写整片意见。
 
 **工具与反馈边界**：播放器、时间轨、选词、改字、停顿数值属于页面工具；整片备注和“请 Agent 应用剪点”属于反馈。页面写 `selections.json`，Agent 收件后才运行 `apply_selection.py`。

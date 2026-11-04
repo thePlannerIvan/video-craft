@@ -414,3 +414,22 @@ sha256 `796ff3f2…` → 按文档那一步用新模板重生成（`15418868…`
 但页面顶栏是 `undefined 章 · NaN:NaN`、HUD `00:04 / 00:00`。根因是模板没对 `totals` 兜底、
 `build_density` 没从 steps 推区间。已在 2026-10-21 的现场测试后修复，并由
 `review.py` 的三道闸门锁住。
+
+## 2026-11-04 · 交付核验补一条「画面层 = composition」
+
+`deliver.py` 原来核的是分辨率/帧率/时长/音轨/首中尾帧/字幕安全区，全部绿过。品牌屋这轮
+`hyperframes render -w 4` 退 0、`check` 全绿、运动充足、没有黑帧，**画面从第 78 秒起整栋品牌屋
+没画出来**，是作者看片发现的。三条既有闸门都只说明「文件像一条正常的片子」，没有一条回答
+「这条片子还是不是那份 composition」。
+
+补的三件事：
+
+- `helpers/check_render_fidelity.py`：`hyperframes snapshot --at a,b,c --no-end` 取 composition 在
+  同样时刻的样子，和成片逐帧比结构相关 + 墨量；低墨量帧只看内容有没有塌。约 10–20 秒。
+- `deliver.py`：画面层可读之后立刻跑它（红即停）；渲染改回 `--workers 1`。非 HyperFrames 的
+  画面源跳过并记 note，跑不起来与「跑通了但不一致」分开报。
+- `helpers/probe_stage.py`：`--type-table` 一屏列出全部字号/基线（「字级漂移」这类问题现在看表就
+  能发现），`--at ... --ids ...` 在真浏览器里 seek 后读真实 opacity/位置（`immediateRender` 把
+  第 0 帧初始态拉平那次，只有这种读法看得见）。
+
+回归：`tests/test_render_fidelity.py`（同帧/差一帧/内容丢失/近黑帧四条判据）。

@@ -14,6 +14,20 @@ composition. React pages no longer implement final visuals.
    INSIDE its clip (`<section class="clip scene" id="step-...">`).
 3. After each chapter: `cd composition && npm run check` — must be 0 errors.
 
+## 从单张视觉起步（没有参考页）
+
+没有 PPT 页、只拿到一张视觉参考（SVG / 截图 / 一张图）时，先写 `composition-brief.md` 再动 composition —— 品牌屋与「洞察」两个项目都这么过，子代理也能据此独立开工：
+
+```text
+画布与人物位 / 舞台与字幕安全区
+风格与配色（从参考图取：底色、线宽、网格、唯一强调色）
+逐章表：章节 | 输出时间区间 | 上屏词（只概念词，不上句子） | 动作
+锚点：词级时间取自 edit/_engineering/word_times.tsv，不写估算秒数
+验收：check_live_stage PASS、hyperframes check 0 error、按章抽帧
+```
+
+参考图是构图与线条语言的事实源：搬它的造型与比例，不搬它的文字。
+
 ## Hard rules
 
 - **Never change generated timing**: `data-start` / `data-duration` /
@@ -26,6 +40,9 @@ composition. React pages no longer implement final visuals.
   - root must have `data-start="0"` and explicit 1920×1080 sizing
   - initial hidden states via `gsap.set(...)` outside the timeline
     (a `tl.set` at position 0 does NOT render at frame 0)
+  - `fromTo` 默认 `immediateRender: true`：**建时间轴时就把 from 值写到第 0 帧**，于是后段的
+    `fromTo` 会盖掉你刚 `gsap.set` 好的初始态（实测：开场 3D 起手角度被拉平成 0，截图看不出来）。
+    全局 `gsap.defaults({ immediateRender: false })`，或给每个非首帧的 `fromTo` 显式关掉
   - never pair a CSS initial `transform` with a GSAP tween on the same
     property (lint rejects)
   - full-frame fills go on an `inset:0` child, never the root
@@ -90,6 +107,26 @@ and injects `data-hf-id` attributes into elements. Consequences:
 Read `/hyperframes-animation` for atomic motion rules and scene
 blueprints (GSAP is the default adapter). Time tweens against the
 step's data-start so payoffs land on the spoken word.
+
+## 强调的两套语法（2026-11 品牌屋，四轮返修换来的）
+
+先选语法，再写时间轴。同一个画面里不要混用两种语法来讲同一件事。
+
+- **镜头语法**（讲结构、讲关系时用）：一台摄影机在整块板上推拉摇移，讲哪一层就把镜头送到哪一层。
+  **板宽 ≤ 舞台宽 / 1.15**，是全片最省事的一条约束：品牌屋那轮板宽从 1560 收到 1360 再到 1180，
+  每次都因为「一强调就出画」。把板子做窄，1.1 倍推镜也不会切边，比逐个镜头算安全区划算。
+- **抽卡语法**（逐条讲内容、要做「说一条出一条」时用）：把这一层从它在板上的位置抽到画面正中放大，
+  答案按口播从左往右擦出来（`clipPath` 宽度），背景压暗 + 后躺（`rotateX`），写完整张卡缩回原位。
+  它比推镜头更能承担「一条一条写」的节奏，也不再需要取景框这类小强调物。
+
+配套规则：
+
+- **逐点上屏用固定槽位**。「说一个点出一个点」的元素（四条价值观、三条 RTB）必须在最终位置上直接出现，
+  不能靠追加文字让整行重新居中——那会让字在过程中位移，作者一眼就会说「没对齐」。
+- **字级只有一套**。除刻意分层，全片同一块板上的标签用同一个 `font-size` / `font-weight` / 字距；
+  改一个字号会连带改对齐观感。动手前后各跑一次 `probe_stage.py --type-table`，让漂移在表里自己露出来。
+- **写出来的每一层，板上同时写好**。抽卡期间把「房子里那一份」也切到最终态（此时被遮住），
+  缩回去时才是「这一层已经写完了」，而不是缩回一个还是旧字的位置。
 
 ## 画面页来自 planners-ppt-hell 时的动画交接
 

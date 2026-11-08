@@ -1,4 +1,4 @@
-> 本手册只列**现行两条路线**（graphic=recompose / montage）的命令、参数、产物与失败信号。page 路线的命令见 [legacy-page-route.md](legacy-page-route.md)。
+> 本手册只列**现行两条片型**（`graphic` 走 recompose 造画面 / `montage` 走 montage-route 选画面）的命令、参数、产物与失败信号。page 路线的命令见 [legacy-page-route.md](legacy-page-route.md)。
 
 > **查 HyperFrames 的 `data-*` 契约与属性名，不要 grep 打包后的 CLI。**
 > `node_modules/hyperframes` 是几万行压缩后的 bundle：一次 `grep -rn` 就会把 100KB+ 的
@@ -25,14 +25,14 @@
 | 剪辑准备、出逐字面、应用选择 | stage_cut；取舍后用 edl_from_keep / edl_edit 建或改 EDL | 定位转写、EDL、表面回执的问题时 |
 | 时间与字幕 | duration_plan / srt_export / timeline_derive；外部来源用 import_srt_timeline | 尚无统一 time 命令，按 stages 5–6 顺序调用 |
 | 原页拆解与画面（graphic） | film / recompose_plan；模型写 composition | 检查具体映射或场景 |
-| 蒙太奇（montage） | scan_materials → montage plan/render → check_montage | 空镜、花字错位、来路不明的素材 |
+| 蒙太奇（montage） | scan_materials → montage plan/render → check_montage；口播成片用 montage voice-cut | 空镜、花字错位、来路不明的素材 |
 | 动效审阅构建 | review.py | check_live_stage/live_stage/build_review/review_surface/check_review_playable 是内部步骤，仅定位故障时单跑 |
 | 正式反馈收件 | review_inbox.py | 它不包含在 review.py 内；拒收先解决绑定 |
 | 成片合成、严格核验、包装、指纹 | deliver → verify_delivery → 按需 export_deliverables → state_fingerprint | 顺序与适用限制见 delivery.md；stage_deliver 是兼容的分动作入口 |
 
 私有库（下划线文件、helpers/lib、live_preview）由工具调用。扩展参数查 --help；维护工具时可以读实现，日常制作先用入口与报告定位。
 
-## recompose 主路线（composition 为源）
+## graphic 片型主路线（recompose，composition 为源）
 
 ```bash
 python3 "<craft>/helpers/recompose_plan.py" init "<project>" \
@@ -45,10 +45,10 @@ python3 "<craft>/helpers/review.py" "<project>"                  # 构建并验�
 python3 "<craft>/helpers/review_inbox.py" "<project>"               # 密度记录落到 feedback/density.jsonl
 ```
 
-recompose 不调用 `import_svg_page.py`、`generate-composition.py`、`auto_choreography.py`，也不跑 `check_parity.py`。
+recompose 不调用 `import_svg_page.py`、`generate-composition.py`、`auto_choreography.py`，也不跑 `check_parity.py`（那条断言要 `timeline/choreography.json`，只有老 page 项目才有）。
 产物：`recompose.json`、`recompose/lines.json`。密度以**口播逐字稿的行**为单位，提交走现有审阅面；
 `review_inbox.py` 校验后回写 lines，agent 只改受影响视觉段。完整说明见 [recompose-mode.md](recompose-mode.md)。
-page 十步路线已归档（见 [legacy-page-route.md](legacy-page-route.md)）；新项目一律走 recompose。
+page 十步路线已归档（见 [legacy-page-route.md](legacy-page-route.md)）；新项目按第 2 步定的片型走：`graphic` 用本节 recompose，`montage` 用「蒙太奇」一节。
 
 # 工具调用手册
 
@@ -66,11 +66,11 @@ page 十步路线已归档（见 [legacy-page-route.md](legacy-page-route.md)）
 | `edit/transcripts/`、`takes_packed.md` | 转写缓存、Take 阅读视图 | EDL 编辑和字幕 |
 | `edit/edl.json`、`segment_durations.json` | 剪辑决定与该版底片实测记录 | 渲染、字幕与核验 |
 | `edit/captions_article.txt`、`semantic_lines.txt`、`caption_lock.json` | 字幕校对与断句决定 | `srt_export.py` |
-| `edit/caption_words.json`、`captions.json`、`subtitles.srt` | 字幕字级插值、cue 与导出视图；真实词锚点用 align/transcripts | 时间绑定、画面审阅、合成 |
+| `edit/caption_words.json`、`captions.json`、`subtitles.srt` | 字幕字级插值、cue 与导出视图；真实词锚点用 `transcripts/`（词级转写） | 时间绑定、画面审阅、合成 |
 | `timeline/grouping.json`、`content-alignment.json`、`timeline.json` | 屏/Beat 对齐、cue 分组与唯一视觉时钟 | 手写 composition 与审阅 |
 | `composition/`、`edit/overlays/` | 渲染源与已渲染视觉层 | 渲染器、EDL 合成 |
 | `review/`、`feedback/` | 页面、surface、提交、独立草稿、收件后反馈 | 宿主只传输，Craft inbox 解释 |
-| `edit/verify/`、`creative-check.md`、`成品/` | 实际编码结果检查与交付 | 用户与下轮恢复 |
+| `edit/verify/`、`creative-check.md`、`成品/`（交付件） | 实际编码结果检查与交付 | 用户与下轮恢复 |
 
 ## 现有阶段适配器（覆盖有限）
 
@@ -118,15 +118,18 @@ python3 "<craft>/helpers/edl_from_keep.py" "<keeps.json>" --edit-dir "<edit>" --
 python3 "<craft>/helpers/audio_mix.py" "<voice.wav>" -o "<mix.wav>" --bgm "<bgm.wav>" --bgm-lufs -32
 ```
 
+词级转写（首选入口）：
+
 ```bash
-python3 "<craft>/helpers/transcribe.py" "<原始视频>" --edit-dir "<edit>" --audio-track 0 --backend auto
+python3 "<craft>/helpers/transcribe_seedasr.py" "<原始视频>" --edit-dir "<edit>"
+python3 "<craft>/helpers/transcribe.py" "<原始视频>" --edit-dir "<edit>" --audio-track 0 --backend auto   # 历史回退，见下
 python3 "<craft>/helpers/transcribe_batch.py" "<素材目录>" --edit-dir "<edit>" --workers 4
 python3 "<craft>/helpers/pack_transcripts.py" --edit-dir "<edit>"
 python3 "<craft>/helpers/refine_transcript.py" "<edit>" --source <source> --asr <词级ASR.json>
 python3 "<craft>/helpers/check_edl.py" "<edit>" --max-pause 0.8
 ```
 
-转写会读取缓存；云端后端会上传声音并可能收费，先沿用作者已授权配置。离线选 `--backend mlx`。多音轨先核声音，`--audio-track` 是从零起的音轨索引。EDL 字段及多轨合成见 [composition-craft](composition-craft.md)。
+首选 `transcribe_seedasr.py`（豆包流式语音识别 2.0，词级毫秒时间戳，凭据见 [install.md](../install.md) 第 5 步）。`transcribe.py --backend auto` 是 Scribe→Ark→mlx 的**历史回退**：只有拿不到豆包语音控制台凭据时才用，且它可能落到 Ark 通用模型——那正是 GOTCHAS #1 禁止的「通用模型当 ASR」路径，不能当推荐顺位。转写会读取缓存；云端后端会上传声音并可能收费，先沿用作者已授权配置。离线选 `--backend mlx`。多音轨先核声音，`--audio-track` 是从零起的音轨索引。EDL 字段及多轨合成见 [composition-craft](composition-craft.md)。
 
 **转写粒度是剪辑页的前提。** `edl_preview.html` 一个可选项对应 `transcripts/<source>.json` 的一个 token；如果这份文件是「一句一个 token」，页面只能整句删。出现整句 token（>1.5s）先跑 `refine_transcript.py`：它保留确认稿文字不变，用词级 ASR + `takes_packed.md` 的短语锚点补出字/词级 `start/end`；页面构建时也会对粗粒度转写报警，不再静默出整句选择器。`render_cut.py <edl> -o <mp4> --quality draft` 只作快预览，不记录实测时长，不替代正式渲染路径（见「渲染、核验、包装」）。
 
@@ -181,18 +184,33 @@ python3 "<craft>/helpers/frame.py" preview "<project>" --tokens "<tokens.json>" 
 路线契约见 [montage-route.md](montage-route.md)；这里只列命令。
 
 ```bash
-python3 "<craft>/helpers/scan_materials.py" "<project>/material/clips"          # 帧带 + 清单骨架
+python3 "<craft>/helpers/scan_materials.py" "<project>/material/clips"          # 帧带 + 清单骨架 + material-inventory.json（plan 的准入依据）
 python3 "<craft>/helpers/montage.py" plan   "<project>" --shots "<镜头表.json>"  # 展开绝对时间并校验
 python3 "<craft>/helpers/montage.py" render "<project>" --max 20                # 分块渲染（幂等）
-python3 "<craft>/helpers/montage.py" render "<project>" --concat --audio "<voice.m4a>"
+python3 "<craft>/helpers/montage.py" render "<project>" --concat --audio "<voice.m4a>"   # 默认落 edit/_engineering/
+python3 "<craft>/helpers/montage.py" voice-cut "<project>"                      # 母版 + EDL + 画框 → 竖屏人物轨（无声）
+python3 "<craft>/helpers/montage.py" voice-cut "<project>" --audio "<口播音轨>"   # 带音轨要显式给
+python3 "<craft>/helpers/montage.py" render "<project>" --concat --out "<成品>/<片名>.mp4" --deliver   # 交付件：先过 render_gate
 python3 "<craft>/helpers/check_montage.py" "<project>" --shots-dir "<work>" --base "<base.png>"
-python3 "<craft>/helpers/check_montage.py" "<project>" --video "<成片>"
+python3 "<craft>/helpers/check_montage.py" "<project>" --video "<审阅素材或成片>"
 ```
 
 - `plan` 的产物是 `edit/montage-plan.json`，渲染只认它；片段里 `in` 是**素材内的秒数**，
   不是 EDL 源时间（GOTCHAS #80）。任何一条校验不过就退 1，不绕过它手写计划。
-- `render` 的中间文件默认落 `/tmp/montage_<hash>/`，成片搬进项目目录（GOTCHAS #52）；
+  它同时会拒：素材未在 `material-inventory.json` 登记或没写「画面一句话」、同一素材重复
+  （clip 入点差 <5s / 照片第二次出现）、以及 EDL 里带 `speed != 1` 或 `mute` 的段——montage 的
+  剪后时间按原速累加，变速请回 recompose 或改 EDL（见 [montage-route.md](montage-route.md)）。
+- `render` 的中间文件默认落 `/tmp/montage_<hash>/`，渲染结果搬进目标目录（GOTCHAS #52）；
   已存在的镜头跳过，`--force` 重渲，`--only 1,6,20` 只渲指定镜。
+- **交付闸门**：`render --concat --out` 的目标**不在 `edit/_engineering/`** 时必须同时给 `--deliver`，
+  且先过 `render_gate.py`（`review/review-submissions.json` 里没人审覆盖当前快照就退 1），否则退 1。
+  不加 `--deliver` 只写 `edit/_engineering/`，打印「审阅素材：…」；加了才打印「交付件：…」。
+  **默认终点是侧边栏审阅页**：`成品/**` 是交付件，只有作者明确出片指令才能写（终态规则见
+  [stages.md](stages.md)「时间依据与任务终点」）。
+- `voice-cut` 输入是母版 + `edit/edl.json` + 画框 canvas，输出竖屏人物轨（**无声画面**），
+  默认 `edit/_engineering/voice_cut.mp4`；带音轨必须显式 `--audio <口播音轨>`。母版默认取
+  `edit/edl.json` 的 sources，那是指向 proxy 时用 `--master <交付母版>` 覆盖——**交付用母版，不用 proxy**。
+  它打印实测时长并与 `plan.timeline.total` 比对，两者对不上就停下查镜头表，不拿它当交付证明。
 - `check_montage` 是交付前必跑：逐镜看「是不是只有底图/是不是黑帧」，成片看「有没有成段黑帧」
   （GOTCHAS #81）。它退 0 才算过，退出码和文件大小都不承载这件事。
 - 花字在这条路线里是**烘进所在镜头**的一条 overlay，不需要单独的花字层；停留由 `plan` 钳到镜头内。
@@ -316,14 +334,18 @@ python3 "<craft>/helpers/film.py" verify "<project>"         # 拆解没填满�
 ```
 
 composition 由 Agent 按 [film.md](film.md) 的拆解手写 `src/scenes/*.js`，时间从 `timeline/timeline.json` 取。
-`generate-composition.py` / `auto_choreography.py` / `scaffold.sh --theme` 均随 page 路线归档，新项目不调用。
+`generate-composition.py` / `auto_choreography.py` 均随 page 路线归档（`scaffold.sh` 更早已随主题库删除，不存在该命令），新项目不调用。
 `check_screen_text.py` 仍用于检查真实 DOM 文字。
 
 ## 渲染、核验、包装
 
+本节命令只在**作者明确出片指令**后才执行。默认终点是审阅页，渲染产物分级（`edit/_engineering/**` = 审阅素材 / `成品/**` = 交付件）与终态规则见 [stages.md](stages.md)「时间依据与任务终点」。
+
 **渲染前置条件（缺一不渲）**：剪点已确认；动效 / 合成审阅已确认；`probe_env.py` 先报告能力（不阻断），`check_render_env.py` 退 0。
 **composition 路线的音频**：进 composition 之前先用 `audio_mix.py`/`audio_fix.py` 归一（HyperFrames 不会替你做响度；实测直接塞母版会得到 -16.9 LUFS）。
 **响度唯一标准**：成片混音由 `audio_mix.py` 产出一个文件（-14 LUFS / -1.5 dBTP，可带 BGM duck；用它时 render 加 `--no-loudnorm`）；没有预混音时 `render.py` 自己归一化。`audio_fix.py --target-lufs` 只用于素材预处理。
+
+**命令末尾不许接管道**：`... | tail` 会让 `$?` 变成 `tail` 的退出码，渲染失败也看不见。要看尾部就重定向到文件再读，退出码必须是渲染器自己的（GOTCHAS #82）。
 
 **指纹不是渲染前置，是交付过期信号**：已有交付时先跑 `state_fingerprint.py verify` 判断它有没有过期 —— 改源之后「过期」正是**需要重新输出**的信号，它不拦住新渲染。重新输出并核验后再 `capture` 新指纹，发送前再 `verify`，不一致就不能**发送**。阶段顺序见 [stages.md](stages.md) 第 10 步。
 渲染前先过 [timing-lock](timing-lock.md)：`film.py verify` 退 0，且 `feedback/*.jsonl` 的未决项已清或显式接受。
@@ -341,7 +363,7 @@ python3 "<craft>/helpers/check_render_env.py" "<project>/composition" --json   #
 ```
 
 `--json` 里的 `workers` 就是这台机器该用的 `--workers` 值（按总内存、可用内存与核数三者取低算出）。
-不要凭核数自己推：`--workers auto` 是按核数开满 Chrome，8GB 机器上它开 6 个、把 swap 打满并带走了系统（见 `GOTCHAS.md` #69）。
+不要凭核数自己推：`--workers auto` 是按核数开满 Chrome，8GB 机器上它开 6 个、把 swap 打满并带走了系统（见 `GOTCHAS.md` #70）。
 
 在 `<project>/composition` 作为工作目录分别执行 `npm run check`、`npm run render`；实际命令/输出以项目 `package.json` 为准。透明路线、PNG 序列编码、Alpha 选择见 [visual-rendering](visual-rendering.md)，调用示例：
 
@@ -413,7 +435,7 @@ python3 "<craft>/helpers/review.py" "<project>"              # montage 项目自
 python3 "<craft>/helpers/review.py" "<project>" --final-cut  # 只有成片、没有 montage 计划时
 ```
 
-[review-ui.md](review-ui.md) 是唯一接入与处理说明，包含 build、surface-only、公共 validator、DSH `review_open`、无插件宿主、inbox、EDL 选择的完整调用。`visual_review_feedback.py <project> --check` 是开面前置检查；`review_inbox.py` 才是作者提交的收件入口。
+[review-ui.md](review-ui.md) 是唯一接入与处理说明，包含 build、surface-only、公共 validator、DSH `review_open`、无插件宿主、inbox、EDL 选择的完整调用。开面前的记录契约检查用 `python3 "<craft>/helpers/visual_review_feedback.py" "<project>"`（**只有位置参数 `project`，没有 `--check`**；有问题退 2 并列出原因）。这条检查 `review.py` 走到 surface 那步已经跑过（`review_surface.py` → `open_review` 的 `check_project`），单跑它只用于定位；`review_inbox.py` 才是作者提交的收件入口。
 
 主题库已退役（2026-10-22）：风格数值归画面侧（`planners-ppt-hell` 的模板与风格文档），本 Skill 不维护主题库、也不读别人的 tokens。公共模块诊断：`python3 <craft>/helpers/lib/planners_modules.py --check`。`archive/` 全部是历史参考，不作为当前工具入口；`skills/manim-video/SKILL.md` 是严密数学动画的按需子 Skill。
 

@@ -22,17 +22,17 @@ helpers/check_parity.py                → 校验 spec 与 composition / 审阅�
 - 这条路线的重心是"把静态页搬进视频"，而真实需求是"**读懂原页，再按口播把它的信息
   一条条演出来**"。前者不需要理解内容，后者必须理解。
 
-所以：新项目只走 recompose，入口是 `helpers/film.py`。
+所以：新项目按片型二选一（graphic → recompose，montage → [montage-route.md](montage-route.md)），入口是 `helpers/film.py` 或 `montage.py`。
 
 ## 代码现在在哪
 
 | 原路径 | 存档位置 | 现状 |
 |---|---|---|
-| `visual/scripts/import_svg_page.py` | `visual/scripts/_legacy_page/import_svg_page.py` | 原路径是兼容 shim（`build_review`、`auto_choreography` 仍按原路径 import） |
-| `visual/scripts/generate-composition.py` | `visual/scripts/_legacy_page/generate-composition.py` | 原路径是 CLI 转发 shim |
-| `helpers/check_parity.py` | `helpers/_legacy_page/check_parity.py` | 原路径是兼容 shim |
+| `visual/scripts/import_svg_page.py` | `visual/scripts/_legacy_page/import_svg_page.py` | 原路径只剩模块（`build_review` 仍按原路径 import）；**没有 CLI**，按命令跑会静默退 0 |
+| `visual/scripts/generate-composition.py` | `visual/scripts/_legacy_page/generate-composition.py` | 原路径是显式拒绝的 shim：退 2 并说明「已归档，不能再用」，不是 CLI 转发 |
+| `helpers/check_parity.py` | `helpers/_legacy_page/check_parity.py` | 原路径是**真转发**的 CLI shim（2026-11-08 修好，此前恒退 0）；只对老 page 项目有意义 |
 
-shim 只做转发，不含逻辑；改行为请改存档里的那份，或者干脆不用它。
+改行为请改存档里的那份；现行项目不要用这三个入口。
 
 ## 什么时候才需要读这份存档
 

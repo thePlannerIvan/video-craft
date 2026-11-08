@@ -362,8 +362,8 @@ def inspect(project: Path, explicit: str | None = None) -> Report:
     else:
         report.add("embed-bridge", False,
                    f"缺 {bridge.relative_to(root).as_posix() if root in bridge.parents else bridge}",
-                   hint="按 visual/scripts/generate-composition.py 的 BRIDGE_FILE 约定，"
-                        "它随 composition 一起走；审阅页只能通过它 drive 这份工程")
+                   hint="从 visual/assets/composition-embed-bridge.js 复制到 composition/assets/ "
+                        "并在 index.html 引用；审阅页只能通过它 drive 这份工程")
     refs_bridge = any(
         "composition-embed-bridge.js" in (a.get("src") or "")
         for a in (_attrs(m.group("attrs")) for m in SCRIPT_RE.finditer(html))

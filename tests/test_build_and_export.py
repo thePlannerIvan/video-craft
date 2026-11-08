@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
-"""Unit tests for build_review.py, serve_review.py, and export_video.py."""
+"""Unit tests for build_review.py and export_video.py."""
 import json
 import os
 import shutil
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
 from pathlib import Path
 
 HELPERS = Path(__file__).parents[1] / "helpers"
 sys.path.insert(0, str(HELPERS))
 
 import build_review
-import serve_review
 import export_video
 
 
@@ -102,16 +100,6 @@ class TestBuildReview(unittest.TestCase):
         content = index_path.read_text(encoding="utf-8")
         self.assertIn("{{REVIEW_BRIDGE}}", content)
         self.assertIn("window.__REVIEW_DATA__", content)
-
-
-class TestServeReview(unittest.TestCase):
-    def test_delegates_to_public_host(self):
-        with patch.object(sys, 'argv', ['serve_review.py', '/tmp/fixture']), \
-                patch.object(serve_review, 'build_review_data', return_value={}), \
-                patch.object(serve_review, 'write_review_files'), \
-                patch.object(serve_review, 'open_review', return_value={}) as host:
-            serve_review.main()
-            host.assert_called_once_with(Path('/tmp/fixture').resolve(), port=0, open_browser=False)
 
 
 class TestExportVideo(unittest.TestCase):

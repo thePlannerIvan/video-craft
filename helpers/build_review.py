@@ -765,7 +765,11 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
         try:
             path.relative_to(project_root)
         except ValueError:
-            raise ValueError(f"SVG 在审阅目录之外：{path}；先用 import_svg_page.py --emit 导入项目")
+            raise ValueError(
+                f"SVG 在审阅目录之外：{path}；审阅页只供应项目内资产。"
+                "把页面搬进项目，或在项目根写 `.snapshot` 指针登记外部 workbench 快照"
+                "（visual/scripts/snapshot_input.py 会复制页面与素材）。"
+                "page 路线的 import_svg_page.py --emit 已随路线归档，不能再导入")
         watched.append(path)
         scene_assets[key] = {}
         tree = ET.fromstring(svg_map[key])

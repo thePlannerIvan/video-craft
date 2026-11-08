@@ -1,6 +1,6 @@
 # 架构与维护规则
 
-本文回答“该改哪个 owner、改动会让哪些产物过期、怎样证明结果可用”。制作顺序与完成标准只维护在 [stages.md](stages.md)，命令与参数只维护在 [tools.md](tools.md)。改动前先读本文；未实现的机械修复见 [implementation-brief.md](implementation-brief.md)。
+本文回答“该改哪个 owner、改动会让哪些产物过期、怎样证明结果可用”。制作顺序与完成标准只维护在 [stages.md](stages.md)，命令与参数只维护在 [tools.md](tools.md)。改动前先读本文；待实现与已验收的机械修复见 [implementation-brief.md](implementation-brief.md)。
 
 ## 1. 系统边界：创作判断与机械保证
 
@@ -27,10 +27,13 @@
 | 现有命令及参数 | [tools.md](tools.md)；准确语法以命令 `--help` 为准 | 不从 help 推断阶段顺序或批准语义 |
 | 时间来源与证据等级 | [visual-timeline.md](visual-timeline.md) | 字幕和交付引用它，不把消费者称为来源生产者 |
 | 画面、字幕和项目字段契约 | 对应专项文件，如 [film.md](film.md)、[recompose-mode.md](recompose-mode.md)、[caption-article-first.md](caption-article-first.md) | 只引用，不复制字段规则 |
+| 蒙太奇路线的顺序与完成标准 | [montage-route.md](montage-route.md) | 素材清单 → 镜头表 → 渲染体检；recompose 文档不转述本路线 |
+| 版式/画框（横切两层） | [frame-spec.md](frame-spec.md) | token → base/overlay/spec 三件套；与片型正交，不按路线分家 |
+| 素材准入判据 | [media-sourcing.md](media-sourcing.md) | 水印分级、时代与画质、出处与授权、失败处理；操作顺序仍归 montage-route |
 | 渲染前置、交付核验和补位 | [timing-lock.md](timing-lock.md)、[delivery.md](delivery.md) | 明确区分规则要求与当前实现覆盖 |
 | 视觉判断、风格与作者偏好 | [author-spec.md](author-spec.md)、[style-spec.md](style-spec.md)、[preferences.md](preferences.md) | 按阶段读取；不要把项目偏好写成通用工具逻辑 |
 | 审阅业务与播放/宿主接缝 | [review-ui.md](review-ui.md)、[live-stage-contract.md](live-stage-contract.md)、[hyperframes-review-adapter.md](hyperframes-review-adapter.md) | 公共传输能力归 planners-review-core |
-| 故障候选、已发生升级、待实现修复 | 根目录 `GOTCHAS.md`、[maintenance-history.md](maintenance-history.md)、[implementation-brief.md](implementation-brief.md) | 候选、历史、待实现三种状态不可混用 |
+| 故障候选、已发生升级、机械工作包与验收 | 根目录 `GOTCHAS.md`、[maintenance-history.md](maintenance-history.md)、[implementation-brief.md](implementation-brief.md) | 候选、历史、工作包三种状态不可混用 |
 
 ## 3. 模块 owner 与工具边界
 
@@ -39,14 +42,17 @@
 | 接入与版本 | 上游交接文档、`check_script_hash.py`、项目 `edit/project.md` 与 `production-plan.md` | 不改写上游主张或静态页面决定 |
 | 剪辑 | `stage_cut.py` 协调；`edl_from_keep.py`、`edl_edit.py`、`apply_selection.py`、`check_edl.py` 与 `edl_preview_build.py` 表达和检查剪辑事实 | 模型仍决定语义取舍；应用选择不表示下游产物已更新 |
 | 时间与字幕 | `_edl.py` 选择与当前 EDL 匹配的时长记录；`duration_plan.py` 生成 projected；`srt_export.py` 持有文章/字幕生成；`timeline_derive.py` 与 `import_srt_timeline.py` 分别持有 EDL 与外部 SRT 时间轴生成 | 不从最终视频倒推剪点；字幕字级插值不等于 ASR 词级锚点 |
-| 画面 | `film.py` 建立原页拆解依据，`recompose_plan.py` 管模式与逐句视觉密度；模型按批准内容写 composition | `film.py verify` 不能代替语义保真和审美判断 |
+| 画面（graphic） | `film.py` 建立原页拆解依据，`recompose_plan.py` 管模式与逐句视觉密度；模型按批准内容写 composition | `film.py verify` 不能代替语义保真和审美判断 |
+| 蒙太奇素材 | `scan_materials.py` 出帧带与素材清单（`material-inventory.json`）；哪些素材能用归 [media-sourcing.md](media-sourcing.md) | 不替模型判断哪段素材配哪句口播 |
+| 蒙太奇镜头与渲染 | `montage.py` 的 `plan` 把镜头表展开成绝对时间并校验入点/唯一性/花字钳制，`render` 分块幂等渲染、只在 `--deliver` 且过 `render_gate` 时写交付件，`voice-cut` 出口播人物轨；`check_montage.py` 管镜头表、逐镜画面、成片黑帧三类检查 | 不另算 EDL 时间、不再做第二份素材去重；不判断花字语义 |
+| 画框与落位 | `frame.py` 把 token 生成 `base.png`／`overlay.png`／`spec.md` 并出真实素材预览；`_geometry.py` 的 `fit_in_band()` 是素材落位的唯一实现，渲染与预览共用 | 不决定风格、调色或片型；不复制第二套落位算法 |
 | 工程审阅 | `review.py` 是编排入口；调用活舞台检查、`live_stage.py`、`build_review.py`、surface 与运行时播放检查 | 不把旧快照说成热更新，不自动收件或修改源 |
 | 反馈 | `review_inbox.py`、`visual_review_feedback.py` 持有收件、绑定、拒收/去重和密度回写 | 不把“有提交”当成作者批准或问题已解决 |
 | 交付 | `deliver.py` 负责现有合成入口；`verify_delivery.py` 持有严格文件判据；`export_deliverables.py` 与 `state_fingerprint.py` 负责包装和版本状态；`stage_deliver.py` 是分动作兼容适配器 | `deliver` 或 wrapper 的一次成功不等于严格核验、包装、指纹都完成 |
 | 共享机械能力 | `_paths.py`、`_timecode.py`、`_probe.py`、`_words.py`、`_silence.py`、`_cutmap.py` 复用各自的路径、时间码、媒体探测、词、静音和剪后映射实现 | 不新增第二份通用解析器或项目事实源 |
 | 外部执行环境 | HyperFrames 拥有新 composition 的播放时钟、媒体同步与 clip 显隐；FFmpeg 执行编码；planners-review-core 拥有审阅桥与宿主 | Craft 不复制官方播放器时钟或公共宿主 |
 
-`stage_cut.py` 与 `stage_deliver.py` 是现有阶段适配器，不是完整工作流引擎。`status` 的命令成功只说明查询成功；它不能单凭文件存在断言阶段已完成。当前完成线和修复证据见 Brief B1–B5；作者确认不从文件存在或提交记录自动推断。
+`stage_cut.py` 与 `stage_deliver.py` 是现有阶段适配器，不是完整工作流引擎。`status` 的命令成功只说明查询成功；它不能单凭文件存在断言阶段已完成。当前完成线和修复证据见 Brief B1–B10；作者确认不从文件存在或提交记录自动推断。
 
 ## 4. 跨 Skill 与外部接缝
 
@@ -75,7 +81,7 @@
 
 ### 当前路线与兼容代码
 
-新视觉项目走 recompose：批准页面是信息与构图依据，`film.py` 拆解后由模型写 composition。旧 page 工作流已归档；缺少 `recompose.json` 时，`review.py` 不会自动把项目当作 page 路线，而会要求先初始化/恢复到受支持的项目形态。`legacy-page-route.md` 只供旧项目恢复。
+新视觉项目先定**片型**：`graphic` 走 recompose——批准页面是信息与构图依据，`film.py` 拆解后由模型写 composition；`montage` 走 [montage-route.md](montage-route.md)——画面从现成素材里选，顺序是素材清单 → 镜头表 → 渲染体检。片型决定读哪份路线文档，不决定规范维度：`author-spec` / `style-spec` / `preferences` 是判准与准入层，风格只对 graphic 生效；版式/画框（[frame-spec.md](frame-spec.md)）与片型正交。旧 page 工作流已归档；缺少 `recompose.json` 时，`review.py` 不会自动把项目当作 page 路线——有 `edit/montage-plan.json` 的成片态项目走 `final-cut` 审阅，两者都没有则要求先初始化/恢复到受支持的项目形态。`legacy-page-route.md` 只供旧项目恢复。
 
 部分旧导入器或生成器仍因兼容代码、旧快照读取或测试而保留；“路线已归档”不等于“所有模块已无调用者”。移除前要搜索生产调用方和测试，再迁移调用与测试；没有清零证据，不删 shim 或兼容模块。
 
@@ -88,6 +94,9 @@
 | `timeline/grouping.json` | 创作判断输入 | 存视觉分组和语义字段；不能从 EDL 自动猜成用户决定 |
 | `timeline/timeline.json` | `timeline_derive.py`（EDL）或 `import_srt_timeline.py`（外部 SRT） | 下游统一的时间消费接口；EDL 与外部 SRT 有不同事实链。新项目显式写入项目根 `timeline/`，恢复旧项目先确认消费者与落点 |
 | `composition/` | 当前项目视觉源；模型按拆解与已批准内容创作 | 工程审阅演当前源，交付渲染当前源；draft、代理与 `_engineering/` 缓存不成为生产源 |
+| `edit/montage-plan.json` | `montage.py plan` | 展开后的镜头表（绝对时间 + 词锚花字）；`render` / `check_montage` 只读，手改无效，改镜头表后重跑 `plan` |
+| `material-inventory.json`（素材目录根，默认 `material/clips/`） | `scan_materials.py` | 素材登记（画面一句话 / 水印 / 可用性）；montage 的镜头表必须先在这里登记，`plan` 拒未登记或 `usable=false` 的素材 |
+| `material/frame/{base,overlay,spec}` | `frame.py build` | 画框三件套；合成顺序 base → 素材 → overlay → 花字，落位由 `_geometry.fit_in_band()` 决定，预览复用同一函数 |
 | `review/review_data.json` 与提交 | 构建器生成快照；作者/页面生成提交 | 快照和提交绑定到当时版本；收件回执只表示处理状态，不自动等于出片批准 |
 | 最终媒体与报告 | `deliver.py` 及交付工具链 | 真实文件的严格检查通过后才可报告交付；输出指纹只证明其绑定状态 |
 
@@ -109,6 +118,8 @@
 | review adapter、surface 或页面 | 公共 surface 校验、宿主打开、播放与提交/收件链 | 生产 composition 与 EDL |
 | 合成选项、字幕形态或媒体文件 | 新合成产物、真实文件核验、包装和指纹 | 来源匹配且仍有效的画面缓存 |
 | 成片二次剪 | `edit/cut-map.json`、同一映射的字幕和严格交付核验 | 剪前母版及其证据 |
+| montage 镜头表、素材清单或素材文件 | `montage.py plan` 重跑、按段重渲受影响的镜头、逐镜与成片体检、审阅快照 | 未受影响的素材与画框产物 |
+| 画框 token 或 `material/frame/{base,overlay}` | `frame.py build` 重建三件套、重渲受影响镜头、预览与成片落位复核 | 未受影响的剪辑与字幕 |
 
 改动剪辑、字幕或画面后，旧审阅快照不能证明新版本已被审。只改动效时不要求无关剪辑和字幕重做；只改字幕文本时也不重跑无关素材转码。
 
@@ -152,7 +163,7 @@ python3 <planning-before-create-skill>/scripts/lint_skill.py <craft>
 python3 helpers/spec_lint.py
 python3 helpers/check_review_template.py
 python3 helpers/check_review_template.py --prove
-python3 -m json.tool evals/evals.json >/dev/null
+python3 evals/run_evals.py
 ```
 
 工具实现按 Brief 的包级验收；浏览器测试默认运行，skip 原因要逐项说明。真实项目只用副本或明确授权的项目；维护测试不渲成片、不制造人工批准。报告实际改动、结果和未覆盖面，不引用历史数字代替本次结果。

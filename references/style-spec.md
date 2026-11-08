@@ -2,7 +2,7 @@
 
 > 第 2 步定风格，第 7 步读对应那一节。**本文件只管怎么动**：强调手段、运动方式、禁止项。
 > 静态画面语法（色板、字号、构图、硬边、排版）归画面侧 `planners-ppt-hell` 的模板与风格文档；本文件不重复，只保证动效与之一致。
-> 跨风格规则见 [author-spec.md](author-spec.md)。**路线只有 recompose 一条**：拿到原页后拆解重做，不存在"给原稿加动画"的流程。
+> 跨风格规则见 [author-spec.md](author-spec.md)。**本文件只作用于 graphic 片型**：画面是造出来的（原页拆解后重做，不存在"给原稿加动画"的流程）；montage 的画面是选出来的，动效判据不在这里，见 [montage-route.md](montage-route.md)。版式/画框（[frame-spec.md](frame-spec.md)）与片型正交，两种片型都可能要。
 > 上限：每种风格 ≤ 5 条，由 `helpers/spec_lint.py` 强制。元素级的特殊处理不进本文件（见文末）。
 > 与外部通用动效原则（`hyperframes-creative` 等）冲突时，本节优先：那是通用建议，这里记的是作者判准。
 

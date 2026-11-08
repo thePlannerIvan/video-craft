@@ -1,6 +1,7 @@
 [
   {
     "id": "video-story-knowledge-handoff",
+    "route": "recompose",
     "prompt": "这是录好的音频、句子级 SRT、最终口播和 video-idea-system 的 visual-plan.json。内容契约只写了画面必须呈现的信息，请完成动画视频。",
     "must_do": [
       "核对内容采用版和已批准参考页；缺页面决定时回 PPT Hell，不代替上游重新设计静态页",
@@ -19,6 +20,7 @@
   },
   {
     "id": "engineering-state-before-render",
+    "route": "shared",
     "prompt": "素材和录音都齐了，先把片子做出来给我看。",
     "must_do": [
       "先确认剪点（EDL），把取舍写进 edl.json 而不是手改底片",
@@ -35,6 +37,7 @@
   },
   {
     "id": "raw-recording-existing-svg-deck",
+    "route": "recompose",
     "prompt": "这是 75 分钟的直播课录屏，还有我 PPT 的 27 页 SVG 原图。帮我剪成 4 条 1920x1080 的横版短视频，画面就用这些 SVG 页，右下角放我的人像小窗，字幕单独给我 SRT，配一点轻 BGM。",
     "must_do": [
       "先清点输入事实：录屏、SVG 目录（含是否存在 PPT 快照/id）、是否要保真、画幅、字幕内烧还是外挂、是否需要 BGM",
@@ -53,6 +56,7 @@
   },
   {
     "id": "architecture-local-debug",
+    "route": "shared",
     "prompt": "审阅页黑屏了，帮我优化 Skill，以后别再这样。",
     "must_do": [
       "保留项目版本和日志，定位首个错误事实及现有 owner",
@@ -68,6 +72,7 @@
   },
   {
     "id": "delivery-verdict-is-not-render-success",
+    "route": "shared",
     "prompt": "deliver 退出 0，但 delivery_verdict.ok 是 false，可以交了吗？",
     "must_do": [
       "明确还不能称严格核验通过",
@@ -83,6 +88,7 @@
   },
   {
     "id": "planned-without-audio",
+    "route": "shared",
     "prompt": "稿子定了但我还没录音，先做制作方案。",
     "must_do": [
       "完成接入、缺口与 production-plan",
@@ -97,6 +103,7 @@
   },
   {
     "id": "projected-to-measured-recovery",
+    "route": "shared",
     "prompt": "底片刚重新渲染过，但工程里 timeline 还是 projected，字幕还是旧的。直接把标签改成 measured 就能交了吗？",
     "must_do": [
       "拒绝仅修改标签当作实测证据",
@@ -108,6 +115,80 @@
       "手拉字幕比例或手写 measured 标签掩盖来源失配",
       "新建另一套时间轴脚本",
       "把现有旧快照当作新版本批准"
+    ]
+  },
+  {
+    "id": "montage-recorded-voiceover-found-footage",
+    "route": "montage",
+    "prompt": "口播已经录完了，画面是一批现成的历史影像和照片，没有参考页。按哈雷片那种做法把画面选出来剪进去。",
+    "must_do": [
+      "先跑 scan_materials.py 出帧带与素材清单，照帧带给每条素材填「可用段落 / 画面一句话 / 水印台标」，出处记 URL",
+      "清单每行的 usable 明确写 true/false，false 写清原因；清单只增不删，看错了改那一行",
+      "镜头表只写 range / word / kind / material / in / grade / note 七个字段，交给 montage.py plan 展开绝对时间、换花字词锚并校验",
+      "plan 退 0 后再按 20–40 镜分块跑 montage.py render，中间文件落 /tmp/montage_<hash>/，不在云同步目录里长写",
+      "渲完跑 check_montage.py（必要时加 --base）与 --video 抽样，RESULT: OK 才算过",
+      "本轮停在 edit/_engineering/ 的审阅素材与待办；成品/ 只在作者出片指令 + 人工提交覆盖当前快照后写"
+    ],
+    "must_not_do": [
+      "跳过素材清单，直接按文件名排镜头表",
+      "手写或手改 edit/montage-plan.json，绕过 plan 的换算与校验",
+      "把 EDL 源时间填进镜头表的 in（那是素材内入点）",
+      "用「我看过没问题」代替 check_montage 退出码",
+      "把 montage.py render 的产物直接叫成片、交付件"
+    ]
+  },
+  {
+    "id": "frame-from-reference-page",
+    "route": "frame",
+    "prompt": "照这个品牌官网的版式做竖屏画框：上面留人物位，中间放素材，下面留一行字幕。先给我两个方向挑。",
+    "must_do": [
+      "从参考页读出可复用的秩序（线宽、留白比例、字体族、字重、彩色出现比例），写成 token JSON 并记进 production-plan.md，不手写 PIL 脚本",
+      "用 token 跑 frame.py build，产物落 <project>/material/frame/：base.png / overlay.png / spec.md",
+      "给两版方向，各用一张 16:9 和一张 4:3 的真实素材帧跑 frame.py preview 出 1:1 并排预览，不用抽象色块",
+      "预览与成片共用 _geometry.fit_in_band()：素材整幅可见（contain），16:9 → 1080×606、4:3 → 1080×810，露出的是带面色",
+      "定稿后核对 overlay.png 的透明区真透明、spec.md 每个元素有像素坐标与颜色字号字距，并用真实素材合一张给人看"
+    ],
+    "must_not_do": [
+      "把参考页的排版当画面直接抄，或沿用上一项目的 condense 与字号",
+      "用色块或占位图代替真实素材预览",
+      "预览按「4:3 按高铺满裁两侧」、渲染按 contain —— 两份落位口径",
+      "把画框 token 散写在脚本里，每次重画一份 PIL"
+    ]
+  },
+  {
+    "id": "material-admission",
+    "route": "montage",
+    "prompt": "这批素材里有带台标的、有整屏水印的，还有几个我看不出拍的是什么。哪些能进片子？",
+    "must_do": [
+      "每个候选素材在素材清单（material-inventory.json）里有一行；usable 与 summary 必填，不可用的写清原因",
+      "整屏水印 / 频道台标 / 烧录字幕 / 时间码判不可用；小角标登记位置（如「右上 AP」）后可用，同一角落不再放东西",
+      "可用段落写成「几秒到几秒是同一内容」，判断依据是抽帧看到的画面，不是文件名",
+      "每条可用素材写一句「主体 + 景别 + 色调 + 有无文字」；写不出来的不进镜头表",
+      "montage.py plan 要求每镜素材在清单里、summary 非空、usable != false；被退就回清单补，不绕过"
+    ],
+    "must_not_do": [
+      "把整屏水印当成小角标放行",
+      "用文件名或来源标题代替抽帧判断画面内容",
+      "写不出画面一句话仍排进镜头表",
+      "新建第二份清单覆盖第一版"
+    ]
+  },
+  {
+    "id": "review-submission-is-not-approval",
+    "route": "shared",
+    "prompt": "审阅页上我点了保存，是不是就当你已经批准出片了？你接下来做什么？",
+    "must_do": [
+      "先跑 review_inbox.py 收件，检查收据里的 imported / skipped / rejected；有 rejected 先修记录或重建快照",
+      "读 feedback/*.jsonl 与记录里的 adjustments / selections.json，按逐字、动效、整片三类分开处理",
+      "只改源（composition / SVG / EDL / 字幕），不把未应用的草稿说成已生效",
+      "改完跑 review.py 重建审阅快照并打开，check_review_playable.py 退 0 才算能交给作者",
+      "本轮终点是侧边栏审阅页可播 + 待办清单；出片要等作者明确指令，且 render_gate.py 认到人工提交覆盖当前快照"
+    ],
+    "must_not_do": [
+      "把「有提交」当作者批准出片",
+      "只改页面显示、不改源",
+      "源已改变时继续用旧快照审阅",
+      "直接渲染整片并写进成品/"
     ]
   }
 ]

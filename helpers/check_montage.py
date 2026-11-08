@@ -11,7 +11,7 @@ ffmpeg 退 0、每个文件大小正常、拼接也成功。肉眼发现它的�
 三类检查
 --------
 1. **镜头表（不需要渲染）**：素材存在、入点不越界、时长合计 = 时间轴、
-   素材不重复、花字窗口落在自己镜头里且不跨镜。
+   素材不重复（判据与 `montage.py plan` 是同一份 `ReuseLedger`）、花字窗口落在自己镜头里且不跨镜。
 2. **逐镜画面（`--shots-dir`）**：文件齐、时长对、不是黑帧/空镜。
    「空镜」= 这一镜的画面与画框底图几乎一致；没有底图时退化成三条启发式：
    亮度极低、相邻帧完全不动（clip）、以及**不同素材的镜头统计值一模一样**
@@ -34,6 +34,9 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from montage import MIN_REUSE_GAP, ReuseLedger  # noqa: E402  唯一性只有一份实现
 
 PLAN_NAME = "montage-plan.json"
 GW, GH = 54, 96          # 统计用的缩略尺寸
@@ -110,7 +113,8 @@ def check_plan(plan: dict, edit: Path) -> tuple[list[str], list[str]]:
     if total <= 0:
         hard.append("plan 里没有 timeline.total")
 
-    seen: dict[str, int] = {}
+    seen_ledger = ReuseLedger(
+        MIN_REUSE_GAP if plan.get("minReuseGap") is None else float(plan["minReuseGap"]))
     acc = 0.0
     for s in shots:
         tag = f"第 {s.get('seq')} 镜"
@@ -131,12 +135,10 @@ def check_plan(plan: dict, edit: Path) -> tuple[list[str], list[str]]:
                                 f"（{mat.name}）")
             except (KeyError, TypeError, ValueError):
                 hard.append(f"{tag} 缺 in/dur 或不是数字")
-        key = f"{mat}@{int(float(s.get('in') or 0)) // 10}"
-        if s.get("kind") == "photo":
-            key = str(mat)
-        if key in seen:
-            hard.append(f"{tag} 与第 {seen[key]} 镜素材重复：{mat.name}")
-        seen.setdefault(key, s.get("seq"))
+        reason = seen_ledger.note(mat, s.get("kind") or "clip",
+                                  float(s.get("in") or 0.0), s.get("seq"))
+        if reason:
+            hard.append(f"{tag}：{reason}")
         if abs(float(s.get("cutStart", 0)) - acc) > 0.02:
             hard.append(f"{tag} 的 cutStart={s.get('cutStart')} 与累计 {acc:.3f} 不连续")
         acc += float(s.get("dur") or 0)
@@ -248,7 +250,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--plan", type=Path)
     ap.add_argument("--shots-dir", type=Path)
     ap.add_argument("--base", type=Path, help="画框底图；给出后能直接判「只有底图」")
-    ap.add_argument("--video", type=Path, help="成片；查成段黑帧")
+    ap.add_argument("--video", type=Path,
+                    help="要查黑帧的成片或审阅素材（如 edit/_engineering/picture.mp4；"
+                         "成品/ 下的交付件应先过 render_gate）")
     ap.add_argument("--black-run", type=float, default=1.0, help="成片黑帧连续多少秒算失败")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--quiet", action="store_true")

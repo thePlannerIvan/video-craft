@@ -1,4 +1,36 @@
-# 维护记录（升级，不是 CHANGELOG）
+# 维护记录（为什么规则现在是这样）
+
+> 本页只解释为什么规则现在是这样；现行规则见 SKILL.md 与 references 下各 owner。它不是 CHANGELOG，也不装现行规则。
+
+这里装**已决定的升级**：做了什么、为什么、**影响了哪些 module**、删了什么。
+候选与状态在 `GOTCHAS.md`；模块边界与缝在 `references/architecture.md`。
+新的一次记在最上面。发版记录不在这里。
+
+## 当前不变式
+
+这一节收「只活在历史里、但今天仍然有效」的规则：它们是现行约束，不是历史；改之前先看这里。
+
+- **GOTCHAS 有条数上限，新增必须走迁移索引**：`GOTCHAS.md` 正文只留当前仍会造成错误的条目，每条必须有 enforcement 指针；已升级/已合并的从正文移出，只在本页迁移索引留一行。上限 48（`tests/test_gotchas.py` 的 `MAX_GOTCHAS` 是唯一数字源，别在文档里抄第二份），加新条目之前先合并或迁移，不新增正文条目。
+- **老路线 shim 的保留清单与移除条件**：`visual/scripts/import_svg_page.py`、`generate-composition.py` 仍是活代码——`build_review.py` 依赖 `import_svg_page.import_page` / `_inline_image_hrefs`，`auto_choreography.py` 依赖 `resolve_pages`，`tests/test_snapshot_input.py` 直接 import。老**路线**（十步流程、保真页面做法）已存档进 `legacy-page-route.md`，模块必须保留；等这三处依赖改读 `_legacy_page/` 或新 `film.py` 接口、相关用例迁移完成后，再整体删除并同步更新本条。
+- **仍记账的 4 条现存缺陷**（2026-10-14 记下，至今未消除，别当成已修）：无口播视觉槽在这套契约里还不成立（字幕要求 EDL 每段有词、`timeline_derive` 的 step 必须由 cue 组成）；`check_edl` 对删字这类合法编辑永远亮红；`apply_selection.py` 会留下纯标点的碎片段，与 `srt_export.py` 的一段一块硬约束冲突；时间轴的步长是 cue 派生的（比媒体窗口窄一个片头静音），要不要统一基准需要一次决定。
+- **timeline 落点仍在观察**：`edit/timeline/` 与项目根 `timeline/` 的历史兼容未收口；新项目显式写项目根，恢复旧项目先确认消费者与落点（现行规则见 architecture.md 的共享事实表）。
+- **两个审阅面不合并**：视觉审阅与剪辑审阅是两套业务页面与两份反馈形状，共享 `review-surface/2.0.0` 宿主接缝，但不互相嵌套。这是有意保留的产品边界，交棒条件归 review-ui.md。
+
+## 2026-11-08 · 第二轮：终态是审阅页 + 三路审计全量修正
+
+作者两条裁定：① 三路只读审计（规则漂移 / 工具面 / 入口与验收）后「全部都改」；
+② 纠正一个反复出现的失败模式——**Agent 总想把成片渲出来，但每轮终态应是侧边栏审阅页**。
+根因不是模型偏好，而是 montage 路线上根本没有闸门：`deliver.py` 有 render_gate，`montage.py render --concat --out 成品/…`
+却直接写交付目录，还把打印语叫「成片：」。
+
+- **终态规则成文并机械化（I1）**：`edit/_engineering/**` = 审阅素材（可重渲、不算交付），`成品/**` = 交付件（作者出片指令 + 人工提交覆盖当前快照）。定义只在 SKILL.md「每轮终点」与 stages「时间依据与任务终点」各一处；`montage.py render` 写 `_engineering` 之外必须 `--deliver` 且先过 `render_gate`，打印语改为「审阅素材／交付件」。真实项目实测：不带 `--deliver` 退 1；带 `--deliver` 但快照没有覆盖提交也退 1，成品目录零写入。
+- **单路线口径退役**：`author-spec` / `style-spec` / `preferences` / `spec_lint` docstring 四处「路线只有 recompose 一条」改为「两条片型 + 版式正交，规范不按路线分维」；`spec_lint.py` 新增禁句检查（把这条口径变成可失败项）；只适用 graphic 的判准标 `适用范围`。
+- **假闸门修复**：`check_parity.py` 的 shim 用 `spec_from_file_location` 加载存档模块，存档里的 `__main__` 永远不执行，于是「交付前必须过」恒退 0。改为真转发 CLI：有 choreography 变体时退 1，缺数据退 2（老项目实测 46 项检查）。
+- **登记补齐**：`architecture.md` 模块表补 `montage` / `check_montage` / `scan_materials` / `frame` / `_geometry` 五个 owner，并补权威出处、共享事实（`montage-plan.json`、`material-inventory.json`、`material/frame/*`）与失效范围；`implementation-brief.md` 追加 B9/B10 与实际验收。
+- **死出口与卫生**：删 `serve_review.py`（绕过 `check_live_stage` + `check_review_playable` 的第二扇审阅构建门）与 `align.py`（无调用、无测试、换算漏 speed）；删归档里的真密钥 `.env`（曾被发布到三个 runtime）与三组逐字节重复目录；`publish_skills.py` 增 `NESTED_SECRET_NAMES`——技能根的 `.env` 照发，子目录的 `.env` 不发布并从既有目标清除。
+- **判据收敛**：素材唯一性收到 `ReuseLedger` 一处（`check_montage` import 它；照片取消豁免，因为作者硬约束是「不重复」）；新增素材清单门（`material-inventory.json`：登记 + 画面一句话 + 可用性）；`plan` 明确拒绝带 `speed`/`mute` 的 EDL（此前静默按原速累加算错）；新增 `montage.py voice-cut` 补上三件套里唯一没有工具的「口播成片」。
+- **花字判据首次成文**：此前全库只有位置/时间/烘焙的机械约束，「该不该出、写什么」只在人脑子里。montage-route 新增「花字的取舍」（不改字看不懂才出、一条一个事实、2–3 条/分钟、一行 ≤ 约 18 字、口播说清的不出）。
+- **验收闭环**：`evals/` 从 7 条死用例变成 11 条 + 零依赖 runner（`python3 evals/run_evals.py`，路线/话题覆盖矩阵，缺项退 1）；GOTCHAS 46 → 48 条并补 6 项元测试（机械指针不得指 .md、judgment 必须写看什么、引用完整性、标题层级、上限）；maintenance-history 471 → 438 行，删逐字节重复段、按时间倒序重排，把「只活在历史里仍有效的规则」提到本节上方的「当前不变式」。
 
 ## 2026-11-08 · 蒙太奇路线与画框契约（哈雷片复盘落地）
 
@@ -36,6 +68,25 @@
 未做/边界：素材「小角标」没有像素阈值，只有「能否裁掉/移位」这一条判据；`preview` 不套调色档，颜色与成片不同是正常的；
 判据仍在项目验证后集中升级（本轮已按此执行）。未改既有 CLI 语义，未跑付费服务。
 
+## 2026-11-04 · 交付核验补一条「画面层 = composition」
+
+`deliver.py` 原来核的是分辨率/帧率/时长/音轨/首中尾帧/字幕安全区，全部绿过。品牌屋这轮
+`hyperframes render -w 4` 退 0、`check` 全绿、运动充足、没有黑帧，**画面从第 78 秒起整栋品牌屋
+没画出来**，是作者看片发现的。三条既有闸门都只说明「文件像一条正常的片子」，没有一条回答
+「这条片子还是不是那份 composition」。
+
+补的三件事：
+
+- `helpers/check_render_fidelity.py`：`hyperframes snapshot --at a,b,c --no-end` 取 composition 在
+  同样时刻的样子，和成片逐帧比结构相关 + 墨量；低墨量帧只看内容有没有塌。约 10–20 秒。
+- `deliver.py`：画面层可读之后立刻跑它（红即停）；渲染改回 `--workers 1`。非 HyperFrames 的
+  画面源跳过并记 note，跑不起来与「跑通了但不一致」分开报。
+- `helpers/probe_stage.py`：`--type-table` 一屏列出全部字号/基线（「字级漂移」这类问题现在看表就
+  能发现），`--at ... --ids ...` 在真浏览器里 seek 后读真实 opacity/位置（`immediateRender` 把
+  第 0 帧初始态拉平那次，只有这种读法看得见）。
+
+回归：`tests/test_render_fidelity.py`（同帧/差一帧/内容丢失/近黑帧四条判据）。
+
 ## 2026-10-23 · B1–B8 机械保证落地
 
 按既有 architecture / implementation-brief 局部修复 owner，保留此前 cut-map 与 concept-film 修改，没有新建总 CLI、stage 脚本、播放器或状态库。旧 CLI 保留；新增可选 --time-source、--media、--visuals-confirm-current，旧项目可读取，正式交付补当前来源证据。用户确认：外部剪好音频/SRT 旧项目缺记录时补选一次现有音频。
@@ -47,7 +98,6 @@
 - projected/nominal 可显式升级 measured，缺当前指纹/段数/有效时长不降级；词契约持有后续选择，保留已审 semantic_lines，timeline 双位置冲突要求先备份统一。
 
 验收：基线 503/503，最终 537/537（99.063s，无 skip）；模板 9 项静态与 9 个反例自证、spec/planning lint、链接/JSON/diff 通过。手冲咖啡交付复制件正常/错字幕对照、keywords-video 实测升级复制件、本地活舞台编译→定位/倍速/声音→真实测试提交→inbox→改源重建→旧快照拒绝均完成。DSH 宿主未实测；无生产渲染、付费调用或生产批准。完整包级事实见 [implementation-brief.md](implementation-brief.md) 的实际验收表；原始日志 `/private/tmp/video-craft-implementation-20261023` 供本机复核，不作为未来绿灯。
-
 
 ## 2026-10-23 · 模型决策与工具职责分层（仅文档）
 
@@ -61,7 +111,6 @@
 
 本轮验证：允许临时本地宿主/浏览器的环境中 `Ran 503 tests — OK`（122.544s）；初次受限沙箱运行因监听权限报错，不计为通过。模板 9 项静态检查与 9 项反例自证通过，spec_lint 通过；planning lint 无确定错误，4 项路径提示已按工程/公共模块/示例路径核对。148 个实现文件与本轮保存基线哈希一致；文档链接、eval JSON 与 diff 空白检查通过。7 个语义场景已文档走读，未执行独立模型评测或新的真实视频全链路；未实现的 B1–B8 仍待执行。字幕模式页撤下第二套旧断句算法，保留历史链接；活舞台桥文件标清静态兼容要求与官方 player 的真实职责。
 
-
 ## 2026-10-23 · 成片二次剪的声明与交付闸门（cut-map）
 
 | 做了什么 | 为什么 | 影响了哪些 module | 删了什么 |
@@ -71,7 +120,6 @@
 **验证（本次亲手跑的）**：`Ran 503 tests — OK`（基线 485；新增 18 条 cut-map 用例）；`check_review_template.py` 0 项不通过、`--prove` 9 条全响；`spec_lint.py` 退 0；`lint_skill.py` 无确定错误（10 处路径待人工核对，均为既有）。
 
 **真实项目**：XHS v2/v3 用 `edit/cut-map.json` 通过 `verify_delivery.py`（v2 剪 16 刀 −19.91s，v3 剪 7 刀 −4.04s）；把旧版 `v2_字幕.srt` 放回去会逐条报「时间对不上 cut-map」并拒绝交付。v1 仍被拒绝：`segment_durations.json[v1_recut]` 与当前 `edit/edl.json` 哈希不符（2026-10-22 14:36 重渲后 14:46 又改过 EDL），需先修复 EDL/重渲。
-
 
 ## 2026-10-22 · 新增 `concept-film` 概念电影风格
 
@@ -83,7 +131,7 @@
 
 | 做了什么 | 为什么 | 影响了哪些 module | 删了什么 |
 |---|---|---|---|
-| 新增 `references/author-spec.md`（全局判准 7 条，上限 8）与 `references/style-spec.md`（三种风格：`line-art` 线稿 / `business-report` 商业报告 / `collage` 拼贴，每种上限 5） | 每支片子重复口述同一要求；`preferences.md` 只有记录规则、没有目的地。评审中确认路线只有 recompose 一条，于是把最初的三层收成两层：全局 + 风格 | `references/author-spec.md`、`references/style-spec.md`、`SKILL.md` 第 1/2/11 步与入口表 | — |
+| 新增 `references/author-spec.md`（全局判准 7 条，上限 8）与 `references/style-spec.md`（三种风格：`line-art` 线稿 / `business-report` 商业报告 / `collage` 拼贴，每种上限 5） | 每支片子重复口述同一要求；`preferences.md` 只有记录规则、没有目的地。评审时按当时的单路线口径把最初的三层收成两层：全局 + 风格 | `references/author-spec.md`、`references/style-spec.md`、`SKILL.md` 第 1/2/11 步与入口表 | — |
 | 新增 `helpers/spec_lint.py` + `tests/test_author_spec.py`（5 类缺陷各自有用例） | 条数、篇幅、字段、执行点、风格枚举、编号唯一不能靠自觉 | `helpers/spec_lint.py`、`tests/test_author_spec.py` | — |
 | `preferences.md` 改写为契约：两套准入（否定型一次 / 倾向型 ≥2 次）、归位规则、四条减法、谁批准 | 没有准入与归位，同一句话会同时住在判准与正式文档 | `references/preferences.md` | 旧的"归入已有偏好/记忆系统"空指针 |
 | 新增第 11 步「收尾与沉淀」：读三处证据、只挑重复、≤3 条候选、写入后跑 `spec_lint.py` | 闭环断在交付，没有这一步判准永远靠临时复述 | `SKILL.md`、`references/preferences.md` | — |
@@ -108,6 +156,112 @@
 **验证（本次亲手跑的）**：`Ran 447 tests — OK`（基线 463：删掉 22 条主题校验 + 3 条依赖归档生成器的集成用例，新增 9 条 spec 用例）；`check_review_template.py` 0 项不通过；`lint_skill.py` 无确定错误；`spec_lint.py` 退 0。
 
 **跨 Skill**：`planners-ppt-hell` 删除 `scripts/style/theme_tokens.py` 与测试、口径改为自己维护风格（`Ran 387 tests — OK, skipped=93`）；`video-idea-system` 两处指针指向 `style-spec.md`（`node evals/run-validator-cases.mjs` → 94 ok / 0 FAIL）。两边未发布，发布时统一跑 `publish_skills.py`。
+
+## 2026-10-21 · 判据绿不等于页面可用
+
+同轮记录一条：**判据绿不等于页面可用**——`review.py` 的运行时判据曾经全绿，
+但页面顶栏是 `undefined 章 · NaN:NaN`、HUD `00:04 / 00:00`。根因是模板没对 `totals` 兜底、
+`build_density` 没从 steps 推区间。已在 2026-10-21 的现场测试后修复，并由
+`review.py` 的三道闸门锁住。
+
+## 2026-10-21 · GOTCHAS 迁移索引：三条命令化带来的两条
+
+以下两条的机制已由 `helpers/film.py` 与 `helpers/deliver.py` 承接，正文不进 `GOTCHAS.md`
+（该文件有条数上限，新增必须走迁移索引）。
+
+- #76 「画面」这一步以前没有入口，于是实现了自己重画原页 ｜ 已升级（`helpers/film.py` 的原页拆解闸门；`tests/test_film.py` 红→绿）
+- #77 画面层会把内容画进字幕区，字幕一压就废 ｜ 已升级（`helpers/deliver.py` 的 `captionSafe` 判据；`tests/test_deliver.py` 侵入即红）
+
+## 2026-10-19 · GOTCHAS 迁移与合并索引
+
+已升级/已合并的条目从 `GOTCHAS.md` 正文移出，只在这里留索引；追加只加行，不新开流水账。
+
+### GOTCHAS 迁移索引（2026-10-19）
+
+这些条目已由代码/测试/公共宿主承接，正文从 `GOTCHAS.md` 移出，仅留索引。
+
+- #8 A leftover review server serves the wrong project ｜ 已升级（剪接线那台自带服务器 `edl_preview_serve.py` 已退役，宿主归公共缝）
+- #9 Register the timeline after the DOM, in the same script ｜ 已升级
+- #14 Screen recordings are VFR — force CFR before compositing ｜ 已升级
+- #16 The picture carries content, never method ｜ 已升级
+- #17 One cue per natural clause — the ceiling is not a grouping rule ｜ 已升级
+- #23 `hyperframes render --help` advertises WebM transparency; only the MOV half is true ｜ 已升级
+- #25 A freshly extracted segment was never read back ｜ 已升级
+- #26 Delivery gates picked the render record by position ｜ 已升级
+- #27 The page importer's href boundary was the page directory ｜ 已升级
+- #28 Inlining a page by hand bypasses the href rewrite ｜ 已升级
+- #29 The same id in two pages makes `#name` ambiguous ｜ 已升级
+- #30 A criterion that can never fail ｜ 已升级
+- #31 `hyperframes doctor` does not check the font cache ｜ 已升级
+- #32 注入点必须裸着独占一行，而且只许一个 ｜ 已升级
+- #35 出口与内容不许取决于"恰恰会失败的那件事"（R11） ｜ 已升级
+- #36 测量工具在测量自己 ｜ 已升级
+- #37 想要"写沙盒"就**硬链接**，别用软链 —— 宿主会（正确地）拒绝 ｜ 已升级
+- #38 浏览器用例：**一个类共用一个浏览器**，而且失败也要关 ｜ 已升级
+- #39 交付审阅页必须启动 HTTP 审阅宿主，绝不能直接 open 本地 file:// 路径 ｜ 已升级（已确立为铁律，机制在 review-core 宿主那一侧）。
+- #66 GSAP 握手不证明 HyperFrames 播放正常 ｜ 已升级
+- #67 不透明源访问 loopback 和跨帧 blob 都可能被拦 ｜ 已升级
+- #68 编译路由的 base 不是 HTML 路径的父目录 ｜ 已升级
+- #74 审阅副本坏了不报错：页面照播，只是没声 ｜ 已修
+
+### GOTCHAS 合并索引（2026-10-19）
+
+同根条目合并进宿主条目，正文只留宿主；症状与修正原则已并入宿主条目。
+
+- #5 Cloud-synced video folders make ffmpeg fail intermittently ｜ 并入 #52 编码产物不要直接写进云同步目录
+- #46 云同步目录里刚建的目录，下一个进程可能看不见 ｜ 并入 #52 编码产物不要直接写进云同步目录
+- #60 `hyperframes preview` 在沙箱下静默不起，而且它的路由只能验内容 ｜ 并入 #63 studio 会缓存 composition —— 改了源，你要硬刷新它
+- #64 studio 的 player 路由剥掉所有 `src=` 脚本，并把内联脚本拼成一个大脚本 ｜ 并入 #63 studio 会缓存 composition —— 改了源，你要硬刷新它
+- #65 「第几个脚本」不能当锚点，「第一个内联 script」尤其不能 ｜ 并入 #63 studio 会缓存 composition —— 改了源，你要硬刷新它
+- #69 `hyperframes render --workers auto` 按核数开满 Chrome → 小内存机器被 swap 打崩 ｜ 并入 #70 首次渲染的 compile 是冷启动（约 25 分钟），会被误判成「这台机器渲不动」
+- #51 lint 会把运行期 `if` 当成「补间一定存在」 ｜ 并入 #62 静态检查的两个假阳：对正确代码报红，训练出来的只是忽略
+- #54 删掉标记、却没删挂事件的代码 → 页面死在渲染数据之前 ｜ 并入 #57 审阅页的护栏是两具尸体 —— 不跑的测试等于没有测试
+- #72 `segment_durations.json` 的键是输出文件名的 stem，渲到非权威名会静默留下旧记录 ｜ 并入 #61 composition 用旧时间轴打过补丁 → 过期 3 秒，无人发现
+- #15 `-t` between two inputs belongs to the second input ｜ 并入 #83 `-t` 写在两个输入之间
+- #20 `render.py --no-loudnorm` cannot take an `-o` that equals the internal base name ｜ 并入 #84 `--no-loudnorm` 的 `-o` 撞 base
+
+### GOTCHAS 迁移索引（2026-11-08）
+
+- #22 三个不同根因并成一条 ｜ 已拆分为 #82–84（2026-11-08；旧编号不复用）
+
+## 2026-10-15 · 审阅页反馈卡与工程动效抽屉边界
+
+移除反馈卡和状态提示左侧的装饰色条，改用 token 边界、轻阴影和更宽内边距，降低侧栏的视觉噪声。分步动效抽屉保留旧 SVG 的参数微调能力；HyperFrames 工程预览下改为明确说明播放器已接管分步显示，并隐藏会产生第二套时钟的静态参数行。新工程仍通过本屏连播、最终态、定位和倍速控制审阅；原语、镜头和子延迟回到 composition 的 `choreography.json` 修改后重建。
+
+## 2026-10-15 · HyperFrames 成为新工程唯一运行时
+
+旧记录中提到的 `VideoCraftAnimEngine.registerGsapTimeline()` 属于历史兼容实现，不再是新 HyperFrames composition 的主时间轴方案。新工程由官方 player/runtime 拥有时间、媒体和 clip 显隐；`VideoCraftAnimEngine` 只在旧 SVG 审阅路径中保留。需要即时参数控件时，composition 必须实现 `references/hyperframes-review-adapter.md` 的可选适配器；否则统一走反馈、改源、重建审阅。
+
+## 2026-10-15 · 页序与页面集合的快照交接
+
+| 做了什么 | 为什么 | 影响了哪些 module | 删了什么 |
+|---|---|---|---|
+| 快照 binding 增加 `order`；invalidation 增加 `order_changed` / `timeline_needs_review`，合成前校验时间线页序 | PPT 拖动顺序必须真正传递到视频生产；已有录音时间绑定不能被静默重排 | `visual/scripts/snapshot_input.py`、`visual/scripts/generate-composition.py`、`SKILL.md` | 把实时 PPT 项目目录当作视频输入的模糊示例 |
+| 原 visual-plan 与工作台集合不一致时要求显式 `collection_delta` 与内容复核 | 新增/删除页需要显式承接，避免下游误把旧脚本当成完整页面集合 | `snapshot_input.py` | 集合变化的隐式接受 |
+
+## 2026-10-14 · 工程态成为默认，审阅页有了执行中的护栏
+
+**为什么改**：真实项目上连撞三件事。① 作者明确要「审阅时都是工程状态，快和灵活；确认之后才完整渲染」，而 Skill 里这条只写在第五步的一句话里，读起来像是渲染之前的建议，不是整个运行的模式。② 审阅台连着三轮坏在同一个文件上，六类缺陷一起出货，而 `tests/` 里两个浏览器测试**一个都没在跑**。③ 画面轨的源在 composition 与「事后用 ffmpeg 拼」之间摇摆，于是有了两份真相源。
+
+**做了什么**
+
+- **两个态提成贯穿态**：`SKILL.md` 新增「两个态：工程态与交付态」一节（活 composition 直接演 / 才渲染），并把两个审阅面的顺序（先剪点后画面）写进入口。`references/tools.md` 的「免渲染的工程态」补上活舞台的入口。
+- **活舞台落地**：新增 `helpers/live_stage.py`（唯一主人：起预览服务、绕开沙盒、pin 住裸路由并验内容）与 `visual/assets/composition-embed-bridge.js`（composition 自己的 postMessage 控制面，非嵌入时零影响）。`build_review.py` 写 `media.liveStage`（并验服务此刻还活着）；审阅页模板新增 `#live-stage-wrap` 与客户端，舞台按「活 composition → 合成成片 → 静态页」选择。
+- **护栏落地**：新增 `helpers/check_review_template.py`（七条静态不变量，每条配 `--prove` 自证不空洞）与 `tests/` 里对应的 unittest；新增 `tests/test_composition_embed_bridge.py`（6 例纯逻辑协议测试，不需要浏览器）。六个缺陷先 R̶E̶D̶ 后 GREEN 地修掉。
+- **画面轨唯一源**：`generate-composition.py` 支持时间轴的 `mediaClips` —— 录屏段改发 `<video class="clip">` 带 `data-media-start`，取代「渲染完再用 ffmpeg 拼一遍」；GSAP 与嵌入桥随包拷进 `composition/assets/`（去掉 CDN）。
+- **自检转绿**：删死测试、修跨 Skill 依赖，`unittest discover` 从 326（2 ERROR / 5 skip）到 344 全 OK。
+
+**删掉了什么**：`tests/test_interactive_ui.py`（不是 unittest、引用已删按钮、导入即崩）；模板里的空壳 `<hyperframes-player>`；CDN GSAP。逐条见 `architecture.md` §7 退役。项目侧的 `tools/patch_review_page.py` 与 `make_review_carrier.py` 也随之删除 —— 它们的存在本身就是缺陷的症状。
+
+**仍然记账**（下一轮）：无口播视觉槽在这套契约里还不成立（字幕要求 EDL 每段有词、`timeline_derive` 的 step 必须由 cue 组成）；`check_edl` 对「删字」这类合法编辑永远亮红；`apply_selection.py` 会留下纯标点的碎片段，与 `srt_export.py` 的「一段一块」硬约束冲突；时间轴的步长是 cue 派生的（比媒体窗口窄一个片头静音），要不要统一基准需要一次决定。
+
+## 2026-10-14：先工程预览，再最终输出
+
+保留 EDL、语义字幕、实测时长、交付核验和既有媒体兼容路径。新工程预览由官方 HyperFrames player/runtime 接管，review-core 传工程快照与资产，消除跨不透明源 localhost 加载和自造 GSAP 播放控制。播放速度、单屏定位、字幕和反馈时间使用同一时钟；页面降低导航密度、集中播放工具。删除旧 liveStage 消息客户端，未删除仍有调用者的 SVG 编辑与外部视频层功能。
+
+逐字预览不再按文件名自动选旧成片；默认按 EDL 读取源素材，只有显式 `--rendered-preview` 才对照渲染结果。回归测试覆盖旧 final.mp4 存在时的源时间与速度映射。
+
+本轮隔离项目验收：358 项 unittest（5 项环境限定测试跳过），另跑 sandbox/local 两套真实浏览器检查，各 9 项；906 词口播源预览的播放、2 倍速、下一刀通过；改 composition 后构建快照确实变化；公共 core 的 59 项 JS 与 11 项 Python 检查通过。浏览器使用空音频输出设备验证解码和时钟，未代替人工听音。Mac 锁屏，DSH 原生窗口未直接验收，sandbox 测试只证明其桥与 opaque iframe 契约。通用 Skill lint 的 17 个路径报告与基线相同，均因截取嵌套路径/跨 Skill 引用而误报；未为消除报告而移动有效模块。
 
 ## 2026-10-08 · 审阅宿主公共化与跨 Skill 接缝收口
 
@@ -146,7 +300,6 @@
 | 升级 `visual/assets/svg-anim-engine.js`（v4.0）与新增 `visual/scripts/auto_choreography.py`：扩充至 12 种原语（8 社论 + 4 产品 UI），内置 `1.2s–1.5s` 多拍内部图形编排（`.anim-typewriter` 逐字打字机、`.anim-stroke` 电路路径生长、`.anim-bar-h/v` 充能条、`.anim-node` 节点脉冲、`.anim-scan` 扫描光束、`.anim-count` 数字滚轮递增），并加入 `data-speaker-width` 分栏摄像机防遮挡锁 | 告别单调的「整张矩形卡片飞入」，让每句口播 1:1 驱动图形内部构件的多拍联动，并根治左人右画构图下摄像机左移遮挡人物的问题 | `visual/assets/svg-anim-engine.js`、`visual/scripts/auto_choreography.py`（新）、`references/svg-animation-contract.md` | — |
 
 ## 2026-09-29 · 新增 `editorial-archive` 瑞士编辑档案主题与声明式 SVG 预埋动效契约
-
 
 **起因**：`planners-ppt-hell` 视频路线与 `video-craft` 是前后脚关系——如果静态 SVG 在生成时只画视觉表面、不按子元素动作分层与预埋属性，下游 `video-craft` 就只能对整块 `<g>` 做生硬的 `opacity + translateY` 浮现，或者被迫重画 SVG。基于 34 个 Pinterest 参考样本（含 9 个动态视频/GIF 逐帧拆解）与真实项目 `/prototype` 三轮压测，两边确立了统一的 `editorial-archive` 视觉主题与复合子元素预埋动效契约。
 
@@ -196,10 +349,6 @@ R11 永久刷新出口、R10 整体入口、保存后敲一下门铃）；新增
 
 **同轮修掉的**：`Cmd-S` 绕过 `disabled` → 并发保存 → 读-改-写**真的丢了一条**（加 `saving` 守卫，
 GOTCHAS #34）；陈旧提示**只给人看**（`stale`/`stale_timeline` 进记录，R5b）。
-
-这里装**已决定的升级**：做了什么、为什么、**影响了哪些 module**、删了什么。
-候选与状态在 `GOTCHAS.md`；模块边界与缝在 `references/architecture.md`。
-新的一次记在最上面。发版记录不在这里。
 
 ## 2026-09-26 · 宿主生命周期搬进公共模组（只留一份）
 
@@ -303,169 +452,3 @@ sha256 `796ff3f2…` → 按文档那一步用新模板重生成（`15418868…`
   + 三个读取它的候选清单）整套删除；三套 EDL 备份收敛为 `edl.previous.json`；
   `clean_edit_dir.py` 的沉积清单同步更新。影响：`helpers/srt_export.py`、`helpers/clean_edit_dir.py`、
   `archive/`。
-
-## 当前边界
-
-视觉审阅和剪辑审阅仍然是两个业务页面与两份反馈形状，这是有意保留的产品边界：视觉面承载画面/节奏/动效反馈，剪辑面承载词级取舍与 `selections.json`。它们共享 `review-surface/2.0.0` 的宿主接缝，但不互相嵌套，也不把两种反馈强行翻译成同一份记录。
-
-仍需在后续真实项目中持续观察的事项是时间轴文件落点（`edit/timeline/` 与项目根 `timeline/` 的历史兼容）以及复杂页面的人工审阅深度；它们不是本次公共宿主收口的阻塞项。
-
-## 2026-10-14 · 工程态成为默认，审阅页有了执行中的护栏
-
-**为什么改**：真实项目上连撞三件事。① 作者明确要「审阅时都是工程状态，快和灵活；确认之后才完整渲染」，而 Skill 里这条只写在第五步的一句话里，读起来像是渲染之前的建议，不是整个运行的模式。② 审阅台连着三轮坏在同一个文件上，六类缺陷一起出货，而 `tests/` 里两个浏览器测试**一个都没在跑**。③ 画面轨的源在 composition 与「事后用 ffmpeg 拼」之间摇摆，于是有了两份真相源。
-
-**做了什么**
-
-- **两个态提成贯穿态**：`SKILL.md` 新增「两个态：工程态与交付态」一节（活 composition 直接演 / 才渲染），并把两个审阅面的顺序（先剪点后画面）写进入口。`references/tools.md` 的「免渲染的工程态」补上活舞台的入口。
-- **活舞台落地**：新增 `helpers/live_stage.py`（唯一主人：起预览服务、绕开沙盒、pin 住裸路由并验内容）与 `visual/assets/composition-embed-bridge.js`（composition 自己的 postMessage 控制面，非嵌入时零影响）。`build_review.py` 写 `media.liveStage`（并验服务此刻还活着）；审阅页模板新增 `#live-stage-wrap` 与客户端，舞台按「活 composition → 合成成片 → 静态页」选择。
-- **护栏落地**：新增 `helpers/check_review_template.py`（七条静态不变量，每条配 `--prove` 自证不空洞）与 `tests/` 里对应的 unittest；新增 `tests/test_composition_embed_bridge.py`（6 例纯逻辑协议测试，不需要浏览器）。六个缺陷先 R̶E̶D̶ 后 GREEN 地修掉。
-- **画面轨唯一源**：`generate-composition.py` 支持时间轴的 `mediaClips` —— 录屏段改发 `<video class="clip">` 带 `data-media-start`，取代「渲染完再用 ffmpeg 拼一遍」；GSAP 与嵌入桥随包拷进 `composition/assets/`（去掉 CDN）。
-- **自检转绿**：删死测试、修跨 Skill 依赖，`unittest discover` 从 326（2 ERROR / 5 skip）到 344 全 OK。
-
-**删掉了什么**：`tests/test_interactive_ui.py`（不是 unittest、引用已删按钮、导入即崩）；模板里的空壳 `<hyperframes-player>`；CDN GSAP。逐条见 `architecture.md` §7 退役。项目侧的 `tools/patch_review_page.py` 与 `make_review_carrier.py` 也随之删除 —— 它们的存在本身就是缺陷的症状。
-
-**仍然记账**（下一轮）：无口播视觉槽在这套契约里还不成立（字幕要求 EDL 每段有词、`timeline_derive` 的 step 必须由 cue 组成）；`check_edl` 对「删字」这类合法编辑永远亮红；`apply_selection.py` 会留下纯标点的碎片段，与 `srt_export.py` 的「一段一块」硬约束冲突；时间轴的步长是 cue 派生的（比媒体窗口窄一个片头静音），要不要统一基准需要一次决定。
-
-
-## 2026-10-14：先工程预览，再最终输出
-
-保留 EDL、语义字幕、实测时长、交付核验和既有媒体兼容路径。新工程预览由官方 HyperFrames player/runtime 接管，review-core 传工程快照与资产，消除跨不透明源 localhost 加载和自造 GSAP 播放控制。播放速度、单屏定位、字幕和反馈时间使用同一时钟；页面降低导航密度、集中播放工具。删除旧 liveStage 消息客户端，未删除仍有调用者的 SVG 编辑与外部视频层功能。
-
-
-逐字预览不再按文件名自动选旧成片；默认按 EDL 读取源素材，只有显式 `--rendered-preview` 才对照渲染结果。回归测试覆盖旧 final.mp4 存在时的源时间与速度映射。
-
-本轮隔离项目验收：358 项 unittest（5 项环境限定测试跳过），另跑 sandbox/local 两套真实浏览器检查，各 9 项；906 词口播源预览的播放、2 倍速、下一刀通过；改 composition 后构建快照确实变化；公共 core 的 59 项 JS 与 11 项 Python 检查通过。浏览器使用空音频输出设备验证解码和时钟，未代替人工听音。Mac 锁屏，DSH 原生窗口未直接验收，sandbox 测试只证明其桥与 opaque iframe 契约。通用 Skill lint 的 17 个路径报告与基线相同，均因截取嵌套路径/跨 Skill 引用而误报；未为消除报告而移动有效模块。
-
-## 2026-10-15 · 审阅页反馈卡与工程动效抽屉边界
-
-移除反馈卡和状态提示左侧的装饰色条，改用 token 边界、轻阴影和更宽内边距，降低侧栏的视觉噪声。分步动效抽屉保留旧 SVG 的参数微调能力；HyperFrames 工程预览下改为明确说明播放器已接管分步显示，并隐藏会产生第二套时钟的静态参数行。新工程仍通过本屏连播、最终态、定位和倍速控制审阅；原语、镜头和子延迟回到 composition 的 `choreography.json` 修改后重建。
-
-
-## 2026-10-15 · HyperFrames 成为新工程唯一运行时
-
-旧记录中提到的 `VideoCraftAnimEngine.registerGsapTimeline()` 属于历史兼容实现，不再是新 HyperFrames composition 的主时间轴方案。新工程由官方 player/runtime 拥有时间、媒体和 clip 显隐；`VideoCraftAnimEngine` 只在旧 SVG 审阅路径中保留。需要即时参数控件时，composition 必须实现 `references/hyperframes-review-adapter.md` 的可选适配器；否则统一走反馈、改源、重建审阅。
-
-## 2026-10-15 · 页序与页面集合的快照交接
-
-| 做了什么 | 为什么 | 影响了哪些 module | 删了什么 |
-|---|---|---|---|
-| 快照 binding 增加 `order`；invalidation 增加 `order_changed` / `timeline_needs_review`，合成前校验时间线页序 | PPT 拖动顺序必须真正传递到视频生产；已有录音时间绑定不能被静默重排 | `visual/scripts/snapshot_input.py`、`visual/scripts/generate-composition.py`、`SKILL.md` | 把实时 PPT 项目目录当作视频输入的模糊示例 |
-| 原 visual-plan 与工作台集合不一致时要求显式 `collection_delta` 与内容复核 | 新增/删除页需要显式承接，避免下游误把旧脚本当成完整页面集合 | `snapshot_input.py` | 集合变化的隐式接受 |
-
-## GOTCHAS 迁移索引（2026-10-19）：已升级/已修条目
-
-这些条目已由代码/测试/公共宿主承接，正文从 `GOTCHAS.md` 移出，仅留索引。
-
-- #8 A leftover review server serves the wrong project ｜ 已升级（剪接线那台自带服务器 `edl_preview_serve.py` 已退役，宿主归公共缝）
-- #9 Register the timeline after the DOM, in the same script ｜ 已升级
-- #14 Screen recordings are VFR — force CFR before compositing ｜ 已升级
-- #16 The picture carries content, never method ｜ 已升级
-- #17 One cue per natural clause — the ceiling is not a grouping rule ｜ 已升级
-- #23 `hyperframes render --help` advertises WebM transparency; only the MOV half is true ｜ 已升级
-- #25 A freshly extracted segment was never read back ｜ 已升级
-- #26 Delivery gates picked the render record by position ｜ 已升级
-- #27 The page importer's href boundary was the page directory ｜ 已升级
-- #28 Inlining a page by hand bypasses the href rewrite ｜ 已升级
-- #29 The same id in two pages makes `#name` ambiguous ｜ 已升级
-- #30 A criterion that can never fail ｜ 已升级
-- #31 `hyperframes doctor` does not check the font cache ｜ 已升级
-- #32 注入点必须裸着独占一行，而且只许一个 ｜ 已升级
-- #35 出口与内容不许取决于"恰恰会失败的那件事"（R11） ｜ 已升级
-- #36 测量工具在测量自己 ｜ 已升级
-- #37 想要"写沙盒"就**硬链接**，别用软链 —— 宿主会（正确地）拒绝 ｜ 已升级
-- #38 浏览器用例：**一个类共用一个浏览器**，而且失败也要关 ｜ 已升级
-- #39 交付审阅页必须启动 HTTP 审阅宿主，绝不能直接 open 本地 file:// 路径 ｜ 已升级（已确立为铁律，机制在 review-core 宿主那一侧）。
-- #66 GSAP 握手不证明 HyperFrames 播放正常 ｜ 已升级
-- #67 不透明源访问 loopback 和跨帧 blob 都可能被拦 ｜ 已升级
-- #68 编译路由的 base 不是 HTML 路径的父目录 ｜ 已升级
-- #74 审阅副本坏了不报错：页面照播，只是没声 ｜ 已修
-
-## GOTCHAS 迁移索引（2026-10-19）
-
-以下条目的后果已由代码/测试/公共宿主承接，正文移出 `GOTCHAS.md`，只留索引；「看到这个症状该怎么判断」如需追溯读历史版本。
-
-- #8 A leftover review server serves the wrong project ｜ 已升级（剪接线那台自带服务器 `edl_preview_serve.py` 已退役，宿主归公共缝）
-- #9 Register the timeline after the DOM, in the same script ｜ 已升级
-- #14 Screen recordings are VFR — force CFR before compositing ｜ 已升级
-- #16 The picture carries content, never method ｜ 已升级
-- #17 One cue per natural clause — the ceiling is not a grouping rule ｜ 已升级
-- #23 `hyperframes render --help` advertises WebM transparency; only the MOV half is true ｜ 已升级
-- #25 A freshly extracted segment was never read back ｜ 已升级
-- #26 Delivery gates picked the render record by position ｜ 已升级
-- #27 The page importer's href boundary was the page directory ｜ 已升级
-- #28 Inlining a page by hand bypasses the href rewrite ｜ 已升级
-- #29 The same id in two pages makes `#name` ambiguous ｜ 已升级
-- #30 A criterion that can never fail ｜ 已升级
-- #31 `hyperframes doctor` does not check the font cache ｜ 已升级
-- #32 注入点必须裸着独占一行，而且只许一个 ｜ 已升级
-- #35 出口与内容不许取决于"恰恰会失败的那件事"（R11） ｜ 已升级
-- #36 测量工具在测量自己 ｜ 已升级
-- #37 想要"写沙盒"就**硬链接**，别用软链 —— 宿主会（正确地）拒绝 ｜ 已升级
-- #38 浏览器用例：**一个类共用一个浏览器**，而且失败也要关 ｜ 已升级
-- #39 交付审阅页必须启动 HTTP 审阅宿主，绝不能直接 open 本地 file:// 路径 ｜ 已升级（已确立为铁律，机制在 review-core 宿主那一侧）。
-- #66 GSAP 握手不证明 HyperFrames 播放正常 ｜ 已升级
-- #67 不透明源访问 loopback 和跨帧 blob 都可能被拦 ｜ 已升级
-- #68 编译路由的 base 不是 HTML 路径的父目录 ｜ 已升级
-- #74 审阅副本坏了不报错：页面照播，只是没声 ｜ 已修
-
-## GOTCHAS 合并索引（2026-10-19）
-
-同根条目合并进宿主条目，正文只留宿主；症状与修正原则已并入宿主条目。
-
-- #5 Cloud-synced video folders make ffmpeg fail intermittently ｜ 并入 #52 编码产物不要直接写进云同步目录
-- #46 云同步目录里刚建的目录，下一个进程可能看不见 ｜ 并入 #52 编码产物不要直接写进云同步目录
-- #60 `hyperframes preview` 在沙箱下静默不起，而且它的路由只能验内容 ｜ 并入 #63 studio 会缓存 composition —— 改了源，你要硬刷新它
-- #64 studio 的 player 路由剥掉所有 `src=` 脚本，并把内联脚本拼成一个大脚本 ｜ 并入 #63 studio 会缓存 composition —— 改了源，你要硬刷新它
-- #65 「第几个脚本」不能当锚点，「第一个内联 script」尤其不能 ｜ 并入 #63 studio 会缓存 composition —— 改了源，你要硬刷新它
-- #69 `hyperframes render --workers auto` 按核数开满 Chrome → 小内存机器被 swap 打崩 ｜ 并入 #70 首次渲染的 compile 是冷启动（约 25 分钟），会被误判成「这台机器渲不动」
-- #51 lint 会把运行期 `if` 当成「补间一定存在」 ｜ 并入 #62 静态检查的两个假阳：对正确代码报红，训练出来的只是忽略
-- #54 删掉标记、却没删挂事件的代码 → 页面死在渲染数据之前 ｜ 并入 #57 审阅页的护栏是两具尸体 —— 不跑的测试等于没有测试
-- #72 `segment_durations.json` 的键是输出文件名的 stem，渲到非权威名会静默留下旧记录 ｜ 并入 #61 composition 用旧时间轴打过补丁 → 过期 3 秒，无人发现
-- #15 `-t` between two inputs belongs to the second input ｜ 并入 #22 Never end a render command with a pipe
-- #20 `render.py --no-loudnorm` cannot take an `-o` that equals the internal base name ｜ 并入 #22 Never end a render command with a pipe
-
-
-## GOTCHAS 迁移索引（2026-10-21）：三条命令化带来的两条
-
-以下两条的机制已由 `helpers/film.py` 与 `helpers/deliver.py` 承接，正文不进 `GOTCHAS.md`
-（该文件有条数上限，新增必须走迁移索引）。
-
-- #76 「画面」这一步以前没有入口，于是实现了自己重画原页 ｜ 已升级（`helpers/film.py` 的原页拆解闸门；`tests/test_film.py` 红→绿）
-- #77 画面层会把内容画进字幕区，字幕一压就废 ｜ 已升级（`helpers/deliver.py` 的 `captionSafe` 判据；`tests/test_deliver.py` 侵入即红）
-
-## 老路线 shim 为什么还留着（2026-10-21）
-
-`visual/scripts/import_svg_page.py`、`generate-composition.py` 仍是**活代码**，不是残留：
-
-- `helpers/build_review.py` 依赖 `import_svg_page.import_page` / `_inline_image_hrefs`（审阅页的 SVG 页导入路径）；
-- `visual/scripts/auto_choreography.py` 依赖 `import_svg_page.resolve_pages`；
-- `tests/test_snapshot_input.py` 直接 `import import_svg_page as pages`。
-
-所以老**路线**（十步流程、保真页面的做法）已存档进 `references/legacy-page-route.md`，
-但这两个**模块**必须保留。移除条件：当 `build_review.py` 与 `auto_choreography.py`
-各自的 SVG 页导入改为读 `_legacy_page/` 或新的 `film.py` 接口、且相关用例迁移完成后，
-再整体删除 shim 并同步更新本条。
-
-同轮还记录一条：**判据绿不等于页面可用**——`review.py` 的运行时判据曾经全绿，
-但页面顶栏是 `undefined 章 · NaN:NaN`、HUD `00:04 / 00:00`。根因是模板没对 `totals` 兜底、
-`build_density` 没从 steps 推区间。已在 2026-10-21 的现场测试后修复，并由
-`review.py` 的三道闸门锁住。
-
-## 2026-11-04 · 交付核验补一条「画面层 = composition」
-
-`deliver.py` 原来核的是分辨率/帧率/时长/音轨/首中尾帧/字幕安全区，全部绿过。品牌屋这轮
-`hyperframes render -w 4` 退 0、`check` 全绿、运动充足、没有黑帧，**画面从第 78 秒起整栋品牌屋
-没画出来**，是作者看片发现的。三条既有闸门都只说明「文件像一条正常的片子」，没有一条回答
-「这条片子还是不是那份 composition」。
-
-补的三件事：
-
-- `helpers/check_render_fidelity.py`：`hyperframes snapshot --at a,b,c --no-end` 取 composition 在
-  同样时刻的样子，和成片逐帧比结构相关 + 墨量；低墨量帧只看内容有没有塌。约 10–20 秒。
-- `deliver.py`：画面层可读之后立刻跑它（红即停）；渲染改回 `--workers 1`。非 HyperFrames 的
-  画面源跳过并记 note，跑不起来与「跑通了但不一致」分开报。
-- `helpers/probe_stage.py`：`--type-table` 一屏列出全部字号/基线（「字级漂移」这类问题现在看表就
-  能发现），`--at ... --ids ...` 在真浏览器里 seek 后读真实 opacity/位置（`immediateRender` 把
-  第 0 帧初始态拉平那次，只有这种读法看得见）。
-
-回归：`tests/test_render_fidelity.py`（同帧/差一帧/内容丢失/近黑帧四条判据）。

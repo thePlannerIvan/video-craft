@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 """Transcribe a video with 豆包流式语音识别 2.0 (SeedASR SAUC) — the correct
-backend for word-level transcription.
+backend for word-level transcription, and the **primary** transcription entry.
 
-Why: doubao-seed-2.0-lite (the generic LLM used by `--backend ark`) is NOT an
-ASR — it garbles fast speech, drifts word timestamps ±0.5-2s, and hallucinates
-words in silent spans. SeedASR 2.0 streaming (`volc.seedasr.sauc.duration`)
-returns clean per-word millisecond timestamps, no garble, no hallucination.
+Why: doubao-seed-2.0-lite (the generic LLM used by `--backend ark`, and the Ark
+leg of `transcribe.py --backend auto`) is NOT an ASR — it garbles fast speech,
+drifts word timestamps ±0.5-2s, and hallucinates words in silent spans.
+SeedASR 2.0 streaming (`volc.seedasr.sauc.duration`) returns clean per-word
+millisecond timestamps, no garble, no hallucination. `transcribe.py --backend
+auto` (Scribe→Ark→mlx) is the historical fallback for when no 豆包 speech-console
+credentials exist; the Ark leg it can reach is exactly the path GOTCHAS #1 bans.
 
 Usage:
-  uv run python helpers/transcribe_seedasr.py <video> --edit-dir <edit_dir>
+  python3 helpers/transcribe_seedasr.py <video> --edit-dir <edit_dir>
+  python3 helpers/transcribe_seedasr.py <video> <edit_dir>    # 位置参数（旧调用）
 
 Requirements:
   - Node.js 22+ and the `ws` npm package (npm install ws) in the video-use repo
@@ -25,22 +29,33 @@ the source file itself changes).
 """
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 import sys
 from pathlib import Path
 
 
-def main() -> int:
-    if len(sys.argv) < 2:
-        print(__doc__)
-        return 2
-    video = Path(sys.argv[1]).resolve()
-    edit_dir = Path(sys.argv[2]).resolve() if len(sys.argv) > 2 else video.parent / "edit"
-    # support --edit-dir flag too
-    for i, a in enumerate(sys.argv):
-        if a == "--edit-dir" and i + 1 < len(sys.argv):
-            edit_dir = Path(sys.argv[i + 1]).resolve()
+def build_parser() -> argparse.ArgumentParser:
+    ap = argparse.ArgumentParser(
+        prog="transcribe_seedasr.py",
+        description="豆包流式语音识别 2.0（SeedASR SAUC）词级转写 —— 首选转写入口。",
+        epilog="无豆包凭据时才用 transcribe.py --backend auto 历史回退（会走 Ark，见 GOTCHAS #1）。",
+    )
+    ap.add_argument("video", type=Path, help="源视频/音频（ffmpeg 可读）")
+    ap.add_argument("edit_dir", nargs="?", type=Path, default=None,
+                    help="剪辑目录，默认 <video 所在目录>/edit")
+    ap.add_argument("--edit-dir", dest="edit_dir_flag", type=Path, default=None,
+                    help="同位置参数；显式给时优先（保持旧调用方式兼容）")
+    return ap
+
+
+def main(argv=None) -> int:
+    args = build_parser().parse_args(argv)
+    video = Path(args.video).expanduser().resolve()
+    chosen = args.edit_dir_flag if args.edit_dir_flag is not None else args.edit_dir
+    edit_dir = (Path(chosen).expanduser().resolve() if chosen is not None
+                else video.parent / "edit")
 
     trans_dir = edit_dir / "transcripts"
     trans_dir.mkdir(parents=True, exist_ok=True)

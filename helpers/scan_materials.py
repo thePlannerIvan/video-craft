@@ -10,8 +10,14 @@
 
 产出
 ----
-    <materials_dir>/material-inventory.md   清单骨架（待模型补「画面一句话 / 水印 / 可用段落」）
-    <materials_dir>/_sheets/sheet-01.jpg…   帧带图：一行一个文件，帧上标时间码
+    <materials_dir>/material-inventory.md     清单骨架（待模型补「画面一句话 / 水印 / 可用段落」）
+    <materials_dir>/material-inventory.json   机器可读清单：`montage.py plan` 的准入依据
+    <materials_dir>/_sheets/sheet-01.jpg…     帧带图：一行一个文件，帧上标时间码
+
+JSON 清单的每一行：`path / name / duration / size / usable / summary / watermark / source`，
+初始 `usable=null`、`summary` 为空。**`montage.py plan` 只放行满足三条的行**：在清单里存在、
+`summary` 非空、`usable != false`。重扫不会清掉已填的 `summary/usable/watermark/source`
+（素材清单只增不删），但文件不见了就不会再出现在清单里。
 
 清单里的判据（填的时候照这个写）
 --------------------------------
@@ -35,11 +41,13 @@ import json
 import subprocess
 import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 VIDEO = (".mp4", ".mov", ".mkv", ".webm", ".m4v")
 IMAGE = (".jpg", ".jpeg", ".png", ".webp")
 FRAME_W = 220
+INVENTORY_NAME = "material-inventory.json"
 
 
 def probe(path: Path) -> dict | None:
@@ -107,12 +115,58 @@ def build_sheets(rows: list[dict], shot_dir: Path, per_sheet: int) -> list[Path]
     return sheets
 
 
+def previous_rows(path: Path) -> dict[str, dict]:
+    """已有的 JSON 清单行：重扫不能清掉人填进去的 summary/usable（清单只增不删）。"""
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    rows = doc.get("rows") if isinstance(doc, dict) else None
+    keep: dict[str, dict] = {}
+    for row in rows or []:
+        if isinstance(row, dict) and row.get("path"):
+            keep[str(row["path"])] = row
+    return keep
+
+
+def inventory_json_path(root: Path) -> Path:
+    return root / INVENTORY_NAME
+
+
+def write_inventory(rows: list[dict], root: Path) -> tuple[Path, int]:
+    """写机器清单；返回 (路径, 已有可复用的行数)。"""
+    path = inventory_json_path(root)
+    keep = previous_rows(path)
+    entries = []
+    carried = 0
+    for r in rows:
+        entry = {"path": r["path"], "name": r["name"], "duration": r["duration"],
+                 "size": r["size"], "usable": None, "summary": "",
+                 "watermark": "", "source": ""}
+        old = keep.get(r["path"])
+        if old:
+            carried += 1
+            for key in ("usable", "summary", "watermark", "source"):
+                if key in old:
+                    entry[key] = old[key]
+        entries.append(entry)
+    path.write_text(json.dumps({
+        "version": "material-inventory/1",
+        "root": str(root),
+        "generatedAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "rows": entries,
+    }, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    return path, carried
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="素材清单：抽帧带 + 清单骨架")
     ap.add_argument("materials_dir", type=Path)
     ap.add_argument("--frames", type=int, default=5, help="每条素材抽几帧（默认 5）")
     ap.add_argument("--per-sheet", type=int, default=6, help="一图放几个文件（默认 6）")
-    ap.add_argument("-o", "--out", type=Path, help="清单路径，默认 <dir>/material-inventory.md")
+    ap.add_argument("-o", "--out", type=Path,
+                    help="markdown 清单路径，默认 <dir>/material-inventory.md"
+                         f"（机器清单固定写 <dir>/{INVENTORY_NAME}，montage.py plan 读它）")
     ap.add_argument("--sheet-dir", type=Path, help="帧带目录，默认 <dir>/_sheets")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
@@ -169,12 +223,18 @@ def main(argv: list[str] | None = None) -> int:
         "- **画面一句话**：主体 + 景别 + 色调 + 有没有文字，不写形容词。",
         "- 时段写不清的素材不要进镜头表——它会在成片里变成一镜黑。"]
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    json_path, carried = write_inventory(rows, root)
 
     if args.json:
         print(json.dumps({"files": len(rows), "inventory": str(out),
+                          "inventoryJson": str(json_path),
                           "sheets": [str(s) for s in sheets]}, ensure_ascii=False, indent=2))
     else:
-        print(f"\n清单：{out}\n帧带：{len(sheets)} 张 → {sheet_dir}")
+        print(f"\n清单：{out}")
+        print(f"机器清单：{json_path}（填 summary / usable；montage.py plan 按这里放行）")
+        if carried:
+            print(f"已保留 {carried} 行原有登记（summary/usable/watermark/source）")
+        print(f"帧带：{len(sheets)} 张 → {sheet_dir}")
     return 0
 
 

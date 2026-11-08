@@ -1,6 +1,10 @@
 # 能力系统与方法论（v3 方向）
 
-> 本文涉及 page 路线的段落已归档（见 [legacy-page-route.md](legacy-page-route.md)）；现行 recompose 路线见 [film.md](film.md) 与 [recompose-mode.md](recompose-mode.md)。命令集中在 [tools.md](tools.md)。
+> **已归档（2026-11-08）**：本页只保留当时的能力系统取向与事故背景，不是现行规则；唯一仍然有效的口径（能力包记录写 `edit/project.md`，不新增 `project.json`）已并入 [stages.md 第 2 步](../references/stages.md)。
+> 交付指纹一节已过时（page 硬编码交付清单已由 `state_fingerprint.py` 与 [delivery.md](../references/delivery.md) 取代），不再成立。
+> 现行路线、工具与版式见 [stages.md](../references/stages.md)、[tools.md](../references/tools.md)、[montage-route.md](../references/montage-route.md)。
+
+> 本文涉及 page 路线的段落已归档（见 [legacy-page-route.md](../references/legacy-page-route.md)）；现行 recompose 路线见 [film.md](../references/film.md) 与 [recompose-mode.md](../references/recompose-mode.md)。命令集中在 [tools.md](../references/tools.md)。
 
 
 这份文件记录 2026-10 一次真实事故后的架构取向：**不再声明固定路线，也不建调度框架**。
@@ -11,7 +15,7 @@
 
 ## 1. 能力（tools）
 
-能力按动词划分，接口是 CLI + 文件，不依赖隐藏上下文。清单见 `references/tools.md`；
+能力按动词划分，接口是 CLI + 文件，不依赖隐藏上下文。清单见 `../references/tools.md`；
 这里只规定新增能力时的边界：
 
 - 一个能力只拥有一件事；输入输出能被另一条命令复现。
@@ -39,7 +43,7 @@ v3 已补的两个缺口：`helpers/edl_from_keep.py`（keep-list → 静音吸�
 ## 3. 共享事实的唯一主人
 
 时间映射、混音、页面意图、来源与交付件的唯一主人登记在
-[architecture.md](architecture.md) 的「共享事实」一节——这里是选择题，不是第二份契约。
+[architecture.md](../references/architecture.md) 的「共享事实」一节——这里是选择题，不是第二份契约。
 
 ## 4. 探测与降级
 

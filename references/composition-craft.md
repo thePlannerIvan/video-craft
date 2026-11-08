@@ -42,6 +42,8 @@ composition. React pages no longer implement final visuals.
     (a `tl.set` at position 0 does NOT render at frame 0)
   - `fromTo` 默认 `immediateRender: true`：**建时间轴时就把 from 值写到第 0 帧**，于是后段的
     `fromTo` 会盖掉你刚 `gsap.set` 好的初始态（实测：开场 3D 起手角度被拉平成 0，截图看不出来）。
+  - 渲染器是 seek 暂停时间轴、不是 play：`onStart` 这类回调在成片里不重放；要随时间变的元素
+    一律预建，再用 `opacity` / `zIndex` 切换（GOTCHAS #10）。
     全局 `gsap.defaults({ immediateRender: false })`，或给每个非首帧的 `fromTo` 显式关掉
   - never pair a CSS initial `transform` with a GSAP tween on the same
     property (lint rejects)
@@ -210,7 +212,9 @@ design_direction.md 的 json 代码块（整片默认）  ┐
 
 Media lives in `<project>/input/assets/`. Reference from the
 composition as `../input/assets/...`. Never copy large media into
-`composition/`.
+`composition/`. Enumerate the assets with `glob()` over the real directory —
+never build paths from a naming template — and pull one frame per asset before
+rendering to confirm each cell actually has content (GOTCHAS #12).
 
 ## Style
 

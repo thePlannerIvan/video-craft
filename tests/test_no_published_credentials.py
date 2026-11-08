@@ -15,10 +15,16 @@ These tests freeze both halves of the fix:
    the four key names and no values.
 3. `SKILL.md` states the preferred **online** service and where the environment
    lives, so a reader never has to infer it from install.md's footnotes.
+4. `.env` / `.env.local` exist at the skill root only. An archived or per-branch
+   copy is how four real keys (DOUBAO_APP_ID, DOUBAO_ACCESS_TOKEN, ARK_API_KEY,
+   ELEVENLABS_API_KEY) reached the Codex / Claude / Antigravity copies on
+   2026-11-08: `publish_skills.py` excludes `.venv` but not `.env`, so
+   `archive/video-use/.env` shipped verbatim to every runtime.
 """
 from __future__ import annotations
 
 import re
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -65,6 +71,21 @@ def shipped_files():
         yield path
 
 
+def stray_env_files(root=ROOT):
+    """`.env` / `.env.local` below the skill root. The root copy is the only allowed one."""
+    strays = []
+    for path in root.rglob("*"):
+        if not path.is_file() or path.name not in SKIP_NAMES:
+            continue
+        rel = path.relative_to(root)
+        if len(rel.parts) == 1:
+            continue
+        if any(part in SKIP_DIRS for part in rel.parts):
+            continue
+        strays.append(str(rel))
+    return sorted(strays)
+
+
 class NoShippedCredentials(unittest.TestCase):
     def test_no_credential_literal_in_any_shipped_file(self):
         hits = []
@@ -82,6 +103,28 @@ class NoShippedCredentials(unittest.TestCase):
         hits = [str(p.relative_to(ROOT)) for p in shipped_files()
                 if HOME_PATH.search(p.read_text(encoding="utf-8", errors="replace"))]
         self.assertEqual(hits, [], f"machine-specific home paths in shipped docs: {hits}")
+
+    def test_env_files_exist_only_at_the_skill_root(self):
+        """凭据只属于本机技能根。归档副本不需要凭据，也不该被发布出去。"""
+        self.assertEqual(
+            stray_env_files(),
+            [],
+            "归档副本不需要凭据：.env / .env.local 只允许出现在技能根，"
+            f"以下位置出现了副本：{stray_env_files()}",
+        )
+
+    def test_the_env_location_rule_catches_a_nested_copy(self):
+        """The check above is only worth having if it fires; prove it on a fake tree."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".env").write_text("ARK_API_KEY=root-is-fine\n", encoding="utf-8")
+            (root / "archive" / "video-use").mkdir(parents=True)
+            (root / "archive" / "video-use" / ".env").write_text("ARK_API_KEY=oops\n", encoding="utf-8")
+            (root / "node_modules" / "pkg").mkdir(parents=True)
+            (root / "node_modules" / "pkg" / ".env").write_text("deps are not ours\n", encoding="utf-8")
+            self.assertEqual(stray_env_files(root), [str(Path("archive") / "video-use" / ".env")])
+            (root / "archive" / "video-use" / ".env").unlink()
+            self.assertEqual(stray_env_files(root), [])
 
 
 class BringYourOwnTranscription(unittest.TestCase):

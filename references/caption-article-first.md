@@ -34,6 +34,9 @@ words only in the subtitle builder.
 Read the whole article once from beginning to end. Fix clear ASR mistakes,
 names, terminology and punctuation. Keep uncertain hearing conservative until
 the audio is checked. Do not rewrite the speaker into a polished script.
+Before deleting a word or trusting a name, run that window through a second
+backend and compare characters and start/end word by word; when the two
+disagree, go back to the audio — don't edit off either word box (GOTCHAS #2).
 
 The default duplicate rule is: when the same point or sentence appears more
 than once, keep the last complete and clearest version. Do not splice a prefix

@@ -5,7 +5,8 @@
 - author-spec.md：跨风格都成立的全局判准（G 条目）
 - style-spec.md：某一种风格的动效规则（S 条目，按风格 slug 分节）
 
-路线只有一个（recompose），不作为规范维度。
+规范是判准与准入层，不按路线分维：片型有两条（graphic 造画面 / montage 选画面），
+版式/画框（frame）与片型正交；只对某类片型成立的条目在正文里标注适用范围。
 
 这条命令只挡机械项，不判断规则对不对——语义冲突仍然要人裁决。
 
@@ -16,6 +17,7 @@
 4. 执行点解析：`check:` 指向的路径必须存在；`judgment:` 必须写具体看什么
 5. 编号唯一：G / S 条目编号不重复
 6. slug 枚举：风格节名必须是已知 slug（新增是一次架构决定）
+7. 措辞：author-spec / style-spec / preferences 不得出现单路线口径
 
 用法：
     python3 helpers/spec_lint.py [--json] [--spec-dir <目录>]
@@ -44,6 +46,15 @@ MAX_TOTAL_ENTRIES = 25
 MAX_ENTRY_BODY_LINES = 9
 
 STYLE_SLUGS = ("line-art", "business-report", "collage", "concept-film")
+
+# 单路线口径已作废：片型有 graphic / montage 两条，版式与片型正交。
+# 这里只挡措辞，不让它重新长回来；文件范围是规范三件套（含准入契约 preferences.md）。
+ROUTE_TEXT_FILES = (AUTHOR_SPEC, STYLE_SPEC, "preferences.md")
+SINGLE_ROUTE_RES = (
+    re.compile(r"路线只有\s*(?:一[条个]|recompose)"),
+    re.compile(r"只有\s*recompose\s*一[条个]"),
+    re.compile(r"只有\s*一[条个]\s*路线"),
+)
 
 AUTHOR_ENTRY_RE = re.compile(r"^##\s+(G\d{2})\s+(.+?)\s*$")
 SECTION_RE = re.compile(r"^##\s+([a-z][a-z0-9-]+)\s*(?:·\s*(.+?))?\s*$")
@@ -106,6 +117,22 @@ def _entry_problems(entry_id: str, body: list[str], skill_root: Path) -> list[st
     return problems
 
 
+def _route_wording_problems(spec_dir: Path) -> list[str]:
+    """挡掉「路线只有一条」类措辞：片型是 graphic / montage 两条，版式与片型正交。"""
+    problems: list[str] = []
+    for name in ROUTE_TEXT_FILES:
+        path = spec_dir / name
+        if not path.exists():
+            continue
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if any(pattern.search(line) for pattern in SINGLE_ROUTE_RES):
+                problems.append(
+                    f"{name}:{lineno} 出现单路线措辞（路线只有一条）；"
+                    "应写成两条片型 graphic / montage + 版式正交"
+                )
+    return problems
+
+
 def lint(spec_dir: Path | str | None = None, skill_root: Path | str | None = None) -> list[str]:
     spec_dir = Path(spec_dir) if spec_dir else DEFAULT_SPEC_DIR
     skill_root = Path(skill_root) if skill_root else SKILL_ROOT
@@ -158,6 +185,7 @@ def lint(spec_dir: Path | str | None = None, skill_root: Path | str | None = Non
     total = len(author_entries) + style_total
     if total > MAX_TOTAL_ENTRIES:
         problems.append(f"两个文件合计 {total} 条，超过 {MAX_TOTAL_ENTRIES} 条上限")
+    problems += _route_wording_problems(spec_dir)
     return problems
 
 

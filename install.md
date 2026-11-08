@@ -1,6 +1,6 @@
 ---
 name: video-craft-install
-description: Install video-craft into the current agent (Codex, Claude Code, etc.) and wire up ffmpeg + the transcription keys so the user can start editing immediately.
+description: Install video-craft into the current agent (Claude Code, Codex, Antigravity, DSH, etc.) and wire up ffmpeg + the transcription keys so the user can start editing immediately.
 ---
 
 # video-craft install
@@ -11,47 +11,80 @@ Use this file only for first-time install or reconnect. For daily editing, read 
 
 You're setting up a conversation-driven video editor for the user. After install, the user drops raw footage into any folder, runs their agent (`claude`, `codex`, etc.) there, and says "edit these into a launch video." You do the rest by reading `SKILL.md`.
 
+A round ends at a **playable review page in the side panel plus a to-do list — not a rendered film.**
+`edit/_engineering/` holds review material (engineering state, re-renderable, not a deliverable);
+`成品/` is the deliverable and is written only on the author's explicit "render it" instruction,
+after a human submission covers the current review snapshot.
+
 Three things must exist on this machine:
 
-1. The `video-craft` skill directory, synced to a stable path.
+1. The `video-craft` skill directory, at a stable path.
 2. `ffmpeg` on `$PATH` (plus optional `yt-dlp` for online sources).
 3. A transcription service of the user's own: online preferred — `DOUBAO_APP_ID` + `DOUBAO_ACCESS_TOKEN` for 豆包流式语音识别 2.0 (SeedASR) in `.env`. Optional alternatives: `ELEVENLABS_API_KEY` (Scribe, cross-check) or the local mlx-whisper extra. **The repo ships no credentials**; without any, transcription cannot run — see step 5.
 
 And one thing must be true about the current agent:
 
-4. It can discover `SKILL.md` — either via a global skills directory (`~/.claude/skills/`, `~/.codex/skills/`) or via a `CLAUDE.md` / system-prompt import.
+4. It can discover `SKILL.md` — either via a global skills directory (`~/.claude/skills/`, `~/.codex/skills/`, `~/.gemini/config/skills/`, `~/.dsh/skills/`) or via a `CLAUDE.md` / system-prompt import.
 
 ## Install prompt contract
 
 - Do everything yourself. Only ask the user for things you cannot generate — **their own** transcription-service credentials, and confirmation before `brew install`. A credential goes into `<skill>/.env` only: never into a document, an example, a chat reply, a runtime copy checked into git, or a commit.
-- The skill lives in the skills library. Symlink it into each agent's skills
-  directory — do not make a second copy, or the three locations drift and
-  `manifest.json` version numbers will agree while the contents do not.
+- Runtime skill directories have exactly one owner, and it depends on who you are. A **standalone user** installs with the Skills CLI; the runtime copy it writes **is** the install, because there is no library checkout to drift from. A **monorepo developer** syncs with `publish_skills.py` and never hand-copies or hand-links the Codex / Claude Code / Antigravity directories. Don't mix the two tracks, and don't create a second copy in either.
+- DSH is always a link, not a copy: `~/.dsh/skills/video-craft` points at the source directory you actually edit, so changes take effect immediately.
 - The skill references helpers by bare name (`transcribe.py`, `render.py`). That works because SKILL.md and `helpers/` ship together — keep them as siblings when you register the skill.
 - After install, verify by running one real command against one real file. Don't declare success on file-existence checks alone.
 
 ## Steps
 
-### 1. Clone to a stable path
+### 1. Put the skill on a stable path (pick your track)
+
+**Track A · standalone (installed from GitHub) — one way only**
 
 ```bash
-# video-craft is a local, decoupled skill — it is not cloned from an upstream.
-# The canonical source lives wherever *you* keep the skills library; nothing here
-# assumes a particular machine layout. Override either variable if yours differ.
+npx skills add https://github.com/thePlannerIvan/video-craft --skill video-craft
+```
+
+It prints where it wrote the skill. For a standalone user that runtime directory
+(`~/.claude/skills/video-craft` or `~/.codex/skills/video-craft`) **is the install**:
+there is no `02-skills-library` checkout here, so nothing can drift from a source.
+Re-run the same command to update. Then point `CRAFT_SRC` at that directory:
+
+```bash
+CRAFT_SRC="${CRAFT_SRC:-$HOME/.claude/skills/video-craft}"
+CATEGORY_PY="${CATEGORY_PY:-python3}"
+```
+
+**Track B · monorepo checkout**
+
+```bash
+# The canonical source is your skills library; nothing here assumes a machine layout.
 CRAFT_SRC="${CRAFT_SRC:-$HOME/skills/02-skills-library/03-design-delivery/video-craft}"
 # The interpreter this whole category shares (see step 2).
 CATEGORY_PY="${CATEGORY_PY:-$HOME/skills/02-skills-library/.venv/bin/python}"
-# Fail with the exact fix rather than continuing on a path that is not there.
-[ -d "$CRAFT_SRC" ] || { echo "CRAFT_SRC not found: $CRAFT_SRC" >&2; echo "  fix: CRAFT_SRC=<your video-craft checkout>" >&2; exit 1; }
-[ -x "$CATEGORY_PY" ] || { echo "CATEGORY_PY not executable: $CATEGORY_PY" >&2; echo "  fix: CATEGORY_PY=<path to the shared category python>" >&2; exit 1; }
-cd "$CRAFT_SRC"
 ```
 
 If the repo is already there, `git pull --ff-only` and continue.
 
+Both tracks — fail with the exact fix rather than continuing on a path that is not there:
+
+```bash
+[ -d "$CRAFT_SRC" ] || { echo "CRAFT_SRC not found: $CRAFT_SRC" >&2; echo "  fix: CRAFT_SRC=<the video-craft directory>" >&2; exit 1; }
+command -v "$CATEGORY_PY" >/dev/null || { echo "CATEGORY_PY not executable: $CATEGORY_PY" >&2; echo "  fix: CATEGORY_PY=<python 3.9+>" >&2; exit 1; }
+cd "$CRAFT_SRC"
+```
+
 ### 2. Python
 
-There is nothing to create — the category shares one interpreter:
+**Track A (standalone):** use any Python 3.9+ you already have (`python3`). This Skill's
+own deps are listed in `pyproject.toml` (`requests`, `librosa`, `matplotlib`, `pillow`,
+`numpy`); install them into that interpreter if a helper asks for one:
+
+```bash
+"$CATEGORY_PY" -V                     # must be 3.9+
+"$CATEGORY_PY" -m pip install -e "$CRAFT_SRC"
+```
+
+**Track B (monorepo):** there is nothing to create — the category shares one interpreter:
 
 ```bash
 "$CATEGORY_PY" -V                     # Python 3.9.6
@@ -59,14 +92,8 @@ There is nothing to create — the category shares one interpreter:
 
 It is a `--system-site-packages` venv built from `/usr/bin/python3`, offline-ready,
 and it already carries `pptx` / `lxml` / `PIL` / `playwright` / `numpy`. Run helpers
-and tests with it: `"$CATEGORY_PY" helpers/render.py ...`.
-
-`pyproject.toml` lists this Skill's own deps (`requests`, `librosa`, `matplotlib`,
-`pillow`, `numpy`). Install them into that interpreter if a helper asks for one:
-
-```bash
-"$CATEGORY_PY" -m pip install -e .
-```
+and tests with it: `"$CATEGORY_PY" helpers/render.py ...`. Install this Skill's deps
+into it the same way: `"$CATEGORY_PY" -m pip install -e .`.
 
 ### 3. Install ffmpeg (+ optional yt-dlp)
 
@@ -89,25 +116,53 @@ If `brew` / `apt` / `pacman` requires a sudo prompt, tell the user the exact com
 
 ### 4. Register the skill with the current agent
 
-Figure out which agent you are running under, and register once. A symlink of the whole repo directory is the right shape — helpers/ needs to sit next to SKILL.md.
+**Track A (standalone):** the Skills CLI already wrote the Claude Code / Codex copies it
+detected — that is the registration, and it is legitimate because that copy *is* the
+install. Two more platforms are links, not extra copies:
 
-- **Claude Code** (`~/.claude/` present):
-
-    ```bash
-    mkdir -p ~/.claude/skills
-    ln -sfn "$CRAFT_SRC" ~/.claude/skills/video-craft
-    ```
-
-- **Codex** (`$CODEX_HOME` set, or `~/.codex/` present):
+- **Antigravity** — symlink to the Claude copy, the same shape the library publisher uses:
 
     ```bash
-    mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
-    ln -sfn "$CRAFT_SRC" "${CODEX_HOME:-$HOME/.codex}/skills/video-craft"
+    mkdir -p ~/.gemini/config/skills
+    ln -sfn ~/.claude/skills/video-craft ~/.gemini/config/skills/video-craft
     ```
 
-- **Hermes / Openclaw / another agent with a skills directory**: symlink `"$CRAFT_SRC"` into that agent's skills directory under the name `video-craft`. If the agent has no skills directory, add a line to its system prompt / config pointing at `"$CRAFT_SRC"/SKILL.md` (e.g. an `@"$CRAFT_SRC"/SKILL.md` import in a `CLAUDE.md`-equivalent).
+    If you only run Codex, point it at `~/.codex/skills/video-craft` instead.
 
-If you can't tell which agent you're in, ask the user once: "which agent am I running under — Claude Code, Codex, or something else?" Then pick the right target.
+- **DSH** — link the directory you actually run and edit; changes take effect immediately,
+  no runtime copy is published:
+
+    ```bash
+    mkdir -p ~/.dsh/skills
+    ln -sfn "$CRAFT_SRC" ~/.dsh/skills/video-craft
+    ```
+
+**Track B (monorepo):** `publish_skills.py` is the only runtime entry point:
+
+```bash
+cd "$(dirname "$(dirname "$CRAFT_SRC")")"   # → 02-skills-library
+python3 publish_skills.py --dry-run
+python3 publish_skills.py --target all
+```
+
+It writes the Codex and Claude Code copies and points Antigravity at the Claude copy.
+Do **not** hand-copy or hand-link those three directories here — that is exactly the drift
+the publisher exists to prevent. DSH still uses a link to the source you edit:
+
+```bash
+mkdir -p ~/.dsh/skills
+ln -sfn "$CRAFT_SRC" ~/.dsh/skills/video-craft
+```
+
+**Another agent (Hermes / Openclaw / …):** use that agent's own installer if it has one.
+Otherwise register the whole directory (`SKILL.md` + `helpers/` as siblings) the way that
+agent expects, or add a `CLAUDE.md`-equivalent import pointing at `"$CRAFT_SRC"/SKILL.md`.
+In Track B, the three directories the publisher owns (Codex / Claude Code / Antigravity)
+still go through `publish_skills.py`; for an agent it doesn't cover, register it once and
+treat that as the agent's own install — never copy it into the publisher-owned three.
+
+If you can't tell which agent you're in, ask the user once: "which agent am I running under
+— Claude Code, Codex, Antigravity, DSH, or something else?" Then pick the right target.
 
 ### 5. Transcription: an online service is the default
 
@@ -189,20 +244,19 @@ Full transcription test is optional at install time — SeedASR and Scribe both 
 
 Tell the user, in one short message:
 
-- Where the skill is installed (`$CRAFT_SRC`, symlinked into the agent's skills directory).
+- Where the skill is installed (`$CRAFT_SRC`; Track A: the runtime directory the Skills CLI wrote; Track B: the library source plus the publisher's copies/symlinks).
 - That they should `cd` into their footage folder and start their agent there (e.g. `claude`).
 - That a good first message is: *"edit these into a launch video"* or *"inventory these takes and propose a strategy."*
-- That all outputs land in `<videos_dir>/edit/` — the repo stays clean.
+- That a round ends at a **playable review page in the side panel plus a to-do list**, not a film: outputs land in `<videos_dir>/edit/` (review material, including `edit/_engineering/`), while `成品/` is the deliverable and only gets written on their explicit "render it" instruction after a human submission covers the current snapshot. The skill repo stays clean.
 
 ## Keeping the skill current
 
-- video-craft is decoupled from upstream: update it in the skills library and
-  commit there. The symlinks pick the change up on the next run.
-- If `pyproject.toml` changed deps, re-run `"$CATEGORY_PY" -m pip install -e "$CRAFT_SRC"` after pulling.
+- **Track A:** re-run the Skills CLI command; if it changed the install path, re-run step 4's links. `pyproject.toml` changes → re-run the pip install from step 2.
+- **Track B:** update the library checkout and publish — `python3 publish_skills.py --target all` from `02-skills-library`; the copies and the Antigravity symlink pick it up. DSH links to the source and needs nothing. `pyproject.toml` changes → re-run `"$CATEGORY_PY" -m pip install -e "$CRAFT_SRC"` after pulling.
 
 ## Cold-start reminders
 
-- Symlink the **whole directory**, not just `SKILL.md`. The helpers need to sit next to it.
+- Register the **whole directory**, not just `SKILL.md`. The helpers need to sit next to it. In Track B that means the publisher, not a hand-copied duplicate.
 - If `.env` exists but the key is empty, treat it the same as missing — don't assume existence means validity.
 - `ffmpeg` from static builds works fine. Any modern (≥ 4.x) build is enough for the cut/render path, **but check for libass before promising burned subtitles**: `ffmpeg -filters | grep -c subtitles` must be ≥ 1. Homebrew's default `ffmpeg` on this machine ships WITHOUT `--enable-libass`, so the `subtitles`/`ass` filters do not exist and `render.py` without `--no-subtitles` fails with "No such filter: 'subtitles'". The independent-SRT delivery path (`--no-subtitles` + `srt_export.py`) is unaffected — and is the recommended Chinese-caption path anyway. If burned subtitles are truly required, install a libass-enabled build (`brew install ffmpeg --with-libass` on older formulae, or a static gpl build that includes libass).
 - `yt-dlp` is optional. Don't block install on it; install lazily the first time a user asks to pull from a URL.
@@ -230,9 +284,11 @@ Tell the user, in one short message:
 
 ### Note on the venv path
 
-Use the category interpreter — `02-skills-library/.venv/bin/python`. It is a
+**Track B** uses the category interpreter — `02-skills-library/.venv/bin/python`. It is a
 `--system-site-packages` venv (Python 3.9.6) shared by every Skill in
 `02-skills-library`, installed offline, so nothing has to be created or synced.
+
+**Track A** has no shared category venv: use your own Python 3.9+ (step 2).
 
 `.venv` inside this skill directory is a leftover symlink into `~/dev-cache/...`
 (a uv-built 3.14 environment). It is not the convention any more and it is not

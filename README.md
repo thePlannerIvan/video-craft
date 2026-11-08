@@ -23,11 +23,19 @@
 
 默认先交工程态审阅；作者明确出片后再合成与核验。逐字剪辑和动效审阅是两种制作界面，均使用公共审阅宿主。
 
+**一轮的终点是侧边栏审阅页可播 + 本轮待办，不是成片。** 产物分两级，别混：
+
+| 落点 | 是什么 | 什么时候写 |
+|---|---|---|
+| `edit/_engineering/**` | 审阅素材（工程态） | 每轮都能重渲、给审阅页消费，不算交付 |
+| `成品/**` | 交付件 | 只在作者明确出片指令 + 人工提交覆盖当前快照后写入 |
+
 - [SKILL.md](SKILL.md)：按输入和本轮目标选阶段。
 - [阶段契约](references/stages.md)：11 步的输入、完成条件与返回路径。
 - [工具手册](references/tools.md)：现有入口与调试命令。
 - [架构与 Debug](references/architecture.md)：职责、失效范围、局部优化和验证。
 - [实现 Brief](references/implementation-brief.md)：B1–B8 的实现范围、兼容方式与实际验收记录。
+- [验收用例](evals/README.md)：行为判据、路线覆盖矩阵与 `run_evals.py`。
 
 EDL 时间与外部 SRT 来源分别登记；工程态 projected 不冒充实测。视觉制作按**片型**分叉：画面是造出来的（页/图形/字卡）走 recompose，先拆批准原页再手写 composition；画面是选出来的（档案影像/实拍/照片）走 montage 路线（素材清单 → 镜头表 → 渲染体检）；版式/画框是两种片型共用的一层。旧 page 路线隔离恢复。
 
@@ -44,11 +52,32 @@ alpha 是不是被烘成了不透明、帧率对得上底片吗、时长等于�
 
 ## 安装
 
-从 GitHub 装：
+两种读者，两条路，不要混：
+
+**① 独立用户（从 GitHub 装）** —— 一种方式，Skills CLI：
 
 ```bash
 npx skills add https://github.com/thePlannerIvan/video-craft --skill video-craft
 ```
+
+它把 Skill 写进检测到的 agent 技能目录（`~/.claude/skills/video-craft`、`~/.codex/skills/video-craft`）。
+对独立用户来说，那份 runtime 副本**就是安装本体**：机器上没有 `02-skills-library` 源目录，
+不存在"和源目录漂移"这回事；更新 = 重跑同一条命令。Antigravity 与 DSH 的接法见
+[install.md](install.md) 第 4 步。
+
+**② monorepo 开发者** —— `publish_skills.py` 是 runtime 同步的唯一入口：
+
+```bash
+cd 02-skills-library
+python3 publish_skills.py --dry-run
+python3 publish_skills.py --target all
+```
+
+三端的所有权归发布器：Codex / Claude Code 是复制，Antigravity 是指向 Claude 副本的符号链接。
+在 monorepo 里**不要**手动复制或 `ln` 进这三个目录——那会多出一份不被发布器承认的漂移副本。
+完整规则见 monorepo 库根的 `PUBLISHING.md`（随库分发，不在这份 GitHub 仓库里）。
+
+首次安装的完整步骤（ffmpeg、Python、凭据与四端注册）见 [install.md](install.md)。
 
 ### 开源：自备转录服务
 
@@ -61,6 +90,8 @@ npx skills add https://github.com/thePlannerIvan/video-craft --skill video-craft
 | 暂时都不开 | 装本地 mlx-whisper 兜底（只作最后手段） |
 
 把凭据写进本 Skill 根目录的 `.env`（模板见 `.env.example`）。`.env` 已进 `.gitignore`：不要提交它，也不要把 key 贴进 issue、文档或截图——仓库里的文档与示例只有键名和占位符。没有凭据时如实报缺，不会伪造词级时间。
+
+SeedASR 还要 Node 22+ 与 `ws`，装在你实际运行的那份副本里（`npm install ws`；目录变量见 [install.md](install.md) 第 5 步）。
 
 ## 公共模组（缺了会自动装）
 
@@ -118,27 +149,13 @@ git clone --depth 1 https://github.com/thePlannerIvan/<模组名>.git \
 # 想钉版本：加 --branch v1.0.0
 ```
 
-**内部依赖为什么不走 `npx skills add`**：它没有 `--dir` 之类的落点参数，只会写进 `~/.claude/skills`、`~/.codex/skills` 这类 **runtime 技能目录**（那是发布器的领地，写进去等于多一份漂移副本）；而且它下载的目录**不带 `.git`**，拿不到 commit、也就没法追溯装的是哪一版。**门面命令归用户，内部依赖归 clone** —— 上面自动安装走的就是这条。
+**内部依赖为什么不走 `npx skills add`**：它没有 `--dir` 之类的落点参数，只会写进 `~/.claude/skills`、`~/.codex/skills` 这类 **runtime 技能目录**（对 monorepo 维护者来说那是发布器的领地，写进去等于多一份漂移副本；独立用户没有源目录，所以上面那一步是合法的）；而且它下载的目录**不带 `.git`**，拿不到 commit、也就没法追溯装的是哪一版。**门面命令归用户，内部依赖归 clone** —— 上面自动安装走的就是这条。
 
+不要 `git clone` 到 runtime 技能目录：独立用户走 Skills CLI，monorepo 开发者走发布器，两种安装不会同时出现在一台机器上。先按测试与发布规则验收，再从 `02-skills-library` 发布。
 
-或克隆到 skills 目录：
-
-```bash
-git clone https://github.com/thePlannerIvan/video-craft.git ~/.claude/skills/video-craft
-```
-
-在 monorepo 中开发时，runtime 同步使用仓库发布器：
-
-```bash
-cd 02-skills-library
-python3 publish_skills.py --dry-run
-python3 publish_skills.py --target all
-```
-
-发布器是 runtime 同步的唯一入口；不要手动复制或链接 Codex、Claude Code、Antigravity 目录。先按测试与发布规则验收，再从 `02-skills-library` 发布。
-
-Python 用 `02-skills-library/.venv/bin/python`（3.9.6，`pptx` / `lxml` / `PIL` /
-`playwright` / `numpy` 齐，本类别共用，离线可用）；系统 `python3` 同样能跑测试套件。
+Python：monorepo 里用 `02-skills-library/.venv/bin/python`（3.9.6，`pptx` / `lxml` / `PIL` /
+`playwright` / `numpy` 齐，本类别共用，离线可用）；独立安装没有这个共享环境，用本机 Python 3.9+
+（`python3`），依赖按 `pyproject.toml` 装。两种情况系统 `python3` 都能跑测试套件。
 需要单独装依赖时用 `pip install -e .`，清单见 `pyproject.toml`。
 
 密钥放本 skill 的 `.env`（**不要**放进用户的视频目录；`.env` 已被 gitignore）：
@@ -159,13 +176,22 @@ ARK_API_KEY=...
 
 ```bash
 cd tests
-# CATEGORY_PY is the interpreter the whole category shares — set in install.md step 1.
+# 从 tests/ 跑；`PYTHONPATH=..:../helpers` 是本节的标准写法。
+# CATEGORY_PY 见 install.md 第 1 步：monorepo 用共享解释器，独立安装用本机 python3。
 PYTHONPATH=..:../helpers PATH=/opt/homebrew/bin:$PATH \
   "${CATEGORY_PY:?set CATEGORY_PY to the shared category python (see install.md)}" \
   -m unittest discover -s . -p "test_*.py"
 ```
 
 `PATH` 那一段是必须的：`check_overlay` 的 16 条要真起 `ffmpeg` 造文件。
+
+默认自检必须全绿：出现 `ERROR` 或非 opt-in 的 `skip` 先修护栏，别当成既有噪声放过去（GOTCHAS #57）。
+
+验收用例只做结构与覆盖校验，不评模型回答（从 Skill 根跑）：
+
+```bash
+python3 evals/run_evals.py       # 退码 0/1；矩阵口径见 evals/README.md
+```
 
 公共模组自动安装器自己的不变量测试（安装根优先级、禁地断言、候选顺序、幂等、失败清理、只报不装）：
 
@@ -177,7 +203,8 @@ python3 planners_modules_install_test.py
 
 覆盖：剪辑契约、SRT/时间来源与时间轴、帧率解析、人像探测、覆盖层契约及坏覆盖层拒绝、
 视觉审阅的实际播放/反馈/收件、上屏文字闸门、`script_hash` 比对、抽段完整性、
-按 EDL 哈希选取渲染记录、交付与二次剪映射、HyperFrames 环境预检。
+按 EDL 哈希选取渲染记录、交付与二次剪映射、HyperFrames 环境预检、
+montage 镜头表换算与空镜识别、画框 token/preview 落位（contain）、渲染闸门。
 SVG page 导入用例只保护旧项目兼容，不代表它是新项目路线；旧 page 流程见归档说明。
 
 单独跑某一项，例如：
@@ -230,4 +257,4 @@ PYTHONPATH=..:../helpers "${CATEGORY_PY:?set CATEGORY_PY as described in install
 
 ## 在 DSH 中使用
 
-在 Planners Form 设置中安装本 Skill；回到对话后使用 `video-craft` 调用，审阅页面由 Skill 在流程需要时打开。Planners Form 安装 Skill 与公共审阅依赖；视频渲染所需的 FFmpeg、Python 包及可选引擎仍按 [install.md](install.md) 准备。API 凭据由使用者自行配置，不随仓库分发。
+在 Planners Form 设置中安装本 Skill；回到对话后使用 `video-craft` 调用，审阅页面由 Skill 在流程需要时打开。也可以把 `~/.dsh/skills/video-craft` 指向你实际编辑的源目录：改完即生效，不发 runtime 副本（两种接法见 [install.md](install.md) 第 4 步）。Planners Form 安装 Skill 与公共审阅依赖；视频渲染所需的 FFmpeg、Python 包及可选引擎仍按 [install.md](install.md) 准备。API 凭据由使用者自行配置，不随仓库分发。

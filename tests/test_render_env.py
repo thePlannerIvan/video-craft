@@ -6,9 +6,10 @@ Measured failure: in a restricted sandbox `hyperframes render` stops with
 
 The only suggestion it makes is `--docker` (needs Docker, absent here); the way
 out is `HYPERFRAMES_FONT_CACHE_DIR`, which no help text lists and `hyperframes
-doctor` does not check. `check_render_env.py` says so up front, and points at
-`generate-composition.py` rather than `hyperframes init` when the composition is
-missing — `init` would replace the generated one.
+doctor` does not check. `check_render_env.py` says so up front, and when the
+composition is missing it points at hand-writing it from the `film.py pages`
+break-down — not at `hyperframes init`, which would replace the composition the
+model wrote, and not at the archived page-route generator.
 """
 from __future__ import annotations
 
@@ -89,9 +90,14 @@ class RenderEnvTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("not on PATH", output)
 
-    def test_a_missing_composition_points_at_the_generator_not_at_init(self):
+    def test_a_missing_composition_points_at_hand_writing_not_at_init(self):
+        """The hint must name the current entry (film.py break-down → hand-write),
+        not the archived generator, and not `init` (it would replace the file)."""
         code, output = self.run_check(composition=self.root / "composition")
-        self.assertIn("generate-composition.py", output)
+        self.assertEqual(code, 1, "a missing composition/index.html fails the check")
+        self.assertIn("film.py", output)
+        self.assertIn("archived", output)
+        self.assertNotIn("generate it with", output, "the archived generator is no longer a way out")
         self.assertIn("hyperframes init", output)
         self.assertIn("would replace it", output)
 

@@ -278,8 +278,10 @@ def check(composition: Path | None = None, env: dict | None = None,
         if not index.is_file():
             failed = True
             lines.append(f"x    composition: no index.html in {composition}")
-            lines.append("     generate it with visual/scripts/generate-composition.py;"
-                         " `hyperframes init` would replace it")
+            lines.append("     hand-write it from the `film.py pages` break-down"
+                         " (references/film.md); the page-route generator"
+                         " (generate-composition.py) is archived and no longer runs")
+            lines.append("     `hyperframes init` would replace it")
         else:
             lines.append(f"ok   composition: {index}")
 

@@ -16,14 +16,26 @@
 `cutStart` 是剪后时间轴上的秒数，两者不共用字段**；花字一律给「段 + 词序号」的词锚，
 由这里换算成剪后时间，并钳到所在镜头结束前。
 
-两条命令
+三条命令
 --------
-    python3 helpers/montage.py plan   <edit_dir> --shots <spec.json> [-o <plan.json>]
-    python3 helpers/montage.py render <edit_dir> [--plan <plan.json>] [--max N] [--only 1,3,5]
+    python3 helpers/montage.py plan      <edit_dir> --shots <spec.json> [-o <plan.json>]
+    python3 helpers/montage.py render    <edit_dir> [--plan <plan.json>] [--max N] [--only 1,3,5] [--concat] [--deliver]
+    python3 helpers/montage.py voice-cut <edit_dir> [--master <母版>] [--audio <口播音轨>] [-o <out>]
 
-`plan` 把「段 + 起始词」的人读镜头表展开成绝对时间，校验后写 `edit/montage-plan.json`；
+`plan` 把「段 + 起始词」的人读镜头表展开成绝对时间，校验后写 `edit/montage-plan.json`。
+它有两道准入：**素材清单**（`material-inventory.json`：每镜的素材要登记、`summary` 非空、
+`usable != false`）与**唯一性**（`ReuseLedger`；`check_montage.py` import 同一份实现）。
+素材不清就先回 `scan_materials.py`，别在镜头表里按文件名猜。EDL 段里有 `speed != 1` 或
+`mute` 直接拒——montage 的剪后时间按原速累加，静默算下去整片会错位。
+
 `render` 按 `montage-plan.json` 逐镜渲染（幂等缓存、可 `--max` 分块、先写 /tmp 再 move），
-再可选合成与混音。检查在 `check_montage.py`，本模块不重复。
+再可选合成与混音。**默认输出 `edit/_engineering/picture.mp4` = 审阅素材，不打闸**；
+目标不在 `edit/_engineering/` 下时必须显式 `--deliver`，且先过 `render_gate.py` —— 交付件的
+判据是「作者明确指令 + 人工提交覆盖当前快照」，不是命令跑完了。
+
+`voice-cut` 按 `edit/edl.json` 从母版剪竖屏人物轨：默认无声、落
+`edit/_engineering/voice_cut.mp4`；`--audio` 才混口播音轨。实测时长与
+`plan.timeline.total` 差 > 0.5s 硬失败。检查在 `check_montage.py`，本模块不重复。
 
 镜头表（人读、可手写）字段
 --------------------------
@@ -62,6 +74,9 @@ from pathlib import Path
 from _geometry import fit_in_band
 
 PLAN_NAME = "montage-plan.json"
+INVENTORY_NAME = "material-inventory.json"
+ENGINEERING = "_engineering"
+MIN_REUSE_GAP = 5.0
 DEFAULTS = {
     "width": 1080, "height": 1920, "fps": 30,
     "band": [320, 1440], "labelX": 90, "labelY": 1258,
@@ -151,6 +166,133 @@ def pick_transcript(edit: Path, edl: dict) -> Path:
     raise Fail(f"找不到对应 EDL 源的逐字稿；候选：{[str(p) for p in cands]}")
 
 
+# ── 素材唯一性（唯一实现；check_montage.py import 它） ────────────────────
+class ReuseLedger:
+    """同一素材被用了两次没有？唯一的判据实现，`plan` 与 `check_montage` 共用。
+
+    2026-11 的哈雷片里，同一条素材换了个入点又被排进来，观众看到的是同一段画面两次。
+    分桶（`in // 10`）漏掉「相隔 9 秒」这种近似重复，所以改按入点距离判：
+
+    - `clip`：同一文件的两个入点相差 < `min_gap`（默认 5s）判重；
+    - `photo`：同一文件第二次出现即判重——照片没有「入点」，换个数字还是同一张；
+    - 说明里带文件名与上一次的镜号，才指得出该换哪一镜。
+    """
+
+    def __init__(self, min_gap: float = MIN_REUSE_GAP) -> None:
+        self.min_gap = float(min_gap)
+        self._seen: dict[str, list[tuple[str, float, int]]] = {}
+
+    def note(self, path: Path | str, kind: str, in_point: float, seq: int) -> str | None:
+        """登记一镜，返回与更早镜头的冲突说明（None = 不重复）。冲突也登记。"""
+        name = Path(str(path)).name
+        key = str(Path(str(path)).resolve())
+        prev = self._seen.setdefault(key, [])
+        reason = None
+        for prev_kind, prev_in, prev_seq in prev:
+            if kind == "photo" or prev_kind == "photo":
+                reason = (f"素材重复：{name} 是照片，第 {prev_seq} 镜已用过同一文件；"
+                          f"照片换个入点也还是同一张，一条素材只用一次")
+                break
+            gap = abs(float(in_point) - prev_in)
+            if gap < self.min_gap:
+                reason = (f"素材重复：{name} 与第 {prev_seq} 镜是同一文件上相隔 {gap:.1f}s 的两段"
+                          f"（入点差 < {self.min_gap:g}s）；换素材，或把入点拉开")
+                break
+        prev.append((kind, float(in_point), seq))
+        return reason
+
+
+# ── 素材清单门（scan_materials.py 写，plan 读） ───────────────────────────
+def inventory_files(mat: Path, edit: Path) -> list[Path]:
+    """管这条素材的清单：从素材目录往上找，找到项目根为止。
+
+    清单是 `scan_materials.py` 写在**被扫的素材目录**里的，素材通常就在它下面或更深处，
+    所以最近的那份就是管它的那份。项目外的素材只看它自己那一层，不翻到项目的邻居目录。
+    """
+    root = edit.parent.resolve()
+    cur = mat.parent.resolve()
+    chain = [cur]
+    while cur != cur.parent:
+        cur = cur.parent
+        chain.append(cur)
+    if root in chain:
+        chain = chain[:chain.index(root) + 1]
+    else:
+        chain = [mat.parent.resolve()]
+    return [d / INVENTORY_NAME for d in chain if (d / INVENTORY_NAME).is_file()]
+
+
+def same_material(row: dict, inv_dir: Path, mat: Path) -> bool:
+    target = mat.resolve()
+    raw = row.get("path")
+    if raw:
+        cand = Path(str(raw)).expanduser()
+        try:
+            if (cand if cand.is_absolute() else inv_dir / cand).resolve() == target:
+                return True
+        except OSError:
+            pass
+    name = str(row.get("name") or "")
+    if name:
+        try:
+            if (inv_dir / name).resolve() == target:
+                return True
+        except OSError:
+            pass
+    return False
+
+
+def inventory_row(mat: Path, edit: Path, cache: dict) -> tuple[Path, dict, int] | None:
+    """这条素材在清单里的 (清单路径, 行, 第几行) —— 没登记返回 None。"""
+    for inv in inventory_files(mat, edit):
+        doc = cache.get(inv)
+        if doc is None:
+            try:
+                doc = json.loads(inv.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                raise Fail(f"素材清单读不出来：{inv}（{exc}）") from exc
+            cache[inv] = doc
+        rows = doc.get("rows") if isinstance(doc, dict) else None
+        for line, row in enumerate(rows or [], 1):
+            if isinstance(row, dict) and same_material(row, inv.parent, mat):
+                return inv, row, line
+    return None
+
+
+def require_inventory(mat: Path, edit: Path, cache: dict, shot_i: int) -> None:
+    """每镜素材都要在清单里、summary 非空、usable != false；否则退 1 并指出哪一镜哪一行。"""
+    found = inventory_row(mat, edit, cache)
+    if found is None:
+        raise Fail(
+            f"第 {shot_i} 镜的素材没有登记进素材清单：{mat}\n"
+            f"先跑 scan_materials.py <素材目录> 生成 {INVENTORY_NAME} 并填「画面一句话」；"
+            f"清单不存在或没登记时不放行（不静默跳过）")
+    inv, row, line = found
+    if not str(row.get("summary") or "").strip():
+        raise Fail(f"第 {shot_i} 镜的素材清单行没填 summary（{inv.name} 第 {line} 行，{mat.name}）："
+                   f"补「主体 + 景别 + 色调 + 有没有文字」再 plan")
+    if row.get("usable") is False:
+        raise Fail(f"第 {shot_i} 镜的素材在清单里标了 usable=false（{inv.name} 第 {line} 行，"
+                   f"{mat.name}）：换成可用素材；清单说不可用的不进镜头表")
+
+
+# ── EDL 变速/静音：明确拒绝 ───────────────────────────────────────────────
+def reject_variable_speed(ranges: list[dict]) -> None:
+    """montage 不支持变速段：剪后时间按原速累加，静默算下去整片错位。"""
+    for i, r in enumerate(ranges, 1):
+        speed = r.get("speed")
+        try:
+            plain = speed is None or float(speed) == 1.0
+        except (TypeError, ValueError):
+            plain = False
+        if not plain:
+            raise Fail(f"第 {i} 段 speed={speed}：montage 的剪后时间按原速累加，"
+                       f"变速段请回 recompose 或改 EDL（不在这里静默算）")
+        if r.get("mute"):
+            raise Fail(f"第 {i} 段 mute=true：montage 的剪后时间按原速累加、不做静音段，"
+                       f"请回 recompose 或改 EDL")
+
+
 # ── plan ─────────────────────────────────────────────────────────────────
 def build_plan(edit: Path, spec: dict) -> dict:
     edl_path = (edit / "edl.json")
@@ -158,6 +300,7 @@ def build_plan(edit: Path, spec: dict) -> dict:
     ranges = edl.get("ranges") or []
     if not ranges:
         raise Fail(f"{edl_path} 没有 ranges")
+    reject_variable_speed(ranges)
     transcript = pick_transcript(edit, edl)
     words = words_of(transcript)
 
@@ -201,8 +344,10 @@ def build_plan(edit: Path, spec: dict) -> dict:
         raise Fail(f"这些段没有素材：{missing_range}")
 
     grades = spec.get("grades") or {}
-    min_gap = float(spec.get("minReuseGap") or 5.0)   # 同素材两个入点相隔少于这个秒数 = 重复
-    seen: dict[str, list[tuple[float, int]]] = {}
+    min_gap = spec.get("minReuseGap")
+    min_gap = MIN_REUSE_GAP if min_gap is None else float(min_gap)
+    ledger = ReuseLedger(min_gap)
+    inventory_cache: dict = {}
     shots: list[dict] = []
     for i, (rng, items) in enumerate(sorted(grouped.items()), 0):
         items.sort(key=lambda x: int(x["word"]))
@@ -227,6 +372,7 @@ def build_plan(edit: Path, spec: dict) -> dict:
             mat = resolve_asset(material, edit)
             if not mat.exists():
                 raise Fail(f"素材不存在：{mat}（第 {item['_i']} 镜）")
+            require_inventory(mat, edit, inventory_cache, item["_i"])
             kind = item.get("kind") or ("photo" if mat.suffix.lower() in
                                         (".jpg", ".jpeg", ".png", ".webp") else "clip")
             info = probe(mat)
@@ -242,16 +388,9 @@ def build_plan(edit: Path, spec: dict) -> dict:
                         f"第 {item['_i']} 镜入点越界：in={in_s:.2f}s + dur={dur:.2f}s "
                         f"> 素材时长 {info['duration']:.2f}s（{mat.name}）；"
                         f"这是「素材入点」不是「EDL 源时间」")
-            # 素材唯一性：同一文件的两个入点相隔 ≥ minReuseGap 才算不同镜头
-            key = str(mat)
-            in_now = float(item.get("in") or 0.0)
-            for prev_in, prev_i in seen.get(key, []):
-                if kind != "photo" and abs(in_now - prev_in) < min_gap:
-                    raise Fail(
-                        f"素材重复：第 {item['_i']} 镜与第 {prev_i} 镜是 {mat.name} 上相隔 "
-                        f"{abs(in_now - prev_in):.1f}s 的两段（入点差 < {min_gap:g}s）；"
-                        f"换素材，或把入点拉开")
-            seen.setdefault(key, []).append((in_now, item["_i"]))
+            reason = ledger.note(mat, kind, float(item.get("in") or 0.0), item["_i"])
+            if reason:
+                raise Fail(f"第 {item['_i']} 镜：{reason}")
 
             shots.append({
                 "i": item["_i"], "range": rng, "word": w0, "kind": kind,
@@ -304,6 +443,8 @@ def build_plan(edit: Path, spec: dict) -> dict:
     return {"version": "montage-plan/1",
             "timeline": {"total": total, "edl": str(edl_path), "transcript": str(transcript)},
             "frame": frame, "grades": grades,
+            "minReuseGap": min_gap,
+            "inventory": sorted(str(p) for p in inventory_cache),
             "output": spec.get("output"), "audio": spec.get("audio"),
             "shots": shots, "labels": labels}
 
@@ -447,7 +588,30 @@ def render_shot(shot: dict, plan: dict, work: Path, dirty: bool) -> Path:
     return dst
 
 
-def render(edit: Path, plan_path: Path, args) -> int:
+# ── 交付闸门（判据只有 render_gate.py 一处） ──────────────────────────────
+def is_engineering_output(out: Path, edit: Path) -> bool:
+    try:
+        out.resolve().relative_to((edit / ENGINEERING).resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def require_delivery_gate(root: Path, out: Path) -> dict:
+    """交付件先过 render_gate：import 它，不另写一套判据（I3）。"""
+    helpers = str(Path(__file__).resolve().parent)
+    if helpers not in sys.path:
+        sys.path.insert(0, helpers)
+    import render_gate
+    report = render_gate.evaluate(root, out, False)
+    if not report.get("ok"):
+        reasons = "；".join(str(r) for r in (report.get("reasons") or [])) or "闸门拒绝"
+        raise Fail(f"交付闸门拒绝写入 {out}：{reasons}\n"
+                   f"默认终点是侧边栏审阅页：交付需作者明确指令 + 人工提交覆盖当前快照。")
+    return report
+
+
+def render(root: Path, edit: Path, plan_path: Path, args) -> int:
     plan = load_json(plan_path)
     plan["_edit"] = str(edit)
     shots = plan["shots"]
@@ -460,6 +624,29 @@ def render(edit: Path, plan_path: Path, args) -> int:
                                "off": round(lab["t"] - s["cutStart"], 3),
                                "hold": lab["hold"]}
                 break
+
+    # 输出落在哪一级，先判清楚：闸门不通过就不渲染（别让人等完渲染才被拒）。
+    engineering = True
+    out: Path | None = None
+    if args.concat:
+        out = Path(args.out or plan.get("output") or (edit / ENGINEERING / "picture.mp4"))
+        if not out.is_absolute():
+            out = (edit / out).resolve()
+        engineering = is_engineering_output(out, edit)
+        if args.deliver and engineering:
+            raise Fail(f"--deliver 指向 {out}：{ENGINEERING}/ 只放审阅素材，"
+                       f"交付件请指 {edit.parent / '成品'} 下的路径")
+        if not engineering:
+            if not args.deliver:
+                raise Fail(
+                    f"{out} 不在 {ENGINEERING}/ 下。默认终点是侧边栏审阅页："
+                    f"交付需作者明确指令 + 人工提交覆盖当前快照。\n"
+                    f"要审阅素材就用默认输出（{edit / ENGINEERING / 'picture.mp4'}）；"
+                    f"确要交付加 --deliver（先过 render_gate.py）")
+            gate = require_delivery_gate(root, out)
+            print(f"渲染闸门放行：{gate.get('covering')} 条人工提交覆盖快照 "
+                  f"{gate.get('snapshot')}")
+
     if args.work:
         work = Path(args.work).expanduser()
     else:
@@ -486,7 +673,7 @@ def render(edit: Path, plan_path: Path, args) -> int:
     if missing:
         print(f"还差 {len(missing)} 个镜头（例如 {missing[:3]}）；跑完再 --concat")
         return 0
-    if not args.concat:
+    if not args.concat or out is None:
         return 0
     lst = work / "concat.txt"
     lst.write_text("".join(f"file '{f}'\n" for f in files), encoding="utf-8")
@@ -494,9 +681,6 @@ def render(edit: Path, plan_path: Path, args) -> int:
     run(["ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", str(lst),
          "-c", "copy", str(merged)], "拼接")
     total = float(plan["timeline"]["total"])
-    out = Path(args.out or plan.get("output") or (edit / "_engineering" / "picture.mp4"))
-    if not out.is_absolute():
-        out = (edit / out).resolve()
     audio = Path(args.audio or plan.get("audio") or "").expanduser()
     if args.audio or plan.get("audio"):
         if not audio.is_absolute():
@@ -511,7 +695,102 @@ def render(edit: Path, plan_path: Path, args) -> int:
         staged = merged
     out.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(staged, out)          # 先落 /tmp 再搬进目标目录（云同步目录不能长写）
-    print(f"成片：{out}（{total:.2f}s，{len(shots)} 镜）")
+    print(f"{'审阅素材' if engineering else '交付件'}：{out}（{total:.2f}s，{len(shots)} 镜）")
+    return 0
+
+
+# ── voice-cut ────────────────────────────────────────────────────────────
+def edl_source_list(edl: dict) -> list[str]:
+    src = edl.get("sources")
+    if isinstance(src, dict):
+        return [str(v) for v in src.values() if v]
+    if isinstance(src, list):
+        return [str(v) for v in src if v]
+    return []
+
+
+def looks_like_proxy(path: Path) -> bool:
+    return "proxy" in str(path).lower() or "低码" in str(path)
+
+
+def voice_cut(edit: Path, args) -> int:
+    """从母版按 EDL 剪竖屏人物轨（默认无声）；实测时长与计划差 > 0.5s 硬失败。"""
+    edl_path = edit / "edl.json"
+    edl = load_json(edl_path)
+    ranges = edl.get("ranges") or []
+    if not ranges:
+        raise Fail(f"{edl_path} 没有 ranges")
+    reject_variable_speed(ranges)
+
+    if args.master:
+        master = resolve_asset(args.master, edit)
+    else:
+        sources = edl_source_list(edl)
+        if not sources:
+            raise Fail(f"{edl_path} 没有 sources：用 --master 指母版")
+        if len(sources) > 1:
+            raise Fail("edl.json 有多个 sources，不知道哪个是母版；用 --master 指："
+                       + "、".join(str(s) for s in sources))
+        master = resolve_asset(sources[0], edit)
+    if not master.exists():
+        raise Fail(f"母版不存在：{master}")
+    if looks_like_proxy(master):
+        print(f"· {master.name} 看着是 proxy：交付用母版不用 proxy（--master 指母版）")
+
+    plan_path = edit / PLAN_NAME
+    plan = load_json(plan_path) if plan_path.is_file() else None
+    frame = dict(DEFAULTS)
+    if plan:
+        frame.update(plan.get("frame") or {})
+    W, H, fps = int(frame["width"]), int(frame["height"]), int(frame["fps"])
+    if plan and (plan.get("timeline") or {}).get("total"):
+        total = float(plan["timeline"]["total"])
+    else:
+        total = round(sum(float(r["end"]) - float(r["start"]) for r in ranges), 3)
+        print(f"· 没有 {PLAN_NAME}：计划时长按 EDL 段长合计 {total:.2f}s")
+
+    n = len(ranges)
+    chain = [f"[0:v]split={n}" + "".join(f"[s{i}]" for i in range(n))]
+    for i, r in enumerate(ranges):
+        s, e = float(r["start"]), float(r["end"])
+        chain.append(f"[s{i}]trim=start={s:.3f}:end={e:.3f},setpts=PTS-STARTPTS,"
+                     f"scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},"
+                     f"fps={fps},setsar=1[v{i}]")
+    chain.append("".join(f"[v{i}]" for i in range(n)) + f"concat=n={n}:v=1:a=0[outv]")
+
+    tmpdir = Path(tempfile.mkdtemp(prefix="voicecut_"))
+    staged = tmpdir / "silent.mp4"
+    run(["ffmpeg", "-y", "-v", "error", "-i", str(master),
+         "-filter_complex", ";".join(chain), "-map", "[outv]", "-an",
+         "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+         "-pix_fmt", "yuv420p", "-r", str(fps), str(staged)], "剪口播轨")
+    mode = "无声"
+    if args.audio:
+        audio = resolve_asset(args.audio, edit)
+        if not audio.exists():
+            raise Fail(f"口播音轨不存在：{audio}")
+        muxed = tmpdir / "voice_cut.mp4"
+        run(["ffmpeg", "-y", "-v", "error", "-i", str(staged), "-i", str(audio),
+             "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac",
+             "-b:a", "192k", "-t", f"{total:.3f}", "-movflags", "+faststart", str(muxed)],
+            "混入口播音轨")
+        staged = muxed
+        mode = f"口播 {Path(audio).name}"
+
+    out = Path(args.out) if args.out else (edit / ENGINEERING / "voice_cut.mp4")
+    if not out.is_absolute():
+        out = (edit / out).resolve()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(staged, out)
+    measured = probe(out)["duration"]
+    if measured is None:
+        raise Fail(f"读不出口播轨时长：{out}")
+    diff = measured - total
+    if abs(diff) > 0.5:
+        raise Fail(f"口播轨实测 {measured:.2f}s 与计划 {total:.2f}s 差 {diff:+.2f}s（> 0.5s）："
+                   f"母版与 EDL 可能不是同一版，先核对母版再交付")
+    print(f"口播轨：{out}（{n} 段 · {W}×{H}@{fps} · {mode}）")
+    print(f"实测 {measured:.2f}s / 计划 {total:.2f}s（差 {diff:+.2f}s）")
     return 0
 
 
@@ -532,9 +811,21 @@ def main(argv: list[str] | None = None) -> int:
     p_render.add_argument("--max", type=int, help="本轮最多渲染几个新镜头")
     p_render.add_argument("--only", help="只渲这些序号，逗号分隔")
     p_render.add_argument("--concat", action="store_true", help="全部渲染完后拼接")
-    p_render.add_argument("--out", help="成片路径（默认 plan.output）")
+    p_render.add_argument("--out",
+                          help="拼接输出路径。默认 <edit>/_engineering/picture.mp4（审阅素材）；"
+                               "不在 edit/_engineering/ 下时必须 --deliver（先过 render_gate）")
     p_render.add_argument("--audio", help="音轨路径（默认 plan.audio）")
+    p_render.add_argument("--deliver", action="store_true",
+                          help="声明这是交付件：目标不在 edit/_engineering/ 下时必给，"
+                               "且要求至少一条人工提交覆盖当前审阅快照")
     p_render.add_argument("--force", action="store_true", help="忽略缓存重渲")
+
+    p_voice = sub.add_parser("voice-cut", help="按 EDL 从母版剪竖屏人物轨（默认无声）")
+    p_voice.add_argument("target", type=Path)
+    p_voice.add_argument("--master", help="母版（默认 edl.json 的 sources；proxy 不能当交付母版）")
+    p_voice.add_argument("--audio", help="口播音轨；不给就输出无声人物轨")
+    p_voice.add_argument("-o", "--out", type=Path,
+                         help="默认 <edit>/_engineering/voice_cut.mp4")
 
     args = ap.parse_args(argv)
     try:
@@ -548,11 +839,13 @@ def main(argv: list[str] | None = None) -> int:
             print(f"镜头表展开完成：{len(plan['shots'])} 镜 / {plan['timeline']['total']:.2f}s / "
                   f"{len(plan['labels'])} 条花字 → {out}")
             return 0
+        if args.cmd == "voice-cut":
+            return voice_cut(edit, args)
         plan_path = args.plan or (edit / PLAN_NAME)
         plan_path = plan_path if plan_path.is_absolute() else (edit / plan_path)
         if not plan_path.exists():
             raise Fail(f"没有 {plan_path}；先跑 montage.py plan")
-        return render(edit, plan_path, args)
+        return render(root, edit, plan_path, args)
     except Fail as exc:
         print(f"✗ {exc}", file=sys.stderr)
         return 1

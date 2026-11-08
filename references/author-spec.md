@@ -1,7 +1,7 @@
-# 全局判准（跨路线、跨风格）
+# 全局判准（两条片型共用）
 
 > 第 1 步读全篇。准入、淘汰与谁批准在 [preferences.md](preferences.md)。
-> 风格规则在 [style-spec.md](style-spec.md)。**路线只有 recompose 一条**，没有第二种；原页拆解与重做见 [film.md](film.md)。
+> 风格规则在 [style-spec.md](style-spec.md)，只对 graphic 生效。**片型有两条**：`graphic` 造画面（recompose）、`montage` 选画面（[montage-route.md](montage-route.md)）；版式/画框（[frame-spec.md](frame-spec.md)）与片型正交。本文件不按片型分家，只对只适用某一类的条目写 `适用范围`，没写的就是两条都成立；原页拆解与重做见 [film.md](film.md)。
 > 上限：≤ 8 条、≤ 110 行，由 `helpers/spec_lint.py` 强制。
 
 ## 写法
@@ -25,7 +25,8 @@
 
 - 做法：每个动效写明起止词；时间从词级时间戳派生，不用比例估算。
 - 证据：手冲咖啡 beat-06、beat-08；图拉斯 huazi；keywords concept
-- 执行：check:helpers/align.py
+- 执行：judgment:逐条动效对照词级时间戳，看起止词是否显式写出、时间是否由词派生
+- 适用范围：graphic。montage 没有逐元素动效；镜头起点同样按词锚换算，见 montage-route.md。
 
 ## G04 画面不出现口播整句
 
@@ -38,6 +39,7 @@
 - 做法：运动沿旋转中心、流程轴、曲线或推拉方向发生；每个动效能说出起点与终点，不做无来由的飞入。
 - 证据：keywords concept 三屏；PPthell overall
 - 执行：judgment:审阅时说出每个运动的起点与终点
+- 适用范围：graphic（运动是画出来的）；montage 的运动来自素材本身。
 
 ## G06 先定一屏的单一关系，再给动作
 
@@ -56,3 +58,4 @@
 - 做法：先判断原片这一页适不适合作为视频动画呈现。适合：按原构图搬（模型图、层级、排布不重画），只删页脚、页码与重复解释句。不适合：重排或重做，并在拆解表写明理由。拆解每片重做，不维护跨项目元素库。
 - 证据：三条片 V1 ch03、ch04、V2 ch01、V3 ch01（照搬原构图）；V1 ch02（原页过密时简化并抻开）
 - 执行：judgment:逐屏判断是否照搬原构图，重排的能说出理由
+- 适用范围：graphic（原页拆解重做）；montage 没有原页，对应判据是素材准入（media-sourcing.md）。

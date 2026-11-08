@@ -1,10 +1,12 @@
-> **工程态优先**：有 composition 就必须起活舞台（`review.py` 会做），审阅页面默认演 composition；没有工程态时 `build_review` 退 2，不能静默退回成片态。只有成片轨的工程没有工程态，页面要明说这一点。
+> **构建模式只有三种，合法性以 `build_review.py` 的 `resolve_build_mode()` 为准**：`recompose.json` 在 → `recompose`（工程态，默认）；否则 `edit/montage-plan.json` 在 → `final-cut`；否则命令行显式 `--final-cut` → `final-cut`；都判不到才是已退休的 `page`（默认退 2，需 `--allow-page`）。**`final-cut` 是只有成片的项目（含蒙太奇）的正常审阅形态，不是「静默退回成片态」**——它不需要 `--allow-page`，但页面必须标「成片态·无工程态」。各模式（尤其成片态）的页面能力见下文「成片态审阅（final-cut）」。
+>
+> 另一条与模式无关的拒绝：有 `composition/index.html` 却没起活舞台时 `build_review` 退 2（`--allow-static` 仅显式降级），因为那一刻审的不是当前工程态。
 >
 > **构建入口为 `review.py`，正式收件入口为 `review_inbox.py`**：两者独立；本文描述页面、桥、提交与收件业务。单独跑 build_review 等构建内部步骤只用于调试。
 
 # 审阅页：播放与反馈
 
-## 工程预览是默认入口
+## 工程预览是默认入口（工程态项目）
 
 `live_stage.py → build_review.py → review_surface.py`。`live_preview.py` 将 HyperFrames 编译后的 HTML、内联运行时和项目内素材清单交给审阅页。审阅页内联本机 CLI 对应版本的官方 player，素材经 review-core 取回，再交给 player 的 `srcdoc`。没有跨源 localhost iframe；也不共享父帧的 blob URL。播放、定位、倍速、clip 显隐和媒体同步都由官方 player 管。
 
@@ -35,10 +37,8 @@ DSH tokens 仍来自 review-core，生成时内联。导航显示分屏标题、
 
 ## 成片态审阅（final-cut）
 
-`build_review.py` 的第三种构建模式，给**只有成片、没有工程态**的项目。判定按顺序：
-`recompose.json` 在 → `recompose`；否则 `<project>/edit/montage-plan.json` 在 → `final-cut`
-（蒙太奇片的正常形态）；否则命令行显式 `--final-cut` → `final-cut`；都没有 → `page`
-（已退休的旧十步页，仍要 `--allow-page`）。
+`build_review.py` 的第三种构建模式，给**只有成片、没有工程态**的项目。判定顺序见本页开头的
+`resolve_build_mode()` 口径；这一节只写页面能力与「什么时候合法」。
 
 **什么时候合法**：蒙太奇路线（`edit/edl.json` + `edit/montage-plan.json` + 渲好的成片），
 或任何只有一份渲好成片、没有 composition 的项目（用 `--final-cut` 显式声明）。有
@@ -75,7 +75,7 @@ Craft 有两个审阅面。视觉面审实际画面、声音与节奏；剪辑�
 
 **有 `review_open`**：参数 `surface` 填返回的 surface 绝对路径。插件挂入侧栏，不起本地服务。
 
-**没有 `review_open`**：运行 `python3 "<craft>/helpers/review_surface.py" "<project>"`，由公共宿主开浏览器。`--no-open` 仅供测试；旧 `serve_review.py --open` 也是这个入口的薄包装，不再拥有另一套 HTTP 服务。
+**没有 `review_open`**：运行 `python3 "<craft>/helpers/review_surface.py" "<project>"`，由公共宿主开浏览器。`--no-open` 仅供测试。旧 `serve_review.py` **已删除**——它曾是第二扇审阅构建门，可以绕过 `check_live_stage` / `check_review_playable`；现在视觉审阅只有 `review.py` 一条构建入口、`review_surface.py` 一个宿主入口。
 
 剪辑面默认按 EDL 直接播放源素材，即使目录里有旧 final.mp4 也不替换。明确要对照成片时才传 `edl_preview_build.py <edit_dir> --rendered-preview final.mp4`。
 

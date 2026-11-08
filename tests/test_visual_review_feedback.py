@@ -606,7 +606,7 @@ class HostIdentityCase(SurfaceWrittenCase):
         self.assertNotEqual(again["pid"], self.host["pid"])
 
     def test_the_host_really_answers_on_its_socket(self):
-        """GOTCHAS #8: an HTTP 200 is not proof —— 但它也不是零。宿主得真的答。"""
+        """GOTCHAS 迁移索引 #8（已升级）: an HTTP 200 is not proof —— 但它也不是零。宿主得真的答。"""
         self.assertIsNotNone(HOST.host_alive(SURFACE.surface_path(self.project)))
         # 进程还在，但状态文件被抹掉 → 不算「活着」，会重起
         (self.project / SURFACE.HOST_STATE_REL).unlink()
@@ -665,7 +665,7 @@ class ReviewPageTemplateTests(unittest.TestCase):
 
     def test_inject_point_is_a_bare_marker_on_its_own_line(self):
         """标记必须**裸着独占一行**：宿主把整段标签原地换进来，放进 `src=""` 或塞进
-        `<script>` 里都会把标签撑破（三种错法都真的炸过，见 GOTCHAS #32）。"""
+        `<script>` 里都会把标签撑破（三种错法都真的炸过，见 GOTCHAS 迁移索引 #32）。"""
         self.assertEqual(self.html.count("{{REVIEW_BRIDGE}}"), 1)
         lines = [line for line in self.html.split("\n") if line.strip() == "{{REVIEW_BRIDGE}}"]
         self.assertEqual(len(lines), 1, "标记必须裸着独占一行")

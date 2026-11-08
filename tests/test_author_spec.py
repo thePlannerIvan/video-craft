@@ -3,7 +3,7 @@
 
 证明两件事：
 1. 仓库里真实的 author / style 两份规范通过；
-2. 五类机械缺陷各自会让 lint 失败——否则上限只是装饰。
+2. 六类机械缺陷各自会让 lint 失败——否则上限只是装饰。
 外加一条语义护栏：规范里不出现作者原话引文（防止模型按字面理解偏差）。
 """
 from __future__ import annotations
@@ -59,10 +59,13 @@ class RealSpecs(unittest.TestCase):
     def test_cli_exit_zero(self):
         self.assertEqual(spec_lint.main(["--json"]), 0)
 
-    def test_check_pointers_resolve(self):
+    def test_g03_has_no_pointer_to_deleted_align(self):
+        """G03 的执行点已改为 judgment；align.py 本轮删除，指针不许再指回来。"""
         text = (ROOT / "references" / "author-spec.md").read_text(encoding="utf-8")
-        self.assertIn("check:helpers/align.py", text)
-        self.assertTrue((SKILL_ROOT / "helpers" / "align.py").exists())
+        self.assertIn("## G03 动效绑定词级锚点", text)
+        self.assertNotIn("check:helpers/align.py", text)
+        # check: 指针整体可解析由 test_repository_specs_pass 覆盖。
+        self.assertIn("judgment:", text)
 
     def test_no_verbatim_author_quotes(self):
         """规则里不引原话：防止模型按字面理解偏差。"""
@@ -109,6 +112,25 @@ class MechanicalDefects(unittest.TestCase):
         make_specs(self.tmp, author_entry(1), minimal_styles())
         (self.tmp / "style-spec.md").unlink()
         self.assertEqual(spec_lint.main(["--json", "--spec-dir", str(self.tmp)]), 2)
+
+    def test_single_route_wording_is_reported(self):
+        """单路线口径已作废：片型有 graphic / montage 两条，禁句要让 lint 红。"""
+        author = "> 片型有两条：graphic / montage\n\n" + author_entry(1)
+        spec_dir = make_specs(self.tmp, author, minimal_styles())
+        # 禁句按片段拼出来：仓库里不该出现这句的完整字面量，但它必须能被 lint 抓到。
+        banned = "路线不作为规范维度：" + "只有 " + "recompose 一" + "条。"
+        (spec_dir / "preferences.md").write_text(banned + "\n", encoding="utf-8")
+        problems = spec_lint.lint(spec_dir, SKILL_ROOT)
+        self.assertTrue(
+            any("单路线措辞" in p and "preferences.md" in p for p in problems),
+            f"禁句没有被报出来：{problems}",
+        )
+
+    def test_two_route_wording_is_accepted(self):
+        """正常表述（两条片型 + 版式正交）不误报。"""
+        author = "> 片型有两条：graphic 造画面 / montage 选画面；版式与片型正交。\n\n" + author_entry(1)
+        spec_dir = make_specs(self.tmp, author, minimal_styles())
+        self.assertEqual(spec_lint.lint(spec_dir, SKILL_ROOT), [])
 
 
 if __name__ == "__main__":

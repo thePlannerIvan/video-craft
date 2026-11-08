@@ -1,11 +1,13 @@
 {
   "name": "video-craft",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "category": "Web Video / Presentation",
-  "description": "Edit video by conversation, end to end: cut footage from the transcript, grade it, build the visual layer (full-frame 画面 or alpha 花字 riding on the footage), produce semantic captions, and deliver a verified mp4 from one time spine.",
+  "description": "Edit video by conversation, end to end: cut footage from the transcript, pick the 片型 (graphic: build the visual layer; montage: choose and edit real footage), bind captions and motion to one time spine, and hand the author a playable review page. Rendering a film is the author's explicit call, not the end of a round.",
   "compat": [
     "claude-code",
-    "codex-cli"
+    "codex-cli",
+    "antigravity",
+    "dsh"
   ],
   "lineage": {
     "merged_from": [

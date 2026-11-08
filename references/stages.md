@@ -9,7 +9,7 @@
 | 接入 | 1–2 | 版本取舍、缺口、视听方案与本轮终点 | check_script_hash；上游交接检查 | 原始媒体去剪辑；已剪音频去时间；未录音留 planned |
 | 剪辑 | 3–4 | 留哪句、气口取舍、错字确认 | stage_cut 的 prepare / review / apply；建 EDL 用既有专用工具 | 剪点确认后去时间 |
 | 时间与字幕 | 5–6 | 语义断句、视觉分组；区分时间证据 | duration_plan / srt_export / timeline_derive；外部 SRT 用 import_srt_timeline | 时间绑定完成后去画面 |
-| 画面 | 7 | 原页拆解、逐段动作与强调 | film；recompose_plan；手写 composition | 去审阅 |
+| 画面 | 7 | 原页拆解、逐段动作与强调（montage：镜头表与渲染体检） | film；recompose_plan；手写 composition；montage | 去审阅 |
 | 审阅与返修 | 8–9 | 解释反馈、改源、决定返工范围 | review 构建；review_inbox 收件，两者独立 | 工程审阅可交接；出片需作者指令 |
 | 交付 | 10 | 确认交付形态、审听审看 | deliver；verify_delivery；export_deliverables；state_fingerprint | 实际文件核验后交付 |
 | 收尾 | 11 | 区分项目问题与可复用经验 | spec_lint（确实改规范时） | 项目记录或集中维护 |
@@ -19,6 +19,13 @@
 ## 时间依据与任务终点
 
 时间来源的定义在 [visual-timeline.md](visual-timeline.md)。未录音 planned 只能交方案或独立预演；EDL projected 可以支持工程审阅，不能证明成片已实测；EDL measured 必须匹配当前剪辑指纹；外部音频 + SRT 标 srt-import，并核对真实媒体，不能冒充 EDL measured。
+
+**每轮的默认终点是侧边栏审阅页可播 + 本轮待办，不是出成片。** 渲染产物分两级，下文各步说的「输出」都按这条分级读：
+
+- `edit/_engineering/**` = **审阅素材**（工程态）：可随时重渲、可被审阅页消费，**不算交付**；
+- `成品/**` = **交付件**：只有「作者明确出片指令」+「人工提交覆盖当前快照（`render_gate.py` 放行）」同时成立才允许写入。
+
+`montage.py render` 的默认输出同样是审阅素材；把任何渲染写成一轮工作的自然收尾都是错的。
 
 有视觉制作才进入第 7–9 步；纯剪辑使用逐字审阅与 render.py 的对应输出能力，不为通过 film/recompose 检查捏造参考页。外部 SRT 项目跳过不适用的 EDL 步骤。成片交付的适用限制见 delivery.md；默认完成线是本轮适用的工程审阅面可用、版本与待办清楚。
 
@@ -51,6 +58,10 @@ recompose 路线**不导入页**：PPT Hell 的快照只作视觉参考，用 `f
 
 在 `production-plan.md` 写清楚**片型**、成片形态（口播 / 动画 / 合成）、声音来源、画幅、画面过程、强调动作、素材、时间依据、字幕形态、交付件和返修范围。
 
+**先读**：`creative-direction.md`（自述「第一次制作方案时读取」）；`visual-direction.md`（自述「制作方案阶段读取」）；`caption-modes.md`（自述「制作方案阶段明确字幕交付形态」，字幕形态就在这里定，第 5 步不重选）；要画框时读 `frame-spec.md`；`graphic` 片型要风格时读 `style-spec.md` 的对应节。判准与准入（`author-spec.md` / `preferences.md`）在第 1 步已读过，这里只按片型取执行点。
+
+能力包的记录写在 `edit/project.md`（人读），**不新增 project.json**；只有被工具实际消费的字段才值得机器化。
+
 **片型二选一，必须显式写下来**：
 
 | 片型 | 画面从哪来 | 走哪条 | 风格字段 |
@@ -69,8 +80,10 @@ recompose 路线**不导入页**：PPT Hell 的快照只作视觉参考，用 `f
 原始媒体走：
 
 ```bash
-python3 "<craft>/helpers/transcribe.py" "<source-video>" --edit-dir "<edit>" --audio-track 0 --backend auto
+python3 "<craft>/helpers/transcribe_seedasr.py" "<source-video>" --edit-dir "<edit>"
 ```
+
+首选 SeedASR（豆包流式语音识别 2.0，语音技术控制台凭据）。`transcribe.py --backend auto`（Scribe→Ark→mlx）是**没有豆包语音控制台凭据时的历史回退**：它可能落到 Ark 通用模型那一路，那正是 GOTCHAS #1 禁止的「拿通用模型当 ASR」，不能当推荐顺位，也不要用它伪造词级时间。
 
 打包与停顿预算（`pack_transcripts.py` / `check_edl.py`）见 [tools.md](tools.md)「声音与剪辑」。
 
@@ -113,6 +126,8 @@ DSH 有 `review_open` 时，把返回的 **surface 绝对路径**交给 `review_
 **完成标准**：提交文件真实写入；没有桥时页面明确显示未连接；Agent 先读取提交再应用选择；应用后重建逐字预览；需要视觉制作时更新工程时间轴和字幕，最终输出时再做实测核验。
 
 ## 5. 工程时间与字幕；确认后输出底片
+
+**先读**：`caption-article-first.md` —— 语义字幕的唯一 owner（全文校对 → 语义断句 → 锁定 → 生成；文字长度、词边界、纠错与 EDL 边界规则都在它，不另立自动断句）。字幕交付形态在第 2 步已由 `caption-modes.md` 定，这里不重选。
 
 **渲染不是「能开始干活」的前提。** 想让作者先看到东西，先出工程态：
 
@@ -177,23 +192,29 @@ python3 "<craft>/visual/scripts/align-visual-plan.py" --plan "<visual-plan.json>
 
 **片型是 montage 时，本节换成 [montage-route.md](montage-route.md) 的第 3–4 节**：镜头表交给 `montage.py plan` 展开，`render` 分块渲染，`check_montage.py` 逐镜与成片两关体检；不要为通过 film/recompose 检查去捏造参考页，也不要在 montage 项目里手写 composition。下面是 graphic 片型的路径。
 
+**先读（按片型取）**：`graphic` → `film.md`（原页拆解）、`recompose-mode.md`、`composition-craft.md`；`montage` → `montage-route.md`。按需：`visual-rendering.md`（透明载体 / 编码 / alpha 选择）、`frame-animation-pipeline.md`（自定义逐帧）。**本轮终点仍是第 8 步的审阅页**：这里产出的是工程态（`edit/_engineering/**` 与活 composition），分级见上文「时间依据与任务终点」。
+
 动手前必须已有 `pages/<page>.md` 原页拆解（见 [film.md](film.md)），元素清单按阅读顺序登记；
 把原页当**信息源**，按拆解逐条演出来 —— 不重画模型图，不把截图当 SVG。原页元素若已有
 `data-step` / `data-anim` / `id`，沿用它们；只有元素级动效才需要稳定 id。
 
-- HyperFrames：读 `$hyperframes`。整片 composition 由 `film.py` 的拆解驱动、手写 `src/scenes/*.js`（不再用已存档的 `generate-composition.py`）；单层动效也先在 composition 中预览。只有最终合成需要独立透明视频，才用 `helpers/render_layer.py` 输出 `.mov`；兼容旧媒体叠层面时可同时输出 `.webm`。预览与渲染前先 `hyperframes check`。**任何 `hyperframes render` 之前先跑 `python3 "<craft>/helpers/probe_env.py" "<project>"` 报告能力（libass/字体预算/残留进程；只报告不阻断），再跑 `python3 "<craft>/helpers/check_render_env.py" "<project>/composition"`** —— 它报 RAM、可用内存与建议的 `--workers` 值（默认从 1 起）；并先过 `timing-lock.md`：`film.py verify` 退 0，且 `feedback/*.jsonl` 的未决项已清或显式接受。缺一不渲。
+- HyperFrames：读 `$hyperframes`。整片 composition 由 `film.py` 的拆解驱动、手写 `src/scenes/*.js`（`generate-composition.py` 已随 page 路线归档，不再运行）；单层动效也先在 composition 中预览。只有最终合成需要独立透明视频，才用 `helpers/render_layer.py` 输出 `.mov`；兼容旧媒体叠层面时可同时输出 `.webm`。预览与渲染前先 `hyperframes check`。
   **动效的源是 composition，不是那段视频**：层要能改、能预览，才谈得上「先审后渲」。
 - Manim：只有严密数学或技术动画才调用 `$manim-video`。
 - 自定义逐帧：读 `frame-animation-pipeline.md`。
 - 合成：读 `composition-craft.md` 与 `visual-rendering.md`。
 
+**渲染前置（缺一不渲，只在作者出片指令之后才需要满足）**：按 [timing-lock.md](timing-lock.md) 逐条过 —— `film.py verify` 退 0、`feedback/*.jsonl` 的未决项已清或显式接受、review 运行时检查通过且人工提交覆盖当前快照；任何 `hyperframes render` 之前先跑 `python3 "<craft>/helpers/probe_env.py" "<project>"` 报能力（libass / 字体预算 / 残留进程；只报告不阻断），再跑 `python3 "<craft>/helpers/check_render_env.py" "<project>/composition"` 拿 RAM、可用内存与建议的 `--workers`（默认从 1 起）。
+
 所有 overlay 在写入 EDL 前检查：画布尺寸、alpha、起止时间、父级 `unitId` 和输出路径。尺寸不匹配必须报错，不能静默跳过。
 
-**输出**：`composition/`、透明或整屏视觉层、工程态合成预览（活 composition，不渲帧）。最终合成视频属于**交付态**，只在第 10 步经适用审阅面确认后产出；返修可重新输出。
+**输出**：`composition/`、透明或整屏视觉层、工程态合成预览（活 composition，不渲帧）。合成视频分两级：审阅素材写 `edit/_engineering/**`，交付件写 `成品/**`（只有作者出片指令 + `render_gate.py` 认可人工提交覆盖当前快照时才写，见第 10 步）。本轮默认终点是第 8 步审阅页可播，不是出成片；返修可重新输出。
 
 **下一消费者**：动效与合成审阅面、交付核验。
 
 ## 8. 动效与合成审阅
+
+**本轮的默认终点就是这一步**：侧边栏审阅页可播 + 本轮待办。这里构建的是工程审阅页，不是在出片。
 
 **片型是 montage、或项目只有渲好的成片时，没有活舞台可查**：`review.py` 会按 `edit/montage-plan.json`（或 `--final-cut`）判成**成片态审阅**，跳过活舞台三步、构建成片态页面；这时只核 `review/index.html` 能否构建与 `check_review_playable.py` 是否通过，不要为通过活舞台检查去捏造 composition。判据见 [review-ui.md](review-ui.md) 的「成片态审阅（final-cut）」。下面是 graphic 片型的路径。
 
@@ -253,7 +274,7 @@ python3 "<craft>/helpers/review_inbox.py" "<project>"
 
 ## 10. 核验与交付
 
-**默认停在工程审阅交接（第 8–9 步），随后做第 11 步收尾。** 审阅的交付物是**工程态审阅页**，不是成片。只有当作者明确说"出片/交付"时才进入本节；在此之前任何 `hyperframes render` 或 `deliver`（不带 `--render`）都不该发生。
+**默认停在工程审阅交接（第 8–9 步），随后做第 11 步收尾。** 审阅的交付物是**工程态审阅页**，不是成片。只有当作者明确说"出片/交付"时才进入本节；在此之前任何 `hyperframes render` 或 `deliver`（不带 `--render`）都不该发生。写 `成品/**`（交付件）只在这里发生；工程态预览与渲出的审阅素材一律落 `edit/_engineering/**`（分级见文首「时间依据与任务终点」）。
 
 作者确认出片后，先按 [timing-lock.md](timing-lock.md) 做前置检查；再调用现有合成入口：
 
@@ -296,7 +317,7 @@ python3 "<craft>/helpers/check_motion_targets.py" "<project>"
 
 手写 GSAP/recompose 交付前跑 `check_motion_targets.py`：recompose 项目没有 `timeline/choreography.json`——它的唯一生产者 `auto_choreography.py` 已随 page 路线归档。这条检查断言时间轴里的每个 selector 都命中、且页面自带的静态 `transform` 没有被 x/y/scale/rotation 补间覆盖（GSAP 会把 attribute 重写掉，位移静默丢失）。
 
-只有复活老 page 项目、且项目里真有 `choreography.json` 时才跑 `check_parity.py`（断言 spec 里的每个效果 kind 在 composition 与审阅页两条路径都有实现）。两类失配都**不会让 `hyperframes check` 失败、也不会让页面报错**，只会让某一步静默不演 —— 交付前必须过。
+只有复活老 page 项目、且项目里真有 `choreography.json` 时才跑 `python3 "<craft>/helpers/check_parity.py" "<project>"`（断言 spec 里的每个效果 kind 在 composition 与审阅页两条路径都有实现；退 0 一致 / 1 有不一致 / 2 用法错误或缺 choreography.json）。两类失配都**不会让 `hyperframes check` 失败、也不会让页面报错**，只会让某一步静默不演 —— **这类老项目的交付前必须过**；recompose / montage 项目没有 `choreography.json`，不跑它。
 
 **指纹不是渲染前置，是交付过期信号**：已有交付先跑 `state_fingerprint.py verify` 判断是否过期；改源后过期正是**需要重新输出**的信号，不拦住新渲染，只拦住**发送**。 重新输出并核验后 `capture` 新指纹，发送前再 `verify`，不一致就不能发送。工程态的媒体输出与预览一律落 `edit/_engineering/`，**不进 `edit/` 根**，免得被当成当前底片（GOTCHAS #56）。
 
@@ -305,6 +326,8 @@ python3 "<craft>/helpers/check_motion_targets.py" "<project>"
 ## 11. 收尾与沉淀
 
 工程审阅交接或交付核验通过后做这一轮。**按本轮目标收尾**：没有重复出现的要求，就只报一句「本轮无新判准」。
+
+**先读**：`preferences.md` —— 两套准入与归位规则（否定型硬约束一次即可进正式文档；倾向型判准要复现），下面「按类型准入」用它，不另立标准。
 
 **读三处证据**：本片 `feedback/*.jsonl` 的返修理由、项目 `edit/preferences.md` 的处理表、核验报告里的红项。重复出现的要求最强的是返修理由——作者已经在同一件事上纠正过一次。
 

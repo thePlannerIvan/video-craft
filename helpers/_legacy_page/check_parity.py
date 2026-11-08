@@ -5,7 +5,7 @@
 
 `timeline/choreography.json` 是一份 spec，却有**三条实现路径**：composition 的 GSAP 补丁、
 审阅页活舞台的 runtime、以及引擎原语本身。三方没有任何守卫，于是同一类事故反复发生
-（见 GOTCHAS #6/#8/#9，与 `references/review-ui.md`）：
+（见 GOTCHAS 迁移索引 #6/#8/#9，与 `references/review-ui.md`）：
 
 - spec 里写的 `kind`，某一条路径**没有实现** → 预览会演、渲染不演（或反过来），两边都不报错；
 - spec 里的 `selector` 在目标页面里**命中不到元素** → 那一步静默跳过（标注移出 `data-step`

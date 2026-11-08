@@ -153,7 +153,8 @@ def main() -> int:
 
     composition = (args.project / "composition" / "index.html").resolve()
     if not composition.is_file():
-        print(f"x {composition} not found (run generate-composition.py first)")
+        print(f"x {composition} not found (hand-write composition/index.html from the"
+              " `film.py pages` break-down; the page-route generator is archived)")
         return 1
     try:
         import playwright  # noqa: F401

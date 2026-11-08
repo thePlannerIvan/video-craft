@@ -144,6 +144,22 @@ class RenderGateTests(unittest.TestCase):
         # And it needs an output at all.
         self.assertFalse(render_gate.evaluate(self.project, None, True)["ok"])
 
+    def test_gate_works_on_a_final_cut_project_without_composition(self):
+        """montage / final-cut 项目没有 composition/：判据只看快照与提交，照样放行。"""
+        edl = self.edit / "edl.json"
+        edl.write_text(json.dumps({"ranges": [{"start": 0.0, "end": 2.0}]}), encoding="utf-8")
+        self.source.unlink()                       # 没有合成页，这条路线也不该有
+        (self.project / "composition").rmdir()
+        stat = edl.stat()
+        self.manifest = [{"path": "edit/edl.json", "size": stat.st_size,
+                          "sha256": hashlib.sha256(edl.read_bytes()).hexdigest()}]
+        self._review()
+        self._submissions(SNAPSHOT)
+        report = render_gate.evaluate(self.project, self.project / "成品" / "final.mp4", False)
+        self.assertTrue(report["ok"], report)
+        self.assertEqual(report["covering"], 1)
+        self.assertEqual(render_gate.main([str(self.project)]), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

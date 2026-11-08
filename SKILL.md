@@ -28,7 +28,7 @@ description: 承接 Video Idea System 的内容包、PPT Hell 的静态 SVG 或�
 | `ELEVENLABS_API_KEY` | ElevenLabs | 可选：Scribe 交叉校验 |
 | `ARK_API_KEY` | 火山方舟 | 只作历史回退；**与语音控制台不是同一个账号**，替代不了 SeedASR |
 
-运行环境：Node 22+，且 `ws` 必须装在**实际运行的那份副本**里（`cd <skill> && npm install ws`）。缺凭据或 `ws` 时脚本会硬失败并说明缺哪个；完整准备与排错见 [install.md](install.md) 第 5 步。没有可用凭据时如实停下问用户，**不许用别的模型伪造词级时间或字幕**。
+运行环境：Node 22+，且 `ws` 必须装在**实际运行的那份副本**里（`cd <skill> && npm install ws`）。缺凭据时脚本会硬失败并说明缺哪个；缺 `ws` 时报的是 Node 的模块错误（带栈），按 [install.md](install.md) 第 5 步装上即可。没有可用凭据时如实停下问用户，**不许用别的模型伪造词级时间或字幕**。
 
 ## 接手时选入口与本轮终点
 
@@ -40,11 +40,20 @@ description: 承接 Video Idea System 的内容包、PPT Hell 的静态 SVG 或�
 | 原始录音或视频要取舍 | 剪辑与逐字审阅（3–4） | 可操作的逐字剪辑面；确认后进时间与字幕 |
 | 已剪音频 + SRT + 参考页 | 核版本，走 srt-import（5–6） | 对齐实声的工程审阅；不声称 EDL measured |
 | 已确认剪点、词级依据、参考页 | 时间 → 原页拆解 → composition（5–8） | 可播、可听、可返修的动效审阅面 |
-| 已录口播、**没有参考页**、画面是现成素材 | 片型选 montage（2）→ 素材清单 → 镜头表（5）→ 渲染体检（7） | 可播成片、三件套交付件与体检结果 |
+| 已录口播、**没有参考页**、画面是现成素材 | 片型选 montage（2）→ 素材清单 → 镜头表（5）→ 渲染体检（7） | 侧边栏审阅面（可播）+ 镜头表 + 两关体检；三件套要等作者出片指令 |
 | 返修/恢复项目 | 收件（9），按影响回到相应步骤 | 新快照与逐项处理回执 |
 | 作者明确要求出片 | 交付前置与核验（10） | 实际视频、约定字幕、核验报告与有效指纹 |
 
 **第 2 步先定片型**：画面是**造出来的**（页、图形、字卡、动效）→ recompose；画面是**选出来的**（档案影像、实拍、照片）→ [montage-route.md](references/montage-route.md)。版式/画框另算一层，两种片型都可能要，见 [frame-spec.md](references/frame-spec.md)；旧 page 项目仅按 [legacy-page-route.md](references/legacy-page-route.md) 恢复。纯剪辑不强加参考页和动画步骤。
+
+## 每轮终点：审阅页，不是成片
+
+一轮工作的完成线是**侧边栏审阅页可播 + 本轮待办**。渲染不是完成，成片也不是每轮的默认产物。产物分两级，边界是硬的：
+
+- `edit/_engineering/**` = **审阅素材**（工程态）：可随时重渲、可被审阅页消费，不算交付；
+- `成品/**` = **交付件**：只有作者明确说「出片/交付」，且人工提交覆盖当前快照（`render_gate.py` 放行）才允许写入。
+
+两条路线同样适用：recompose 的 `deliver.py` 第一件事就是 render_gate；montage 的 `montage.py render` 默认只写 `edit/_engineering/picture.mp4`，写 `成品/` 必须显式 `--deliver` 并过闸。渲出来、拷进成品目录、然后称之为交付，是这类工作最常见的错误——工具和文档都不为它留路。
 
 ## 主路线
 
@@ -52,11 +61,11 @@ description: 承接 Video Idea System 的内容包、PPT Hell 的静态 SVG 或�
 
 | 阶段 | 步骤 | 进入时读 | 现有入口与模型工作 |
 |---|---|---|---|
-| 接入 | 1–2 | content-to-production；author-spec 全篇；preferences；creative-direction；visual-direction | 核版本，写 production-plan；风格确定后读 style-spec 对应节 |
-| 剪辑 | 3–4 | stages 的声音/逐字审阅；tools 的声音与剪辑 | stage_cut；模型定取舍并用既有 EDL 工具表达 |
-| 时间与字幕 | 5–6 | caption-article-first；caption-modes；visual-timeline | duration_plan、srt_export、timeline_derive 或 SRT 导入；模型校对与分组 |
-| 画面 | 7 | film；recompose-mode；composition-craft（造画面）／montage-route（选画面） | graphic：film 拆解后写 composition；montage：镜头表 + montage 渲染 + check_montage 体检 |
-| 审阅与返修 | 8–9 | review-ui；live-stage-contract | review 构建并验播放；review_inbox 收件后改源、重建 |
+| 接入 | 1–2 | content-to-production；author-spec 全篇；preferences；recompose-mode（第 1 步）；caption-modes 与 style-spec／montage-route／frame-spec（第 2 步定片型、字幕形态与画框）；creative-direction；visual-direction | 核版本，写 production-plan；定片型、字幕形态与画框 |
+| 剪辑 | 3–4 | stages 的声音/逐字审阅；tools 的声音与剪辑；review-ui（剪辑面独立打开的宿主判据：源 >200MB 或内存 <8GB 时走本地宿主） | stage_cut；模型定取舍并用既有 EDL 工具表达 |
+| 时间与字幕 | 5–6 | caption-article-first；visual-timeline（三个时间坐标） | duration_plan、srt_export、timeline_derive 或 SRT 导入；模型校对与分组 |
+| 画面 | 7 | film／montage-route（按片型）；composition-craft；visual-rendering；timing-lock（缺一不渲）；frame-animation-pipeline（自定义逐帧时） | graphic：film 拆解后写 composition；montage：镜头表 + montage 渲染 + check_montage 体检 |
+| 审阅与返修 | 8–9 | review-ui；live-stage-contract；hyperframes-review-adapter | review 构建并验播放；review_inbox 收件后改源、重建 |
 | 交付 | 10 | timing-lock；delivery | 按现有交付顺序逐项执行；实际文件核验后才交付 |
 | 收尾 | 11 | preferences；故障时读 architecture 的 Debug 流程 | 记录本片处理结果，候选在项目验证后集中升级 |
 
@@ -68,12 +77,12 @@ description: 承接 Video Idea System 的内容包、PPT Hell 的静态 SVG 或�
 |---|---|
 | 接入/未录音预演 | 来源、已定内容、缺口、计划与 planned 标记；未完成事项明确 |
 | 逐字剪辑审阅 | 按当前 EDL 定位源媒体，选择/改字能保存，正式提交有回执；应用后重建 |
-| 动效工程审阅（默认终点） | 当前时间来源明确；适用时 film verify 通过；review 运行时检查通过，并确认 live 通道、时长、画面与声音；交付当前 surface 和待办 |
-| 蒙太奇工程 | 素材清单每条都有登记（含「不可用」原因）；`montage.py plan` 退 0；`check_montage.py` 逐镜与成片两关都过 |
-| 成片交付（需作者明确指令） | 当前版本人审依据、未决意见处理、timing-lock、实际文件核验与有效交付指纹。严格检查未完成或失败就不声称能发 |
+| 工程审阅（默认终点） | 当前时间来源明确；适用时 film verify 通过；`check_review_playable.py` 退 0（播放通道、时长、画面与声音都对）；侧边栏 surface 已打开；本轮待办已列出 |
+| 蒙太奇工程 | 素材清单每条都已登记（含「不可用」原因，`plan` 会拒未登记或没写画面一句话的行）；`montage.py plan` 退 0；`check_montage.py --shots-dir` 逐镜与 `--video` 成片两关都过；**并已打开侧边栏审阅页**（终点是审阅，渲染只是中间产物） |
+| 成片交付（需作者明确指令） | 作者出片指令、当前版本人审依据、未决意见处理、timing-lock、实际文件核验与有效交付指纹；`edit/_engineering/` 里的文件不能当交付件。严格检查未完成或失败就不声称能发 |
 | 每轮收尾 | 反馈处理与剩余问题可追溯；无新候选就记录“本轮无新判准”，不为凑数量改 Skill |
 
-工程审阅不需要先渲整片。素材转码、声音处理、确认剪点后的工程底片属于素材准备，缓存到 edit/_engineering；成片是独立的交付动作。快照要重建才反映源的变化，不能把旧页面称为热更新。
+工程审阅不需要先渲整片。素材转码、声音处理、确认剪点后的工程底片、montage 的镜头渲染都属于素材准备，缓存到 `edit/_engineering/`；快照要重建才反映源的变化，不能把旧页面称为热更新。交付件只在上面「每轮终点」的边界内产生。
 
 两个制作审阅面继续保留：逐字面处理取词/气口/改字；动效面处理播放、逐句密度、调整请求和批注。念稿与静态页面审阅仍归上游。草稿保存、正式提交、模型收件、源修改是不同动作；回执成功后才说已保存/已应用。
 

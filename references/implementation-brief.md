@@ -1,6 +1,6 @@
 # 工具实现 Brief 与验收
 
-状态：**B1–B8 已完成实现与本地验收**（2026-10-23）。保留下列范围、验收与回退合同，实际结果见本页末尾。未新建统一 CLI、stage 脚本或状态数据库；模块 owner 与 Debug 方法见 architecture.md。DSH 宿主未实测，不能把本地宿主结果视为双宿主通过。
+状态：**B1–B10 已完成实现与本地验收**（B1–B8 2026-10-23；B9–B10 2026-11-08）。保留下列范围、验收与回退合同，实际结果见本页末尾。未新建统一 CLI、stage 脚本或状态数据库；模块 owner 与 Debug 方法见 architecture.md。DSH 宿主未实测，不能把本地宿主结果视为双宿主通过。
 
 ## 执行范围与保护
 
@@ -94,11 +94,43 @@
 - EDL 改动时旧实测不再可用；只改视觉 CSS 不触发字幕重建；外部 srt-import 仍走自己的来源链。
 - 给出一次临时项目完整命令实跑：projected → 字幕 → timeline → 写入真实测量记录 → measured 升级 → 字幕/timeline 重建 → 检查。再用真实项目复制件核一遍，不能只测试内部函数。
 
+## B9 · 蒙太奇路线：素材清单、镜头表与体检（2026-11-08）
+
+**证据 / 起点**：2026-11 的哈雷片（已录口播 + 档案影像 + 照片，1080×1920、67 镜、11 处花字、三件套交付）在入口表六行里没有一行匹配，实现方跳过路线自写了四版渲染器和七个一次性脚本。返工根因两条：素材入点与 EDL 源时间是两个坐标（渲染器拿剪后时间当素材入点，18 镜渲成只有底图，ffmpeg 与拼接全部退 0）；花字用词在源片里的时间直接当剪后时间（全片错位 41 秒）。退出码和文件大小都不承载「画面对不对」。
+
+**修改 owner**：`scan_materials.py`（帧带 + 素材清单，含 `material-inventory.json`）、`montage.py`（`plan` 展开镜头表并校验入点/唯一性/花字钳制，`render` 分块幂等、先写 /tmp 再搬，`voice-cut` 出口播人物轨，`--concat --out` 走交付闸门）、`check_montage.py`（镜头表、逐镜画面、成片黑帧三关）。路线文档 [montage-route.md](montage-route.md)，素材判据 [media-sourcing.md](media-sourcing.md)；时间坐标与三件套口径分别补进 visual-timeline 与 delivery。
+
+**验收**：
+- 手写镜头表（22 行）经 `plan` 展开为 67 镜 / 268.75s / 11 花字，与手写版时间差 0 帧；`in` 越界、素材重复、花字跨镜各自退 1 并点名。
+- montage 明确不支持变速：`speed != 1` 或 `mute` 退 1，说明剪后时间按原速累加。
+- 素材清单门：镜头素材未登记、`summary` 为空或 `usable=false` 退 1 并指出哪一镜；清单不存在时退 1 提示先跑 `scan_materials.py`。
+- 逐镜体检：文件齐、时长对、与画框底图几乎一致的镜头判为「只渲底图」；成片成段黑帧报时间范围。
+- 交付闸门：`--concat --out` 目标不在 `edit/_engineering/` 时必须显式 `--deliver` 且先过 `render_gate`；默认打印「审阅素材：…」，`--deliver` 打印「交付件：…」。
+- `voice-cut` 默认出无声竖屏人物轨 `edit/_engineering/voice_cut.mp4`，`--audio` 才带口播音轨，打印实测时长并与 `plan.timeline.total` 比对。
+- 测试：`tests/test_montage.py`、`tests/test_render_gate.py`、`tests/test_build_review_final_cut.py`。
+
+**实际验收（2026-11-08）**：全量 `Ran 577 tests — OK`（132s；其中本轮新增 test_montage 7 / test_frame 8 / test_geometry 7 / test_build_review_final_cut 7，见本页末尾）；真实镜头表展开 67 镜 / 268.75s / 11 花字、0 帧差；67 镜逐镜体检 40s PASS；注入 2 个「只渲底图」镜头后报「与画框底图几乎一致（差 0.4）」；`review.py` 在真实蒙太奇项目上 6.5s 跑完（构建 + surface + 播放判据全绿，`buildMode=final-cut`）。
+
+## B10 · 版式/画框：token 到三件套与真实素材预览（2026-11-08）
+
+**证据 / 起点**：同一条竖屏片没有画框工具，实现方临场手写 PIL 脚本出 `base.png`/`overlay.png`/`spec.md`，效果被作者认可，但换项目就得把坐标和字距重写一遍。第一版还让预览与渲染各算一套落位（预览按高铺满裁两侧、渲染 contain），预览不再等于成片。
+
+**修改 owner**：`frame.py`（`build` 由 token 生成三件套，`preview` 用两张真实素材帧按成片同一落位合成）、`_geometry.py`（`fit_in_band()` 是素材落位的唯一实现，`montage.py` 渲染与 `frame.py` 预览都调它）；规格 [frame-spec.md](frame-spec.md)。
+
+**验收**：
+- 三件套全部由 token 生成：改一个数只改 token，不出现第二处坐标；缺字段按竖屏默认值补齐并在 stderr 逐项说明（不静默）。
+- `base` 会被素材盖住、`overlay` 盖在素材之上；overlay 其余区域透明；人物位空环保持为空；`spec.md` 由 token 生成并给出叠放顺序。
+- `preview` 左右并排 1:1 像素，落位与成片同为 contain：16:9 → 1080×606、4:3 → 1080×810、竖图 → 866×1120，露出来的是带面色，不是黑边。
+- 坏 token 退 1 并给一句能读的原因，用法错误退 2。
+- 测试：`tests/test_frame.py`、`tests/test_geometry.py`（后者钉住「渲染与预览共用同一函数」）。
+
+**实际验收（2026-11-08）**：token 重建 `base.png` 与手作版平均差 2.2（颗粒级）；预览落位与成片实测一致（606/810/1120）；`test_frame` 8 条、`test_geometry` 7 条随 577 全量通过。
+
 ## 工作包顺序与验证入口
 
-先 B1 统一失败语义，再处理 B8 时间升级；B2/B3 在同一 deliver owner 上顺序执行，避免同时改同一文件。B4/B5 可单独领取；B6/B7 为后续包。B1 可以先正确拒绝缺证据的交付，不必等待 B6 就放行外部 SRT。每包必须留下独立可审 diff 与验证证据；不要把全部包塞成一次重构。
+先 B1 统一失败语义，再处理 B8 时间升级；B2/B3 在同一 deliver owner 上顺序执行，避免同时改同一文件。B4/B5 可单独领取；B6/B7 为后续包。B1 可以先正确拒绝缺证据的交付，不必等待 B6 就放行外部 SRT。B9 先立机制、B10 再立版式，二者不共用写入口。每包必须留下独立可审 diff 与验证证据；不要把全部包塞成一次重构。
 
-在 Skill 根使用已确认依赖齐全的 Python，设置 `PYTHONPATH=helpers:tests`、FFmpeg/Node 在 PATH；完整测试命令见 README。优先运行的现有模块：
+在 Skill 根使用已确认依赖齐全的 Python；测试命令与 `PYTHONPATH` 以 README「测试」一节为准（`cd tests` 后 `PYTHONPATH=..:../helpers`），FFmpeg/Node 在 PATH。优先运行的现有模块：
 
 | 包 | 首批测试（先加旧实现失败例） | 必须观察的结果 |
 |---|---|---|
@@ -110,6 +142,8 @@
 | B6 | test_import_srt_timeline、test_edit_contracts、test_deliver | 合法外部来源通过；错版/过期来源失败 |
 | B7 | test_render_gate、test_fingerprint_nested、test_deliver | 同大小同 mtime 内容变化仍可识别 |
 | B8 | test_time_source、test_srt_export、test_timeline_equivalence、test_paths | projected 可明确升级；缺实测不伪装；读写落点一致 |
+| B9 | test_montage、test_render_gate、test_build_review_final_cut | 镜头表展开与手写版 0 帧差；空镜被逐镜体检点名；交付闸门退 1 |
+| B10 | test_frame、test_geometry | 三件套由 token 生成；预览落位与渲染是同一块矩形 |
 
 失配时先修归属模块，不改原始素材、用户批准记录或跨 Skill 公共协议来让用例过。测试前查当前实现与 CLI，本文的证据是 2026-10-23 检查结果，接手时可能已有其他修复；已通过行为不要重复实现。
 
@@ -142,3 +176,14 @@
 原始红/绿日志、完整差异和真实副本证据保存在 `/private/tmp/video-craft-implementation-20261023`（临时目录可能被清理）；B1 原始单包 diff 为 B1.patch，后续按 owner 和工作包整理审阅差异。永久回归在本 Skill tests/；未来更改必须重跑，不能继承本次绿灯。
 
 兼容与迁移：旧 CLI 保留；新增可选 --time-source、--media、--visuals-confirm-current。旧项目可读取，正式 measured/外部来源/缓存使用需补足对应证据；旧 v2 delivery 指纹在实际文件核验后重新 capture v3。新增持久文件仅为 `selections.applied.json`（避免重复应用同一选择）和 `<visuals>.sources.json`（绑定缓存内容与来源），没有新增平行验证器或中心状态库。
+
+## 2026-11-08 实际验收（B9–B10）
+
+**全量**：`Ran 577 tests — OK`（132s，无 skip）；其中本轮新增 `test_montage` 7、`test_frame` 8、`test_geometry` 7、`test_build_review_final_cut` 7，没有减少既有覆盖。规划 lint 无新增确定错误（4 处示例路径为既有 REVIEW 项）；文档断链 0。
+
+| 包 | 实际结果与证据 |
+|---|---|
+| B9 | 真实镜头表（22 行）展开为 67 镜 / 268.75s / 11 花字，与手写版时间差 0 帧；67 镜逐镜体检 40s PASS；注入 2 个「只渲底图」镜头后报「与画框底图几乎一致（差 0.4）」；`review.py` 在真实蒙太奇项目上 6.5s 跑完构建 + surface + 播放判据（`buildMode=final-cut`）。`test_montage`、`test_render_gate`、`test_build_review_final_cut` |
+| B10 | token 重建 `base.png` 与手作版平均差 2.2（颗粒级）；预览落位与成片实测一致（16:9 → 606、4:3 → 810、竖图 → 1120）；`test_frame`、`test_geometry` |
+
+边界与未做：素材「小角标」没有像素阈值，只有「能否裁掉/移位」这一条判据；`frame.py preview` 不套调色档，颜色与成片不同是正常的；montage 不支持变速段（`plan` 明确退 1）；本轮未改既有 CLI 语义、未跑付费服务、未渲整片、未制造人工批准。原始完整包级事实见 [maintenance-history.md](maintenance-history.md) 的 2026-11-08 节。

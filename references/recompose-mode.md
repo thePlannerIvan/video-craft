@@ -1,13 +1,13 @@
 # Recompose build mode — 默认遵循原构图，原片不适合动画时重排
 
-这是 Video Craft 的**主制作路线**：作者在 `planners-ppt-hell` 里确认画面、录制，Craft 把
+这是 **graphic 片型**的制作路线（画面是造出来的：页、图形、字卡、动效）；画面是选出来的（档案影像/实拍/照片）走 [montage-route.md](montage-route.md)。作者在 `planners-ppt-hell` 里确认画面、录制，Craft 把
 board 当视觉参考重做成片。判据只有一条：
 
 > **画面内容不重写。默认遵循原构图，只有原片不适合作为视频动画呈现时才重排。**
 > 口播稿、事实、结论归作者与上游；怎么画、怎么动归 Craft。重排要在拆解表写明理由。
 
 `page` 十步路线已于 2026-10-21 整条归档（见 [legacy-page-route.md](legacy-page-route.md)），
-不再维护。新项目一律走 recompose，作者不需要在开工前选路线；只有复活旧项目时才读那份存档。
+不再维护。**片型在第 2 步定**（stages.md）：graphic 走 recompose，montage 走 montage-route；只有复活旧项目时才读那份存档。
 
 ## 三条不变量
 
@@ -107,7 +107,7 @@ stage_bottom = cfg["captionSafe"]["y"]
 - 声音：已锁的 `edit/cut.mp4` 或音轨。
 - 剪辑与字幕：`edit/edl.json`、`edit/subtitles.srt`；未锁时先走 `stages.md` 第 3–5 步（共用事实层，不属于任何一条画面路线）。
 - 时间脊柱：`timeline/timeline.json`（自动派生）。
-- 词级锚点：优先 edit/transcripts 经 align.py；caption_words 是字幕插值依据，不能替代真实词时间。
+- 词级锚点：优先取 `edit/transcripts/<source>.json` 的 `words[]`（真实词时间）；`caption_words` 是字幕插值依据，不能替代真实词时间。
 - board：PPT Hell 视频路线导出的页面 / 快照，作为视觉参考。
 - 人物孔位、字幕安全区、画幅。
 

@@ -158,6 +158,24 @@ python3 "<craft>/helpers/edl_edit.py" "<edit>" --restore "<起秒>,<止秒>=<期
 
 `doubao_asr_file.js` 是 SeedASR 的内部传输实现；`_edl.py`、`_words.py`、`_probe.py` 与 `helpers/lib/` 是库模块，不是 Agent 操作入口。`screen_detect.py` 是视觉场景检测库；需要它的策略与参数时由 `timeline_view.py --help` 选择公开能力，不直接导入内部函数。
 
+## 画框（版式图层）
+
+契约见 [frame-spec.md](frame-spec.md)；命令只有两条。
+
+```bash
+python3 "<craft>/helpers/frame.py" build   "<project>" --tokens "<tokens.json>"
+python3 "<craft>/helpers/frame.py" preview "<project>" --tokens "<tokens.json>" \
+    --wide "<16:9 素材帧>" --tall "<4:3 素材帧>"
+```
+
+- `build` 出 `material/frame/` 的 `base.png` / `overlay.png` / `spec.md`；`spec.md` 里的坐标是算出来的，不是手填。
+- `preview` 把两张真实帧按**成片同一落位**合成到画框里（`_geometry.fit_in_band`，contain），
+  出一张左右并排的预览图。预览等于成片这件事由 `tests/test_geometry.py` 钉住。
+- token 进 `production-plan.md`；字体固定回退（Hiragino Sans GB → STHeiti → Songti），
+  condensed 用横向压缩近似，不引入字体文件。
+- `preview` 只验画框与落位，**不套调色档**：调色在 `montage.py render` 里按镜头 grade 施加，
+  所以预览的颜色与成片不同是正常的；要看成片颜色就抽一帧成片来比。
+
 ## 蒙太奇（现成素材）
 
 路线契约见 [montage-route.md](montage-route.md)；这里只列命令。
@@ -386,6 +404,13 @@ python3 "<craft>/helpers/clean_edit_dir.py" "<edit>"        # 交付确认后才
 ```bash
 python3 "<craft>/helpers/edl_preview_build.py" "<edit>"
 python3 "<craft>/helpers/edl_review_surface.py" "<edit>" --surface-only
+```
+
+成片态项目（montage，或只有渲好的成片）走同一个入口，形态自动判定；没有 montage 计划时显式声明：
+
+```bash
+python3 "<craft>/helpers/review.py" "<project>"              # montage 项目自动按 final-cut 构建
+python3 "<craft>/helpers/review.py" "<project>" --final-cut  # 只有成片、没有 montage 计划时
 ```
 
 [review-ui.md](review-ui.md) 是唯一接入与处理说明，包含 build、surface-only、公共 validator、DSH `review_open`、无插件宿主、inbox、EDL 选择的完整调用。`visual_review_feedback.py <project> --check` 是开面前置检查；`review_inbox.py` 才是作者提交的收件入口。

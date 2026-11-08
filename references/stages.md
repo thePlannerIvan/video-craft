@@ -58,7 +58,7 @@ recompose 路线**不导入页**：PPT Hell 的快照只作视觉参考，用 `f
 | `graphic` | 画出来：页、图形、字卡、动效 | recompose（第 7 步按风格那一节做） | 必填 `line-art` 线稿 / `business-report` 商业报告 / `collage` 拼贴 / `concept-film` 概念电影（见 [style-spec.md](style-spec.md)） |
 | `montage` | 选出来：档案影像、实拍、照片 | [montage-route.md](montage-route.md) 的 素材清单 → 镜头表 → 渲染体检 | 不填风格，改填调色档与素材清单路径 |
 
-**版式/画框是另一层**，两种片型都可能要：作者给了参考页或版面约束时读 [frame-spec.md](frame-spec.md)，把 token 与画框图层写进方案，并在交付件里列出 `material/frame/` 的三个产物。
+**版式/画框是另一层**，两种片型都可能要：作者给了参考页或版面约束时读 [frame-spec.md](frame-spec.md)，把 token 写进方案，用 `helpers/frame.py build` 出 `material/frame/` 的三个产物（`base.png` / `overlay.png` / `spec.md`），再用 `frame.py preview` 拿一张真实素材的合成预览给作者挑方向。
 
 需要改内容意义、必见对象、固定文字或素材关系时回 `$video-idea-system`；需要重做静态画面时回 `$planners-ppt-hell`；需要复用方法时调用 `$planners-method-wiki`，但 Wiki 只提供方法，不提供本项目事实。
 
@@ -194,6 +194,8 @@ python3 "<craft>/visual/scripts/align-visual-plan.py" --plan "<visual-plan.json>
 **下一消费者**：动效与合成审阅面、交付核验。
 
 ## 8. 动效与合成审阅
+
+**片型是 montage、或项目只有渲好的成片时，没有活舞台可查**：`review.py` 会按 `edit/montage-plan.json`（或 `--final-cut`）判成**成片态审阅**，跳过活舞台三步、构建成片态页面；这时只核 `review/index.html` 能否构建与 `check_review_playable.py` 是否通过，不要为通过活舞台检查去捏造 composition。判据见 [review-ui.md](review-ui.md) 的「成片态审阅（final-cut）」。下面是 graphic 片型的路径。
 
 先读 `review-ui.md` 与 `hyperframes-review-adapter.md`。**`build_review` 之前先跑活舞台契约检查**：
 

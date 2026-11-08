@@ -22,19 +22,18 @@ python3 "<craft>/helpers/scan_materials.py" "<project>/material/clips"
 产出 `material-inventory.md`（清单骨架）+ `_sheets/sheet-*.jpg`（帧带：一行一个文件，帧上标时间码）。
 模型照着帧带把三列填完：**可用段落 / 画面一句话 / 水印台标**，出处记 URL。
 
-判据：
-
-- **可用段落**写成「几秒到几秒是同一内容」，剪辑从入点起连取 2–7 秒。
-- **整屏水印、频道台标、烧录字幕、时间码 = 不可用**；小角标（British Pathé 公鸡、AP）
-  登记位置后可用，交付时说明。
-- **画面一句话**只写主体 + 景别 + 色调 + 有没有文字；写不出这句话的素材不要进镜头表。
+判据的权威版本在 [media-sourcing.md](media-sourcing.md)（水印分级、时代与画质、出处与授权、失败处理）。
+本节只留三条摘要：可用段落要写成「几秒到几秒是同一内容」；整屏水印/台标/烧录字幕/时间码不可用，
+小角标登记后可用；写不出一句话画面的素材不要进镜头表。
 
 **完成标准**：每条候选素材都有一行登记，且「不可用」的写了原因。素材清单只增不删，
 第二版发现看错了就改那一行，不要新建第二份清单。
 
 ## 2. 镜头表
 
-镜头表是**人读**的 JSON，一镜一条，字段只有七个：
+镜头表是**人读**的 JSON，一镜一条，字段只有七个。三个时间坐标（源片时间 / 素材入点 / 剪后时间）
+的定义与换算在 [visual-timeline.md](visual-timeline.md) 的「三个时间坐标」一节——**镜头表只填「段 + 词」，
+其它时间由 `plan` 算**：
 
 ```json
 {"range": 2, "word": 30, "kind": "clip",
@@ -96,13 +95,9 @@ python3 "<craft>/helpers/check_montage.py" "<project>" --video "<成片>"
 
 ## 5. 交付
 
-输出三件套（清单写进 `production-plan.md` 的交付件一节）：
-
-| 件 | 规格 | 说明 |
-|---|---|---|
-| 画面成片 | 画幅 / 时长 = 时间轴 / 带口播音轨 / 字幕区留白 | `montage.py render --concat` 的产物 |
-| 口播成片 | 母版按同一 EDL 剪的竖屏人物轨 + 口播音轨 | 从**母版**剪，不用 proxy |
-| 字幕 | `edit/subtitles.srt`（外挂） | [caption-article-first.md](caption-article-first.md) 的 srt_export 链 |
+输出三件套：画面成片（`montage.py render --concat --audio` 的产物）、口播成片（母版按同一 EDL 剪的
+竖屏人物轨 + 口播音轨）、外挂 `edit/subtitles.srt`。三件的规格、命名、核验与边界都在
+[delivery.md](delivery.md) 的「蒙太奇项目的三件套」一节，字幕链见 [caption-article-first.md](caption-article-first.md)。
 
 审阅：成片态审阅面看画面与声音，`check_review_playable.py` 通过才算能看；见 [review-ui.md](review-ui.md)。
 

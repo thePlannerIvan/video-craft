@@ -2,32 +2,39 @@
 
 ## 2026-11-08 · 蒙太奇路线与画框契约（哈雷片复盘落地）
 
-用户确认：先把「结构 + 工具」这一批做完再评估下一批。触发点是 2026-11 的哈雷片（口播录音 + 档案素材，
-1080×1920、67 镜、11 处花字、三件套交付）：入口表六行没有一行匹配这种片型，实现方只能自己写了四版渲染器
-和七个一次性脚本，四次返工的根因是两处坐标混用与「退出 0 的错产物」。复盘记录在项目侧
+用户确认：四批一次性做完（先结构+工具，再版式、规范、审阅入口），做完统一发布。触发点是 2026-11 的哈雷片
+（口播录音 + 档案素材，1080×1920、67 镜、11 处花字、三件套交付）：入口表六行没有一行匹配这种片型，
+实现方只能自己写了四版渲染器和七个一次性脚本，返工根因是两处坐标混用与「退出 0 的错产物」。复盘见项目侧
 `video-edit/retro-2026-11-08.md`。
 
-- **入口与分叉**：SKILL 入口表补「已录口播 + 无参考页 + 现成素材」一行；第 2 步从「路线固定 recompose」
+- **批 1 入口与分叉**：SKILL 入口表补「已录口播 + 无参考页 + 现成素材」一行；第 2 步从「路线固定 recompose」
   改成**片型二选一**（`graphic` 造画面 / `montage` 选画面），风格字段只对 graphic 支线生效（stages 第 2 步）。
-- **新增路线** [montage-route.md](montage-route.md)：素材清单 → 镜头表 → 渲染 → 体检 → 交付，
-  三步完成标准写死；第 7 步对 montage 项目改指向本节，明确不为通过 film/recompose 检查捏造参考页。
-- **新增版式契约** [frame-spec.md](frame-spec.md)：参考页 → token → `base.png`/`overlay.png`/`spec.md` 三层；
-  竖屏 1080×1920 的实测契约（320–1440 素材带、25% 字幕安全区、人物位保持空、不要序号）。
-- **新增三个机械入口**：`helpers/scan_materials.py`（抽帧带 + 清单骨架，治「凭文件名猜素材」）、
-  `helpers/montage.py`（`plan` 把段+词展开成绝对时间并校验入点/唯一性/花字钳制，`render` 分块幂等、
-  写 /tmp 再搬、花字烘进所在镜头）、`helpers/check_montage.py`（逐镜「只有底图/黑帧」＋成片成段黑帧）。
-- **GOTCHAS** 增 #80（素材入点 ≠ EDL 源时间，#81 同项目的静默失败指纹），两条都指向新检查；
-  上限随机制同步 44 → 46。
-- **tools** 补蒙太奇一节；日常调用表加一行。
+- **批 1 路线与工具**：新 [montage-route.md](montage-route.md)（素材清单 → 镜头表 → 渲染 → 体检 → 交付）；
+  `helpers/scan_materials.py`（抽帧带 + 清单骨架）、`helpers/montage.py`（`plan` 展开「段+词」为绝对时间并校验
+  入点/唯一性/花字钳制，`render` 分块幂等、写 /tmp 再搬、花字烘进所在镜头）、`helpers/check_montage.py`
+  （逐镜「只有底图/黑帧」＋成片成段黑帧）；GOTCHAS #80/#81，上限 44 → 46。
+- **批 2 版式**：新 [frame-spec.md](frame-spec.md)（参考页 → token → base/overlay/spec 三层 + 竖屏实测契约）；
+  `helpers/frame.py`（`build` 出三件套、`preview` 出真实素材合成预览）；`helpers/_geometry.py` 把「素材落位」
+  收成一处实现，渲染与预览共用（此前预览按高铺满、渲染 contain，差一次裁切）；落位实测值 16:9 → 1080×606、
+  4:3 → 1080×810、竖图 → 866×1120。
+- **批 3 规范**：新 [media-sourcing.md](media-sourcing.md)（水印分级/时代与画质/出处与授权/失败处理，
+  判据一句话：能否在不损失构图的前提下裁掉或移到画框外）；[visual-timeline.md](visual-timeline.md) 增
+  「三个时间坐标」（源片时间 / 素材入点 / 剪后时间及换算，字幕 nominal/projected/measured 是证据等级不是第四类）；
+  [delivery.md](delivery.md) 增「蒙太奇项目的三件套」（画面成片/口播成片/外挂 srt 的口径、命名、核验与边界）。
+- **批 4 审阅入口**：`build_review.py` 增构建模式 `final-cut`（有 `recompose.json` → recompose；
+  有 `edit/montage-plan.json` → final-cut；否则 `--final-cut`；再否则 page 仍拒绝），成片态页面默认放行、
+  徽标写「成片态·无工程态」、`layersBaked` 强制为真；`review.py` 入口同步（`resolve_review_mode`，成片态跳过
+  活舞台三步），不再靠 `--allow-page` 硬开；[review-ui.md](review-ui.md) 增「成片态审阅」一节。
 
-验收：`tests/test_montage.py` 7 项（词锚→剪后时间、入点越界必拒、素材重复必拒、花字钳制、
-好渲染通过、空镜必报、缺镜必报）；全量 `Ran 555 tests — OK`（103s）。真实项目回归：22 行镜头表由
-`montage.py plan` 展开成 67 镜 / 268.75s / 11 花字，与手写版本时间差 0 帧；67 镜逐镜体检 40s 通过；
-把 2 镜改成「只渲底图」后检查报出「与画框底图几乎一致（差 0.4）」；成片体检 PASS，造的 3 秒黑片被报出。
-planning lint 未发现确定错误（4 处示例路径为既有 REVIEW 项）。
+验收：全量 `Ran 577 tests — OK`（132s，新增 `test_montage` 7 / `test_frame` 8 / `test_geometry` 7 /
+`test_build_review_final_cut` 7）；planning lint 无新增确定错误（4 处示例路径为既有 REVIEW 项）；文档断链 0。
+真实项目回归：22 行镜头表由 `montage.py plan` 展开成 67 镜 / 268.75s / 11 花字，与手写版本时间差 0 帧；
+67 镜逐镜体检 40s PASS；注入 2 个「只渲底图」镜头后报「与画框底图几乎一致（差 0.4）」；token 重建 base.png
+与手作版平均差 2.2（颗粒级）；预览落位与成片实测一致（606/810/1120）；`review.py` 一条命令在真实蒙太奇项目上
+6.5s 跑完（构建 + surface + 播放判据全绿），`review_data.buildMode=final-cut`。
 
-未做（留待下一批）：素材准入判据成文（media-sourcing）、时间轴换算口径单一出处、delivery 的三件套清单、
-成片态审阅面的合法入口（本轮仍用 `--allow-page` 临时打开）。未改任何既有 CLI 语义，未跑付费服务。
+未做/边界：素材「小角标」没有像素阈值，只有「能否裁掉/移位」这一条判据；`preview` 不套调色档，颜色与成片不同是正常的；
+判据仍在项目验证后集中升级（本轮已按此执行）。未改既有 CLI 语义，未跑付费服务。
 
 ## 2026-10-23 · B1–B8 机械保证落地
 

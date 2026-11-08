@@ -33,6 +33,30 @@ DSH tokens 仍来自 review-core，生成时内联。导航显示分屏标题、
 
 **旧十步审阅页（page 模式）已退休。** `build_review` 默认拒绝 page 模式（退 2），旧项目先跑 `recompose_plan.py init` 转成 recompose 布局；审阅页只保留这一套（左侧大预览 + 横向 Beat + 右侧逐句调整/历史反馈）。
 
+## 成片态审阅（final-cut）
+
+`build_review.py` 的第三种构建模式，给**只有成片、没有工程态**的项目。判定按顺序：
+`recompose.json` 在 → `recompose`；否则 `<project>/edit/montage-plan.json` 在 → `final-cut`
+（蒙太奇片的正常形态）；否则命令行显式 `--final-cut` → `final-cut`；都没有 → `page`
+（已退休的旧十步页，仍要 `--allow-page`）。
+
+**什么时候合法**：蒙太奇路线（`edit/edl.json` + `edit/montage-plan.json` + 渲好的成片），
+或任何只有一份渲好成片、没有 composition 的项目（用 `--final-cut` 显式声明）。有
+composition 的项目不走这里——工程态优先，活舞台没起就该先跑 `review.py` / `live_stage.py`。
+
+**页面能看什么**：成片的播放、总时长与声音；按 EDL 段落的逐 beat 定位；审阅意见照常
+提交。`review/review_data.json` 里 `buildMode: "final-cut"`、`media.layersBaked: true`，
+`mode` 仍是 `composite` / `speaker_only` 这类媒体形态；页面顶部形态徽标写
+「成片态·无工程态」。布局沿用现有审阅页，不另起模板。
+
+**不能看什么**：没有工程快照。改一句话、一个镜头或一处花字，要回源（`edl.json` /
+`montage-plan.json` / 镜头表）重渲成片，再重建审阅；页面不会热更新工程，也不在成片上
+实时叠加未烘焙的视觉层。要工程态审阅就先把 composition 和活舞台补齐。
+
+**`page` 与 `final-cut` 的区别**：`page` 是已退休的旧十步审阅页，只为旧项目/测试保留，
+要 `--allow-page` 显式放行；`final-cut` 是有意支持的成片态审阅入口，默认允许，不需要
+`--allow-page`。
+
 ## 兼容已有项目
 
 以下已有媒体、叠层、提交和版本约束继续适用。它们不再是新 HyperFrames 工程预览的默认制作路径。

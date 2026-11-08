@@ -117,18 +117,27 @@ def _served_timeline_duration(stage_url: str) -> float | None:
         return None
 
 
-def _require_recompose(project: Path) -> None:
-    """旧十步审阅页已退休：审阅只走 recompose 布局。"""
+def resolve_review_mode(project: Path, final_cut: bool = False) -> str:
+    """这个工程该按哪种形态审：`recompose`（工程态）还是 `final-cut`（成片态）。
+
+    page 十步页已退休，但「没有 composition 的工程」不等于「没东西可审」：蒙太奇项目
+    （`edit/montage-plan.json`）和只渲好了成片的项目，审的就是那份成片。这类项目逼它去
+    `recompose_plan.py init` 一个假 recompose，只会让人绕回 `--allow-page` 的临时开法。
+    """
     if (project / "recompose.json").is_file():
-        return
-    print("✗ 这个工程还没有 recompose.json —— 旧十步审阅页已退休，审阅页只保留 recompose 布局。",
-          file=sys.stderr)
-    print(f"  先跑：python3 helpers/recompose_plan.py init {project}", file=sys.stderr)
+        return "recompose"
+    if final_cut or (project / "edit" / "montage-plan.json").is_file():
+        return "final-cut"
+    print("✗ 这个工程既没有 recompose.json 也没有 edit/montage-plan.json —— "
+          "审阅页只支持 recompose 布局或成片态（final-cut）。", file=sys.stderr)
+    print(f"  · 有 recompose 工程：先跑 python3 helpers/recompose_plan.py init {project}", file=sys.stderr)
+    print("  · 只有渲好的成片：加 --final-cut 再跑（成片态审阅不要求工程态）", file=sys.stderr)
     raise SystemExit(2)
 
 
 def review(project: Path, open_surface: bool = True, live: bool = True,
-           as_json: bool = False, port: int | None = None) -> int:
+           as_json: bool = False, port: int | None = None,
+           build_mode: str = "recompose") -> int:
     steps: list[dict] = []
 
     def step(name: str, ok: bool, detail: str, fix_layer: str = "") -> bool:
@@ -143,6 +152,8 @@ def review(project: Path, open_surface: bool = True, live: bool = True,
         return 1
 
     info = {}
+    # 成片态没有 composition，活舞台那三步只会报「没有 composition」：直接跳过，不假装在审工程态。
+    live = bool(live) and build_mode == "recompose"
     # 1) 静态契约：这份 composition 能不能进活舞台
     if live:
         code, out = _run([str(HELPERS / "check_live_stage.py"), str(project)])
@@ -172,7 +183,10 @@ def review(project: Path, open_surface: bool = True, live: bool = True,
             return stop()
 
     # 2) 构建审阅页
-    code, out = _run([str(HELPERS / "build_review.py"), str(project), "--mode", "auto", "--slices", "off"])
+    build_args = [str(HELPERS / "build_review.py"), str(project), "--mode", "auto", "--slices", "off"]
+    if build_mode == "final-cut":
+        build_args.append("--final-cut")
+    code, out = _run(build_args)
     built = (project / "review" / "index.html").is_file()
     if not step("审阅页构建", code == 0 and built, "review/index.html",
                 "build_review.py（看它报的 mediaNotes / 缺的输入）"):
@@ -264,11 +278,13 @@ def main(argv=None) -> int:
     parser.add_argument("--port", type=int, default=None,
                         help="编译服务端口；默认自动挑空闲端口。三条片共用同一 project id，"
                              "挤在默认端口会互相顶掉（会把 A 片的画面当 B 片交出去）")
+    parser.add_argument("--final-cut", action="store_true",
+                        help="成片态审阅：项目只有渲好的成片（没有 composition / recompose）")
     args = parser.parse_args(argv)
     project = args.project.expanduser().resolve()
-    _require_recompose(project)
+    build_mode = resolve_review_mode(project, final_cut=args.final_cut)
     return review(project, args.open_surface, args.live,
-                  args.json, args.port)
+                  args.json, args.port, build_mode=build_mode)
 
 
 if __name__ == "__main__":

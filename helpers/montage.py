@@ -59,6 +59,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from _geometry import fit_in_band
+
 PLAN_NAME = "montage-plan.json"
 DEFAULTS = {
     "width": 1080, "height": 1920, "fps": 30,
@@ -362,13 +364,10 @@ def render_shot(shot: dict, plan: dict, work: Path, dirty: bool) -> Path:
 
     mat = Path(shot["material"])
     info = probe(mat)
-    scale = min(W / info["width"], band / info["height"])
     cropb = float(shot.get("cropBottom") or 0.0)
-    src_h = info["height"] * (1 - cropb)
-    if cropb:
-        scale = min(W / info["width"], band / src_h)
-    fw = max(2, int(info["width"] * scale) // 2 * 2)
-    fh = max(2, int(src_h * scale) // 2 * 2)
+    src_h = int(info["height"] * (1 - cropb)) if cropb else info["height"]
+    # 落位只有一处实现（_geometry.fit_in_band）：画框预览调同一个函数，预览才等于成片。
+    fw, fh = fit_in_band(info["width"], src_h, W, band)
     y = top + (band - fh) // 2
 
     base = frame.get("base")

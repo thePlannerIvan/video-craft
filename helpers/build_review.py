@@ -10,7 +10,7 @@
 编译出统一契约 <project>/review/review_data.json，并装配 <project>/review/index.html 与 review-surface.json。
 
 用法：
-    python3 helpers/build_review.py <project_dir_or_edit_dir> [--mode {auto,composite,speaker_only,animation_only}]
+    python3 helpers/build_review.py <project_dir_or_edit_dir> [--mode {auto,composite,speaker_only,animation_only}] [--final-cut]
 """
 from __future__ import annotations
 
@@ -506,10 +506,33 @@ def build_density(project_root: Path, beats: list, captions: list) -> dict:
     }
 
 
+def resolve_build_mode(project_root: Path, *, final_cut: bool = False) -> str:
+    """审阅页用哪种构建模式。顺序即优先级，不要调换。
+
+    recompose 是工程态审阅（逐句调整）；final-cut 是成片态审阅（只有渲好的成片，
+    没有工程快照）；page 是已退休的旧十步页。判定：
+      1. `recompose.json` 在 → recompose；
+      2. 否则 `<project>/edit/montage-plan.json` 在 → final-cut：蒙太奇片只有成片，
+         成片态就是它合法的审阅形态，不该再要求 --allow-page；
+      3. 否则命令行显式给了 `--final-cut` → final-cut：只有成片、没有蒙太奇计划的
+         项目勾不出来，只能由调用者声明；
+      4. 其余 → page（旧十步页已退休，仍由 `--allow-page` 显式放行）。
+    """
+    if recompose_plan.enabled(project_root):
+        return "recompose"
+    if (project_root / "edit" / "montage-plan.json").is_file():
+        return "final-cut"
+    if final_cut:
+        return "final-cut"
+    return "page"
+
+
 def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = "auto",
                       *, allow_review_copy: bool = True,
-                      slices: str = "auto") -> dict:
+                      slices: str = "auto", final_cut: bool = False) -> dict:
     """搜集、对齐并构造统一审阅数据契约。"""
+    # 先定构建模式：它决定页面形态（recompose / final-cut / page）和 main 的拒绝闸门。
+    build_mode = resolve_build_mode(project_root, final_cut=final_cut)
     # 1. 查找 timeline.json
     timeline_paths = [
         project_root / "timeline" / "timeline.json",
@@ -585,6 +608,11 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
     media, media_notes = resolve_review_media(
         project_root, edit_dir, allow_review_copy=allow_review_copy)
     media["layers"] = _overlay_layers(project_root, edit_dir, edl_data)
+    # 成片态审的是渲好的成片：视觉层已经烘进去，页面不能再叠一遍（叠了就是重影）。
+    # 声明了未烘焙底片（baseVideo）的项目本来就不是成片态，这里只纠正显式的 final-cut。
+    if build_mode == "final-cut" and not media.get("layersBaked", True):
+        media["layersBaked"] = True
+        media_notes.append("成片态审阅按已烘焙成片播放，不在页面上重复叠层")
     media["slices"] = None
     _step_list = [s for ch in (timeline_data or {}).get("chapters", [])
                   for s in ch.get("steps", [])]
@@ -856,7 +884,7 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
         "svgs": svg_map,
         "workbenchSnapshot": workbench_snapshot.binding() if workbench_snapshot else None,
         "edl": edl_data or {},
-        "buildMode": ("recompose" if recompose_plan.enabled(project_root) else "page"),
+        "buildMode": build_mode,
         "density": build_density(project_root, beats, captions)
     }
     return review_data
@@ -1090,6 +1118,50 @@ def fit_live_stage_assets(project_root: Path, review_data: dict) -> None:
                      f"考虑减少同屏资产或先切片")
 
 
+FINAL_CUT_BADGE_LABEL = "成片态·无工程态"
+
+
+def final_cut_badge_script(label: str = FINAL_CUT_BADGE_LABEL) -> str:
+    """给 final-cut 页面的形态徽标补一句「成片态·无工程态」。
+
+    模板只按媒体形态（composite / speaker_only）打徽标，不认识 final-cut；而成片态
+    项目没有工程快照，作者不该以为自己在看工程态。这里不改模板，只在构建成片态
+    页面时注入这条最小脚本（只标形态，不改布局与播放）。
+    """
+    label_js = json.dumps(label, ensure_ascii=False)
+    return (
+        '<script id="final-cut-badge">\n'
+        '(function () {\n'
+        f'  var LABEL = {label_js};\n'
+        '  function paint() {\n'
+        '    var chip = document.getElementById("stage-mode-chip");\n'
+        '    if (chip && chip.textContent !== LABEL) {\n'
+        '      chip.textContent = LABEL;\n'
+        '      chip.title = "成片态审阅：没有工程状态，改一句要改源再重渲";\n'
+        '    }\n'
+        '    var badge = document.getElementById("mode-badge");\n'
+        '    if (badge && badge.textContent.indexOf(LABEL) === -1) {\n'
+        '      badge.textContent = (badge.textContent || "成片") + " · " + LABEL;\n'
+        '    }\n'
+        '  }\n'
+        '  function watch() {\n'
+        '    paint();\n'
+        '    ["stage-mode-chip", "mode-badge"].forEach(function (id) {\n'
+        '      var el = document.getElementById(id);\n'
+        '      if (el) new MutationObserver(paint).observe(\n'
+        '        el, { childList: true, characterData: true, subtree: true });\n'
+        '    });\n'
+        '  }\n'
+        '  if (document.readyState === "loading") {\n'
+        '    document.addEventListener("DOMContentLoaded", watch);\n'
+        '  } else {\n'
+        '    watch();\n'
+        '  }\n'
+        '})();\n'
+        '</script>\n'
+    )
+
+
 def write_review_files(project_root: Path, review_data: dict) -> tuple[Path, Path]:
     """生成 review/review_data.json 与 review/index.html。"""
     review_dir = project_root / "review"
@@ -1164,7 +1236,10 @@ def write_review_files(project_root: Path, review_data: dict) -> tuple[Path, Pat
         "  </script>\n"
     )
     if "</head>" in template_content:
-        template_content = template_content.replace("</head>", f"{inline_script}{player_script}</head>", 1)
+        final_cut_badge = (final_cut_badge_script()
+                           if review_data.get("buildMode") == "final-cut" else "")
+        template_content = template_content.replace(
+            "</head>", f"{inline_script}{player_script}{final_cut_badge}</head>", 1)
 
     index_path.write_text(template_content, encoding="utf-8")
 
@@ -1188,6 +1263,8 @@ def main():
                         help="允许在没有活舞台时仍构建（默认拒绝：有 composition 却审成片是流程错误）")
     parser.add_argument("--allow-page", action="store_true",
                         help="仅旧项目/测试：允许构建已退休的 page 十步审阅页")
+    parser.add_argument("--final-cut", action="store_true",
+                        help="只有渲好的成片、没有 montage-plan.json 的项目：按成片态构建审阅页")
     args = parser.parse_args()
 
     project_root, edit_dir = resolve_project_paths(Path(args.project))
@@ -1202,7 +1279,7 @@ def main():
 
     data = build_review_data(project_root, edit_dir, args.mode,
                              allow_review_copy=not args.no_review_copy,
-                             slices=args.slices)
+                             slices=args.slices, final_cut=args.final_cut)
 
     if data["buildMode"] == "page" and not args.allow_page:
         print("✗ 旧十步审阅页（page 模式）已退休。审阅页只保留 recompose 布局：", file=sys.stderr)

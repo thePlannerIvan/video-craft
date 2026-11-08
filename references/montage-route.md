@@ -50,6 +50,10 @@ python3 "<craft>/helpers/scan_materials.py" "<project>/material/clips"
  "grade": "vintage", "note": "1969 飞车党车队在荒漠公路"}
 ```
 
+**画框数值只有一个家**：镜头表顶层的 `frame` 块（`width/height/fps/band/labelX/labelY/base/overlay/bg`）
+是 `frame.py build` 的 token 落到渲染侧的那一份。它必须和 `material/frame/spec.md`（以及 token 原文件）
+一致——改了 token 就同步这里；省略 `frame` 块时用默认值，默认值只为竖屏 1080×1920 准备，别的画幅别省。
+
 | 字段 | 含义 | 容易搞错的地方 |
 |---|---|---|
 | `range` | 第几段（对应 `edit/edl.json` 的 ranges 序号） | 是段号不是镜头号 |

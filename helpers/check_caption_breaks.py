@@ -34,13 +34,12 @@ import re
 import sys
 from pathlib import Path
 
+import _words
+from _words import CAPTION_MAX_CONTENT
+
 MEASURE = "条个页字张份次名位层句块组天年月日点分秒人场家款支台"
 TERMINAL = "。！？…"
 PUNCT = "，。、；：？！"
-
-
-def content_len(s: str) -> int:
-    return len(re.sub(r"[\s，。、；：？！]", "", s))
 
 
 def load_cues(target: Path) -> list[str]:
@@ -63,19 +62,14 @@ def load_cues(target: Path) -> list[str]:
     return [l.strip() for l in text.split("\n") if l.strip()]
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("path")
-    ap.add_argument("--json", action="store_true")
-    a = ap.parse_args()
-
-    cues = load_cues(Path(a.path))
+def check(cues: list[str]) -> tuple[list[str], list[str]]:
+    """Return (hard, warn) for a list of cues. Pure; `main` only formats it."""
     hard, warn = [], []
     for i, c in enumerate(cues):
-        n = content_len(c)
+        n = _words.content_len(c)
         nxt = cues[i + 1] if i + 1 < len(cues) else ""
-        if n > 20:
-            hard.append(f"#{i + 1} 超 20 字（{n}）：{c}")
+        if n > CAPTION_MAX_CONTENT:
+            hard.append(f"#{i + 1} 超 {CAPTION_MAX_CONTENT} 字（{n}）：{c}")
         bare = c.rstrip()
         if bare and bare[-1] not in PUNCT and re.search(r"[0-9]$", bare):
             hard.append(f"#{i + 1} 结尾是数字且没有标点，量词被切掉了：{c}")
@@ -88,6 +82,17 @@ def main() -> int:
         if nxt and c and c[-1] not in PUNCT and c[-1] not in TERMINAL:
             warn.append(f"#{i + 1} 结尾没有标点，下一句还接着：{c} | {nxt}")
 
+    return hard, warn
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("path")
+    ap.add_argument("--json", action="store_true")
+    a = ap.parse_args()
+
+    cues = load_cues(Path(a.path))
+    hard, warn = check(cues)
     if a.json:
         print(json.dumps({"cues": len(cues), "hard": hard, "warn": warn}, ensure_ascii=False, indent=2))
     else:

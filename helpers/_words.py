@@ -41,6 +41,10 @@ def normalize(text: str) -> str:
                    if unicodedata.category(ch)[0] in KEEP_CATEGORIES)
 
 
+# ????：字幕行的字数上限只有一个数字源。srt_export 导出、字幕断句检查都读这里。
+CAPTION_MAX_CONTENT = 20
+
+
 def content_len(text: str) -> int:
     """Caption content characters: punctuation and spaces do not count."""
     return len(normalize(text))

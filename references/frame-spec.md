@@ -101,6 +101,10 @@ python3 helpers/frame.py preview <project> --tokens <tokens.json> \
 | `texts[].uppercase` | 是否转大写 | false |
 | `texts[].condense` | 字形横向压缩比（只压字形，字距不跟着压） | 1.0 |
 | `personSlot.cx` / `cy` / `r` | 人物位圆心与空区半径 | 540 / 170 / 128 |
+
+> 这里的 `personSlot` 是**画框上的圆形留白位**（装饰 + 提示"这里放人"），不是合成贴人的矩形。
+> 合成用的矩形在 `edit/recompose.json` 里也叫 `personSlot`（`x/y/w/h`，`recompose-mode.md`）——
+> 两个同名不同物，渲染只读 `recompose.json` 的那个；画框 token 的这个只管别把东西画进圆里。
 | `personSlot.ringOffset` | 圆环画在空区外多少 px（空区保持干净） | 5 |
 | `personSlot.ringWidth` / `ringAlpha` | 圆环线宽 / 不透明度 | 1 / 0.10 |
 | `cropMarks.inset` / `length` / `width` / `color` | 四角裁切标记 | 40 / 18 / 1 / `line` |

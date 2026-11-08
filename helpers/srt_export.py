@@ -32,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _edl  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _words import CAPTION_MAX_CONTENT as MAX_CONTENT_CHARS  # noqa: E402
 from _words import content_len as _content_len  # noqa: E402
 from _words import normalize as _normalize_shared  # noqa: E402
 
@@ -53,7 +54,6 @@ SRT_GAP_TRIM_S = 0.04
 SRT_MIN_GAP_S = 0.03
 SRT_MIN_CUE_S = 0.30
 CONTRACT_VERSION = 2
-MAX_CONTENT_CHARS = 20
 
 # Normalization is imported from _words, NOT redefined here. This module used to
 # carry its own copy of the punctuation regex, so the "single source of truth"

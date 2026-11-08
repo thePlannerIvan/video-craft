@@ -106,6 +106,11 @@ Idea 检查只核文件和素材，不代替作者决定。参考页**不导入*
 
 ## 声音与剪辑
 
+**三处「静音」不是同一个判据，别互相替代**：`_silence.py` 是 10ms RMS 包络 + 自适应阈值（5 分位 +10 dB），
+用来定剪点是否落在气口；`verify_delivery.py` 用 `silencedetect noise=-50dB` 核交付件有没有异常静音段；
+`edl_preview_build.py` 用 `noise=-25dB:d=0.15` 只是为了逐字面上能拖到停顿。三者阈值差很大是故意的，
+改一处不要顺手改另一处。
+
 从 keep list 建 EDL（剪点自动吸附实测静音）：
 
 ```bash

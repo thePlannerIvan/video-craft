@@ -19,7 +19,9 @@ HISTORY = ROOT / "references" / "maintenance-history.md"
 # 2026-10-21: 40 → 42 — 活舞台静默失败（#74）与渲染闸门（#75）各一条，机制是新检查脚本
 # 2026-10-23: 42 → 43 — 成片二次剪的字幕重算（#78），机制是新检查 helpers/_cutmap.py
 # 2026-11-04: 43 → 44 — 多 worker 渲染丢内容（#79），机制是 check_render_fidelity.py
-MAX_GOTCHAS = 44
+# 2026-11-08: 44 → 46 — 蒙太奇两关（#80 素材入点坐标 / #81 空镜的像素检查），
+#             机制是 helpers/check_montage.py 与 helpers/montage.py plan
+MAX_GOTCHAS = 46
 PREFIXES = ("test", "check", "env", "judgment")
 
 

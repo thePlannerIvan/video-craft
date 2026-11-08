@@ -1,4 +1,4 @@
-> 本手册只列**现行 recompose 路线**的命令、参数、产物与失败信号。page 路线的命令见 [legacy-page-route.md](legacy-page-route.md)。
+> 本手册只列**现行两条路线**（graphic=recompose / montage）的命令、参数、产物与失败信号。page 路线的命令见 [legacy-page-route.md](legacy-page-route.md)。
 
 > **查 HyperFrames 的 `data-*` 契约与属性名，不要 grep 打包后的 CLI。**
 > `node_modules/hyperframes` 是几万行压缩后的 bundle：一次 `grep -rn` 就会把 100KB+ 的
@@ -24,7 +24,8 @@
 |---|---|---|
 | 剪辑准备、出逐字面、应用选择 | stage_cut；取舍后用 edl_from_keep / edl_edit 建或改 EDL | 定位转写、EDL、表面回执的问题时 |
 | 时间与字幕 | duration_plan / srt_export / timeline_derive；外部来源用 import_srt_timeline | 尚无统一 time 命令，按 stages 5–6 顺序调用 |
-| 原页拆解与画面 | film / recompose_plan；模型写 composition | 检查具体映射或场景 |
+| 原页拆解与画面（graphic） | film / recompose_plan；模型写 composition | 检查具体映射或场景 |
+| 蒙太奇（montage） | scan_materials → montage plan/render → check_montage | 空镜、花字错位、来路不明的素材 |
 | 动效审阅构建 | review.py | check_live_stage/live_stage/build_review/review_surface/check_review_playable 是内部步骤，仅定位故障时单跑 |
 | 正式反馈收件 | review_inbox.py | 它不包含在 review.py 内；拒收先解决绑定 |
 | 成片合成、严格核验、包装、指纹 | deliver → verify_delivery → 按需 export_deliverables → state_fingerprint | 顺序与适用限制见 delivery.md；stage_deliver 是兼容的分动作入口 |
@@ -156,6 +157,27 @@ python3 "<craft>/helpers/edl_edit.py" "<edit>" --restore "<起秒>,<止秒>=<期
 | 素材联系图 | `python3 <craft>/helpers/timeline_view.py <视频> <起秒> <止秒> -o <filmstrip.png>` | 声音/帧联合定位，供剪辑取舍 |
 
 `doubao_asr_file.js` 是 SeedASR 的内部传输实现；`_edl.py`、`_words.py`、`_probe.py` 与 `helpers/lib/` 是库模块，不是 Agent 操作入口。`screen_detect.py` 是视觉场景检测库；需要它的策略与参数时由 `timeline_view.py --help` 选择公开能力，不直接导入内部函数。
+
+## 蒙太奇（现成素材）
+
+路线契约见 [montage-route.md](montage-route.md)；这里只列命令。
+
+```bash
+python3 "<craft>/helpers/scan_materials.py" "<project>/material/clips"          # 帧带 + 清单骨架
+python3 "<craft>/helpers/montage.py" plan   "<project>" --shots "<镜头表.json>"  # 展开绝对时间并校验
+python3 "<craft>/helpers/montage.py" render "<project>" --max 20                # 分块渲染（幂等）
+python3 "<craft>/helpers/montage.py" render "<project>" --concat --audio "<voice.m4a>"
+python3 "<craft>/helpers/check_montage.py" "<project>" --shots-dir "<work>" --base "<base.png>"
+python3 "<craft>/helpers/check_montage.py" "<project>" --video "<成片>"
+```
+
+- `plan` 的产物是 `edit/montage-plan.json`，渲染只认它；片段里 `in` 是**素材内的秒数**，
+  不是 EDL 源时间（GOTCHAS #80）。任何一条校验不过就退 1，不绕过它手写计划。
+- `render` 的中间文件默认落 `/tmp/montage_<hash>/`，成片搬进项目目录（GOTCHAS #52）；
+  已存在的镜头跳过，`--force` 重渲，`--only 1,6,20` 只渲指定镜。
+- `check_montage` 是交付前必跑：逐镜看「是不是只有底图/是不是黑帧」，成片看「有没有成段黑帧」
+  （GOTCHAS #81）。它退 0 才算过，退出码和文件大小都不承载这件事。
+- 花字在这条路线里是**烘进所在镜头**的一条 overlay，不需要单独的花字层；停留由 `plan` 钳到镜头内。
 
 ## 免渲染的工程态（先审后渲）
 

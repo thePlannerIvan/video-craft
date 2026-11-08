@@ -1,0 +1,563 @@
+#!/usr/bin/env python3
+"""`montage` —— 现成素材蒙太奇：镜头表 → 渲染 → 合成，一个方向有硬闸门。
+
+它替换掉的是一条历史路线
+------------------------
+2026-11 的哈雷片（口播录音 + 档案影像 + 照片，1080×1920）没有片型入口：入口表六行
+没有一行匹配「已录口播 + 无参考页 + 现成素材」，于是实现方**跳过了所有路线**，自己手写了
+四版渲染器（build_v1→v4）和七个一次性脚本。四次返工的根因只有两个：
+
+1. **素材入点与 EDL 源时间是两个坐标。** 渲染器把剪辑时间轴上的源时间当成素材入点去 seek，
+   超出素材长度的镜头 seek 到片尾之外，得到一段只有底图的画面；ffmpeg 退 0、文件大小正常。
+   全片 67 镜里有 18 镜是空的，直到最后才被肉眼发现。
+2. **花字的时间坐标没人换算。** 花字用词在源片里的时间直接当剪后时间，全片错位 41 秒。
+
+所以这个模块只做一件事，但把这两件事做成结构：**镜头表里 `in` 是素材内的秒数，
+`cutStart` 是剪后时间轴上的秒数，两者不共用字段**；花字一律给「段 + 词序号」的词锚，
+由这里换算成剪后时间，并钳到所在镜头结束前。
+
+两条命令
+--------
+    python3 helpers/montage.py plan   <edit_dir> --shots <spec.json> [-o <plan.json>]
+    python3 helpers/montage.py render <edit_dir> [--plan <plan.json>] [--max N] [--only 1,3,5]
+
+`plan` 把「段 + 起始词」的人读镜头表展开成绝对时间，校验后写 `edit/montage-plan.json`；
+`render` 按 `montage-plan.json` 逐镜渲染（幂等缓存、可 `--max` 分块、先写 /tmp 再 move），
+再可选合成与混音。检查在 `check_montage.py`，本模块不重复。
+
+镜头表（人读、可手写）字段
+--------------------------
+    {"ranges_from": "edit/edl.json",
+     "frame":  {"width": 1080, "height": 1920, "fps": 30, "band": [320, 1440],
+                "labelX": 90, "labelY": 1258, "base": "material/frame/base.png",
+                "overlay": "material/frame/overlay.png", "bg": "#0B0B0C"},
+     "grades": {"vintage": "eq=...", "modern": "eq=..."},
+     "output": "edit/_engineering/picture.mp4",
+     "audio":  "edit/_engineering/voice.m4a",
+     "shots":  [{"range": 1, "word": 0, "kind": "clip",
+                 "material": "material/clips/g2_wwii/N2.mp4", "in": 89.0,
+                 "grade": "vintage", "note": "飞车党公路疾驰"}],
+     "labels": [{"range": 2, "word": 30, "text": "1941–45｜…", "hold": 3.6}]}
+
+坐标规则（钉死，避免再混用）
+----------------------------
+- `in`：素材文件内的秒数。`kind=clip` 必填。
+- `cutStart` / `dur`：剪后时间轴上的秒数，由 `plan` 从 EDL 段与词级时间算出来，**不要手写**。
+- shot 起点 = 本段第一个词 → 段起点；否则 → 前一词结束与本词起点的中点（切在气口）。
+- shot 终点 = 下一镜起点；最后一镜 → 段终点。
+- label 的 `t` = 段起点在剪后时间轴上的偏移 +（词在源片里的时间 − 段在源片里的起点）。
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+PLAN_NAME = "montage-plan.json"
+DEFAULTS = {
+    "width": 1080, "height": 1920, "fps": 30,
+    "band": [320, 1440], "labelX": 90, "labelY": 1258,
+    "base": None, "overlay": None, "bg": "#0B0B0C",
+    "photoZoom": 0.10, "crf": 20, "preset": "veryfast",
+}
+
+
+class Fail(Exception):
+    """输入不成立，或渲染前置条件缺失。带一句人能读的原因。"""
+
+
+# ── 小工具 ────────────────────────────────────────────────────────────────
+def run(cmd: list[str], what: str) -> None:
+    p = subprocess.run(cmd, capture_output=True, text=True)
+    if p.returncode != 0:
+        tail = (p.stderr or "").strip()[-900:]
+        raise Fail(f"{what} 失败：\n{tail}")
+
+
+def probe(path: Path) -> dict:
+    p = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0",
+                        "-show_entries", "stream=width,height,duration,codec_type",
+                        "-show_entries", "format=duration", "-of", "json", str(path)],
+                       capture_output=True, text=True)
+    if p.returncode != 0 or not p.stdout.strip():
+        raise Fail(f"读不了媒体：{path}")
+    data = json.loads(p.stdout)
+    stream = (data.get("streams") or [{}])[0]
+    dur = stream.get("duration") or (data.get("format") or {}).get("duration")
+    width, height = stream.get("width"), stream.get("height")
+    if width is None:
+        raise Fail(f"媒体没有视频流：{path}")
+    return {"width": int(width), "height": int(height),
+            "duration": float(dur) if dur not in (None, "N/A") else None}
+
+
+def load_json(path: Path) -> dict:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise Fail(f"读不到 {path}：{exc}") from exc
+    except ValueError as exc:
+        raise Fail(f"{path} 不是合法 JSON：{exc}") from exc
+
+
+def resolve_asset(value: str | Path, edit: Path) -> Path:
+    """素材/底图/音轨路径：绝对路径直接用；相对路径先按项目根、再按 edit/ 找。"""
+    path = Path(value).expanduser()
+    if path.is_absolute():
+        return path
+    for base in (edit.parent, edit):
+        cand = (base / path).resolve()
+        if cand.exists():
+            return cand
+    return (edit.parent / path).resolve()
+
+
+def edit_and_root(target: Path) -> tuple[Path, Path]:
+    """`edit/`、`成品/`、`review/` 都接受；返回 (项目根, 剪辑目录)。"""
+    target = target.expanduser().resolve()
+    if target.name in ("edit", "review", "成品"):
+        return target.parent, target
+    edit = target / "edit"
+    return target, (edit if edit.is_dir() else target)
+
+
+def words_of(transcript: Path) -> list[dict]:
+    data = load_json(transcript)
+    ws = [w for w in (data.get("words") or [])
+          if w.get("type", "word") == "word" and str(w.get("text", "")).strip()]
+    if not ws:
+        raise Fail(f"{transcript} 里没有词级时间（type=word 且非空）")
+    return ws
+
+
+def pick_transcript(edit: Path, edl: dict) -> Path:
+    cands = sorted((edit / "transcripts").glob("*.json")) if (edit / "transcripts").is_dir() else []
+    cands = [p for p in cands if not p.name.endswith((".raw.json", "asr-raw.json"))]
+    sources = list((edl.get("sources") or {}))
+    if sources:
+        named = [p for p in cands if p.stem in sources]
+        if named:
+            return named[0]
+    if len(cands) == 1:
+        return cands[0]
+    raise Fail(f"找不到对应 EDL 源的逐字稿；候选：{[str(p) for p in cands]}")
+
+
+# ── plan ─────────────────────────────────────────────────────────────────
+def build_plan(edit: Path, spec: dict) -> dict:
+    edl_path = (edit / "edl.json")
+    edl = load_json(edl_path)
+    ranges = edl.get("ranges") or []
+    if not ranges:
+        raise Fail(f"{edl_path} 没有 ranges")
+    transcript = pick_transcript(edit, edl)
+    words = words_of(transcript)
+
+    frame = dict(DEFAULTS)
+    frame.update(spec.get("frame") or {})
+    width, height = int(frame["width"]), int(frame["height"])
+    top, bottom = (int(x) for x in frame["band"])
+    if not (0 <= top < bottom <= height):
+        raise Fail(f"band 不合法：{frame['band']}（画布 {width}×{height}）")
+    fps = int(frame["fps"])
+
+    # 每段的词表 + 剪后偏移
+    offsets, per_range, acc = {}, {}, 0.0
+    for i, r in enumerate(ranges, 1):
+        ws = [x for x in words if x["start"] >= r["start"] - 0.25 and x["end"] <= r["end"] + 0.25]
+        if not ws:
+            raise Fail(f"第 {i} 段（{r['start']:.2f}-{r['end']:.2f}）里没有词，逐字稿与 EDL 不匹配")
+        per_range[i] = ws
+        offsets[i] = acc
+        acc += r["end"] - r["start"]
+    total = round(acc, 3)
+
+    shots_spec = spec.get("shots") or []
+    if not shots_spec:
+        raise Fail("镜头表里没有 shots")
+    # 按段分组，组内按词序号排序
+    grouped: dict[int, list[dict]] = {}
+    for k, s in enumerate(shots_spec, 1):
+        try:
+            rng, word = int(s["range"]), int(s["word"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise Fail(f"第 {k} 镜缺 range/word，或不是整数：{s}") from exc
+        if rng not in per_range:
+            raise Fail(f"第 {k} 镜的 range={rng} 超出 1..{len(ranges)}")
+        if not (0 <= word < len(per_range[rng])):
+            raise Fail(f"第 {k} 镜的 word={word} 超出第 {rng} 段的词数 {len(per_range[rng])}")
+        grouped.setdefault(rng, []).append(dict(s, _i=k))
+
+    missing_range = [r for r in per_range if r not in grouped]
+    if missing_range:
+        raise Fail(f"这些段没有素材：{missing_range}")
+
+    grades = spec.get("grades") or {}
+    min_gap = float(spec.get("minReuseGap") or 5.0)   # 同素材两个入点相隔少于这个秒数 = 重复
+    seen: dict[str, list[tuple[float, int]]] = {}
+    shots: list[dict] = []
+    for i, (rng, items) in enumerate(sorted(grouped.items()), 0):
+        items.sort(key=lambda x: int(x["word"]))
+        ws = per_range[rng]
+        r = ranges[rng - 1]
+        src_start, src_end = float(r["start"]), float(r["end"])
+        for idx, item in enumerate(items):
+            w0 = int(item["word"])
+            start = src_start if w0 == 0 else (ws[w0 - 1]["end"] + ws[w0]["start"]) / 2
+            if idx + 1 < len(items):
+                w1 = int(items[idx + 1]["word"])
+                end = (ws[w1 - 1]["end"] + ws[w1]["start"]) / 2
+            else:
+                end = src_end
+            dur = round(end - start, 3)
+            if dur <= 0:
+                raise Fail(f"第 {item['_i']} 镜时长为 {dur}：起始词与下一镜的词序重叠")
+
+            material = item.get("material")
+            if not material:
+                raise Fail(f"第 {item['_i']} 镜没有 material")
+            mat = resolve_asset(material, edit)
+            if not mat.exists():
+                raise Fail(f"素材不存在：{mat}（第 {item['_i']} 镜）")
+            kind = item.get("kind") or ("photo" if mat.suffix.lower() in
+                                        (".jpg", ".jpeg", ".png", ".webp") else "clip")
+            info = probe(mat)
+            if kind == "clip":
+                in_s = item.get("in")
+                if in_s is None:
+                    raise Fail(f"第 {item['_i']} 镜是 clip，但没有 in（素材内入点）")
+                in_s = float(in_s)
+                if in_s < 0:
+                    raise Fail(f"第 {item['_i']} 镜 in={in_s} 为负")
+                if info["duration"] and in_s + dur > info["duration"] + 0.05:
+                    raise Fail(
+                        f"第 {item['_i']} 镜入点越界：in={in_s:.2f}s + dur={dur:.2f}s "
+                        f"> 素材时长 {info['duration']:.2f}s（{mat.name}）；"
+                        f"这是「素材入点」不是「EDL 源时间」")
+            # 素材唯一性：同一文件的两个入点相隔 ≥ minReuseGap 才算不同镜头
+            key = str(mat)
+            in_now = float(item.get("in") or 0.0)
+            for prev_in, prev_i in seen.get(key, []):
+                if kind != "photo" and abs(in_now - prev_in) < min_gap:
+                    raise Fail(
+                        f"素材重复：第 {item['_i']} 镜与第 {prev_i} 镜是 {mat.name} 上相隔 "
+                        f"{abs(in_now - prev_in):.1f}s 的两段（入点差 < {min_gap:g}s）；"
+                        f"换素材，或把入点拉开")
+            seen.setdefault(key, []).append((in_now, item["_i"]))
+
+            shots.append({
+                "i": item["_i"], "range": rng, "word": w0, "kind": kind,
+                "material": str(mat), "in": float(item.get("in") or 0.0),
+                "grade": item.get("grade") or next(iter(grades), None),
+                "cropBottom": float(item.get("cropBottom") or 0.0),
+                "note": item.get("note") or "",
+                "sourceStart": round(start, 3), "sourceEnd": round(end, 3),
+                "cutStart": round(offsets[rng] + (start - src_start), 3),
+                "dur": dur,
+            })
+    shots.sort(key=lambda s: (s["range"], s["word"]))
+    for n, s in enumerate(shots, 1):
+        s["seq"] = n
+
+    # 花字：词锚 → 剪后时间
+    labels: list[dict] = []
+    for k, lab in enumerate(spec.get("labels") or [], 1):
+        try:
+            rng, w0 = int(lab["range"]), int(lab["word"])
+            text = str(lab["text"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise Fail(f"第 {k} 条花字缺 range/word/text：{lab}") from exc
+        ws = per_range[rng]
+        if not (0 <= w0 < len(ws)):
+            raise Fail(f"第 {k} 条花字的 word={w0} 超出第 {rng} 段")
+        r = ranges[rng - 1]
+        t = round(offsets[rng] + (ws[w0]["start"] - float(r["start"])), 3)
+        own = [s for s in shots if s["range"] == rng and s["cutStart"] <= t < s["cutStart"] + s["dur"]]
+        if not own:
+            raise Fail(f"第 {k} 条花字 t={t:.2f}s 不在它所在段的任何镜头里")
+        sh = own[0]
+        hold = float(lab.get("hold") or 3.0)
+        # 词锚贴着镜头尾巴时，硬塞到尾巴里只会闪一下：推到下一镜的开头
+        if sh["cutStart"] + sh["dur"] - t < 0.8 + 0.15:
+            nxt = [x for x in shots if x["cutStart"] >= sh["cutStart"] + sh["dur"] - 1e-3]
+            if nxt:
+                sh, t = nxt[0], round(nxt[0]["cutStart"], 3)
+            else:
+                t = round(sh["cutStart"] + sh["dur"] - 0.95, 3)
+        hold = round(max(0.8, min(hold, sh["cutStart"] + sh["dur"] - t - 0.15)), 3)
+        labels.append({"text": text, "t": t, "hold": hold, "range": rng,
+                       "word": w0, "shot": sh["seq"]})
+
+    total_shot = round(sum(s["dur"] for s in shots), 3)
+    if abs(total_shot - total) > 1.0 / fps + 1e-6:
+        raise Fail(f"镜头时长合计 {total_shot:.3f}s 与时间轴 {total:.3f}s 不一致"
+                   f"（差 {total_shot - total:+.3f}s）；检查末镜是否缺、或段端点被改过")
+
+    return {"version": "montage-plan/1",
+            "timeline": {"total": total, "edl": str(edl_path), "transcript": str(transcript)},
+            "frame": frame, "grades": grades,
+            "output": spec.get("output"), "audio": spec.get("audio"),
+            "shots": shots, "labels": labels}
+
+
+# ── render ───────────────────────────────────────────────────────────────
+def label_png(text: str, dst: Path, scale: float = 1.0) -> None:
+    """花字：近白中黑体、加字距、左侧 1px 竖线 + 一条轻底衬。没有 drawtext 也能画。"""
+    from PIL import Image, ImageDraw, ImageFont
+    size, track, pad_x, pad_y = int(40 * scale), int(3 * scale), int(22 * scale), int(16 * scale)
+    font = None
+    for path, idx in (("/System/Library/Fonts/Hiragino Sans GB.ttc", 1),
+                      ("/System/Library/Fonts/Hiragino Sans GB.ttc", 0),
+                      ("/System/Library/Fonts/STHeiti Medium.ttc", 0),
+                      ("/System/Library/Fonts/Supplemental/Songti.ttc", 1)):
+        try:
+            font = ImageFont.truetype(path, size, index=idx)
+            break
+        except OSError:
+            continue
+    if font is None:
+        raise Fail("找不到中文字体（Hiragino Sans GB / STHeiti / Songti 都没有）")
+    widths = [font.getlength(ch) for ch in text]
+    tw = int(sum(widths) + track * (len(text) - 1))
+    asc, desc = font.getmetrics()
+    W_ = tw + pad_x * 2 + 8
+    H_ = asc + desc + pad_y * 2
+    layer = Image.new("RGBA", (W_, H_), (0, 0, 0, 0))
+    grad = Image.new("RGBA", (W_, H_), (0, 0, 0, 0))
+    gd = ImageDraw.Draw(grad)
+    for y in range(H_):
+        edge = min(y, H_ - 1 - y)
+        alpha = 186 if edge >= 10 * scale else int(186 * (edge / max(1, 10 * scale)) ** 0.7)
+        gd.line([(0, y), (W_, y)], fill=(8, 9, 11, alpha))
+    layer = Image.alpha_composite(layer, grad)
+    d = ImageDraw.Draw(layer)
+    d.rectangle((0, pad_y // 2, max(1, int(2 * scale)), H_ - pad_y // 2),
+                fill=(243, 243, 243, 220))
+    x = 8 + pad_x
+    for ch, w in zip(text, widths):
+        d.text((x, pad_y), ch, font=font, fill=(243, 243, 243, 255))
+        x += w + track
+    layer.save(dst)
+
+
+def render_shot(shot: dict, plan: dict, work: Path, dirty: bool) -> Path:
+    frame = plan["frame"]
+    W, H = int(frame["width"]), int(frame["height"])
+    top, bottom = (int(x) for x in frame["band"])
+    band = bottom - top
+    fps = int(frame["fps"])
+    crf = int(frame.get("crf") or DEFAULTS["crf"])
+    preset = frame.get("preset") or DEFAULTS["preset"]
+    grade = (plan.get("grades") or {}).get(shot.get("grade")) or "null"
+    dur = float(shot["dur"])
+    dst = work / f"shot_{shot['seq']:03d}.mp4"
+    if dst.exists() and dst.stat().st_size > 1000 and not dirty:
+        return dst
+
+    mat = Path(shot["material"])
+    info = probe(mat)
+    scale = min(W / info["width"], band / info["height"])
+    cropb = float(shot.get("cropBottom") or 0.0)
+    src_h = info["height"] * (1 - cropb)
+    if cropb:
+        scale = min(W / info["width"], band / src_h)
+    fw = max(2, int(info["width"] * scale) // 2 * 2)
+    fh = max(2, int(src_h * scale) // 2 * 2)
+    y = top + (band - fh) // 2
+
+    base = frame.get("base")
+    overlay = frame.get("overlay")
+    grain = "noise=alls=3:allf=t"
+    inputs: list[str] = []
+    if base and resolve_asset(str(base), Path(plan["_edit"])).exists():
+        base_path = resolve_asset(str(base), Path(plan["_edit"]))
+        inputs += ["-loop", "1", "-framerate", str(fps), "-i", str(base_path)]
+        have_base = True
+    else:
+        have_base = False
+    lab = shot.get("_label")
+    lab_png = None
+    if lab:
+        lab_png = work / f"label_{shot['seq']:03d}.png"
+        label_png(lab["text"], lab_png)
+
+    if shot["kind"] == "clip":
+        pre = f"crop=iw:{max(2, int(info['height'] * (1 - cropb)))}:0:0," if cropb else ""
+        if have_base:
+            fc = (f"[0:v]{grain}[bg];[1:v]{pre}fps={fps},setsar=1,scale={fw}:{fh},{grade}[fg];"
+                  f"[bg][fg]overlay=(W-w)/2:{y}:shortest=1[mid]")
+        else:
+            fc = (f"color=c={frame.get('bg', '#0B0B0C')}:s={W}x{H}:r={fps}[bg];"
+                  f"[0:v]{pre}fps={fps},setsar=1,scale={fw}:{fh},{grade}[fg];"
+                  f"[bg][fg]overlay=(W-w)/2:{y}:shortest=1[mid]")
+        inputs += ["-ss", f"{float(shot['in']):.3f}", "-t", f"{dur + 0.4:.3f}", "-i", str(mat)]
+    else:
+        frames = max(2, int(round(dur * fps)))
+        zoom = float(frame.get("photoZoom") or DEFAULTS["photoZoom"])
+        if have_base:
+            fc = (f"[0:v]{grain}[bg];"
+                  f"[1:v]scale={fw * 2}:{fh * 2}:force_original_aspect_ratio=increase,"
+                  f"crop={fw * 2}:{fh * 2},"
+                  f"zoompan=z='min(1.0+{zoom}*on/{frames},{1 + zoom})':d=1:"
+                  f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={fw}x{fh}:fps={fps},{grade}[fg];"
+                  f"[bg][fg]overlay=(W-w)/2:{y}:shortest=1[mid]")
+        else:
+            fc = (f"color=c={frame.get('bg', '#0B0B0C')}:s={W}x{H}:r={fps}[bg];"
+                  f"[0:v]scale={fw * 2}:{fh * 2}:force_original_aspect_ratio=increase,"
+                  f"crop={fw * 2}:{fh * 2},"
+                  f"zoompan=z='min(1.0+{zoom}*on/{frames},{1 + zoom})':d=1:"
+                  f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={fw}x{fh}:fps={fps},{grade}[fg];"
+                  f"[bg][fg]overlay=(W-w)/2:{y}:shortest=1[mid]")
+        inputs += ["-loop", "1", "-framerate", str(fps), "-i", str(mat)]
+
+    nxt = 1 if not have_base else 2
+    if overlay and resolve_asset(str(overlay), Path(plan["_edit"])).exists():
+        inputs += ["-loop", "1", "-framerate", str(fps), "-i",
+                   str(resolve_asset(str(overlay), Path(plan["_edit"])))]
+        fc += f";[mid][{nxt}:v]overlay=0:0[with_overlay]"
+        mid = "with_overlay"
+        nxt += 1
+    else:
+        mid = "mid"
+    if lab_png is not None:
+        inputs += ["-loop", "1", "-framerate", str(fps), "-i", str(lab_png)]
+        off, hold = float(lab["off"]), float(lab["hold"])
+        fc += (f";[{mid}][{nxt}:v]overlay={int(frame.get('labelX', 90))}:"
+               f"{int(frame.get('labelY', 1258))}:"
+               f"enable='between(t,{off:.3f},{off + hold:.3f})'[out]")
+        out_label = "out"
+    elif mid == "mid":
+        fc += ";[mid]null[out]"
+        out_label = "out"
+    else:
+        out_label = mid
+
+    tmp = work / f"shot_{shot['seq']:03d}_raw.mp4"
+    run(["ffmpeg", "-y", "-v", "error", *inputs, "-filter_complex", fc,
+         "-map", f"[{out_label}]", "-an", "-t", f"{dur:.3f}",
+         "-c:v", "libx264", "-preset", preset, "-crf", str(crf),
+         "-pix_fmt", "yuv420p", "-r", str(fps), "-g", str(fps * 2), str(tmp)],
+        f"第 {shot['seq']} 镜（{shot.get('note') or mat.name}）")
+    tmp.replace(dst)
+    return dst
+
+
+def render(edit: Path, plan_path: Path, args) -> int:
+    plan = load_json(plan_path)
+    plan["_edit"] = str(edit)
+    shots = plan["shots"]
+    for s in shots:
+        s["_label"] = None
+    for lab in plan.get("labels") or []:
+        for s in shots:
+            if s["seq"] == lab["shot"]:
+                s["_label"] = {"text": lab["text"],
+                               "off": round(lab["t"] - s["cutStart"], 3),
+                               "hold": lab["hold"]}
+                break
+    if args.work:
+        work = Path(args.work).expanduser()
+    else:
+        # 稳定命名：Python 的 str hash 每个进程不同，用它会让缓存永远不命中
+        digest = hashlib.sha1(str(edit).encode("utf-8")).hexdigest()[:8]
+        work = Path(tempfile.gettempdir()) / f"montage_{digest}"
+    work.mkdir(parents=True, exist_ok=True)
+    only = {int(x) for x in args.only.split(",") if x.strip()} if args.only else None
+    done = 0
+    for s in shots:
+        if only and s["seq"] not in only:
+            continue
+        if args.max is not None and done >= args.max:
+            print(f"… 已渲染 {done} 个，按 --max 停下")
+            break
+        existed = (work / f"shot_{s['seq']:03d}.mp4").exists()
+        render_shot(s, plan, work, dirty=args.force)
+        if not existed:
+            done += 1
+        print(f"  {s['seq']:02d}/{len(shots)}  {s['dur']:5.2f}s  {s['note'] or Path(s['material']).name}",
+              flush=True)
+    files = [work / f"shot_{s['seq']:03d}.mp4" for s in shots]
+    missing = [f.name for f in files if not f.exists()]
+    if missing:
+        print(f"还差 {len(missing)} 个镜头（例如 {missing[:3]}）；跑完再 --concat")
+        return 0
+    if not args.concat:
+        return 0
+    lst = work / "concat.txt"
+    lst.write_text("".join(f"file '{f}'\n" for f in files), encoding="utf-8")
+    merged = work / "merged.mp4"
+    run(["ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", str(lst),
+         "-c", "copy", str(merged)], "拼接")
+    total = float(plan["timeline"]["total"])
+    out = Path(args.out or plan.get("output") or (edit / "_engineering" / "picture.mp4"))
+    if not out.is_absolute():
+        out = (edit / out).resolve()
+    audio = Path(args.audio or plan.get("audio") or "").expanduser()
+    if args.audio or plan.get("audio"):
+        if not audio.is_absolute():
+            audio = (edit / audio).resolve()
+        if not audio.exists():
+            raise Fail(f"音轨不存在：{audio}")
+        staged = work / "final.mp4"
+        run(["ffmpeg", "-y", "-v", "error", "-i", str(merged), "-i", str(audio),
+             "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+             "-t", f"{total:.3f}", "-movflags", "+faststart", str(staged)], "混音")
+    else:
+        staged = merged
+    out.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(staged, out)          # 先落 /tmp 再搬进目标目录（云同步目录不能长写）
+    print(f"成片：{out}（{total:.2f}s，{len(shots)} 镜）")
+    return 0
+
+
+# ── CLI ──────────────────────────────────────────────────────────────────
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description="现成素材蒙太奇：镜头表 → 渲染 → 合成")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    p_plan = sub.add_parser("plan", help="展开镜头表并校验，写 montage-plan.json")
+    p_plan.add_argument("target", type=Path)
+    p_plan.add_argument("--shots", type=Path, required=True, help="人读镜头表（JSON）")
+    p_plan.add_argument("-o", "--out", type=Path, help="默认 <edit>/montage-plan.json")
+
+    p_render = sub.add_parser("render", help="逐镜渲染（幂等、可 --max 分块）")
+    p_render.add_argument("target", type=Path)
+    p_render.add_argument("--plan", type=Path)
+    p_render.add_argument("--work", help="中间文件目录，默认 /tmp/montage_<hash>")
+    p_render.add_argument("--max", type=int, help="本轮最多渲染几个新镜头")
+    p_render.add_argument("--only", help="只渲这些序号，逗号分隔")
+    p_render.add_argument("--concat", action="store_true", help="全部渲染完后拼接")
+    p_render.add_argument("--out", help="成片路径（默认 plan.output）")
+    p_render.add_argument("--audio", help="音轨路径（默认 plan.audio）")
+    p_render.add_argument("--force", action="store_true", help="忽略缓存重渲")
+
+    args = ap.parse_args(argv)
+    try:
+        root, edit = edit_and_root(args.target)
+        if args.cmd == "plan":
+            spec = load_json(args.shots)
+            plan = build_plan(edit, spec)
+            out = (args.out or (edit / PLAN_NAME))
+            out = out if out.is_absolute() else (edit / out)
+            out.write_text(json.dumps(plan, ensure_ascii=False, indent=1), encoding="utf-8")
+            print(f"镜头表展开完成：{len(plan['shots'])} 镜 / {plan['timeline']['total']:.2f}s / "
+                  f"{len(plan['labels'])} 条花字 → {out}")
+            return 0
+        plan_path = args.plan or (edit / PLAN_NAME)
+        plan_path = plan_path if plan_path.is_absolute() else (edit / plan_path)
+        if not plan_path.exists():
+            raise Fail(f"没有 {plan_path}；先跑 montage.py plan")
+        return render(edit, plan_path, args)
+    except Fail as exc:
+        print(f"✗ {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

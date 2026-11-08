@@ -29,7 +29,7 @@
 - [架构与 Debug](references/architecture.md)：职责、失效范围、局部优化和验证。
 - [实现 Brief](references/implementation-brief.md)：B1–B8 的实现范围、兼容方式与实际验收记录。
 
-EDL 时间与外部 SRT 来源分别登记；工程态 projected 不冒充实测。新视觉制作固定走 recompose，先拆批准原页，再手写 composition；旧 page 路线隔离恢复。
+EDL 时间与外部 SRT 来源分别登记；工程态 projected 不冒充实测。视觉制作按**片型**分叉：画面是造出来的（页/图形/字卡）走 recompose，先拆批准原页再手写 composition；画面是选出来的（档案影像/实拍/照片）走 montage 路线（素材清单 → 镜头表 → 渲染体检）；版式/画框是两种片型共用的一层。旧 page 路线隔离恢复。
 
 ## 为什么覆盖层要单独有校验器
 

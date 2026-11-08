@@ -40,10 +40,11 @@ description: 承接 Video Idea System 的内容包、PPT Hell 的静态 SVG 或�
 | 原始录音或视频要取舍 | 剪辑与逐字审阅（3–4） | 可操作的逐字剪辑面；确认后进时间与字幕 |
 | 已剪音频 + SRT + 参考页 | 核版本，走 srt-import（5–6） | 对齐实声的工程审阅；不声称 EDL measured |
 | 已确认剪点、词级依据、参考页 | 时间 → 原页拆解 → composition（5–8） | 可播、可听、可返修的动效审阅面 |
+| 已录口播、**没有参考页**、画面是现成素材 | 片型选 montage（2）→ 素材清单 → 镜头表（5）→ 渲染体检（7） | 可播成片、三件套交付件与体检结果 |
 | 返修/恢复项目 | 收件（9），按影响回到相应步骤 | 新快照与逐项处理回执 |
 | 作者明确要求出片 | 交付前置与核验（10） | 实际视频、约定字幕、核验报告与有效指纹 |
 
-有视觉制作时，新项目固定走 recompose；旧 page 项目仅按 [legacy-page-route.md](references/legacy-page-route.md) 恢复。纯剪辑不强加参考页和动画步骤。
+**第 2 步先定片型**：画面是**造出来的**（页、图形、字卡、动效）→ recompose；画面是**选出来的**（档案影像、实拍、照片）→ [montage-route.md](references/montage-route.md)。版式/画框另算一层，两种片型都可能要，见 [frame-spec.md](references/frame-spec.md)；旧 page 项目仅按 [legacy-page-route.md](references/legacy-page-route.md) 恢复。纯剪辑不强加参考页和动画步骤。
 
 ## 主路线
 
@@ -54,7 +55,7 @@ description: 承接 Video Idea System 的内容包、PPT Hell 的静态 SVG 或�
 | 接入 | 1–2 | content-to-production；author-spec 全篇；preferences；creative-direction；visual-direction | 核版本，写 production-plan；风格确定后读 style-spec 对应节 |
 | 剪辑 | 3–4 | stages 的声音/逐字审阅；tools 的声音与剪辑 | stage_cut；模型定取舍并用既有 EDL 工具表达 |
 | 时间与字幕 | 5–6 | caption-article-first；caption-modes；visual-timeline | duration_plan、srt_export、timeline_derive 或 SRT 导入；模型校对与分组 |
-| 画面 | 7 | film；recompose-mode；composition-craft | film 拆解；模型写 composition；需要 HyperFrames 时读 $hyperframes |
+| 画面 | 7 | film；recompose-mode；composition-craft（造画面）／montage-route（选画面） | graphic：film 拆解后写 composition；montage：镜头表 + montage 渲染 + check_montage 体检 |
 | 审阅与返修 | 8–9 | review-ui；live-stage-contract | review 构建并验播放；review_inbox 收件后改源、重建 |
 | 交付 | 10 | timing-lock；delivery | 按现有交付顺序逐项执行；实际文件核验后才交付 |
 | 收尾 | 11 | preferences；故障时读 architecture 的 Debug 流程 | 记录本片处理结果，候选在项目验证后集中升级 |
@@ -68,6 +69,7 @@ description: 承接 Video Idea System 的内容包、PPT Hell 的静态 SVG 或�
 | 接入/未录音预演 | 来源、已定内容、缺口、计划与 planned 标记；未完成事项明确 |
 | 逐字剪辑审阅 | 按当前 EDL 定位源媒体，选择/改字能保存，正式提交有回执；应用后重建 |
 | 动效工程审阅（默认终点） | 当前时间来源明确；适用时 film verify 通过；review 运行时检查通过，并确认 live 通道、时长、画面与声音；交付当前 surface 和待办 |
+| 蒙太奇工程 | 素材清单每条都有登记（含「不可用」原因）；`montage.py plan` 退 0；`check_montage.py` 逐镜与成片两关都过 |
 | 成片交付（需作者明确指令） | 当前版本人审依据、未决意见处理、timing-lock、实际文件核验与有效交付指纹。严格检查未完成或失败就不声称能发 |
 | 每轮收尾 | 反馈处理与剩余问题可追溯；无新候选就记录“本轮无新判准”，不为凑数量改 Skill |
 

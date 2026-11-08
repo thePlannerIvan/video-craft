@@ -49,7 +49,16 @@ recompose 路线**不导入页**：PPT Hell 的快照只作视觉参考，用 `f
 
 ## 2. 确定制作方案
 
-在 `production-plan.md` 写清楚**风格**（`line-art` 线稿 / `business-report` 商业报告 / `collage` 拼贴 / `concept-film` 概念电影，见 [style-spec.md](style-spec.md)）、成片形态（口播 / 动画 / 合成）、声音来源、画幅、画面过程、强调动作、素材、时间依据、字幕形态、交付件和返修范围。路线固定为 recompose，不用选；第 7 步按风格那一节做。
+在 `production-plan.md` 写清楚**片型**、成片形态（口播 / 动画 / 合成）、声音来源、画幅、画面过程、强调动作、素材、时间依据、字幕形态、交付件和返修范围。
+
+**片型二选一，必须显式写下来**：
+
+| 片型 | 画面从哪来 | 走哪条 | 风格字段 |
+|---|---|---|---|
+| `graphic` | 画出来：页、图形、字卡、动效 | recompose（第 7 步按风格那一节做） | 必填 `line-art` 线稿 / `business-report` 商业报告 / `collage` 拼贴 / `concept-film` 概念电影（见 [style-spec.md](style-spec.md)） |
+| `montage` | 选出来：档案影像、实拍、照片 | [montage-route.md](montage-route.md) 的 素材清单 → 镜头表 → 渲染体检 | 不填风格，改填调色档与素材清单路径 |
+
+**版式/画框是另一层**，两种片型都可能要：作者给了参考页或版面约束时读 [frame-spec.md](frame-spec.md)，把 token 与画框图层写进方案，并在交付件里列出 `material/frame/` 的三个产物。
 
 需要改内容意义、必见对象、固定文字或素材关系时回 `$video-idea-system`；需要重做静态画面时回 `$planners-ppt-hell`；需要复用方法时调用 `$planners-method-wiki`，但 Wiki 只提供方法，不提供本项目事实。
 
@@ -164,7 +173,9 @@ python3 "<craft>/visual/scripts/align-visual-plan.py" --plan "<visual-plan.json>
 - 反馈至少带 `unitId`、`chapterId`、`stepId`、`snapshot`、`text`；收件器会拒绝不存在或 chapter 不匹配的 `unitId`。
 - 改变时间轴、EDL、SVG 或字幕后必须重新 build review；不能拿旧页面继续提交。
 
-## 7. 动效与合成
+## 7. 动效与合成 / 蒙太奇渲染
+
+**片型是 montage 时，本节换成 [montage-route.md](montage-route.md) 的第 3–4 节**：镜头表交给 `montage.py plan` 展开，`render` 分块渲染，`check_montage.py` 逐镜与成片两关体检；不要为通过 film/recompose 检查去捏造参考页，也不要在 montage 项目里手写 composition。下面是 graphic 片型的路径。
 
 动手前必须已有 `pages/<page>.md` 原页拆解（见 [film.md](film.md)），元素清单按阅读顺序登记；
 把原页当**信息源**，按拆解逐条演出来 —— 不重画模型图，不把截图当 SVG。原页元素若已有

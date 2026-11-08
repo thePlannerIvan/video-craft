@@ -28,9 +28,10 @@
         --wide <16:9 素材帧> --tall <4:3 素材帧> [--out <jpg>]
 
 `build` 写 `base.png`、`overlay.png`、`spec.md`，默认 `<project>/material/frame/`。
-`preview` 把两张真实帧按真实落位合成到画框里：16:9 按宽铺满、在素材带内垂直居中；
-4:3 按高铺满、水平居中并裁掉两侧。左右并排 1:1 像素出图，默认
-`<project>/material/frame/preview.jpg`。这是给人挑方向用的，不是成片。
+`preview` 把两张真实帧按**成片同一落位**合成到画框里（`_geometry.fit_in_band`，contain：
+素材整幅可见，留素材带面色 —— 16:9 → 1080×606、4:3 → 1080×810、竖图 → 866×1120），
+左右并排 1:1 像素出图，默认 `<project>/material/frame/preview.jpg`。这是给人挑画框与落位用的，
+不是成片：它不套调色档，颜色与成片不同是正常的。
 
 token 缺字段时用本文档的竖屏默认值补齐，并在 stderr 逐项说明补了什么（不静默）。
 字体按固定顺序回退：Hiragino Sans GB → STHeiti Medium → Songti；都取不到就报错，

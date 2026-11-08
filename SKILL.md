@@ -40,11 +40,11 @@ description: 承接 Video Idea System 的内容包、PPT Hell 的静态 SVG 或�
 | 原始录音或视频要取舍 | 剪辑与逐字审阅（3–4） | 可操作的逐字剪辑面；确认后进时间与字幕 |
 | 已剪音频 + SRT + 参考页 | 核版本，走 srt-import（5–6） | 对齐实声的工程审阅；不声称 EDL measured |
 | 已确认剪点、词级依据、参考页 | 时间 → 原页拆解 → composition（5–8） | 可播、可听、可返修的动效审阅面 |
-| 已录口播、**没有参考页**、画面是现成素材 | 片型选 montage（2）→ 素材清单 → 镜头表（5）→ 渲染体检（7） | 侧边栏审阅面（可播）+ 镜头表 + 两关体检；三件套要等作者出片指令 |
+| 已录口播、**没有参考页**、画面是现成素材（或上游 `production_mode: "footage-montage"` 直通包） | 片型选 montage（2）→ 素材清单 → 镜头表（5）→ 渲染体检（7） | 侧边栏审阅面（可播）+ 镜头表 + 两关体检；三件套要等作者出片指令 |
 | 返修/恢复项目 | 收件（9），按影响回到相应步骤 | 新快照与逐项处理回执 |
 | 作者明确要求出片 | 交付前置与核验（10） | 实际视频、约定字幕、核验报告与有效指纹 |
 
-**第 2 步先定片型**：画面是**造出来的**（页、图形、字卡、动效）→ recompose；画面是**选出来的**（档案影像、实拍、照片）→ [montage-route.md](references/montage-route.md)。版式/画框另算一层，两种片型都可能要，见 [frame-spec.md](references/frame-spec.md)；旧 page 项目仅按 [legacy-page-route.md](references/legacy-page-route.md) 恢复。纯剪辑不强加参考页和动画步骤。
+**第 1–2 步先解析风格手册与片型**：运行 `python3 "<craft>/helpers/resolve_vault.py" --style <style_id>` 解析外挂风格库（`~/.config/planners/video-vault`；开源环境下未挂载时自动回退至内置 `author-spec.md` 与 `style-spec.md`）。画面是**造出来的**（`production_mode: "keyframe-svg"`，含页、图形、字卡、动效）→ `graphic`（recompose）；画面是**选出来的**（`production_mode: "footage-montage"`，如 `lifestyle-cult` 街头文化与商业档案快切，跳过 PPT Hell 直接带 `footage_request` + `kick_word` 进入 Craft）→ [montage-route.md](references/montage-route.md)。版式/画框另算一层，两种片型都可能要，见 [frame-spec.md](references/frame-spec.md)；旧 page 项目仅按 [legacy-page-route.md](references/legacy-page-route.md) 恢复。纯剪辑不强加参考页和动画步骤。
 
 ## 每轮终点：审阅页，不是成片
 
@@ -61,13 +61,13 @@ description: 承接 Video Idea System 的内容包、PPT Hell 的静态 SVG 或�
 
 | 阶段 | 步骤 | 进入时读 | 现有入口与模型工作 |
 |---|---|---|---|
-| 接入 | 1–2 | content-to-production；author-spec 全篇；preferences；recompose-mode（第 1 步）；caption-modes 与 style-spec／montage-route／frame-spec（第 2 步定片型、字幕形态与画框）；creative-direction；visual-direction | 核版本，写 production-plan；定片型、字幕形态与画框 |
+| 接入 | 1–2 | content-to-production；`resolve_vault.py` 返回的 author-spec 与 craft.md（或内置 style-spec）；preferences；recompose-mode（第 1 步）；caption-modes 与 montage-route／frame-spec（第 2 步定片型、字幕形态与画框）；creative-direction；visual-direction | 核版本，解析外挂风格手册，写 production-plan；定片型、字幕形态与画框 |
 | 剪辑 | 3–4 | stages 的声音/逐字审阅；tools 的声音与剪辑；review-ui（剪辑面独立打开的宿主判据：源 >200MB 或内存 <8GB 时走本地宿主） | stage_cut；模型定取舍并用既有 EDL 工具表达 |
 | 时间与字幕 | 5–6 | caption-article-first；visual-timeline（三个时间坐标） | duration_plan、srt_export、timeline_derive 或 SRT 导入；模型校对与分组 |
 | 画面 | 7 | film／montage-route（按片型）；composition-craft；visual-rendering；timing-lock（缺一不渲）；frame-animation-pipeline（自定义逐帧时） | graphic：film 拆解后写 composition；montage：镜头表 + montage 渲染 + check_montage 体检 |
 | 审阅与返修 | 8–9 | review-ui；live-stage-contract；hyperframes-review-adapter | review 构建并验播放；review_inbox 收件后改源、重建 |
 | 交付 | 10 | timing-lock；delivery | 按现有交付顺序逐项执行；实际文件核验后才交付 |
-| 收尾 | 11 | preferences；故障时读 architecture 的 Debug 流程 | 记录本片处理结果，候选在项目验证后集中升级 |
+| 收尾 | 11 | preferences；外挂风格库 `evolve_style.py`（挂载时）；故障时读 architecture 的 Debug 流程 | 记录本片处理结果；若挂载私有风格库则自动演进目标风格手册与三联帧卡片 |
 
 上述简称均指 references 下同名 Markdown。命令参数与可复制调用集中在 [tools.md](references/tools.md)，不要自行拼一套替代脚本。
 

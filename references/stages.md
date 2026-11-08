@@ -33,7 +33,13 @@
 
 **何时进入**：所有新项目、恢复项目、收到返修反馈时。
 
-**先读**：`content-to-production.md`、`author-spec.md`（判准，全篇）、`preferences.md`（准入与归位规则）、项目 `_idea/current.md`、已有 `edit/project.md`、`production-plan.md` 和 `feedback/`；画面以 PPT Hell 的视频快照为参考页（recompose 不导入页，见 [recompose-mode.md](recompose-mode.md)）。
+**先读**：`content-to-production.md`、`preferences.md`（准入与归位规则）、项目 `_idea/current.md`、已有 `edit/project.md`、`production-plan.md` 和 `feedback/`。接着运行外挂风格手册解析器，获取全局判准与当前风格手册（开源环境未挂载 `~/.config/planners/video-vault` 时自动回退至内置 `author-spec.md` 与 `style-spec.md`）：
+
+```bash
+python3 "<craft>/helpers/resolve_vault.py" --style "<style_id>"
+```
+
+读取返回的 `author_spec_path`（全局判准，全篇）与 `craft_rules_path`（当前风格规则）。当 `production_mode == "keyframe-svg"`（`graphic` 片型）时，画面以 PPT Hell 的视频快照为参考页（recompose 不导入页，见 [recompose-mode.md](recompose-mode.md)）；当 `production_mode == "footage-montage"`（`montage` 片型，如 `lifestyle-cult`）时，项目跳过 PPT Hell 直接携带 `visual-plan.json` 中的 `footage_request` 与 `kick_word` 进入本阶段。
 
 **调用**：
 
@@ -46,28 +52,28 @@ python3 "<craft>/helpers/check_script_hash.py" "<project>" --script "<script.md>
 recompose 路线**不导入页**：PPT Hell 的快照只作视觉参考，用 `film.py` 抽原页拆解（见第 7 步）。
 `import_svg_page.py` 属于已归档的 page 路线，只在复活旧项目时读 [legacy-page-route.md](legacy-page-route.md)。
 
-**输入**：上游交接包、作者决定、脚本、visual-plan、snapshot、SVG、素材。
+**输入**：上游交接包、作者决定、脚本、visual-plan、（`keyframe-svg` 模式下）snapshot 与 SVG、素材。
 
-**输出**：`edit/project.md` 记录本轮采用版、输入路径、缺口、责任边界；登记批准页面快照与所需项目资产。旧 page 项目的 manifest 仅作为兼容输入，不要求新建。
+**输出**：`edit/project.md` 记录本轮采用版、输入路径、风格 ID（`style_id`）、制作模式（`production_mode`）、缺口、责任边界；登记批准页面快照（或 `footage-montage` 素材清单）与所需项目资产。旧 page 项目的 manifest 仅作为兼容输入，不要求新建。
 
 **下一消费者**：制作方案、转写 / EDL、视觉时间绑定。
 
-**完成标准**：知道当前使用哪一版脚本、哪一版画面、哪条声音、哪些决定不可自行改变；hash 不一致、snapshot 不完整或资产越界时停止并回上游，不静默继续。
+**完成标准**：知道当前使用哪一版脚本、哪一版画面（或素材清单）、哪条声音、哪些决定不可自行改变；hash 不一致、snapshot 不完整或资产越界时停止并回上游，不静默继续。
 
 ## 2. 确定制作方案
 
-在 `production-plan.md` 写清楚**片型**、成片形态（口播 / 动画 / 合成）、声音来源、画幅、画面过程、强调动作、素材、时间依据、字幕形态、交付件和返修范围。
+在 `production-plan.md` 写清楚**片型**、风格 ID（`style_id`）、成片形态（口播 / 动画 / 合成）、声音来源、画幅、画面过程、强调动作、素材、时间依据、字幕形态、交付件和返修范围。
 
-**先读**：`creative-direction.md`（自述「第一次制作方案时读取」）；`visual-direction.md`（自述「制作方案阶段读取」）；`caption-modes.md`（自述「制作方案阶段明确字幕交付形态」，字幕形态就在这里定，第 5 步不重选）；要画框时读 `frame-spec.md`；`graphic` 片型要风格时读 `style-spec.md` 的对应节。判准与准入（`author-spec.md` / `preferences.md`）在第 1 步已读过，这里只按片型取执行点。
+**先读**：`creative-direction.md`（自述「第一次制作方案时读取」）；`visual-direction.md`（自述「制作方案阶段读取」）；`caption-modes.md`（自述「制作方案阶段明确字幕交付形态」，字幕形态就在这里定，第 5 步不重选）；要画框时读 `frame-spec.md`（以及 `resolve_vault.py` 返回的 `frame_preset_path`）；按 `resolve_vault.py` 返回的 `craft_rules_path` 与 `patterns/` 读取当前风格的动效/剪辑规则与三联帧参考（未挂载私有库时读 `style-spec.md` 对应节）。判准与准入（`author-spec.md` / `preferences.md`）在第 1 步已读过，这里只按片型取执行点。
 
 能力包的记录写在 `edit/project.md`（人读），**不新增 project.json**；只有被工具实际消费的字段才值得机器化。
 
-**片型二选一，必须显式写下来**：
+**片型二选一（与风格 `production_mode` 一一对应），必须显式写下来**：
 
-| 片型 | 画面从哪来 | 走哪条 | 风格字段 |
-|---|---|---|---|
-| `graphic` | 画出来：页、图形、字卡、动效 | recompose（第 7 步按风格那一节做） | 必填 `line-art` 线稿 / `business-report` 商业报告 / `collage` 拼贴 / `concept-film` 概念电影（见 [style-spec.md](style-spec.md)） |
-| `montage` | 选出来：档案影像、实拍、照片 | [montage-route.md](montage-route.md) 的 素材清单 → 镜头表 → 渲染体检 | 不填风格，改填调色档与素材清单路径 |
+| 片型 | 对应 `production_mode` | 画面从哪来 | 走哪条 | 风格字段 |
+|---|---|---|---|---|
+| `graphic` | `keyframe-svg` | 画出来：页、图形、字卡、动效 | recompose（第 7 步按风格那一节做） | 必填 `line-art` 线稿 / `business-report` 商业报告 / `collage` 拼贴 / `concept-film` 概念电影（优先读私有库 `styles/<style>/craft.md`，回退读 [style-spec.md](style-spec.md)） |
+| `montage` | `footage-montage` | 选出来：档案影像、实拍、照片（跳过 PPT Hell） | [montage-route.md](montage-route.md) 的 素材清单 → 镜头表 → 渲染体检 | 如 `lifestyle-cult`（读私有库 `styles/lifestyle-cult/craft.md`）、调色档与素材清单路径 |
 
 **版式/画框是另一层**，两种片型都可能要：作者给了参考页或版面约束时读 [frame-spec.md](frame-spec.md)，把 token 写进方案，用 `helpers/frame.py build` 出 `material/frame/` 的三个产物（`base.png` / `overlay.png` / `spec.md`），再用 `frame.py preview` 拿一张真实素材的合成预览给作者挑方向。
 
@@ -333,7 +339,18 @@ python3 "<craft>/helpers/check_motion_targets.py" "<project>"
 
 **按类型准入**：倾向型要求需 ≥2 个独立项目或两次独立返修；作者明确的否定型硬约束按 preferences.md 处理。项目特有要求留在项目。
 
-**给 ≤3 条候选**：每条一句话 + 出处（项目 + 屏号）+ 建议动作（收进 `author-spec.md` / 收进某种风格的 `style-spec.md` / 升进正式文档 / 丢弃）。按 [preferences.md](preferences.md) 的两套准入与归位规则处理：否定型硬约束一次即可进正式文档；倾向型判准要复现。有原话证据可判为可收候选；更改 Skill 仍遵守项目的确认与集中升级规则，制作过程中只记录，项目验证完成后统一更新。
+**自动演进外挂风格手册（当 `~/.config/planners/video-vault` 已挂载时）**：
+每次视频完成后，运行 `resolve_vault.py` 返回的 `evolve_script_path`，将该视频项目中的返修判准、新动效模式（含自动抽取的 3 帧 strip 与 2s 预览段）差分沉淀进对应风格（`styles/<style_id>/`）的 `idea.md` / `page.md` / `craft.md` / `patterns/` 与 `evolution-log.json`，并自动重建可视化看板 `index.html`：
+
+```bash
+python3 ~/.config/planners/video-vault/scripts/evolve_style.py \
+  --style "<style_id>" \
+  --video "<project_dir>"
+```
+
+（若只需生成候选提案供人工确认，可加 `--propose`。）
+
+**给 ≤3 条候选**：每条一句话 + 出处（项目 + 屏号）+ 建议动作（演进至外挂风格库 `styles/<style_id>/` / 收进开源基准 `author-spec.md` 或 `style-spec.md` / 升进正式文档 / 丢弃）。按 [preferences.md](preferences.md) 的两套准入与归位规则处理：否定型硬约束一次即可进正式文档；倾向型判准要复现。有原话证据可判为可收候选；更改 Skill 仍遵守项目的确认与集中升级规则，制作过程中只记录，项目验证完成后统一更新。
 
 **实际更改规范后校验**（只收尾项目、没有改 Skill 时不强加维护检查）：
 
@@ -341,4 +358,4 @@ python3 "<craft>/helpers/check_motion_targets.py" "<project>"
 python3 "<craft>/helpers/spec_lint.py"          # 条数、篇幅、字段、执行点、类型枚举；退 0 才算收尾完成
 ```
 
-**完成标准**：候选处理结果可追溯（收了哪条、放在哪、替代了谁，或明确没收）；改了规范则 `spec_lint.py` 退 0；没有留下悬空执行点。
+**完成标准**：候选处理结果可追溯（收了哪条、放在哪、替代了谁，或明确没收）；若挂载私有风格库则目标风格已更新演进日志；改了开源规范则 `spec_lint.py` 退 0；没有留下悬空执行点。

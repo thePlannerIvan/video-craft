@@ -10,13 +10,14 @@
 比较旧 `edit/project.md`，明确本版目标、素材来源、已定动作、待定事项和声音状态，
 **在本版 `edit/project.md` 记录来源与替代关系**。技术路径选择由 Craft 提出，核心冲突交作者判断。
 
-## 登记画面源：绝对路径 + 版本/哈希
+## 登记画面源：绝对路径 + 版本/哈希（按 `production_mode` 区分）
 
-**接手时必须把画面源写进 `edit/project.md`，不是"知道在哪"就算完。** 一份口播片的画面可能
-来自 PPT Hell 的快照、一个现成的 SVG 目录，或项目内 `composition/pages`；不登记，下一轮
-（或下一个人）只能靠猜，返修时也无法判断"改的是不是批准过的那一版"。
+**接手时必须先看 `visual-plan.json` 的 `production_mode`（或运行 `helpers/resolve_vault.py --style <style_id>`），把画面源写进 `edit/project.md`**：
 
-登记至少四件：
+- **`production_mode: "keyframe-svg"`（`graphic` 片型，如 `line-art`、`collage`、`business-report`、`concept-film`）**：画面来自 PPT Hell 的快照、一个现成的 SVG 目录，或项目内 `composition/pages`；
+- **`production_mode: "footage-montage"`（`montage` 片型，如 `lifestyle-cult` 哈雷/Vans 街头与商业档案风）**：**不经过 `planners-ppt-hell`**，没有静态 SVG 页面！上游 `video-idea-system` 直接在 `visual-plan.json` 的每屏里交付 `footage_request`（B-roll / 档案照需求清单）与 `kick_word`（砸屏重音词），登记的是真实视频/图片素材目录与 `visual-plan.json` 的 sha256，随后直接走 [montage-route.md](montage-route.md)。
+
+对于 `keyframe-svg` 项目，登记至少四件：
 
 - **类型**：`planners-ppt-hell` 视频路线导出的 snapshot，还是直接使用现成 SVG 目录；
 - **绝对路径**：目录或 snapshot 文件的绝对路径，不用相对路径、不写"PPT 文件夹里"；

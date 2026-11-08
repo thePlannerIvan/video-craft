@@ -1,7 +1,7 @@
 # 全局判准（两条片型共用）
 
-> 第 1 步读全篇。准入、淘汰与谁批准在 [preferences.md](preferences.md)。
-> 风格规则在 [style-spec.md](style-spec.md)，只对 graphic 生效。**片型有两条**：`graphic` 造画面（recompose）、`montage` 选画面（[montage-route.md](montage-route.md)）；版式/画框（[frame-spec.md](frame-spec.md)）与片型正交。本文件不按片型分家，只对只适用某一类的条目写 `适用范围`，没写的就是两条都成立；原页拆解与重做见 [film.md](film.md)。
+> 第 1 步读全篇。若本机已挂载私有参考库（`python3 helpers/resolve_vault.py` 返回 `available: true`），优先读取其返回的 `author_spec_path`；未挂载时以本开源基准为准。准入、淘汰与谁批准在 [preferences.md](preferences.md)。
+> 风格规则在 [style-spec.md](style-spec.md)（或私有库 `styles/<style_id>/craft.md`）。**片型有两条**：`graphic` 造画面（recompose）、`montage` 选画面（[montage-route.md](montage-route.md)）；版式/画框（[frame-spec.md](frame-spec.md)）与片型正交。本文件不按片型分家，只对只适用某一类的条目写 `适用范围`，没写的就是两条都成立；原页拆解与重做见 [film.md](film.md)。
 > 上限：≤ 8 条、≤ 110 行，由 `helpers/spec_lint.py` 强制。
 
 ## 写法
@@ -12,50 +12,50 @@
 ## G01 每屏有视觉主体，不出现无主体的空屏
 
 - 做法：画面首次可见时，承载本屏信息的图形／文字／素材已经在画面内；内容段不出现只有背景或全黑的画面；空屏只用于分节过渡。
-- 证据：手冲咖啡全片；三条片 V2 ch05
+- 证据：工程图演示片全片；商业报告片 V2 ch05
 - 执行：judgment:逐屏看是否有主体，分节之外的停顿里是否只剩背景
 
 ## G02 没有新画面时保留主体，不清空
 
 - 做法：某句口播没有新的画面内容时，保留已有主体并做轻微演化（小幅位移、透明度或描边变化）；不切黑、不清空成空白。
-- 证据：手冲咖啡 beat-08 长段落
+- 证据：工程图演示片 beat-08 长段落
 - 执行：judgment:看无新内容的段落里主体是否一直在画面内
 
 ## G03 动效绑定词级锚点
 
 - 做法：每个动效写明起止词；时间从词级时间戳派生，不用比例估算。
-- 证据：手冲咖啡 beat-06、beat-08；图拉斯 huazi；keywords concept
+- 证据：工程图演示片 beat-06、beat-08；实物测评片 huazi；概念拆解片 concept
 - 执行：judgment:逐条动效对照词级时间戳，看起止词是否显式写出、时间是否由词派生
 - 适用范围：graphic。montage 没有逐元素动效；镜头起点同样按词锚换算，见 montage-route.md。
 
 ## G04 画面不出现口播整句
 
 - 做法：画面文字只保留节点名、概念词、数字、模型标签；不出现口播整句，不出现字幕式整行文字。
-- 证据：三条片 V1 ch03、V2 ch02；PPthell overall
+- 证据：商业报告片 V1 ch03、V2 ch02；画面工作台 overall
 - 执行：check:helpers/check_screen_text.py
 
 ## G05 每个运动有可识别路径与起终点
 
 - 做法：运动沿旋转中心、流程轴、曲线或推拉方向发生；每个动效能说出起点与终点，不做无来由的飞入。
-- 证据：keywords concept 三屏；PPthell overall
+- 证据：概念拆解片 concept 三屏；画面工作台 overall
 - 执行：judgment:审阅时说出每个运动的起点与终点
 - 适用范围：graphic（运动是画出来的）；montage 的运动来自素材本身。
 
 ## G06 先定一屏的单一关系，再给动作
 
 - 做法：一屏只承载一个关系或一个变化；元素动作服务这个关系，不为每个元素单独配一个动作。
-- 证据：PPthell intro；sparkling beat-01；三条片 V2 ch05
+- 证据：画面工作台 intro；方法研讨片 beat-01；商业报告片 V2 ch05
 - 执行：judgment:逐屏用一句话说出本屏关系，再看动作是否只服务它
 
 ## G07 真实素材：主体完整、可读、与词同步、不被遮挡
 
 - 做法：素材主体不裁切；尺寸可读，必要时可遮住人物区；出现时机由对应那句词决定；图层之间不互相遮挡。
-- 证据：图拉斯 flip-anim、scroll-anim；sparkling beat-07
+- 证据：实物测评片 flip-anim、scroll-anim；方法研讨片 beat-07
 - 执行：judgment:逐张看主体完整性、出现时机与遮挡
 
 ## G08 以视频动画为目的设计画面：原片可用则遵循构图，不适合时再优化
 
 - 做法：先判断原片这一页适不适合作为视频动画呈现。适合：按原构图搬（模型图、层级、排布不重画），只删页脚、页码与重复解释句。不适合：重排或重做，并在拆解表写明理由。拆解每片重做，不维护跨项目元素库。
-- 证据：三条片 V1 ch03、ch04、V2 ch01、V3 ch01（照搬原构图）；V1 ch02（原页过密时简化并抻开）
+- 证据：商业报告片 V1 ch03、ch04、V2 ch01、V3 ch01（照搬原构图）；V1 ch02（原页过密时简化并抻开）
 - 执行：judgment:逐屏判断是否照搬原构图，重排的能说出理由
 - 适用范围：graphic（原页拆解重做）；montage 没有原页，对应判据是素材准入（media-sourcing.md）。

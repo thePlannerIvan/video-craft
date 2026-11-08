@@ -49,6 +49,12 @@ CHROME_PATTERNS = (
     ("页脚署名", re.compile(r"IVAN|阿祖|@")),
     ("眉标/章节标", re.compile(r"^[0-9A-Z ·/—_\-]{6,}$")),
 )
+# 拼贴风 (collage) 与线稿风 (line-art) 的结构化档案编号/节点角标（如 [REF-01]、FIG.02、STEP 01）
+# 是画面叙事锚点，不应被眉标正则误删
+STRUCTURAL_BADGE_RE = re.compile(
+    r"^\[?(?:REF|FIG|STEP|NODE|AXIS|ARCHIVE|DOC|EVIDENCE)[-_.\s0-9A-Z]*\]?$",
+    re.IGNORECASE,
+)
 KEEP_MIN_FONT = 30.0        # 字号 ≥ 30 视为关键概念，默认保留
 SPLIT_IF_LONG = 24         # 中文长句默认"拆"
 
@@ -72,7 +78,8 @@ def _classify(node: ET.Element) -> tuple[str, dict]:
         return "字", {"text": _text_of(node),
                       "font": _font_size(node),
                       "weight": node.get("font-weight") or "",
-                      "fill": node.get("fill") or ""}
+                      "fill": node.get("fill") or "",
+                      "keep": (node.get("data-keep") or "").lower() in ("1", "true", "yes")}
     if tag == "rect":
         w = float(node.get("width") or 0)
         h = float(node.get("height") or 0)
@@ -94,15 +101,18 @@ def _classify(node: ET.Element) -> tuple[str, dict]:
     return "其他", {}
 
 
-def _disposition(kind: str, info: dict) -> tuple[str, str]:
+def _disposition(kind: str, info: dict, keep_chrome: bool = False) -> tuple[str, str]:
     """默认处置 + 理由。人/模型可以改，但必须留下处置这一列。"""
     if kind == "底":
         return "保留", "整页底色，是这一页的纸/暗场"
     if kind == "字":
         text = info.get("text") or ""
-        for label, pattern in CHROME_PATTERNS:
-            if pattern.search(text):
-                return "删", f"{label}：视频里由进度/署名位承担，留着只会和画面抢位置"
+        if info.get("keep") or STRUCTURAL_BADGE_RE.match(text):
+            return "保留", "结构化档案/节点角标，承载证据编号或轴向标记"
+        if not keep_chrome:
+            for label, pattern in CHROME_PATTERNS:
+                if pattern.search(text):
+                    return "删", f"{label}：视频里由进度/署名位承担，留着只会和画面抢位置"
         if info.get("font", 0) >= KEEP_MIN_FONT:
             return "保留", "关键概念字，是这一屏的主张"
         if len(text) >= SPLIT_IF_LONG:
@@ -115,7 +125,7 @@ def _disposition(kind: str, info: dict) -> tuple[str, str]:
     return "拆", "无法归类，先不搬"
 
 
-def extract_elements(svg_path: Path) -> list[dict]:
+def extract_elements(svg_path: Path, keep_chrome: bool = False) -> list[dict]:
     tree = ET.parse(svg_path)
     root = tree.getroot()
     out: list[dict] = []
@@ -135,7 +145,7 @@ def extract_elements(svg_path: Path) -> list[dict]:
         else:
             x = float(node.get("x") or 0)
             y = float(node.get("y") or 0)
-        action, reason = _disposition(kind, info)
+        action, reason = _disposition(kind, info, keep_chrome=keep_chrome)
         out.append({
             "kind": kind, "x": x, "y": y, "info": info,
             "text": text, "action": action, "reason": reason,
@@ -149,7 +159,8 @@ def _page_key_from(svg_path: Path) -> str:
     return svg_path.stem
 
 
-def cmd_outline(project: Path, page_key: str, source: Path | None, overwrite: bool = False) -> int:
+def cmd_outline(project: Path, page_key: str, source: Path | None, overwrite: bool = False,
+                keep_chrome: bool = False) -> int:
     pages_dir = project / PAGES_REL
     pages_dir.mkdir(parents=True, exist_ok=True)
     target = pages_dir / f"{page_key}.md"
@@ -165,7 +176,7 @@ def cmd_outline(project: Path, page_key: str, source: Path | None, overwrite: bo
         return 2
 
     try:
-        elements = extract_elements(source)
+        elements = extract_elements(source, keep_chrome=keep_chrome)
     except ET.ParseError as error:
         print(json.dumps({"ok": False, "error": f"原页不是合法 SVG：{error}"}, ensure_ascii=False, indent=1))
         return 2
@@ -360,6 +371,8 @@ def main(argv=None) -> int:
     p_outline.add_argument("--page", required=True, help="页 key（如 page_04）")
     p_outline.add_argument("--source", type=Path, help="原页 SVG 的绝对路径")
     p_outline.add_argument("--overwrite", action="store_true")
+    p_outline.add_argument("--keep-chrome", action="store_true",
+                           help="保留眉标/角标（如 collage/line-art 的档案编号）")
 
     p_pages = sub.add_parser("pages", help="beat ↔ 原页 映射；写映射")
     p_pages.add_argument("project", type=Path)
@@ -372,7 +385,7 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     project = args.project.expanduser().resolve()
     if args.cmd == "outline":
-        return cmd_outline(project, args.page, args.source, args.overwrite)
+        return cmd_outline(project, args.page, args.source, args.overwrite, args.keep_chrome)
     if args.cmd == "pages":
         if args.map:
             return write_map(project, args.map.split(","))

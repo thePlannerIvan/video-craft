@@ -68,7 +68,7 @@ description: 承接 Video Idea System 的内容包、PPT Hell 的静态 SVG 或�
 | 画面 | 7 | film／montage-route（按片型）；composition-craft；visual-rendering；timing-lock（缺一不渲）；frame-animation-pipeline（自定义逐帧时） | graphic：film 拆解后写 composition；montage：镜头表 + montage 渲染 + check_montage 体检 |
 | 审阅与返修 | 8–9 | review-ui；live-stage-contract；hyperframes-review-adapter | review 构建并验播放；review_inbox 收件后改源、重建 |
 | 交付 | 10 | timing-lock；delivery | 按现有交付顺序逐项执行；实际文件核验后才交付 |
-| 收尾与风格提取 | 11 | preferences；`helpers/extract_style.py`（调外挂库 `evolve_style.py` 或本地提取）；故障时读 architecture 的 Debug 流程 | 常规项目收尾自动进化目标风格；或从外部参考片独立提取新风格（`--bootstrap`）并刷新看板 |
+| 收尾与风格提取 | 11 | preferences；[style-extraction.md](references/style-extraction.md)；`helpers/extract_style.py`（`packet` → `check` → `apply` / `lint`） | 按四步提取协议（工具采样 → 四问填表 → 机械校验 → 落盘并提交本地 Git）进化现有风格或从参考片新建风格 |
 
 上述简称均指 references 下同名 Markdown。命令参数与可复制调用集中在 [tools.md](references/tools.md)，不要自行拼一套替代脚本。
 

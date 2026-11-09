@@ -331,44 +331,48 @@ python3 "<craft>/helpers/check_motion_targets.py" "<project>"
 
 ## 11. 收尾与风格提取/进化
 
-本步既是**常规项目完成后的自动收尾钩子**，也是**直接喂入外部参考视频或已完工项目提炼新风格的独立入口**。
+本步既是**常规项目完成后的收尾入口**，也是**直接喂入外部参考视频或已完工项目提炼新风格的独立入口**。
 
-**先读**：`preferences.md` —— 两套准入与归位规则（否定型硬约束一次即可进正式文档；倾向型判准要复现），下面「按类型准入」用它，不另立标准。
+**先读**：`preferences.md`（准入与归位规则）与 [style-extraction.md](style-extraction.md)（与模型无关的四步提取协议：谁消费切哪层、行为与数值分离、四字段禁引文、工具管准入与上限淘汰）。
 
-**模式 A：项目完成后的自动进化（默认收尾）**
-1. **读三处证据**：本片 `feedback/*.jsonl` 的返修理由、项目 `edit/preferences.md` 的处理表、核验报告里的红项。重复出现的要求最强的是返修理由——作者已经在同一件事上纠正过一次。
-2. **调用 `extract_style.py` 进化目标风格**：将该视频项目中的返修判准与新增高光片段（自动切出 3 联帧 `*-strip.jpg` 与 `2s` `.webm` 预览）合入对应风格（`styles/<style_id>/`）的 `idea.md / page.md / craft.md / patterns/` 与 `evolution-log.json`，并自动重建可视化看板 `index.html`：
+**统一按四步协议执行（不直接手改风格库 Markdown）**：
+
+1. **工具采样生成证据包（`packet`）**：
+   ```bash
+   python3 "<craft>/helpers/extract_style.py" packet \
+     --video "<project_dir_or_ref.mp4>" \
+     --style "<style_id>" \
+     --out "<project_or_tmp>/packet.json"
+   ```
+   自动汇总本片 `feedback/*.jsonl`、`edit/preferences.md`、画面契约或视频帧采样，并附上目标风格当前的 `idea/page/craft.md`、参数表、候选池 `candidates.json` 与剩余容量。
+
+2. **模型按四问填表写出提案（`proposal.json`）**：
+   对照 `packet.json` 的 `extraction_rubric` 填写结构化提案：
+   - 按消费者分进 `idea`（`I01..I05`）、`page`（`P01..P05`）、`craft`（`C01..C05`）；
+   - `标题` 与 `做法` 只写可观察的行为关系，**禁写数字、色号与原话引号**；具体数值写进 `params_patch` 并用 `参数` 字段引用键名；
+   - 满 5 条时显式声明 `relation: "替代"` 或 `"合并"` 及 `target_id`。
+
+3. **机械校验提案（`check`）**：
+   ```bash
+   python3 "<craft>/helpers/extract_style.py" check --proposal "<project_or_tmp>/proposal.json"
+   ```
+   退 `0` 才可进入第 4 步；退 `1` 按报错逐条修正。
+
+4. **落盘、切片并写入本地版本库（`apply`）**：
+   ```bash
+   python3 "<craft>/helpers/extract_style.py" apply \
+     --proposal "<project_or_tmp>/proposal.json" \
+     --video "<project_dir_or_ref.mp4>" \
+     [--confirm]
+   ```
+   工具自动完成准入分流（`feedback-negative` 一次入正册；单次倾向型先进 `candidates.json`，满 2 个独立项目自动晋升入正册，连续 3 个项目未复现自动淘汰）、切出三联帧 `*-strip.jpg` 与 `2s` `.webm`、跑 `lint` 校验零错误、刷新 `_video-vault/index.html`，并在 `_video-vault` 本地 Git 仓库自动提交一条版本记录。
+   （若从外部参考片初始化全新风格，可先跑 `extract_style.py bootstrap --video <ref.mp4> --style <new_slug> --name "<名称>" --mode <keyframe-svg|footage-montage>`。）
+
+**实际更改规范后校验**：
 
 ```bash
-python3 "<craft>/helpers/extract_style.py" \
-  --video "<project_dir_or_mp4>" \
-  --style "<style_id>" \
-  --summary "<本片沉淀的规则或招式摘要>" \
-  [--clip "<pattern_id>:<start_sec>:<dur_sec>"]
+python3 "<craft>/helpers/extract_style.py" lint   # 外挂风格库全量结构、行数、参数与媒体存在性检查
+python3 "<craft>/helpers/spec_lint.py"            # 开源基准 author-spec / style-spec 检查
 ```
 
-**模式 B：独立风格提取入口（外部参考视频 → 新建风格 `--bootstrap`）**
-当用户给一条外部参考视频（或新类型项目）要求「提炼/新增一套视频风格」时，直接进入本步：
-1. 先判断该风格的固有生产模式（`keyframe-svg` 需要 `planners-ppt-hell` 先画静态关键帧；`footage-montage` 跳过 `planners-ppt-hell` 直接走实拍/档案混剪）。
-2. 运行 `extract_style.py --bootstrap` 自动抽取出 4×3 全片概览板 `style-board.jpg`、代表性招式的三联帧 `*-strip.jpg`（供大模型读）与 `2s` `.webm`（供人眼预览），生成 `style.json`、`idea.md`、`page.md`、`craft.md` 并刷新 `_video-vault/index.html`（未挂载私有库时输出到 `./_extracted_styles/<style_id>/`）：
-
-```bash
-python3 "<craft>/helpers/extract_style.py" \
-  --bootstrap \
-  --video "<ref_video.mp4>" \
-  --style "<new_style_slug>" \
-  --name "<风格中文名>" \
-  --mode "<keyframe-svg|footage-montage>" \
-  --summary "<核心审美、叙事与动效特征>" \
-  --clip "<pattern_id>:<start_sec>:<dur_sec>"
-```
-
-**给 ≤3 条候选**：每条一句话 + 出处（项目 + 屏号）+ 建议动作（演进至外挂风格库 `styles/<style_id>/` / 收进开源基准 `author-spec.md` 或 `style-spec.md` / 升进正式文档 / 丢弃）。按 [preferences.md](preferences.md) 的两套准入与归位规则处理：否定型硬约束一次即可进正式文档；倾向型判准要复现。有原话证据可判为可收候选；更改 Skill 仍遵守项目的确认与集中升级规则，制作过程中只记录，项目验证完成后统一更新。
-
-**实际更改规范后校验**（只收尾项目、没有改 Skill 时不强加维护检查）：
-
-```bash
-python3 "<craft>/helpers/spec_lint.py"          # 条数、篇幅、字段、执行点、类型枚举；退 0 才算收尾完成
-```
-
-**完成标准**：候选处理结果可追溯（收了哪条、放在哪、替代了谁，或明确没收）；目标风格已完成演进或新建并刷新看板；改了开源规范则 `spec_lint.py` 退 0；没有留下悬空执行点。
+**完成标准**：候选处理结果可追溯（进正册、进 `candidates.json`、替代了谁或未收）；`extract_style.py lint`（及改了开源规范时的 `spec_lint.py`）退 0；没有悬空执行点或不存在的媒体路径。

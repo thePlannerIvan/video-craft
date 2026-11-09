@@ -2,7 +2,7 @@
 """Resolve the external Style-Centric Video Vault (`~/.config/planners/video-vault`).
 
 Decouples open-source `video-craft` from the author's private `_video-vault`:
-1. `PLANNERS_VIDEO_VAULT` environment variable (if set and valid)
+1. `PLANNERS_VIDEO_VAULT` environment variable (if set; `none`/`off`/`0` forces fallback)
 2. `~/.config/planners/video-vault` (symlink or directory)
 3. Open-source fallback (`references/author-spec.md` + `references/style-spec.md`)
 
@@ -16,6 +16,8 @@ import json
 import os
 from pathlib import Path
 from typing import Any
+
+from style_vault import frame_presets
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_REFS = SKILL_ROOT / "references"
@@ -43,21 +45,21 @@ def find_vault_root() -> Path | None:
         if not env_override.strip() or env_override.strip().lower() in ("none", "off", "0"):
             return None
         p = Path(env_override).expanduser()
-        if (p / "manifest.json").is_file() and (p / "styles").is_dir():
-            return p.resolve()
-        return None
-
-    candidates: list[Path] = [
-        Path.home() / ".config" / "planners" / "video-vault",
-        SKILL_ROOT.parents[2] / "05-VideoProject" / "_video-vault",
-    ]
-    for candidate in candidates:
         try:
-            resolved = candidate.resolve()
+            resolved = p.resolve()
             if (resolved / "manifest.json").is_file() and (resolved / "styles").is_dir():
                 return resolved
         except OSError:
-            continue
+            return None
+        return None
+
+    candidate = Path.home() / ".config" / "planners" / "video-vault"
+    try:
+        resolved = candidate.resolve()
+        if (resolved / "manifest.json").is_file() and (resolved / "styles").is_dir():
+            return resolved
+    except OSError:
+        return None
     return None
 
 
@@ -81,8 +83,10 @@ def resolve_vault(style_id: str | None = None, frame_id: str | None = None) -> d
             "page_rules_path": None,
             "patterns_dir": None,
             "patterns": [],
+            "frame_preset": frame_id,
             "frame_preset_path": None,
-            "evolve_script_path": None,
+            "frame_preset_paths": [],
+            "extract_script_path": str(SKILL_ROOT / "helpers" / "extract_style.py"),
             "note": (
                 "Private video-vault not mounted; using open-source baseline "
                 "references/author-spec.md and references/style-spec.md."
@@ -111,14 +115,14 @@ def resolve_vault(style_id: str | None = None, frame_id: str | None = None) -> d
     if patterns_dir.is_dir():
         patterns = [str(p) for p in sorted(patterns_dir.iterdir()) if p.is_file() and not p.name.startswith(".")]
 
-    resolved_frame_id = frame_id or meta.get("frame_preset")
-    frame_preset_path: str | None = None
-    if resolved_frame_id:
-        candidate_frame = vault_root / "frames" / f"{resolved_frame_id}.json"
+    declared_presets = [frame_id] if frame_id else frame_presets(meta)
+    resolved_frame_paths: list[str] = []
+    for preset in declared_presets:
+        if not preset:
+            continue
+        candidate_frame = vault_root / "frames" / f"{preset}.json"
         if candidate_frame.is_file():
-            frame_preset_path = str(candidate_frame)
-
-    evolve_script = vault_root / "scripts" / "evolve_style.py"
+            resolved_frame_paths.append(str(candidate_frame))
 
     return {
         "available": True,
@@ -134,8 +138,11 @@ def resolve_vault(style_id: str | None = None, frame_id: str | None = None) -> d
         "page_rules_path": str(page_md) if page_md.is_file() else None,
         "patterns_dir": str(patterns_dir) if patterns_dir.is_dir() else None,
         "patterns": patterns,
-        "frame_preset_path": frame_preset_path,
-        "evolve_script_path": str(evolve_script) if evolve_script.is_file() else None,
+        "params": meta.get("params", {}),
+        "frame_preset": declared_presets[0] if declared_presets else None,
+        "frame_preset_path": resolved_frame_paths[0] if resolved_frame_paths else None,
+        "frame_preset_paths": resolved_frame_paths,
+        "extract_script_path": str(SKILL_ROOT / "helpers" / "extract_style.py"),
     }
 
 

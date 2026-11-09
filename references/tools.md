@@ -29,6 +29,7 @@
 | 动效审阅构建 | review.py | check_live_stage/live_stage/build_review/review_surface/check_review_playable 是内部步骤，仅定位故障时单跑 |
 | 正式反馈收件 | review_inbox.py | 它不包含在 review.py 内；拒收先解决绑定 |
 | 成片合成、严格核验、包装、指纹 | deliver → verify_delivery → 按需 export_deliverables → state_fingerprint | 顺序与适用限制见 delivery.md；stage_deliver 是兼容的分动作入口 |
+| 风格手册解析、独立风格提取与收尾进化 | resolve_vault.py / extract_style.py | 第 1–2 步解析风格；第 11 步进化已有风格或加 `--bootstrap` 从参考片提取新风格 |
 
 私有库（下划线文件、helpers/lib、live_preview）由工具调用。扩展参数查 --help；维护工具时可以读实现，日常制作先用入口与报告定位。
 

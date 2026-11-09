@@ -1,6 +1,6 @@
 ---
 name: video-craft
-description: 承接 Video Idea System 的内容包、PPT Hell 的静态 SVG 或已有音视频，完成剪辑、实测时间绑定、动画、语义字幕、视听合成、人工审阅返修与交付核验。
+description: 承接 Video Idea System 的内容包、PPT Hell 的静态 SVG 或已有音视频，完成剪辑、实测时间绑定、动画、语义字幕、视听合成、人工审阅返修、交付核验与视频风格提取/进化。
 ---
 
 # Video Craft
@@ -41,6 +41,7 @@ description: 承接 Video Idea System 的内容包、PPT Hell 的静态 SVG 或�
 | 已剪音频 + SRT + 参考页 | 核版本，走 srt-import（5–6） | 对齐实声的工程审阅；不声称 EDL measured |
 | 已确认剪点、词级依据、参考页 | 时间 → 原页拆解 → composition（5–8） | 可播、可听、可返修的动效审阅面 |
 | 已录口播、**没有参考页**、画面是现成素材（或上游 `production_mode: "footage-montage"` 直通包） | 片型选 montage（2）→ 素材清单 → 镜头表（5）→ 渲染体检（7） | 侧边栏审阅面（可播）+ 镜头表 + 两关体检；三件套要等作者出片指令 |
+| 外部参考视频或已完工项目，**专门提取新风格或进化已有风格** | 风格提取与进化（直接进 11，调 `helpers/extract_style.py`） | 新增或升级后的风格手册（`idea/page/craft.md` + 三联帧 `*-strip.jpg` + `2s .webm`）与更新后的可视化看板 |
 | 返修/恢复项目 | 收件（9），按影响回到相应步骤 | 新快照与逐项处理回执 |
 | 作者明确要求出片 | 交付前置与核验（10） | 实际视频、约定字幕、核验报告与有效指纹 |
 
@@ -67,7 +68,7 @@ description: 承接 Video Idea System 的内容包、PPT Hell 的静态 SVG 或�
 | 画面 | 7 | film／montage-route（按片型）；composition-craft；visual-rendering；timing-lock（缺一不渲）；frame-animation-pipeline（自定义逐帧时） | graphic：film 拆解后写 composition；montage：镜头表 + montage 渲染 + check_montage 体检 |
 | 审阅与返修 | 8–9 | review-ui；live-stage-contract；hyperframes-review-adapter | review 构建并验播放；review_inbox 收件后改源、重建 |
 | 交付 | 10 | timing-lock；delivery | 按现有交付顺序逐项执行；实际文件核验后才交付 |
-| 收尾 | 11 | preferences；外挂风格库 `evolve_style.py`（挂载时）；故障时读 architecture 的 Debug 流程 | 记录本片处理结果；若挂载私有风格库则自动演进目标风格手册与三联帧卡片 |
+| 收尾与风格提取 | 11 | preferences；`helpers/extract_style.py`（调外挂库 `evolve_style.py` 或本地提取）；故障时读 architecture 的 Debug 流程 | 常规项目收尾自动进化目标风格；或从外部参考片独立提取新风格（`--bootstrap`）并刷新看板 |
 
 上述简称均指 references 下同名 Markdown。命令参数与可复制调用集中在 [tools.md](references/tools.md)，不要自行拼一套替代脚本。
 
@@ -80,7 +81,7 @@ description: 承接 Video Idea System 的内容包、PPT Hell 的静态 SVG 或�
 | 工程审阅（默认终点） | 当前时间来源明确；适用时 film verify 通过；`check_review_playable.py` 退 0（播放通道、时长、画面与声音都对）；侧边栏 surface 已打开；本轮待办已列出 |
 | 蒙太奇工程 | 素材清单每条都已登记（含「不可用」原因，`plan` 会拒未登记或没写画面一句话的行）；`montage.py plan` 退 0；`check_montage.py --shots-dir` 逐镜与 `--video` 成片两关都过；**并已打开侧边栏审阅页**（终点是审阅，渲染只是中间产物） |
 | 成片交付（需作者明确指令） | 作者出片指令、当前版本人审依据、未决意见处理、timing-lock、实际文件核验与有效交付指纹；`edit/_engineering/` 里的文件不能当交付件。严格检查未完成或失败就不声称能发 |
-| 每轮收尾 | 反馈处理与剩余问题可追溯；无新候选就记录“本轮无新判准”，不为凑数量改 Skill |
+| 每轮收尾 / 独立风格提取 | 反馈处理与剩余问题可追溯；运行 `helpers/extract_style.py` 完成已有风格演进或新风格初始化（`--bootstrap`），产出三段式规则（`idea/page/craft.md`）、三联帧与 `2s` 预览并刷新看板 |
 
 工程审阅不需要先渲整片。素材转码、声音处理、确认剪点后的工程底片、montage 的镜头渲染都属于素材准备，缓存到 `edit/_engineering/`；快照要重建才反映源的变化，不能把旧页面称为热更新。交付件只在上面「每轮终点」的边界内产生。
 

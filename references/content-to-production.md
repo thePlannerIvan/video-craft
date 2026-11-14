@@ -5,7 +5,7 @@
 
 ## 接手先形成当前制作依据
 
-读取 Idea 的 `_idea/current.md`、`deliverable/script.md`、`deliverable/visual-plan.json`（可选）、
+读取 Idea 的 `_idea/brief.md`（旧项目为 `_idea/current.md`，两者等价）、`deliverable/script.md`、`deliverable/visual-plan.json`（可选）、
 `production-brief.md`、作者反馈及真实素材。已有 Story 的同名交付可以直接接收，不要求重跑 Idea。
 比较旧 `edit/project.md`，明确本版目标、素材来源、已定动作、待定事项和声音状态，
 **在本版 `edit/project.md` 记录来源与替代关系**。技术路径选择由 Craft 提出，核心冲突交作者判断。
@@ -42,9 +42,9 @@ find "<画面源目录>" -name '*.svg' -print0 | sort -z | xargs -0 shasum -a 25
 
 ### 在一个工作区里找画面源的顺序
 
-按这个顺序找，找到就停，并把命中的那一条连同证据写进 `edit/project.md`：
+**权威的画面源是 `planners-ppt-hell` 的 store 保存回执或 `snapshot.json`**；`_internal/02_svg_source/` 是可重建的兼容视图，只有在拿不到回执或快照、且作者确认采用时，才按下表退而用它。按这个顺序找，找到就停，并把命中的那一条连同证据写进 `edit/project.md`：
 
-1. 项目内 `visual_screens/_internal/02_svg_source/` —— PPT Hell 工作台的页面源；
+1. 项目内 `visual_screens/_internal/02_svg_source/` —— 兼容视图（回执/快照缺位时的退路，用它要记明原因）；
 2. 项目内 `composition/pages/` —— 已经导入过的页面副本与 `manifest.json`；
 3. 项目内 `scenes/`、`deliverable/scenes/`、`input/scenes/` —— 裸 SVG 目录；
 4. 项目根的 `.pages` 指针文件 —— 内容是画面项目的绝对或相对路径，顺着它找
@@ -89,7 +89,7 @@ snapshot 带 revision、页面清单与批准记录；裸 SVG 目录需要另核
 
 **没有音频也要把承接做完。** 产物是这四件：
 
-1. `edit/project.md` —— 每个来源（内容包各件、`_idea/current.md`、作者反馈）与本版的替代关系，本轮目标在最前。
+1. `edit/project.md` —— 每个来源（内容包各件、`_idea/brief.md` 或 `_idea/current.md`、作者反馈）与本版的替代关系，本轮目标在最前。
 2. `production-plan.md` —— **逐 Beat** 六项：声音来源、画面过程、必要动作、素材与缺口、
    预计时长及估计依据、转场关系。
 3. **独立代表切片** `previs/`，标 planned —— 没有音频照样做得出来：真实素材 + 清楚标注的临时声音或估时。

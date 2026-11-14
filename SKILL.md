@@ -9,7 +9,7 @@ description: 承接 Video Idea System 的内容包、PPT Hell 的静态 SVG 或�
 
 ## 职责与判断
 
-- video-idea-system 拥有内容主张、口播稿、念稿决定与 visual-plan；改变内容意义回上游确认。
+- video-idea-system 拥有内容主张、口播稿、念稿决定与 visual-plan；改变内容意义回上游确认。本 Skill 只接已成型的内容：有 `visual-plan.json`，或作者已有成片素材与定稿口播。从材料开始、连口播都还没定的新片不在这里开工，回 `video-idea-system`。
 - planners-ppt-hell 拥有静态页及页面级视觉决定；Craft 读取批准页，负责声音、剪辑、时间绑定、字幕、动效和合成。
 - planners-review-core 拥有桥、宿主、资产读取、草稿、提交和唤醒；Craft 拥有视频业务、播放验收和反馈解释。事实来源归上游内容包及其证据；Craft 不从动画或字幕反推事实。
 - 模型判断取舍、语义断句、视觉分组、原页如何演出来和反馈的含义；工具执行重复机械动作，报告实际结果。工具退 0 不替代创作判断、作者确认或未覆盖的检查。
@@ -32,7 +32,7 @@ description: 承接 Video Idea System 的内容包、PPT Hell 的静态 SVG 或�
 
 ## 接手时选入口与本轮终点
 
-所有路径使用绝对路径；先读项目 `_idea/current.md`、`edit/project.md`、`production-plan.md`、已有反馈，再核采用版本。接手细节见 [content-to-production.md](references/content-to-production.md)。
+所有路径使用绝对路径；先读项目 `_idea/brief.md` 或旧项目的 `_idea/current.md`（两者等价）、`edit/project.md`、`production-plan.md`、已有反馈，再核采用版本。接手细节见 [content-to-production.md](references/content-to-production.md)。
 
 | 输入 | 从哪里开始 | 本轮能交什么 |
 |---|---|---|
@@ -69,6 +69,8 @@ description: 承接 Video Idea System 的内容包、PPT Hell 的静态 SVG 或�
 | 审阅与返修 | 8–9 | review-ui；live-stage-contract；hyperframes-review-adapter | review 构建并验播放；review_inbox 收件后改源、重建 |
 | 交付 | 10 | timing-lock；delivery | 按现有交付顺序逐项执行；实际文件核验后才交付 |
 | 收尾与风格提取 | 11 | preferences；[style-extraction.md](references/style-extraction.md)；`helpers/extract_style.py`（`packet` → `check` → `apply` / `lint`） | 按四步提取协议（工具采样 → 四问填表 → 机械校验 → 落盘并提交本地 Git）进化现有风格或从参考片新建风格 |
+
+本目录还有两类不在主路线上的东西：`skills/manim-video/` 是数学与技术动画的独立制作管线，只在严密数学或技术动画时按 `$manim-video` 调用（见 [stages.md](references/stages.md) 的画面一节）；`archive/` 是已退役实现的存档，只供定位旧项目、读历史字幕与旧页面经验，不是制作入口，主路线不会调用它。
 
 上述简称均指 references 下同名 Markdown。命令参数与可复制调用集中在 [tools.md](references/tools.md)，不要自行拼一套替代脚本。
 

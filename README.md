@@ -1,260 +1,145 @@
 # Video Craft
 
-编辑视频的单一 skill：**剪辑、画面、花字、字幕、交付**，一条流程走完。
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-2563eb)](LICENSE)
+[![Python](https://img.shields.io/badge/python-%3E%3D3.9-3776ab)](https://www.python.org)
+[![FFmpeg](https://img.shields.io/badge/ffmpeg-required-007808)](install.md)
 
-它存在的原因是：剪辑和画面原本是两个 skill，只有靠人手工搬数据才能配合起来——
-而那段"手工搬数据"里最容易出错的覆盖层合成，没有任何一个 skill 拥有。
+**从粗录音/散落素材或上游内容包出发，一竿子走完「逐字剪辑 → 实测词级时间轴 → 画面/混剪/大字报 → 语义字幕 → 侧栏播映审阅 → 核验出片」。**
 
-## 它能做的四件事，其实是同一件事
+> 作者：阿祖不看 TVC（小红书同名）· [demyth.info](https://demyth.info) · [Lawyif@163.com](mailto:Lawyif@163.com)
 
-| 你要的 | 底片 | 视觉层 |
-|---|---|---|
-| 做画面，把口播压上去 | 空 | 不透明，满屏 |
-| 做花字，压在口播上 | 口播剪辑 | alpha 覆盖层 |
-| 纯剪辑 | 素材 | 无 |
-| 纯动画 | 空 | 不透明 + 自带音频 |
+---
 
-没有素材时（画面 + 口播）在 EDL 里声明 `canvas` + `fps`，`render.py` 合成黑底承载口播；
-满屏不透明覆盖层走 `-c:v copy`，画面不多编码一代。
+## 一句话看懂：它帮你做什么
 
-四种都是 `时间脊柱 → 视觉层 → 一个合成器`。
+普通视频工具只能管其中一截：文字工具不懂帧率和透明通道，剪辑脚本不管台词意思，动效渲染又和录音对不上拍。
 
-## 使用与维护
+**Video Craft** 把“时间脊柱、视觉层和最终核验”合成一条防错工作流，默认先把片子推到**随时可重播、可划词返修的侧边栏审阅页**，等你点头发话出片，再经严格检查写进成品：
 
-默认先交工程态审阅；作者明确出片后再合成与核验。逐字剪辑和动效审阅是两种制作界面，均使用公共审阅宿主。
+```text
+4 种常见起点：原始录屏/录音 · 已定内容包+静态 SVG (keyframe-svg) · 实拍/档案混剪 (footage-montage) · 参考片提炼风格
+  → 1. 接入风格配置（读私有 ~/.config/planners/video-vault 或自动退回开源内置规范）并选定片型路线
+  → 2. 词级转录 + 网页逐字剪辑审阅（直接删口误/气口，重算真实音频时间轴）
+  → 3. 合成视觉层（图形拆解重构 recompose / 素材体检+镜头表混剪 montage / 或纯黑底直压不重编码）
+  → 4. 出工程审阅态（edit/_engineering/）：逐句校对与视觉审阅页播放确认
+  → 5. 作者下明确出片指令 → render_gate + 成片真实核验 → 写入 成品/
+```
 
-**一轮的终点是侧边栏审阅页可播 + 本轮待办，不是成片。** 产物分两级，别混：
+**重要原则——不要把“渲染预览”和“正式交付”混为一谈**：
+- `edit/_engineering/**` 是每轮可随意重渲的**工程审阅态**，永远不算成品；
+- `成品/**` 是**正式交付件**，只有作者口头指令 + 人工审阅提交覆盖当前版本（`render_gate` 放行）才允许写入。
 
-| 落点 | 是什么 | 什么时候写 |
-|---|---|---|
-| `edit/_engineering/**` | 审阅素材（工程态） | 每轮都能重渲、给审阅页消费，不算交付 |
-| `成品/**` | 交付件 | 只在作者明确出片指令 + 人工提交覆盖当前快照后写入 |
+---
 
-- [SKILL.md](SKILL.md)：按输入和本轮目标选阶段。
-- [阶段契约](references/stages.md)：11 步的输入、完成条件与返回路径。
-- [工具手册](references/tools.md)：现有入口与调试命令。
-- [架构与 Debug](references/architecture.md)：职责、失效范围、局部优化和验证。
-- [实现 Brief](references/implementation-brief.md)：B1–B8 的实现范围、兼容方式与实际验收记录。
-- [验收用例](evals/README.md)：行为判据、路线覆盖矩阵与 `run_evals.py`。
+## 你手头的材料，它会怎么接
 
-EDL 时间与外部 SRT 来源分别登记；工程态 projected 不冒充实测。视觉制作按**片型**分叉：画面是造出来的（页/图形/字卡）走 recompose，先拆批准原页再手写 composition；画面是选出来的（档案影像/实拍/照片）走 montage 路线（素材清单 → 镜头表 → 渲染体检）；版式/画框是两种片型共用的一层。旧 page 路线隔离恢复。
+| 你交给它的输入 | 自动走哪条路线 | 你每一轮能拿到什么 |
+| --- | --- | --- |
+| 刚录完的粗音视频（需要删口癖、定节奏） | 在线词级转录 → 逐字剪辑面 → 时间与画面 | 可在网页直接删句剪接的逐字审阅页与对齐字幕 |
+| `video-idea-system` + `planners-ppt-hell` 的静态 SVG 关键帧 | `recompose`（原页拆解并编写动效贴合实测声音） | 可播放的逐句动效工程审阅页与调整待办 |
+| 实拍/档案素材 + 口播（或上游 `footage-montage` 直通包） | `montage`（素材登记体检 → 镜头表 → 画框/大字报） | 拒绝胡编素材的镜头表、两关渲染体检与可播审阅 |
+| 严密数学原理 / 算法推演动画需求 | 按需调用内置子技能 `skills/manim-video/` | Manim 数学动画片段合成进时间轴 |
+| 一条参考视频或已完工老片 | 风格提取与进化（`helpers/extract_style.py`） | 沉淀三段式风格规则、三联帧与 2s 预览卡片 |
 
-## 为什么覆盖层要单独有校验器
+---
 
-覆盖层是唯一一处"做错了不会失败，只会产出一个看起来合理的错视频"的接缝。
-2026-09-15 的真实事故：花字按某个文档的说法渲成 WebM，而本机 ffmpeg 的 libvpx
-没编 alpha，WebM 静默丢了透明；合成器照叠不误，渲染六分钟之后底片全黑。
-正确做法早就写在另一个 skill 的文档里 —— 两个 skill 各自记住了一半。
+## 核心特色：两道护栏专治“静默翻车”
 
-现在 `check_overlay.py` 把这条接口变成机器可证的：alpha 平面真的存在吗、
-alpha 是不是被烘成了不透明、帧率对得上底片吗、时长等于声明的窗口吗。
-`render.py` 在合成前会再验一次——坏层一秒失败，而不是渲染六分钟才发现。
+- **覆盖层出片前 1 秒先验透明度**：透明花字或动效层如果缺少 alpha 通道、帧率差一拍或时长不对，传统合成器不会报错，而是默默渲染五六分钟吐出全黑画面。`check_overlay.py` 会在合成前 1 秒当场拦截坏层；纯不透明满屏覆层还会走 `-c:v copy` 避免底片多编码一代。
+- **不伪造词级时间戳**：词级时间直接锚定剪辑点、字幕断句与动效重音。未配置可用转录服务时脚本直接报错提示缺什么，绝不用普通大模型或估算去“猜”毫秒时间。
 
-## 安装
+---
 
-两种读者，两条路，不要混：
+## 什么时候选我 vs 选别的 Skill
 
-**① 独立用户（从 GitHub 装）** —— 一种方式，Skills CLI：
+| 你的需要 | 选哪个 Skill | 理由 |
+| --- | --- | --- |
+| 还没想好讲什么、口播稿还没定、缺画面/素材想法 | 先用 [`video-idea-system`](https://github.com/thePlannerIvan/video-idea-system) | 先把核心洞察、可录稿和内容契约谈出来并念过确认 |
+| 只需把逐页文案排成静态图 / 可编辑 PowerPoint | 用 [`planners-ppt-hell`](https://github.com/thePlannerIvan/planners-ppt-hell) | 专做静态 SVG 关键帧和 `.pptx` 导出 |
+| 已经有录音/视频/素材或内容包，要剪辑、加动效字幕、审阅出片 | **本 Skill (`video-craft`)** | 接手全部制作、工程态返修与成品交付核验 |
+
+---
+
+## 快速开始与环境准备
+
+> 首次配置 `ffmpeg`、Node 22+、`ws`、Python 依赖与自备转录凭据，请直接按 **[安装手册 install.md](install.md)** 逐步完成（仓库不随带任何 API 密钥）。
+
+### 1. DSH 用户（推荐）
+
+通过 [Planners Form](https://github.com/thePlannerIvan/planners-form) 在 DSH 设置里勾选 `video-craft` 一键安装（`ffmpeg` 与转录 API Key 仍需按 [install.md](install.md) 在本地备妥）。
+
+### 2. Codex / Claude Code 用户
 
 ```bash
 npx skills add https://github.com/thePlannerIvan/video-craft --skill video-craft
 ```
 
-它把 Skill 写进检测到的 agent 技能目录（`~/.claude/skills/video-craft`、`~/.codex/skills/video-craft`）。
-对独立用户来说，那份 runtime 副本**就是安装本体**：机器上没有 `02-skills-library` 源目录，
-不存在"和源目录漂移"这回事；更新 = 重跑同一条命令。Antigravity 与 DSH 的接法见
-[install.md](install.md) 第 4 步。
+### 3. 直接这样开始（示例指令）
 
-**② monorepo 开发者** —— `publish_skills.py` 是 runtime 同步的唯一入口：
+```text
+使用 $video-craft 接手当前目录里的口播录音和 deliverable/：
+先帮我做逐词转录并打开逐字剪辑审阅页删掉废话，确认剪点后再绑定字幕、渲染一版工程态让我试看。
+```
+
+### 运行时依赖与公共模组
+
+- **本机必填**：`ffmpeg` / `ffprobe`、Python 3.9+（依赖见 `pyproject.toml`）、Node.js 22+（使用豆包流式 ASR 2.0 需在本 Skill 目录运行 `npm install ws`）、`.env` 填写你自己的转录凭据（模板见 `.env.example`）。
+- **自动按需加载的公共模组**：仅依赖 [`planners-review-core`](https://github.com/thePlannerIvan/planners-review-core)（剪辑面与动效审阅页契约及本地宿主，缺失时自动拉取至 `~/.planners-modules/`）。*(同族另外三个模组 `planners-source-index`、`planners-fact-check`、`planners-report-kit` 本 Skill 不消费。)*
+
+---
+
+<details>
+<summary>开发者说明：环境变量、合并血统、单测与验收指令（普通用户可忽略）</summary>
+
+### 公共模组解析顺序与测试命令
+
+适配器（`helpers/lib/planners_modules.py`）按 `$PLANNERS_MODULES_HOME` → `<skills-root>` → `02-skills-library/<分类>` → 用户级目录（`$PLANNERS_MODULES_INSTALL_DIR` → `$PLANNERS_MODULES_HOME` → `~/.planners-modules/`）查找 `planners-review-core`。设 `PLANNERS_NO_AUTO_INSTALL=1` 可禁止联网；`PLANNERS_MODULES_REF` 可锁定分支/tag。
 
 ```bash
-cd 02-skills-library
-python3 publish_skills.py --dry-run
-python3 publish_skills.py --target all
-```
+# 自检公共模组绑定
+python3 helpers/lib/planners_modules.py --check
 
-三端的所有权归发布器：Codex / Claude Code 是复制，Antigravity 是指向 Claude 副本的符号链接。
-在 monorepo 里**不要**手动复制或 `ln` 进这三个目录——那会多出一份不被发布器承认的漂移副本。
-完整规则见 monorepo 库根的 `PUBLISHING.md`（随库分发，不在这份 GitHub 仓库里）。
-
-首次安装的完整步骤（ffmpeg、Python、凭据与四端注册）见 [install.md](install.md)。
-
-### 开源：自备转录服务
-
-这个仓库**不随带任何 API key、账号或运行环境**，也从不包含维护者本人的凭据。词级转写默认走**在线服务**（豆包流式语音识别 2.0 / SeedASR），用之前先自己开通：
-
-| 情况 | 你要做的 |
-|---|---|
-| 有火山引擎账号（推荐） | 在「语音技术」控制台开通**流式语音识别**，拿到 AppID + Access Token |
-| 想再加一个交叉校验引擎 | 开通 ElevenLabs Scribe |
-| 暂时都不开 | 装本地 mlx-whisper 兜底（只作最后手段） |
-
-把凭据写进本 Skill 根目录的 `.env`（模板见 `.env.example`）。`.env` 已进 `.gitignore`：不要提交它，也不要把 key 贴进 issue、文档或截图——仓库里的文档与示例只有键名和占位符。没有凭据时如实报缺，不会伪造词级时间。
-
-SeedASR 还要 Node 22+ 与 `ws`，装在你实际运行的那份副本里（`npm install ws`；目录变量见 [install.md](install.md) 第 5 步）。
-
-## 公共模组（缺了会自动装）
-
-同族**公共模组**（独立发布的条目，不是本仓库的一部分）。**本 Skill 只解析 `planners-review-core`**（见 `helpers/lib/planners_modules.py --check`），其余三个是同一族的邻居、本 Skill 不需要：
-
-- [`planners-review-core`](https://github.com/thePlannerIvan/planners-review-core) —— 审阅面契约、桥与本地宿主 ← **本 Skill 用到**
-- [`planners-source-index`](https://github.com/thePlannerIvan/planners-source-index) —— 来源索引契约与唯一校验器（本 Skill 不消费）
-- [`planners-fact-check`](https://github.com/thePlannerIvan/planners-fact-check) —— 事实核查契约与校验器（本 Skill 不消费）
-- [`planners-report-kit`](https://github.com/thePlannerIvan/planners-report-kit) —— 报告装配与校验（仅带报告出口的 Skill 需要；本 Skill 无报告出口）
-
-某个模组不在本地时，本 Skill 的适配器会**自动从 GitHub 装它**，不需要手动准备。适配器找的地方按顺序：
-
-1. `$PLANNERS_MODULES_HOME/<模组名>`
-2. 本 Skill 的兄弟目录 `<skills-root>/<模组名>`（发布后的主路径）
-3. monorepo 里 `02-skills-library/<分类>/<模组名>`
-4. **用户级安装根**：`$PLANNERS_MODULES_INSTALL_DIR` → `$PLANNERS_MODULES_HOME`（仅当它已含该模组，或那目录还不存在）→ 默认 `~/.planners-modules/<模组名>`
-
-前三条都没有时才自动安装（顺序不变，**本地永远优先、不会无条件联网**）；装到第 4 条那个**库外**用户级目录，**绝不写进** `02-skills-library` 工作树、`~/.codex|~/.claude|~/.gemini` 的技能目录、或任何系统目录。安装过程**不静默**：会打印缺哪个、找过哪些路径、从哪个 URL 装、装到哪、用的是 `git clone --depth 1` 还是 `npx skills add`、以及装到的 **commit**。装完先在暂存目录里验证（`SKILL.md` + 该模组声明的契约/校验器锚点文件都在），再用 rename 原子就位；**任何失败都会清掉暂存、不留半成品**，并给出可复制的手动安装命令。
-
-要它**只报不装**（CI／离线／审计）：
-
-```bash
-PLANNERS_NO_AUTO_INSTALL=1 <你的命令>
-```
-
-| 环境变量 | 作用 |
-|---|---|
-| `PLANNERS_MODULES_HOME` | 指定已有模组所在目录（解析第 1 条，也兼作安装根） |
-| `PLANNERS_MODULES_INSTALL_DIR` | 只指定**自动安装**的落点（优先级高于上面那条） |
-| `PLANNERS_MODULES_REF` | 要钉的 tag 或分支（不设 = 装默认分支 HEAD） |
-| `PLANNERS_NO_AUTO_INSTALL=1` | 只报不装；缺依赖时如实失败并打印手动命令 |
-
-装的是**默认分支 HEAD**，日志里**永远打 commit**；HEAD 恰好被某个 tag 指着时，tag 也一并打出来。想钉版本就设 `PLANNERS_MODULES_REF`：
-
-```bash
-PLANNERS_MODULES_REF=v1.0.0 <你的命令>     # 钉在 tag 上
-PLANNERS_MODULES_REF=main   <你的命令>     # 钉在某个分支上
-```
-
-钉了不存在的 ref 会**如实失败**（不会悄悄退回 HEAD），错误里带正确的可复制命令。
-
-### 两条命令别搞混：谁装 Skill，谁抓依赖
-
-**用户装一个 Skill** —— 用 Skills CLI，它会把条目放进各 agent 的技能目录：
-
-```bash
-npx skills add https://github.com/thePlannerIvan/video-craft --skill video-craft
-```
-
-**Skill 自己抓一个公共模组（内部依赖）** —— 用 `git clone`，落在库外的单一安装根：
-
-```bash
-git clone --depth 1 https://github.com/thePlannerIvan/<模组名>.git \
-  "$HOME/.planners-modules/<模组名>"
-# 想钉版本：加 --branch v1.0.0
-```
-
-**内部依赖为什么不走 `npx skills add`**：它没有 `--dir` 之类的落点参数，只会写进 `~/.claude/skills`、`~/.codex/skills` 这类 **runtime 技能目录**（对 monorepo 维护者来说那是发布器的领地，写进去等于多一份漂移副本；独立用户没有源目录，所以上面那一步是合法的）；而且它下载的目录**不带 `.git`**，拿不到 commit、也就没法追溯装的是哪一版。**门面命令归用户，内部依赖归 clone** —— 上面自动安装走的就是这条。
-
-不要 `git clone` 到 runtime 技能目录：独立用户走 Skills CLI，monorepo 开发者走发布器，两种安装不会同时出现在一台机器上。先按测试与发布规则验收，再从 `02-skills-library` 发布。
-
-Python：monorepo 里用 `02-skills-library/.venv/bin/python`（3.9.6，`pptx` / `lxml` / `PIL` /
-`playwright` / `numpy` 齐，本类别共用，离线可用）；独立安装没有这个共享环境，用本机 Python 3.9+
-（`python3`），依赖按 `pyproject.toml` 装。两种情况系统 `python3` 都能跑测试套件。
-需要单独装依赖时用 `pip install -e .`，清单见 `pyproject.toml`。
-
-密钥放本 skill 的 `.env`（**不要**放进用户的视频目录；`.env` 已被 gitignore）：
-
-```
-# 首选：豆包流式语音识别 2.0（SeedASR），来自火山引擎「语音技术」控制台
-DOUBAO_APP_ID=...
-DOUBAO_ACCESS_TOKEN=...
-# 可选：ElevenLabs Scribe，第二引擎交叉校验
-ELEVENLABS_API_KEY=...
-# 仅历史回退：火山方舟。方舟 key 与语音控制台那对不是同一个账号，替代不了 SeedASR
-ARK_API_KEY=...
-```
-
-详见 `install.md` 第 5 步；日常用法见 `SKILL.md`。
-
-## 测试
-
-```bash
+# 运行单元与覆盖层 FFmpeg 实测（注意保留 ffmpeg 所在 PATH）
 cd tests
-# 从 tests/ 跑；`PYTHONPATH=..:../helpers` 是本节的标准写法。
-# CATEGORY_PY 见 install.md 第 1 步：monorepo 用共享解释器，独立安装用本机 python3。
 PYTHONPATH=..:../helpers PATH=/opt/homebrew/bin:$PATH \
-  "${CATEGORY_PY:?set CATEGORY_PY to the shared category python (see install.md)}" \
-  -m unittest discover -s . -p "test_*.py"
+  python3 -m unittest discover -s . -p "test_*.py"
+
+# 验收用例结构与路线矩阵检查（从 Skill 根执行）
+python3 evals/run_evals.py
+
+# 公共模组自动安装器不变量测试
+python3 helpers/lib/planners_modules_install_test.py
 ```
 
-`PATH` 那一段是必须的：`check_overlay` 的 16 条要真起 `ffmpeg` 造文件。
+### 历史演进与血统
 
-默认自检必须全绿：出现 `ERROR` 或非 opt-in 的 `skip` 先修护栏，别当成既有噪声放过去（GOTCHAS #57）。
+- **2026-09-15 合并与事故防线**：由 `video-use`（时间脊柱/合成器/字幕链/交付）与 `web-video-presentation`（视觉层/alpha 编码/视觉审阅）合并脱离上游；因一次本机 libvpx 未编入 alpha 导致渲染 6 分钟全黑的教训，新增了 `check_overlay.py` 入口门禁。历史记录留在 [upstream-diff.md](upstream-diff.md) 与 `archive/`。
 
-验收用例只做结构与覆盖校验，不评模型回答（从 Skill 根跑）：
+### 目录结构
 
-```bash
-python3 evals/run_evals.py       # 退码 0/1；矩阵口径见 evals/README.md
+```text
+video-craft/
+├── SKILL.md                 接手入口路由、主路线与完成判据
+├── install.md               首次安装 FFmpeg / Python / Node / 凭据清单
+├── helpers/                 转录、剪辑 EDL、overlay 校验、montage/recompose、风格提取与合成器
+├── references/              11 步阶段契约 stages.md、tools.md、architecture.md 等规范
+├── skills/manim-video/      数学与严密技术动画内置子技能
+├── tests/                   unittest 回归（含 FFmpeg 真建文件检查）
+└── evals/                   四路线覆盖矩阵校验 run_evals.py
 ```
 
-公共模组自动安装器自己的不变量测试（安装根优先级、禁地断言、候选顺序、幂等、失败清理、只报不装）：
+</details>
 
-```bash
-cd helpers/lib
-python3 planners_modules_install_test.py
-```
+---
 
+## 第三方许可、品牌边界与商业合作
 
-覆盖：剪辑契约、SRT/时间来源与时间轴、帧率解析、人像探测、覆盖层契约及坏覆盖层拒绝、
-视觉审阅的实际播放/反馈/收件、上屏文字闸门、`script_hash` 比对、抽段完整性、
-按 EDL 哈希选取渲染记录、交付与二次剪映射、HyperFrames 环境预检、
-montage 镜头表换算与空镜识别、画框 token/preview 落位（contain）、渲染闸门。
-SVG page 导入用例只保护旧项目兼容，不代表它是新项目路线；旧 page 流程见归档说明。
+- **许可协议**：项目原创代码与文档以 [AGPL-3.0-only](LICENSE) 发布；上游源自 MIT 许可的 `browser-use/video-use` 与 `ConardLi/garden-skills`，完整声明与许可原文见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 与 [NOTICE](NOTICE)。
+- **署名边界**：出处保留在仓库与工程审阅面中，默认不写入最终成片或客户交付物；品牌与二开要求见 [TRADEMARK.md](TRADEMARK.md)，安全说明见 [SECURITY.md](SECURITY.md)。
+- **商业支持**：私有视觉风格库集成、团队审阅流定制或闭源商业授权，请联系 `Lawyif@163.com` 或访问 [demyth.info](https://demyth.info)，详见 [COMMERCIAL.md](COMMERCIAL.md)。
 
-单独跑某一项，例如：
+## 相关项目
 
-```bash
-cd tests
-PYTHONPATH=..:../helpers "${CATEGORY_PY:?set CATEGORY_PY as described in install.md}" -m unittest test_time_source test_svg_page_import -v
-```
-
-## 血统
-
-由 `video-use`（时间脊柱 / 合成器 / 字幕链 / 交付校验）与
-`web-video-presentation`（视觉层创作面 / alpha 编码 / 视觉审阅环）合并而来，
-**已于 2026-09-15 与两个上游脱钩**。吸收了什么、故意偏离了什么，见
-`upstream-diff.md`。两个旧 skill 整份留在 `archive/` 里。
-
-上游 `browser-use/video-use` 是 MIT 许可（Copyright (c) 2026 Browser Use），
-原文保留在 `archive/video-use/LICENSE`；归属与血统详见 `NOTICE`。
-
-## 适合 / 不适合
-
-**适合**
-
-- 已有素材或录音，要**走完剪辑到交付**：剪接决策、实测时间轴、语义字幕、覆盖层、合成、核验。
-- 已有口播稿和画面要求，要把画面/花字**压在口播上**，且不想多编码一代。
-- 要做**纯动画**或**画面为主**的片子，自带音频。
-- 需要**在渲染前**就挡住坏覆盖层（alpha 被烘成不透明、帧率对不上、时长不等于声明窗口）—— 而不是渲完六分钟才发现。
-- 需要在交付前对**成片文件本身**做核验，而不是只看中间产物。
-
-**不适合**
-
-- **只要创意、选题、口播稿** —— 用 `video-idea-system`，本 Skill 正是接它的产物。
-- **只做静态画面 / 可编辑 PPT** —— 用 `planners-ppt-hell` 的视频画面路线或幻灯片路线。
-- 想要**一键自动剪辑**、不做任何取舍确认 —— 剪接审阅是流程的一部分，不是可跳过的装饰。
-- 本机没有 `ffmpeg` / `ffprobe` —— 覆盖层校验与渲染会直接拒绝（这是有意的设计，不是缺陷）。
-
-## 品牌与署名边界
-
-本项目开源，但**项目名与作者身份不等于开源授权**。你可以 fork、修改、商用（AGPL-3.0 允许商业使用），但修改版必须**换名或明确标注是 fork**，不能暗示作者为你背书。完整边界见 `TRADEMARK.md`。
-
-出处识别可以出现在仓库文档、流程 HTML、审阅页与验证页里，**但默认不写进最终客户交付物**：不成片、不导出 PNG、不进最终 PPT —— 除非用户明确要求。
-
-## 开源协议和商业入口
-
-以 **AGPL-3.0** 开源 —— 允许商业使用；保护的是**修改版与网络服务也要公开对应源码**，不保护项目名与作者身份。品牌边界靠 `TRADEMARK.md`。
-
-需要私有部署、风格/主题库适配、定制交付质检、闭源商业授权或内部培训，见 `COMMERCIAL.md`。
-
-由阿祖不看 TVC 创建与维护 · https://demyth.info · Lawyif@163.com。授权和归属详见 `LICENSE`、`NOTICE`、`TRADEMARK.md`；安全说明见 `SECURITY.md`。
-
-## 在 DSH 中使用
-
-在 Planners Form 设置中安装本 Skill；回到对话后使用 `video-craft` 调用，审阅页面由 Skill 在流程需要时打开。也可以把 `~/.dsh/skills/video-craft` 指向你实际编辑的源目录：改完即生效，不发 runtime 副本（两种接法见 [install.md](install.md) 第 4 步）。Planners Form 安装 Skill 与公共审阅依赖；视频渲染所需的 FFmpeg、Python 包及可选引擎仍按 [install.md](install.md) 准备。API 凭据由使用者自行配置，不随仓库分发。
+- [Video Idea System](https://github.com/thePlannerIvan/video-idea-system) —— 上游口播稿、内容契约与念稿拍板
+- [Planner's PPT Hell](https://github.com/thePlannerIvan/planners-ppt-hell) —— 静态 SVG 关键帧绘制
+- [Planners Review Core](https://github.com/thePlannerIvan/planners-review-core) —— 审阅页宿主与桥接缝

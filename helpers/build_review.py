@@ -793,6 +793,9 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
             watched.append(project_root / rel)
     watched = sorted(set(watched))
     manifest = [snapshot_file(path, project_root) for path in watched]
+    if build_mode == 'final-cut' and (edit_dir / 'montage-plan.json').is_file() and composite_video_rel:
+        from montage import input_digest
+        next(item for item in manifest if item['path'] == composite_video_rel)['montageInputs'] = input_digest(edit_dir)
     snapshot = hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()
     # 将 EDL 覆盖层也挂回同一条时间脊柱。overlay 本身有自己的稳定 tag，
     # 同时记录它落在哪个口播段，供页面定位和 Agent 返修时核对上下文。

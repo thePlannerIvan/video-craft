@@ -151,7 +151,7 @@ python3 "<craft>/helpers/check_montage.py" "<project>" --video "<成片>"
 
 三件套的前置条件，缺一件都不要说「交付好了」：
 
-1. 画面成片已过闸门：`montage.py render … --concat --out "<project>/成品/…" --deliver`
+1. `montage.py render … --concat --out "<project>/成品/…" --deliver` 核对默认镜头表、已用素材、画框和计划音轨，复制审阅过的合成母版，不重新拼镜。旧快照、审阅代理、交付时另换计划或音轨都不放行；先生成工程母版并重建审阅。未用素材不触发重审。
    打印「交付件」——人工提交必须覆盖当前审阅快照，否则退 1；
 2. 口播成片由同一份 `edit/edl.json` 剪出来，实测时长与 `plan.timeline.total` 差 ≤ 0.5s：
 

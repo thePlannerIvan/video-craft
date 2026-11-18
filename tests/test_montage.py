@@ -167,7 +167,7 @@ class MontageTests(unittest.TestCase):
 
     def render(self, root: Path, work: Path, *extra: str) -> subprocess.CompletedProcess:
         return subprocess.run([sys.executable, str(MONTAGE), "render", str(root),
-                               "--plan", str(root / "plan.json"), "--work", str(work),
+                               "--plan", str((root / 'edit/montage-plan.json') if (root / 'edit/montage-plan.json').exists() else root / 'plan.json'), "--work", str(work),
                                *extra], capture_output=True, text=True)
 
     def check(self, root: Path | None = None, work: Path | None = None,
@@ -428,22 +428,16 @@ class MontageTests(unittest.TestCase):
     def test_render_deliver_passes_with_covering_submission(self) -> None:
         """人工提交覆盖当前快照 → 闸门放行，落 成品/ 并打印「交付件」。"""
         root = self._concat_project("gate_deliver")
-        comp = root / "composition"
-        comp.mkdir()
-        (comp / "index.html").write_text("<html><body>cut</body></html>", encoding="utf-8")
-
-        def entry(rel: str) -> dict:
-            path = root / rel
-            return {"path": rel, "size": path.stat().st_size,
-                    "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
-
+        (root / 'plan.json').rename(root / 'edit/montage-plan.json')
+        r = self.render(root, root / 'work', '--concat')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        picture = root / 'edit/_engineering/picture.mp4'
         (root / "review").mkdir()
-        (root / "review" / "review_data.json").write_text(json.dumps({
-            "snapshot": SNAPSHOT,
-            "sourceManifest": [entry("composition/index.html"), entry("edit/edl.json")],
-        }, ensure_ascii=False), encoding="utf-8")
+        (root / 'review/media.json').write_text(json.dumps({'compositeVideo': 'edit/_engineering/picture.mp4'}))
+        subprocess.run([sys.executable, str(HELPERS / 'build_review.py'), str(root)], check=True)
+        snapshot = json.loads((root / 'review/review_data.json').read_text())['snapshot']
         (root / "review" / "review-submissions.json").write_text(json.dumps({
-            "records": [{"snapshot": SNAPSHOT, "text": "这一版可以"}],
+            "records": [{"snapshot": snapshot, "text": "这一版可以"}],
         }, ensure_ascii=False), encoding="utf-8")
 
         target = root / "成品" / "final.mp4"
@@ -452,6 +446,26 @@ class MontageTests(unittest.TestCase):
         self.assertTrue(target.exists(), r.stdout)
         self.assertIn("交付件：", r.stdout)
         self.assertIn("渲染闸门放行", r.stdout)
+        self.assertEqual(target.read_bytes(), picture.read_bytes())
+        args = ('--concat', '--out', str(target), '--deliver')
+        (root / 'unused.mp4').write_bytes(b'unused')
+        self.assertEqual(self.render(root, root / 'work', *args).returncode, 0)
+        self.assertNotEqual(self.render(root, root / 'work', *args, '--audio', str(self.audio)).returncode, 0)
+        alternative = root / 'another-plan.json'
+        shutil.copyfile(root / 'edit/montage-plan.json', alternative)
+        self.assertNotEqual(self.render(root, root / 'work', *args, '--plan', str(alternative)).returncode, 0)
+        asset = self.material / 'a.mp4'
+        original = asset.read_bytes()
+        try:
+            asset.write_bytes(original[:-1] + bytes([original[-1] ^ 1]))
+            self.assertNotEqual(self.render(root, root / 'work', *args).returncode, 0)
+        finally:
+            asset.write_bytes(original)
+        plan = root / 'edit/montage-plan.json'
+        plan.write_text(plan.read_text().replace('"dur":', '"changed": 1, "dur":', 1))
+        failed = self.render(root, root / 'work', *args)
+        self.assertNotEqual(failed.returncode, 0, failed.stdout)
+        self.assertIn('蒙太奇镜头表', failed.stderr)
 
     def test_deliver_flag_on_engineering_output_is_contradictory(self) -> None:
         root = self._concat_project("gate_conflict")

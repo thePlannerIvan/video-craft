@@ -98,6 +98,15 @@ def manifest_drift(project: Path, manifest) -> list[str]:
     if not isinstance(manifest, list) or not manifest:
         return ['缺 sourceManifest；旧审阅请重新 build_review.py 并核对新版本']
     from state_fingerprint import sha256, source_paths
+    bindings = [item['montageInputs'] for item in manifest if isinstance(item, dict) and 'montageInputs' in item]
+    from recompose_plan import enabled as recompose_enabled
+    if bindings or ((project / 'edit/montage-plan.json').is_file() and not recompose_enabled(project)):
+        from montage import input_digest, Fail
+        try:
+            if bindings != [input_digest(project / 'edit')]:
+                drift.append('蒙太奇镜头表或已用素材与审阅不符；重新构建审阅')
+        except (OSError, ValueError, KeyError, TypeError, Fail):
+            drift.append('蒙太奇计划或已用素材缺失，无法核对审阅版本')
     known = {str(x.get('path')) for x in manifest if isinstance(x, dict)}
     critical = [key for key in source_paths(project, include_review=False) if key.startswith('composition/')]
     critical += [key for key in ('edit/edl.json', 'edit/subtitles.srt', 'timeline/timeline.json',

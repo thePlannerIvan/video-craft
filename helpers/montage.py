@@ -589,6 +589,22 @@ def render_shot(shot: dict, plan: dict, work: Path, dirty: bool) -> Path:
 
 
 # ── 交付闸门（判据只有 render_gate.py 一处） ──────────────────────────────
+def input_digest(edit: Path) -> str:
+    """Fingerprint used inputs without publishing external media paths to the review host."""
+    from state_fingerprint import sha256
+    path = edit / PLAN_NAME
+    plan = load_json(path)
+    required = {path, *(Path(s['material']) for s in plan['shots'] if s.get('material'))}
+    if value := plan.get('audio'):
+        required.add(resolve_asset(value, edit))
+    paths = required.copy()
+    for k in ('base', 'overlay'):
+        if value := (plan.get('frame') or {}).get(k):
+            paths.add(resolve_asset(value, edit))
+    records = sorted((str(p.resolve()), sha256(p) if p in required or p.is_file() else None) for p in paths)
+    return hashlib.sha256(json.dumps(records).encode()).hexdigest()
+
+
 def is_engineering_output(out: Path, edit: Path) -> bool:
     try:
         out.resolve().relative_to((edit / ENGINEERING).resolve())
@@ -646,6 +662,32 @@ def render(root: Path, edit: Path, plan_path: Path, args) -> int:
             gate = require_delivery_gate(root, out)
             print(f"渲染闸门放行：{gate.get('covering')} 条人工提交覆盖快照 "
                   f"{gate.get('snapshot')}")
+            if (plan_path.resolve() != (edit / PLAN_NAME).resolve() or args.audio
+                    or args.only or args.max is not None or args.force):
+                raise Fail('交付只复制已审合成视频；更换计划、音轨或重渲请先更新工程预览再审阅')
+            data = load_json(root / 'review/review_data.json')
+            rel = (data.get('media') or {}).get('compositeVideo')
+            if rel and (rel.endswith('.review.mp4') or looks_like_proxy(Path(rel))):
+                raise Fail('审阅使用了代理副本；请用合成母版重建审阅再交付')
+            if data.get('snapshot') != gate.get('snapshot'):
+                raise Fail('审阅快照在交付时变化；请重试')
+            record = next((r for r in data['sourceManifest'] if r.get('path') == rel
+                           and r.get('montageInputs')), None)
+            if not record or not rel or not (root / rel).resolve().is_relative_to(root):
+                raise Fail('交付需要已审合成视频；请重新构建蒙太奇审阅')
+            from state_fingerprint import sha256
+            out.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(dir=out.parent, delete=False) as tmp:
+                staged = Path(tmp.name)
+            try:
+                shutil.copyfile(root / rel, staged)
+                if sha256(staged) != record['sha256']:
+                    raise Fail('已审合成视频在复制时变化，未写入交付件')
+                staged.replace(out)
+            finally:
+                staged.unlink(missing_ok=True)
+            print(f'交付件：{out}（已审合成视频）')
+            return 0
 
     if args.work:
         work = Path(args.work).expanduser()
@@ -684,7 +726,7 @@ def render(root: Path, edit: Path, plan_path: Path, args) -> int:
     audio = Path(args.audio or plan.get("audio") or "").expanduser()
     if args.audio or plan.get("audio"):
         if not audio.is_absolute():
-            audio = (edit / audio).resolve()
+            audio = (edit / audio).resolve() if args.audio else resolve_asset(audio, edit)
         if not audio.exists():
             raise Fail(f"音轨不存在：{audio}")
         staged = work / "final.mp4"

@@ -28,9 +28,9 @@ JSON 清单的每一行：`path / name / duration / size / usable / summary / wa
 
 用法
 ----
-    python3 helpers/scan_materials.py <materials_dir>
-    python3 helpers/scan_materials.py <materials_dir> --frames 6 --per-sheet 6
-    python3 helpers/scan_materials.py <materials_dir> --json      # 只打统计
+    python3 helpers/_internal/scan_materials.py <materials_dir>
+    python3 helpers/_internal/scan_materials.py <materials_dir> --frames 6 --per-sheet 6
+    python3 helpers/_internal/scan_materials.py <materials_dir> --json      # 只打统计
 
 退出码：0 正常；2 目录不存在或没有可读素材。
 """

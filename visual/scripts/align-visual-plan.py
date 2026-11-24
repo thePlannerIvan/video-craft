@@ -16,12 +16,12 @@ from _timecode import flatten as _flatten, parse_srt_file as _parse_srt_file, pa
 
 
 def parse_time(value: str) -> int:
-    """统一实现见 `helpers/_timecode.py`（合并地图 M1）。"""
+    """统一实现见 `helpers/_internal/_timecode.py`（合并地图 M1）。"""
     return _parse_time(value)
 
 
 def parse_srt(path: Path) -> list[dict]:
-    """统一实现见 `helpers/_timecode.py`；输出形状保持不变。"""
+    """统一实现见 `helpers/_internal/_timecode.py`；输出形状保持不变。"""
     return [{"index": i, "startMs": cue["startMs"], "endMs": cue["endMs"],
              "text": _flatten(cue, " ")}
             for i, cue in enumerate(_parse_srt_file(path))]

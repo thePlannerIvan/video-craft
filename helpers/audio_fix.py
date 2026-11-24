@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Apply voice processing presets (default: C 'podcast-warm') and A/B loudness-matched sampling.
+"""Standalone voice acoustic diagnosis and short A/B auditioning (--ab, default: C 'podcast-warm').
+
+Role boundary:
+  Use `audio_fix.py` ONLY for standalone voice acoustic diagnosis, single-track checks, or
+  short A/B loudness-matched auditioning (`--ab`). For final project audio mixing, pass the
+  raw cut speech track directly to `helpers/audio_mix.py` (which already applies `podcast-warm`
+  by default) rather than compressing twice; if an `audio_fix.py` output must enter
+  `audio_mix.py`, pass `--voice-preset none` there.
 
 Presets:
   - podcast-warm (default): 65Hz highpass, 115Hz +3.0dB, 245Hz -3.5dB,
@@ -117,7 +124,14 @@ def _loudnorm_pass1(path: Path, target_lufs: float, tp: float = -1.5, lra: float
     return parsed
 
 
-def _two_pass_loudnorm(inp: Path, out: Path, target_lufs: float = -14.0, tp: float = -1.5, lra: float = 9.0) -> None:
+def _two_pass_loudnorm(
+    inp: Path,
+    out: Path,
+    target_lufs: float = -14.0,
+    tp: float = -1.5,
+    lra: float = 9.0,
+    comment_tag: str | None = None,
+) -> None:
     stats = _loudnorm_pass1(inp, target_lufs, tp=tp, lra=lra)
     if stats is not None:
         af = (
@@ -128,10 +142,11 @@ def _two_pass_loudnorm(inp: Path, out: Path, target_lufs: float = -14.0, tp: flo
         )
     else:
         af = f"loudnorm=I={target_lufs}:TP={tp}:LRA={lra}"
-    run([
-        "ffmpeg", "-y", "-loglevel", "error", "-i", str(inp),
-        "-af", af, "-ar", "48000", "-ac", "2", "-c:a", "pcm_s16le", "-bitexact", str(out),
-    ])
+    cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", str(inp), "-af", af]
+    if comment_tag:
+        cmd += ["-metadata", f"comment={comment_tag}"]
+    cmd += ["-ar", "48000", "-ac", "2", "-c:a", "pcm_s16le", "-bitexact", str(out)]
+    run(cmd)
 
 
 def apply_chain(inp: Path, out: Path, deess: bool) -> None:
@@ -144,7 +159,7 @@ def apply_chain(inp: Path, out: Path, deess: bool) -> None:
              "-af", GENTLE_EQ, "-bitexact", str(out)])
 
 
-def normalize_static(inp: Path, out: Path, target_lufs: float) -> tuple[float, float]:
+def normalize_static(inp: Path, out: Path, target_lufs: float, comment_tag: str | None = None) -> tuple[float, float]:
     """Static gain to target LUFS without a limiter; returns (gain_db, final_peak_db)."""
     lu = measure_lufs(inp)
     gain = target_lufs - lu
@@ -153,8 +168,11 @@ def normalize_static(inp: Path, out: Path, target_lufs: float) -> tuple[float, f
     if final_peak > -1.0:
         gain -= (final_peak + 1.0)
         final_peak = -1.0
-    run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(inp), "-af",
-         f"volume={gain:.2f}dB", "-bitexact", str(out)])
+    cmd = ["ffmpeg", "-y", "-loglevel", "error", "-i", str(inp), "-af", f"volume={gain:.2f}dB"]
+    if comment_tag:
+        cmd += ["-metadata", f"comment={comment_tag}"]
+    cmd += ["-bitexact", str(out)]
+    run(cmd)
     return round(gain, 2), round(final_peak, 1)
 
 
@@ -194,13 +212,14 @@ def apply_voice_preset(
                 "-filter_complex", PODCAST_WARM_FILTER, "-map", "[out]",
                 "-ar", "48000", "-ac", "2", "-c:a", "pcm_s16le", "-bitexact", str(shaped),
             ])
-            _two_pass_loudnorm(shaped, out, target_lufs=target_lufs, tp=-1.5, lra=9.0)
+            _two_pass_loudnorm(shaped, out, target_lufs=target_lufs, tp=-1.5, lra=9.0,
+                               comment_tag="video-craft:podcast-warm")
         elif preset == "gentle":
             wav = tmp / "in.wav"
             run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(inp), "-vn", "-ac", "1", "-bitexact", str(wav)])
             proc = tmp / "proc.wav"
             apply_chain(wav, proc, deess)
-            normalize_static(proc, out, target_lufs)
+            normalize_static(proc, out, target_lufs, comment_tag="video-craft:gentle")
         else:
             raise ValueError(f"unknown preset: {preset}")
 
@@ -241,12 +260,21 @@ def make_ab(
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Voice preset processor (C: podcast-warm default) + A/B")
+    ap = argparse.ArgumentParser(
+        description=(
+            "Standalone voice acoustic diagnosis & short A/B auditioning (--ab; default C-preset "
+            "'podcast-warm'). For final project mixing, pass the raw cut track directly to "
+            "helpers/audio_mix.py (which applies podcast-warm by default) instead of compressing "
+            "twice; if passing an audio_fix.py output into audio_mix.py, pass --voice-preset none."
+        )
+    )
     ap.add_argument("input", type=Path)
     ap.add_argument("-o", "--output", type=Path, default=None, help="Processed wav output")
-    ap.add_argument("--preset", choices=("podcast-warm", "gentle", "raw"), default="podcast-warm",
+    ap.add_argument("--preset", "--voice-preset", dest="preset", choices=("podcast-warm", "gentle", "raw"),
+                    default="podcast-warm",
                     help="Voice acoustic preset (default: podcast-warm; raw skips EQ/de-ess/comp/loudnorm)")
-    ap.add_argument("--raw", action="store_true", help="Bypass all EQ, compression, and loudnorm (--preset raw)")
+    ap.add_argument("--raw", "--raw-voice", dest="raw", action="store_true",
+                    help="Bypass all EQ, compression, and loudnorm (--preset raw)")
     ap.add_argument("--target-lufs", type=float, default=-14.0,
                     help="Integrated loudness target in LUFS (default: -14.0)")
     ap.add_argument("--deess", action="store_true", help="Enable sidechain de-ess for gentle preset")

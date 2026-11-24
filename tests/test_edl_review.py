@@ -348,7 +348,10 @@ class EdlPageContractCase(unittest.TestCase):
     def test_saving_goes_through_the_bridge_not_a_hardcoded_endpoint(self):
         self.assertIn("review.write(payload)", self.html)
         self.assertNotIn('fetch("/api/save"', self.html)
-        self.assertIn("helpers/apply_selection.py", self.html, "门铃那句要说清下一步跑什么")
+        self.assertIn("helpers/_internal/apply_selection.py", self.html, "门铃那句要说清下一步跑什么")
+        self.assertIn('id="save-state"', self.html)
+        self.assertIn("woke === false", self.html)
+        self.assertIn("已保存修改，请回对话告知继续处理", self.html)
 
 
 # 2026-10-16 由 opt-in 改为 opt-out：这几条是唯一能抓「审阅页面写读键域不一致」
@@ -631,3 +634,24 @@ class EdlMinimalUiAndDragCase(unittest.TestCase):
             max(after["delGs"]), metrics["bottomVis"],
             f"自动滚动后选区未向下扩展超出初始可视末尾词 {metrics['bottomVis']}: got max={max(after['delGs'])}",
         )
+
+    def test_standalone_save_shows_explicit_confirmation(self):
+        page = self.open_page()
+        page.wait_for_function("() => !document.getElementById('w-save').disabled", timeout=15000)
+        page.locator("#w1").click()
+        page.locator("#w3").click(modifiers=["Shift"])
+        page.click("#w-save")
+        page.wait_for_function(
+            "() => /已保存/.test(document.getElementById('w-save').textContent)", timeout=15000
+        )
+        save_state = page.locator("#save-state")
+        self.assertTrue(save_state.is_visible(), "独立浏览器保存后应显示明确状态提示")
+        self.assertIn("已保存修改，请回对话告知继续处理", save_state.inner_text())
+        self.assertTrue((self.edit / "selections.json").is_file())
+
+        page.fill("#ov-text", "整体语速再紧凑一点")
+        page.click("#ov-send")
+        page.wait_for_function(
+            "() => /已发送/.test(document.getElementById('ov-state').textContent)", timeout=15000
+        )
+        self.assertIn("已保存修改，请回对话告知继续处理", page.inner_text("#ov-state"))

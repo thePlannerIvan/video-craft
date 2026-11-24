@@ -24,7 +24,7 @@ directions, so a transcript frame is neither necessary nor sufficient for "this
 cut clips speech".
 
 Usage:
-  <venv>/python helpers/check_edl.py <edit_dir> [--max-pause 1.0] [--json] [--quiet]
+  <venv>/python helpers/_internal/check_edl.py <edit_dir> [--max-pause 1.0] [--json] [--quiet]
 
 Exit code 1 when any HARD problem is found, so a script or an agent can gate on
 it directly. `--json` prints the machine-readable form for an evaluator.

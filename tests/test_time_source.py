@@ -180,6 +180,51 @@ class CaptionFollowsPictureTimeline(unittest.TestCase):
         cli("srt_export.py", "--check")
         self.assertEqual(json.loads(timeline.read_text())["measuredTotalMs"], 2300)
 
+    def test_cli_caption_words_stays_valid_after_project_dir_copy(self):
+        self.edl.write_text(json.dumps({
+            "sources": {"A": "/workspace/creator/v1/A.mp4"},
+            "ranges": [{"source": "A", "start": 0, "end": 1}, {"source": "A", "start": 1, "end": 2}],
+        }))
+        (self.edit / "transcripts").mkdir()
+        (self.edit / "transcripts/A.json").write_text(json.dumps({"words": [
+            {"type": "word", "text": "你好", "start": .1, "end": .8},
+            {"type": "word", "text": "世界", "start": 1.1, "end": 1.8},
+        ]}))
+        (self.edit / "segment_durations.json").write_text(json.dumps({
+            "final": {"durations": [1.0, 1.0], "total_s": 2.0, "edl_sha256": _edl.edl_digest(self.edl)},
+        }))
+        timeline = self.edit / "timeline/timeline.json"
+        timeline.parent.mkdir()
+        grouping = timeline.parent / "grouping.json"
+        grouping.write_text(json.dumps({"chapters": [{"id": "ch", "steps": [
+            {"id": "one", "cueIndices": [0]}, {"id": "two", "cueIndices": [1]}]}]}))
+
+        proc = subprocess.run(
+            [sys.executable, str(ROOT / "helpers" / "srt_export.py"), str(self.edit),
+             "--prepare", "--time-source", "measured"],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        words_blob = json.loads((self.edit / "caption_words.json").read_text(encoding="utf-8"))
+        self.assertEqual(words_blob["edl_sha256"], _edl.edl_digest(self.edl))
+
+        copied = Path(self._tmp.name) / "copied_v2" / "edit"
+        shutil.copytree(self.edit, copied)
+        (copied / "edl.json").write_text(json.dumps({
+            "sources": {"A": "/Volumes/ssd/copied_v2/raw/A.mp4"},
+            "ranges": [{"source": "A", "start": 0, "end": 1.0}, {"source": "A", "start": 1.0, "end": 2}],
+        }, indent=2) + "\n", encoding="utf-8")
+        (copied / "semantic_lines.txt").write_text("你好\n\n世界\n", encoding="utf-8")
+        for args in (
+            ("srt_export.py", str(copied), "--lock"),
+            ("srt_export.py", str(copied), "--build"),
+            ("timeline_derive.py", str(copied), "--grouping", str(copied / "timeline/grouping.json"),
+             "--output-timeline", str(copied / "timeline/timeline.json")),
+        ):
+            p = subprocess.run([sys.executable, str(ROOT / "helpers" / args[0]), *args[1:]],
+                               capture_output=True, text=True)
+            self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -11,18 +11,21 @@ from __future__ import annotations
 import json
 import hashlib
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 
 HELPERS = Path(__file__).parents[1] / "helpers"
 sys.path.insert(0, str(HELPERS))
 sys.path.insert(0, str(HELPERS / "_internal"))
-sys.path.insert(0, str(HELPERS / "_internal"))
 
 import render_gate  # noqa: E402
 
+GATE_SCRIPT = HELPERS / "_internal" / "render_gate.py"
+DELIVER_SCRIPT = HELPERS / "deliver.py"
 SNAPSHOT = "abc123def456"
 
 
@@ -161,6 +164,183 @@ class RenderGateTests(unittest.TestCase):
         self.assertTrue(report["ok"], report)
         self.assertEqual(report["covering"], 1)
         self.assertEqual(render_gate.main([str(self.project)]), 0)
+
+    def _run_cli(self, *args: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [sys.executable, str(GATE_SCRIPT), *args],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    def test_approve_in_chat_without_review_data_refuses_and_writes_nothing(self):
+        report = render_gate.record_chat_approval(self.project)
+        self.assertFalse(report["ok"])
+        self.assertFalse(report["evaluable"])
+        self.assertFalse((self.project / "review" / "review-submissions.json").exists())
+        proc = self._run_cli(str(self.project), "--approve-in-chat", "--json")
+        self.assertEqual(proc.returncode, 2, proc.stderr)
+        payload = json.loads(proc.stdout)
+        self.assertFalse(payload["ok"])
+        self.assertFalse(payload["evaluable"])
+        self.assertFalse((self.project / "review" / "review-submissions.json").exists())
+
+    def test_approve_in_chat_without_snapshot_field_refuses_and_writes_nothing(self):
+        _write_json(self.project / "review" / "review_data.json", {
+            "snapshot": "   ",
+            "sourceManifest": self.manifest,
+        })
+        proc = self._run_cli(str(self.project), "--approve-in-chat", "--json")
+        self.assertEqual(proc.returncode, 2, proc.stderr)
+        payload = json.loads(proc.stdout)
+        self.assertFalse(payload["ok"])
+        self.assertFalse(payload["evaluable"])
+        self.assertFalse((self.project / "review" / "review-submissions.json").exists())
+
+    def test_approve_in_chat_with_drifted_source_refuses_and_writes_nothing(self):
+        self._review()
+        self.source.write_text("<html><body>modified after review</body></html>", encoding="utf-8")
+
+        report = render_gate.record_chat_approval(self.project, "尝试授权")
+        self.assertFalse(report["ok"])
+        self.assertTrue(report["evaluable"])
+        self.assertTrue(any("源又改过" in r for r in report["reasons"]), report)
+        submissions_file = self.project / "review" / "review-submissions.json"
+        self.assertFalse(submissions_file.exists())
+
+        # Pre-existing submissions file must also remain untouched on drift.
+        self._submissions("old000")
+        before_text = submissions_file.read_text(encoding="utf-8")
+        proc = self._run_cli(str(self.project), "--approve-in-chat", "--approval-note", "继续", "--json")
+        self.assertEqual(proc.returncode, 1, proc.stderr)
+        payload = json.loads(proc.stdout)
+        self.assertFalse(payload["ok"])
+        self.assertTrue(any("源又改过" in r for r in payload["reasons"]), payload)
+        self.assertEqual(submissions_file.read_text(encoding="utf-8"), before_text)
+
+    def test_approve_in_chat_with_missing_manifest_refuses_and_writes_nothing(self):
+        self.manifest = []
+        self._review()
+        proc = self._run_cli(str(self.project), "--approve-in-chat", "--json")
+        self.assertEqual(proc.returncode, 1, proc.stderr)
+        self.assertFalse(json.loads(proc.stdout)["ok"])
+        self.assertFalse((self.project / "review" / "review-submissions.json").exists())
+
+    def test_approve_in_chat_records_audit_entry_and_bare_gate_subsequently_passes(self):
+        self._review()
+        # Before chat approval, bare gate blocks.
+        self.assertEqual(self._run_cli(str(self.project)).returncode, 1)
+
+        proc = self._run_cli(str(self.project), "--approve-in-chat", "--json")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        payload = json.loads(proc.stdout)
+        self.assertTrue(payload["ok"], payload)
+        self.assertEqual(payload["covering"], 1)
+
+        submissions_file = self.project / "review" / "review-submissions.json"
+        self.assertTrue(submissions_file.is_file())
+        doc = json.loads(submissions_file.read_text(encoding="utf-8"))
+        self.assertEqual(doc["contract_version"], "video-craft-review-submissions/1.0.0")
+        self.assertEqual(doc["surface"], "video-craft/visual")
+        self.assertEqual(len(doc["records"]), 1)
+
+        entry = doc["records"][0]
+        self.assertEqual(entry["phase"], "approval")
+        self.assertEqual(entry["kind"], "chat-approval")
+        self.assertEqual(entry["source"], "chat")
+        self.assertEqual(entry["snapshot"], SNAPSHOT)
+        self.assertEqual(entry["note"], "作者在对话中明确授权导出")
+        parsed_ts = datetime.fromisoformat(entry["createdAt"])
+        self.assertIsNotNone(parsed_ts.tzinfo)
+
+        # Subsequent bare render_gate.py check passes without repeating --approve-in-chat.
+        bare = self._run_cli(str(self.project), "--json")
+        self.assertEqual(bare.returncode, 0, bare.stderr)
+        bare_payload = json.loads(bare.stdout)
+        self.assertTrue(bare_payload["ok"], bare_payload)
+        self.assertEqual(bare_payload["covering"], 1)
+
+        # Any later source drift still invalidates approval.
+        self.source.write_text("<html><body>edited after chat approval</body></html>", encoding="utf-8")
+        self.assertEqual(self._run_cli(str(self.project)).returncode, 1)
+
+    def test_approve_in_chat_respects_surface_feedback_file_and_custom_note(self):
+        self._review()
+        _write_json(self.project / "review" / "review-surface.json", {
+            "feedback": "custom-subs.json",
+        })
+        custom_subs = self.project / "review" / "custom-subs.json"
+        _write_json(custom_subs, {
+            "records": [{"snapshot": "old000", "text": "上一版意见"}],
+            "choreography_overrides": {"s1": {"density": "low"}},
+        })
+
+        proc = self._run_cli(
+            str(self.project),
+            "--approve-in-chat",
+            "--approval-note",
+            "  作者在对话确认导出分轨成片  ",
+            "--out",
+            "成品/final.mp4",
+            "--json",
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        payload = json.loads(proc.stdout)
+        self.assertTrue(payload["ok"], payload)
+        self.assertEqual(payload["submissions"], 2)
+        self.assertEqual(payload["covering"], 1)
+        self.assertEqual(Path(payload["out"]).name, "final.mp4")
+
+        self.assertFalse((self.project / "review" / "review-submissions.json").exists())
+        doc = json.loads(custom_subs.read_text(encoding="utf-8"))
+        self.assertEqual(doc["contract_version"], "video-craft-review-submissions/1.0.0")
+        self.assertEqual(doc["surface"], "video-craft/visual")
+        self.assertEqual(doc["choreography_overrides"], {"s1": {"density": "low"}})
+        self.assertEqual(len(doc["records"]), 2)
+        self.assertEqual(doc["records"][0]["snapshot"], "old000")
+        self.assertEqual(doc["records"][1]["kind"], "chat-approval")
+        self.assertEqual(doc["records"][1]["note"], "作者在对话确认导出分轨成片")
+
+        # Blank approval note falls back to default Chinese audit note.
+        blank_proc = self._run_cli(str(self.project), "--approve-in-chat", "--approval-note", "   ")
+        self.assertEqual(blank_proc.returncode, 0, blank_proc.stderr)
+        doc_after = json.loads(custom_subs.read_text(encoding="utf-8"))
+        self.assertEqual(doc_after["records"][-1]["note"], "作者在对话中明确授权导出")
+
+    def test_approve_in_chat_help_warning_and_flag_guards(self):
+        help_proc = self._run_cli("--help")
+        self.assertEqual(help_proc.returncode, 0)
+        self.assertIn("--approve-in-chat", help_proc.stdout)
+        self.assertIn("--approval-note", help_proc.stdout)
+        self.assertIn("explicitly instructed exporting in the active conversation", help_proc.stdout)
+
+        self._review()
+        note_only = self._run_cli(str(self.project), "--approval-note", "未授权参数")
+        self.assertNotEqual(note_only.returncode, 0)
+        self.assertFalse((self.project / "review" / "review-submissions.json").exists())
+
+        conflict = self._run_cli(
+            str(self.project),
+            "--approve-in-chat",
+            "--engineering",
+            "--out",
+            "edit/_engineering/cut.mp4",
+        )
+        self.assertNotEqual(conflict.returncode, 0)
+        self.assertFalse((self.project / "review" / "review-submissions.json").exists())
+
+    def test_deliver_skip_gate_still_requires_dsh_test_env(self):
+        env = dict(os.environ)
+        env.pop("DSH_TEST", None)
+        proc = subprocess.run(
+            [sys.executable, str(DELIVER_SCRIPT), str(self.project), "--skip-gate"],
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("DSH_TEST=1", proc.stderr)
 
 
 if __name__ == "__main__":

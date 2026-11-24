@@ -70,17 +70,6 @@
     h1 { font-size: 14px; font-weight: 700; color: var(--text); letter-spacing: 0.01em; }
     h1 #project-name { color: var(--amber); font-family: var(--font-mono); font-size: 12.5px; font-weight: 600; margin-left: 4px; }
     .top-right { display: flex; align-items: center; gap: 8px; }
-    #view-verbatim-btn {
-      border: 1px solid var(--border);
-      background: var(--bg-card);
-      color: var(--text);
-      padding: 5px 11px;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 12px;
-      font-weight: 600;
-    }
-    #view-verbatim-btn:hover { background: var(--bg-card-hover); border-color: var(--border-strong); }
     .stage-switch {
       display: inline-flex;
       background: var(--bg-input);
@@ -212,19 +201,6 @@
       background: var(--bg-app);
       overflow: hidden;
     }
-    /* 舞台顶部上下文工具栏 */
-    .canvas-toolbar {
-      padding: 6px 14px;
-      flex: 0 0 auto;
-      background: var(--bg-panel);
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-    .tool-group { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
     .tool-btn {
       background: var(--bg-card);
       color: var(--text-secondary);
@@ -241,31 +217,6 @@
     .tool-btn:hover { color: var(--text); border-color: var(--border-strong); }
     .tool-btn.active { background: var(--blue); color: #fff; border-color: var(--blue); }
     .tool-btn.accent { background: var(--accent); color: #fff; border-color: var(--accent); }
-    .tool-sep { width: 1px; height: 16px; background: var(--border); margin: 0 2px; }
-
-    /* 元素直改浮动条（选中 SVG 元素时显示） */
-    .elem-edit-bar {
-      padding: 5px 14px;
-      flex: 0 0 auto;
-      background: #192030;
-      border-bottom: 1px solid var(--blue);
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 11.5px;
-      flex-wrap: wrap;
-    }
-    .elem-edit-bar[hidden] { display: none; }
-    .elem-edit-bar input[type="text"] {
-      flex: 1 1 180px;
-      max-width: 320px;
-      background: var(--bg-input);
-      color: var(--text);
-      border: 1px solid var(--border-strong);
-      border-radius: 4px;
-      padding: 3px 7px;
-      font-size: 11.5px;
-    }
 
     /* 16:9 画布视口：严格锁定 16:9 比例，不设 max-height 防止 flex 压缩变形导致黑边或错位 */
     .player-box {
@@ -366,8 +317,8 @@
       text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
     }
 
-    /* 活 composition / 成片 / 逐字剪辑的内嵌容器 */
-    #live-stage-wrap, #composite-player-wrap, #verbatim-iframe-wrap {
+    /* 实时预览 / 成片的内嵌容器 */
+    #live-stage-wrap, #composite-player-wrap {
       position: absolute;
       inset: 0;
       width: 100%;
@@ -375,7 +326,7 @@
       background: #000;
       z-index: 5;
     }
-    #live-stage-wrap[hidden], #composite-player-wrap[hidden], #verbatim-iframe-wrap[hidden] { display: none; }
+    #live-stage-wrap[hidden], #composite-player-wrap[hidden] { display: none; }
     #live-stage-frame { width: 100%; height: 100%; border: 0; display: block; background: #000; }
     #live-stage-note {
       position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
@@ -418,65 +369,8 @@
       background: #0f1219;
     }
     #composite-empty-placeholder[hidden] { display: none !important; }
-    #verbatim-iframe {
-      width: 100%;
-      height: 100%;
-      border: none;
-      background: var(--bg-app);
-    }
 
-    /* 逐字精修剪辑全屏沉浸模式：隐藏两侧栏与多余工具，使双栏双视口 edl_preview 拥有 100% 视口空间 */
-    body.workspace-verbatim .side-left,
-    body.workspace-verbatim .side-right,
-    body.workspace-verbatim .canvas-toolbar,
-    body.workspace-verbatim .elem-edit-bar,
-    body.workspace-verbatim .global-transport-bar,
-    body.workspace-verbatim .choreo-deck {
-      display: none !important;
-    }
-    body.workspace-verbatim .layout {
-      grid-template-columns: 1fr !important;
-      height: calc(100vh - 46px) !important;
-      overflow: hidden !important;
-    }
-    body.workspace-verbatim .center-stage {
-      width: 100% !important;
-      height: 100% !important;
-      padding: 0 !important;
-      background: #000 !important;
-      position: relative !important;
-    }
-    body.workspace-verbatim .player-box {
-      position: absolute !important;
-      inset: 0 !important;
-      width: 100% !important;
-      height: 100% !important;
-      max-width: none !important;
-      margin: 0 !important;
-      border: none !important;
-      border-radius: 0 !important;
-      box-shadow: none !important;
-      aspect-ratio: unset !important;
-    }
-    body.workspace-verbatim #verbatim-iframe-wrap {
-      position: absolute !important;
-      inset: 0 !important;
-      width: 100% !important;
-      height: 100% !important;
-      z-index: 50 !important;
-    }
-    body.workspace-verbatim #verbatim-iframe {
-      width: 100% !important;
-      height: 100% !important;
-      border: none !important;
-    }
-
-    /* 完整成片预览影院模式：收起底部动效编排抽屉，放大视频视口 */
-    body.workspace-composite .choreo-deck,
-    body.workspace-composite .elem-edit-bar,
-    body.workspace-composite .canvas-toolbar {
-      display: none !important;
-    }
+    /* 完整成片预览影院模式：放大视频视口 */
     body.workspace-composite .player-box {
       width: min(calc(100% - 24px), calc((100vh - 120px) * 16 / 9));
       margin: 16px auto;
@@ -576,183 +470,6 @@
       width: 1px;
       background: rgba(255, 255, 255, 0.22);
     }
-    /* 画布框选与元素高亮覆盖层 */
-    #annotation-overlay {
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-      z-index: 10;
-    }
-    #annotation-overlay.drawing {
-      pointer-events: auto;
-      cursor: crosshair;
-    }
-    .anno-box {
-      position: absolute;
-      border: 2px solid var(--amber);
-      background: rgba(245, 158, 11, 0.14);
-      border-radius: 4px;
-      pointer-events: auto;
-      cursor: pointer;
-    }
-    .anno-box b {
-      position: absolute;
-      top: -10px;
-      left: -10px;
-      background: var(--amber);
-      color: #111;
-      font: 800 11px/18px var(--font-mono);
-      width: 20px;
-      height: 20px;
-      text-align: center;
-      border-radius: 50%;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.4);
-    }
-    .svg-selected-outline {
-      outline: 2px dashed #38bdf8 !important;
-      outline-offset: 3px;
-      cursor: move;
-    }
-
-    /* 底部紧凑分步动效抽屉（不挤占主画布） */
-    .choreo-deck {
-      margin: 0 12px 10px;
-      flex: 1 1 auto;
-      min-height: 0;
-      background: var(--bg-panel);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 8px 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      overflow: hidden;
-    }
-    .choreo-head {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 8px;
-      flex: 0 0 auto;
-    }
-    .choreo-title {
-      font-size: 11.5px;
-      font-weight: 700;
-      color: var(--text-secondary);
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .choreo-controls { display: flex; align-items: center; gap: 6px; }
-    .choreo-live-note {
-      display: flex;
-      align-items: flex-start;
-      gap: 9px;
-      padding: 10px 12px;
-      border: 1px solid var(--border);
-      border-radius: 9px;
-      background: color-mix(in srgb, var(--blue) 7%, var(--bg-card));
-      color: var(--text-secondary);
-      font-size: 12px;
-      line-height: 1.55;
-    }
-    .choreo-live-note strong { color: var(--text); }
-    .choreo-live-dot {
-      flex: 0 0 7px;
-      width: 7px;
-      height: 7px;
-      margin-top: 6px;
-      border-radius: 50%;
-      background: var(--blue);
-      box-shadow: 0 0 0 4px color-mix(in srgb, var(--blue) 16%, transparent);
-    }
-    .choreo-live-note[hidden] { display: none; }
-    /* 口播词级胶囊条（默认收起，按需展开） */
-    .cue-pills-bar {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      flex-wrap: wrap;
-      padding: 5px 8px;
-      background: var(--bg-input);
-      border: 1px solid var(--border);
-      border-radius: 5px;
-      font-size: 11px;
-      flex: 0 0 auto;
-    }
-    .cue-pills-bar[hidden] { display: none; }
-    .cue-pills-label {
-      font-size: 10.5px;
-      color: var(--text-muted);
-      font-family: var(--font-mono);
-      margin-right: 4px;
-    }
-    .cue-pill {
-      padding: 2px 7px;
-      border-radius: 4px;
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      color: var(--text-secondary);
-      cursor: pointer;
-      font-size: 11px;
-      transition: all 0.12s;
-    }
-    .cue-pill:hover { border-color: var(--amber); color: var(--text); }
-    .cue-pill.pinned {
-      background: var(--amber-soft);
-      border-color: var(--amber);
-      color: var(--amber);
-      font-weight: 700;
-    }
-    /* 分步动效参数矩阵行（紧凑可滚动） */
-    .step-choreo-rows {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      flex: 1 1 auto;
-      min-height: 0;
-      overflow-y: auto;
-      padding-right: 2px;
-    }
-    .step-choreo-rows::-webkit-scrollbar { width: 5px; }
-    .step-choreo-rows::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-    .step-choreo-row {
-      display: grid;
-      grid-template-columns: 72px minmax(150px, 1.1fr) minmax(120px, 0.9fr) 110px minmax(0, 1fr);
-      gap: 6px;
-      align-items: center;
-      padding: 4px 8px;
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 5px;
-      font-size: 11.5px;
-    }
-    .step-choreo-row.playing-now {
-      border-color: var(--amber);
-      background: rgba(245, 158, 11, 0.09);
-    }
-    .step-choreo-row select, .step-choreo-row input {
-      background: var(--bg-input);
-      color: var(--text);
-      border: 1px solid var(--border-strong);
-      border-radius: 4px;
-      padding: 3px 6px;
-      font-size: 11px;
-      width: 100%;
-    }
-    .step-play-chip {
-      font-family: var(--font-mono);
-      font-weight: 700;
-      font-size: 11px;
-      padding: 3px 6px;
-      border-radius: 4px;
-      background: var(--bg-input);
-      color: var(--amber);
-      border: 1px solid var(--border-strong);
-      cursor: pointer;
-      text-align: center;
-    }
-    .step-play-chip:hover { background: var(--amber); color: #111; border-color: var(--amber); }
 
     /* 右侧栏：已提意见列表 + 反馈输入区 */
     .side-right {
@@ -1030,12 +747,10 @@
     }
     .brand-wrap, h1, .top-right, .side-right, .center-stage { min-width: 0; }
     h1 { overflow-wrap: anywhere; }
-    .canvas-toolbar, .tool-group, .top-right, .save-bar { flex-wrap: wrap; }
+    .top-right, .save-bar { flex-wrap: wrap; }
     #save-state { overflow-wrap: anywhere; }
     #canvas-caption-text { font-size: 18px; white-space: normal; overflow-wrap: anywhere; }
-    .choreo-deck { max-height: 260px; overflow: auto; }
     #theme-mode { max-width: 76px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text); padding: 4px; }
-    #advanced-toggle { border: 0; background: transparent; color: var(--text-secondary); padding: 8px; cursor: pointer; text-align: left; }
     /* Unified responsive layout: container-adaptive grid & dual-constrained 16:9 stage */
     body {
       --bg-app: var(--dsw-alias-bg-base);
@@ -1075,8 +790,8 @@
     }
     .side-left { border-right-color: var(--border); }
     .side-right { border-left-color: var(--border); display: flex; flex-direction: column; }
-    .panel-head, .canvas-toolbar, .transport-bar, .choreo-deck,
-    .history-box, .feedback, .elem-edit-bar { border-color: var(--border); }
+    .panel-head, .transport-bar,
+    .history-box, .feedback { border-color: var(--border); }
     .panel-head {
       min-height: 40px;
       padding: 10px 14px;
@@ -1111,15 +826,6 @@
       padding: 12px 14px;
       gap: 10px;
     }
-    .canvas-toolbar {
-      padding: 0 0 6px;
-      flex: 0 0 auto;
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: space-between;
-      gap: 6px;
-      background: var(--bg-panel);
-    }
     .tool-btn, .transport-btn, .reload, .stage-switch, .stage-switch button {
       border-color: var(--border-strong);
       border-radius: 6px;
@@ -1137,7 +843,7 @@
     .player-box {
       position: relative;
       flex: 0 0 auto;
-      width: min(100%, calc((100vh - 230px) * 16 / 9));
+      width: min(100%, calc((100vh - 180px) * 16 / 9));
       max-width: 100%;
       aspect-ratio: 16 / 9;
       height: auto;
@@ -1147,14 +853,13 @@
       border-color: var(--border);
       box-shadow: 0 8px 24px rgba(31, 41, 55, 0.08);
     }
-    #svg-stage-wrap, #composite-player-wrap, #verbatim-iframe-wrap { background: var(--dsw-alias-bg-document-preview); }
+    #svg-stage-wrap, #composite-player-wrap { background: var(--dsw-alias-bg-document-preview); }
     #canvas-caption-layer, #speaker-time-pill {
       background: rgba(31, 41, 55, 0.88);
       border-color: rgba(255, 255, 255, 0.24);
     }
     #canvas-caption-layer { z-index: 12; pointer-events: none; bottom: 6%; border-radius: 5px; padding: 3px 10px; box-shadow: none; }
     #canvas-caption-text { border: 0; border-radius: 4px; padding: 5px 12px; font-size: clamp(14px, 1.25vw, 22px); }
-    #annotation-overlay { z-index: 15; }
     #demo-proxy-video {
       position: absolute;
       pointer-events: none;
@@ -1189,11 +894,9 @@
       background: var(--accent);
     }
     body.col-resizing { cursor: col-resize; user-select: none; }
-    body.density-on .main-split-handle { display: none !important; }
     #live-stage-note { background: var(--bg-panel); z-index: 10; }
-    body[data-stage="live"] #btn-focus-toggle { display: none; }
     .global-transport-bar { margin: 0; max-width: 100%; border: 0; padding: 6px 0; gap: 8px; flex-wrap: wrap; background: transparent; }
-    .timeline-track, .cue-pills-bar, .step-choreo-rows { border-color: var(--border); background: var(--bg-card); }
+    .timeline-track { border-color: var(--border); background: var(--bg-card); }
     .history-box { flex: 0 1 auto; min-height: 72px; max-height: 32vh; overflow: auto; padding: 12px; background: var(--bg-card); }
     .feedback { flex: 1 0 auto; background: var(--bg-panel); padding: 14px; }
     .feedback::before {
@@ -1267,7 +970,6 @@
     </div>
     <div class="top-right">
       <select id="theme-mode" aria-label="主题"><option value="auto">自动</option><option value="light">浅色</option><option value="dark">深色</option></select>
-      <button type="button" id="view-verbatim-btn">逐字剪辑</button>
       <a class="reload" id="page-reload" href="">⟳</a>
     </div>
   </header>
@@ -1284,34 +986,6 @@
 
     <!-- 中央：严格 16:9 舞台 + 控制条 -->
     <main class="center-stage">
-      <div class="canvas-toolbar">
-        <div class="tool-group" id="interaction-mode-group">
-          <button type="button" class="tool-btn active" data-stage-tool="director" id="tool-director">预览</button>
-          <button type="button" class="tool-btn" data-stage-tool="select" id="tool-select">点选</button>
-          <button type="button" class="tool-btn" data-stage-tool="box" id="tool-box">框选</button>
-        </div>
-        <div class="tool-group">
-          <button type="button" class="tool-btn" id="btn-play-screen">播本屏</button>
-          <button type="button" class="tool-btn" id="btn-show-all">终态</button>
-          <div class="tool-sep"></div>
-          <button type="button" class="tool-btn" id="btn-focus-toggle">聚光: 开</button>
-          
-        </div>
-      </div>
-
-      <!-- 选中元素时的直改工具条 -->
-      <div class="elem-edit-bar" id="elem-edit-bar" hidden>
-        <span style="color:#38bdf8;font-family:var(--font-mono);font-weight:700;" id="sel-elem-tag">[文本]</span>
-        <input type="text" id="sel-elem-input" placeholder="修改文字" />
-        <button type="button" class="tool-btn" id="btn-font-dec">A-</button>
-        <button type="button" class="tool-btn" id="btn-font-inc">A+</button>
-        <button type="button" class="tool-btn" id="btn-nudge-left">←</button>
-        <button type="button" class="tool-btn" id="btn-nudge-right">→</button>
-        <button type="button" class="tool-btn" id="btn-nudge-up">↑</button>
-        <button type="button" class="tool-btn" id="btn-nudge-down">↓</button>
-        <button type="button" class="tool-btn accent" id="btn-comment-elem">反馈此项</button>
-      </div>
-
       <div class="player-box" id="player-box">
 
         <!-- 默认舞台为 SVG 舞台 -->
@@ -1338,16 +1012,11 @@
           <div id="live-stage-note" hidden></div>
         </div>
 
-        <!-- 逐字剪辑占位 -->
-        <div id="verbatim-iframe-wrap" hidden>
-          <p id="edl-open-state" role="status">正在打开剪辑…</p>
-        </div>
         <video id="demo-proxy-video" muted playsinline preload="metadata" hidden></video>
           <!-- 悬浮单行药丸字幕 -->
           <div id="canvas-caption-layer" hidden>
             <span id="canvas-caption-text"></span>
           </div>
-          <div id="annotation-overlay"></div>
       </div>
 
       <!-- 播放与时间轴控制条 -->
@@ -1369,27 +1038,6 @@
         <button type="button" class="tool-btn active" id="btn-audio-ab">播客音色</button>
         <audio id="review-audio-alt" preload="auto" hidden></audio>
       </div>
-
-      <!-- 底部紧凑分步 -->
-      <button type="button" id="advanced-toggle" aria-expanded="false" aria-controls="choreo-deck">分步</button>
-      <section class="choreo-deck" id="choreo-deck" hidden>
-        <div class="choreo-head">
-          <div class="choreo-title">
-            <span id="choreo-screen-label">分步</span>
-          </div>
-          <div class="choreo-controls">
-            <button type="button" class="tool-btn" id="btn-toggle-cues" style="padding:2px 8px;font-size:11px;">卡点</button>
-          </div>
-        </div>
-        <div class="choreo-live-note" id="choreo-live-note" hidden>
-          <span class="choreo-live-dot" aria-hidden="true"></span>
-          <span>实时预览</span>
-        </div>
-        <div class="cue-pills-bar" id="cue-pills-bar" hidden>
-          <span class="cue-pills-label">卡点：</span>
-        </div>
-        <div class="step-choreo-rows" id="step-choreo-rows"></div>
-      </section>
     </main>
 
     <div id="main-split-handle" class="main-split-handle" role="separator" aria-orientation="vertical" aria-label="调整布局比例"></div>
@@ -2223,13 +1871,11 @@
       sourcePageKey: null,
       caption: "",
       activeSvgStep: 1,
-      stageTool: "director",   // 'director' | 'select' | 'box'
       focusMode: "spotlight",
-      selectedElem: null,
       choreoOverrides: {},     // { [stepId]: { focusMode, steps: { [snum]: { anim, camera, subDelayMs, relStartSec, cue } } } }
       svgEdits: {},            // { [stepId]: [ { id, type, value, dx, dy } ] }
-      annotations: {}          // { [stepId]: [ { idx, xPct, yPct, wPct, hPct } ] }
-      ,pendingDraftStep: null
+      annotations: {},         // { [stepId]: [ { idx, xPct, yPct, wPct, hPct } ] }
+      pendingDraftStep: null
     };
 
     let fbMode = "overall";
@@ -2265,11 +1911,6 @@
     document.getElementById("theme-mode").addEventListener("change", () => { applyTheme(); saveDraft(); });
     matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
     applyTheme();
-    document.getElementById("advanced-toggle").addEventListener("click", () => {
-      const deck = document.getElementById("choreo-deck");
-      deck.hidden = !deck.hidden;
-      document.getElementById("advanced-toggle").setAttribute("aria-expanded", String(!deck.hidden));
-    });
 
     const mediaUrls = new Map();
     async function assetUrl(rel) {
@@ -2475,7 +2116,11 @@
           const typeTag = document.createElement("span");
           typeTag.className = "fb-card-type-tag";
           const typeMap = {
-            "visual": "视觉画面",
+            "visual": "画面与版式",
+            "animation": "动画与镜头",
+            "timing": "节奏与卡点",
+            "copy": "文字",
+            "asset": "素材",
             "motion": "动效时序",
             "audio": "声音配乐",
             "caption": "花字字幕",
@@ -2579,11 +2224,11 @@
           attachedUrl = url;
           try {
             if (!customElements.get("hyperframes-player")) throw new Error("播放器未加载");
-            const composition = window.__REVIEW_DATA__?.media?.liveStage?.composition;
-            if (!composition?.html) throw new Error("缺少工程预览，请重新构建");
-            const entries = Object.entries(composition.assets || {});
+            const compStage = window.__REVIEW_DATA__?.media?.liveStage?.composition;
+            if (!compStage?.html) throw new Error("画面暂未就绪，请重新构建后重试");
+            const entries = Object.entries(compStage.assets || {});
             const totalMb = entries.reduce(
-              (sum, [, rel]) => sum + ((composition.assetSizes || {})[rel] || 0), 0) / 1e6;
+              (sum, [, rel]) => sum + ((compStage.assetSizes || {})[rel] || 0), 0) / 1e6;
             // The conversion below is serial and there was no progress otherwise,
             // so a big asset map looked exactly like a hung page for as long as
             // the watchdog took to fire.
@@ -2591,7 +2236,7 @@
             explain(totalMb > 1
               ? `正在解码素材 0/${entries.length}…（共约 ${totalMb.toFixed(1)} MB，首次较久）`
               : "正在加载画面与声音…");
-            let source = composition.html;
+            let source = compStage.html;
             let done = 0;
             for (const [token, rel] of entries) {
               // Each sandboxed child has its own opaque origin; a parent's
@@ -2659,22 +2304,11 @@
       };
     })();
 
-    /* ---- 舞台视图切换（动效舞台 / 活 composition / 合成成片 / 逐字剪辑） ---- */
-    let stageViewMode = "svg"; // 'svg' | 'live' | 'composite' | 'verbatim'
-    function updateChoreoDeckMode(mode) {
-      const liveNote = document.getElementById("choreo-live-note");
-      const rows = document.getElementById("step-choreo-rows");
-      const cues = document.getElementById("cue-pills-bar");
-      const isLive = mode === "live";
-      if (liveNote) liveNote.hidden = !isLive;
-      if (rows) rows.hidden = isLive;
-      if (cues && isLive) cues.hidden = true;
-      const toggle = document.getElementById("advanced-toggle");
-      if (toggle) toggle.textContent = "分步";
-    }
+    /* ---- 舞台视图切换（静态画面 / 实时预览 / 合成成片） ---- */
+    let stageViewMode = "svg"; // 'svg' | 'live' | 'composite'
     function setStageViewMode(mode) {
       window.__vcSetStageMode = setStageViewMode;
-      // 舞台按「这个项目有什么数据」选：活 composition 优先，其次合成成片，最后静态页。
+      // 舞台按「这个项目有什么数据」选：实时预览优先，其次合成成片，最后静态页。
       // 原模板在这里写死 `mode = "composite"`，把调用方传进来的选择丢掉了 ——
       // 连初始化那句 setStageViewMode("svg") 也变成切到合成台，而合成台在没有成片时
       // 只是一张空占位。参数就是参数，不许改写。
@@ -2684,18 +2318,15 @@
       document.body.dataset.stage = mode;
       const modeChip = document.getElementById("stage-mode-chip");
       if (modeChip) {
-        const labels = { live: "预览", composite: "成片", svg: "画面", verbatim: "剪辑" };
+        const labels = { live: "预览", composite: "成片", svg: "画面" };
         modeChip.textContent = labels[mode] || mode;
       }
-      updateChoreoDeckMode(mode);
 
-      document.body.classList.toggle("workspace-verbatim", mode === "verbatim");
       document.body.classList.toggle("workspace-composite", mode === "composite");
 
       const svgWrap = document.getElementById("svg-stage-wrap");
       const liveWrap = document.getElementById("live-stage-wrap");
       const compWrap = document.getElementById("composite-player-wrap");
-      const verbWrap = document.getElementById("verbatim-iframe-wrap");
       const compVid = document.getElementById("composite-video-player");
       const compEmpty = document.getElementById("composite-empty-placeholder");
       const spkVid = document.getElementById("stage-speaker-video");
@@ -2703,7 +2334,6 @@
       if (svgWrap) svgWrap.hidden = (mode !== "svg");
       if (liveWrap) liveWrap.hidden = (mode !== "live");
       if (compWrap) compWrap.hidden = (mode !== "composite");
-      if (verbWrap) verbWrap.hidden = (mode !== "verbatim");
 
       if (mode === "composite") {
         if (spkVid && !spkVid.paused) {
@@ -2741,22 +2371,8 @@
           // re-attaches and times the real load.
           if (review) liveStage.watchdog(live.url);
         } else {
-          liveStage.explain("这个项目没有可播的活 composition：先跑 helpers/live_stage.py 把预览服务起起来。");
+          liveStage.explain("当前暂无实时预览，可播放静态画面或成片。");
         }
-      } else if (mode === "verbatim") {
-        if (spkVid && !spkVid.paused) {
-          try { spkVid.pause(); } catch {}
-        }
-        pauseGlobalPlayback();
-        if (compVid && !compVid.paused) {
-          try { compVid.pause(); } catch {}
-        }
-        const target = window.__REVIEW_DATA__?.media?.transcriptSurface;
-        const status = document.getElementById("edl-open-state");
-        if (!target) { status.textContent = "当前没有剪辑审阅面"; return; }
-        review.wake({ unit: "剪辑审阅", text: `请调用 review_open 打开本项目的 ${target}；没有该工具时运行 video-craft/helpers/edl_review_surface.py <本项目>/edit。` })
-          .then(result => { status.textContent = result?.woke === false ? "请回对话打开剪辑审阅" : "已请求打开独立剪辑审阅"; })
-          .catch(error => { status.textContent = `打开失败：${error.message}`; });
       } else {
         // svg 模式
         if (compVid && !compVid.paused) {
@@ -2771,16 +2387,6 @@
     // 「返回动效舞台」原先没有任何监听，点了没反应；补上。
     const backToStageBtn = document.getElementById("btn-back-to-stage");
     if (backToStageBtn) backToStageBtn.addEventListener("click", () => setStageViewMode("svg"));
-
-    const toggleCuesBtn = document.getElementById("btn-toggle-cues");
-    if (toggleCuesBtn) {
-      toggleCuesBtn.addEventListener("click", () => {
-        const bar = document.getElementById("cue-pills-bar");
-        if (!bar) return;
-        bar.hidden = !bar.hidden;
-        toggleCuesBtn.classList.toggle("active", !bar.hidden);
-      });
-    }
 
     /* ---- 浮动字幕与时间轴 Scrubber 控制 ---- */
     let showSubtitles = true;
@@ -3051,11 +2657,11 @@
             ? { time: spkVid.currentTime || 0, rate: spkVid.playbackRate || 1, paused: !!spkVid.paused }
             : null));
       const targetUrl = audioMode === "dry" ? resolvedDryAudioUrl : resolvedMixAudioUrl;
-      if (audioMode === "dry" || targetUrl) {
+      if (targetUrl) {
         if (compVid) compVid.muted = true;
         if (spkVid) spkVid.muted = true;
         liveStage.mute(true);
-        if (alt && targetUrl) {
+        if (alt) {
           if (alt.getAttribute("src") !== targetUrl) alt.src = targetUrl;
           if (clock) {
             alt.playbackRate = clock.rate || 1;
@@ -3065,8 +2671,6 @@
             if (!clock.paused && alt.paused) alt.play().catch(() => {});
             else if (clock.paused && !alt.paused) alt.pause();
           }
-        } else if (alt && !alt.paused) {
-          alt.pause();
         }
       } else {
         if (compVid) compVid.muted = false;
@@ -3081,8 +2685,9 @@
       const compVid = document.getElementById("composite-video-player");
       if (!demoVid) return;
       const list = window.__REVIEW_DATA__?.media?.demoProxies || [];
-      const allowOverlay = stageViewMode !== "verbatim" &&
-        (stageViewMode !== "composite" || !compVid?.getAttribute("src") || window.__REVIEW_DATA__?.media?.layersBaked === false);
+      const allowOverlay = stageViewMode !== "composite"
+        || !compVid?.getAttribute("src")
+        || window.__REVIEW_DATA__?.media?.layersBaked === false;
       const t = Number(curSec) || 0;
       const entry = allowOverlay ? list.find(d => t >= ((d.startMs || 0) / 1000) && t < ((d.endMs || 0) / 1000)) : null;
       if (!entry) {
@@ -3151,27 +2756,15 @@
     }
     const audioAbBtn = document.getElementById("btn-audio-ab");
     if (audioAbBtn) {
-      audioAbBtn.addEventListener("click", () => {
-        setAudioMode(audioMode === "mix" ? "dry" : "mix");
-      });
-    }
-
-    const verbatimBtn = document.getElementById("view-verbatim-btn");
-    if (verbatimBtn) {
-      verbatimBtn.addEventListener("click", () => {
-        const target = window.__REVIEW_DATA__?.media?.transcriptSurface;
-        if (!target) { noteStaleFree("当前没有剪辑审阅面。"); return; }
-        if (!(review && typeof review.wake === "function")) {
-          noteStaleFree(`请回对话打开剪辑审阅：${target}`);
-          return;
-        }
-        noteStaleFree("正在请求打开独立剪辑审阅…");
-        review.wake({ unit: "剪辑审阅",
-          text: `请调用 review_open 打开本项目的 ${target}；没有该工具时运行 video-craft/helpers/edl_review_surface.py <本项目>/edit。` })
-          .then(result => noteStaleFree(result?.woke === false
-            ? "请回对话说一声「打开剪辑审阅」" : "已请求打开独立剪辑审阅"))
-          .catch(error => noteStaleFree(`打开失败：${error.message}`));
-      });
+      const hasDryTrack = Boolean(window.__REVIEW_DATA__?.media?.audioTracks?.dry);
+      if (!hasDryTrack) {
+        audioAbBtn.disabled = true;
+        audioAbBtn.title = "当前仅提供播客音色轨";
+      } else {
+        audioAbBtn.addEventListener("click", () => {
+          setAudioMode(audioMode === "mix" ? "dry" : "mix");
+        });
+      }
     }
 
     const prevScreenBtn = document.getElementById("btn-prev-screen");
@@ -3229,16 +2822,13 @@
       // 这条分支里赋值，而很多项目根本没有扬声器轨 —— 于是 currentScreenObj 永远是
       // null，「上一屏 / 下一屏」和全局播放全都没反应。
       state.currentScreenObj = st;
-      renderAnnotationsOverlay();
       let svgText = null;
 
       // 1. 优先从页面内联字典读（原型展示或离线打包时注入）
       if (window.__INLINE_SVGS__ && window.__INLINE_SVGS__[pageKey]) {
         svgText = window.__INLINE_SVGS__[pageKey];
       }
-      // 2. 尝试通过审阅桥从 input/scenes/<key>.svg 或 pages/<key>.svg 读取
-      // 只有这一屏真的声明了 SVG 画面才去读。否则每点一屏都会为两个不存在的路径各刷
-      // 一条红色 404（本项目 28 屏 = 56 条），把真正的错误淹掉。
+      // 2. 尝试通过连接读取 input/scenes/<key>.svg 或 pages/<key>.svg
       const hasSvg = !!(st.sourcePageKey
         || (window.__INLINE_SVGS__ && window.__INLINE_SVGS__[pageKey])
         || (window.__REVIEW_DATA__?.svgAssets && window.__REVIEW_DATA__.svgAssets[pageKey]));
@@ -3253,7 +2843,7 @@
 
       const host = document.getElementById("svg-stage-host");
       if (!svgText) {
-        host.textContent = "当前屏没有 SVG 画面";
+        host.textContent = "当前屏暂无静态画面";
         if (!document.getElementById("stage-speaker-video").hidden) {
           state.currentScreenObj = st;
           if (seekVideo) document.getElementById("stage-speaker-video").currentTime = (st.startMs || 0) / 1000;
@@ -3281,7 +2871,7 @@
       // 应用已保存的本屏编排覆盖
       const screenChoreo = state.choreoOverrides[st.id] || { focusMode: state.focusMode, steps: {} };
       window.VideoCraftAnimEngine.setChoreography(svgEl, screenChoreo);
-      const info = window.VideoCraftAnimEngine.setStep(svgEl, 1, true, { focusMode: state.focusMode });
+      window.VideoCraftAnimEngine.setStep(svgEl, 1, true, { focusMode: state.focusMode });
       state.activeSvgStep = 1;
 
       // 如果配置了真实口播视频，定位到本屏起点
@@ -3292,15 +2882,11 @@
         try {
           spkVid.pause();
           spkVid.currentTime = curT;
-          if (spkPill) spkPill.textContent = `🔊 ${curT.toFixed(1)}s · ${st.id} Step 1`;
+          if (spkPill) spkPill.textContent = `🔊 ${curT.toFixed(1)}s · ${st.id}`;
         } catch {}
       }
       updateStageSubtitle(st, curT);
       if (stageViewMode !== "live" || seekVideo) updateScrubberDisplay(st.startMs || 0);
-
-      renderChoreoDeck(st, svgEl, info.items);
-      wireSvgElementInteraction(svgEl);
-      renderAnnotationsOverlay();
     }
 
     let speakerSyncRaf = null;
@@ -3348,7 +2934,6 @@
 
       state.activeSvgStep = initialEntry.step;
       window.VideoCraftAnimEngine.setStep(svgEl, initialEntry.step, true, { focusMode: state.focusMode });
-      renderChoreoDeck(st, svgEl, window.VideoCraftAnimEngine.inspect(svgEl));
 
       if (spkVid && !spkVid.hidden && spkVid.src) {
         const seekSec = screenStartSec + Math.max(0, initialEntry.relStartSec);
@@ -3366,7 +2951,7 @@
           const curT = spkVid.currentTime;
           const relT = Math.max(0, curT - screenStartSec);
           if (spkPill) {
-            spkPill.textContent = `🔊 ${curT.toFixed(1)}s (本屏 +${relT.toFixed(1)}s) · Step ${state.activeSvgStep}`;
+            spkPill.textContent = `🔊 ${curT.toFixed(1)}s (本屏 +${relT.toFixed(1)}s)`;
           }
           updateStageSubtitle(st, curT);
           updateScrubberDisplay(curT * 1000);
@@ -3378,7 +2963,6 @@
           if (targetStep !== state.activeSvgStep) {
             state.activeSvgStep = targetStep;
             window.VideoCraftAnimEngine.setStep(svgEl, targetStep, true, { focusMode: state.focusMode });
-            renderChoreoDeck(st, svgEl, window.VideoCraftAnimEngine.inspect(svgEl));
           }
           if (curT >= screenEndSec) {
             if (isGlobal || isGlobalPlaying) {
@@ -3414,191 +2998,10 @@
         const tid = setTimeout(() => {
           state.activeSvgStep = s.step;
           window.VideoCraftAnimEngine.setStep(svgEl, s.step, true, { focusMode: state.focusMode });
-          renderChoreoDeck(st, svgEl, window.VideoCraftAnimEngine.inspect(svgEl));
         }, delayMs * window.VideoCraftAnimEngine.getSpeedMultiplier());
         playSequenceTimers.push(tid);
       });
     }
-
-    /* ---- 渲染底部紧凑动效与词级卡点轨道 ---- */
-    function renderChoreoDeck(st, svgEl, items) {
-      document.getElementById("choreo-screen-label").textContent =
-        `分步动效轨道 · ${st.id}（${items.length} 步 / ${(st.durationMs / 1000).toFixed(1)}s）`;
-
-      // 1. 口播分句/词胶囊条（优先使用实测句子时间戳 st.cues，否则按标点切分估算）
-      const pillsBar = document.getElementById("cue-pills-bar");
-      pillsBar.innerHTML = `<span class="cue-pills-label">口播分句卡点（点胶囊绑到 Step ${state.activeSvgStep} 并试听）：</span>`;
-      let cueEntries = [];
-      if (Array.isArray(st.cues) && st.cues.length > 0) {
-        cueEntries = st.cues.map(c => ({ text: c.text, relSec: Number(Number(c.relStartSec || 0).toFixed(2)) }));
-      } else {
-        const clauses = (st.caption || "本屏暂无口播字幕").split(/(?<=[，。！？；、…—,.!?;])|\s+/).map(s => s.trim()).filter(Boolean);
-        const totalChars = Math.max(1, clauses.reduce((a, b) => a + b.length, 0));
-        let charAcc = 0;
-        cueEntries = clauses.map(cl => {
-          const relSec = Number(((charAcc / totalChars) * (st.durationMs / 1000) * 0.85).toFixed(2));
-          charAcc += cl.length;
-          return { text: cl, relSec };
-        });
-      }
-      const activeItemObj = items.find(x => x.step === state.activeSvgStep);
-      cueEntries.forEach(({ text: cl, relSec }) => {
-        const pill = document.createElement("span");
-        const isPinned = activeItemObj && activeItemObj.relStartSec !== undefined && Math.abs(activeItemObj.relStartSec - relSec) < 0.08;
-        pill.className = "cue-pill" + (isPinned ? " pinned" : "");
-        pill.textContent = `${cl} (+${relSec}s)`;
-        pill.addEventListener("click", () => {
-          const curStep = state.activeSvgStep || 1;
-          ensureStepOverride(st.id, curStep, { relStartSec: relSec, cue: cl });
-          window.VideoCraftAnimEngine.setChoreography(svgEl, state.choreoOverrides[st.id]);
-          playWithSpeakerOrTimers(st, svgEl, curStep);
-          label(`已将 Step ${curStep} 卡点绑定到「${cl.slice(0, 12)}…」(本屏 +${relSec}s)`, "dirty");
-        });
-        pillsBar.appendChild(pill);
-      });
-
-      // 2. 每个 Step 的原语、相机、子延迟控制行
-      const rowsBox = document.getElementById("step-choreo-rows");
-      rowsBox.replaceChildren();
-      items.forEach((item, idx) => {
-        const defaultRel = item.relStartSec !== undefined
-          ? item.relStartSec
-          : Number(((idx / Math.max(1, items.length)) * (st.durationMs / 1000) * 0.78).toFixed(2));
-
-        const row = document.createElement("div");
-        row.className = "step-choreo-row" + (item.step === state.activeSvgStep ? " playing-now" : "");
-
-        // Step 触发按钮（点击即定位口播音频+重播该 Step 动效）
-        const playBtn = document.createElement("button");
-        playBtn.type = "button";
-        playBtn.className = "step-play-chip";
-        playBtn.textContent = `播放 Step ${item.step}`;
-        playBtn.addEventListener("click", () => {
-          playWithSpeakerOrTimers(st, svgEl, item.step);
-        });
-
-        // 12 种动效原语下拉框
-        const animSelect = document.createElement("select");
-        window.VideoCraftAnimEngine.PRIMITIVE_CATALOG.forEach(prim => {
-          const opt = document.createElement("option");
-          opt.value = prim.id;
-          opt.textContent = prim.label;
-          if (prim.id === item.anim) opt.selected = true;
-          animSelect.appendChild(opt);
-        });
-        animSelect.addEventListener("change", () => {
-          state.activeSvgStep = item.step;
-          ensureStepOverride(st.id, item.step, { anim: animSelect.value });
-          window.VideoCraftAnimEngine.setChoreography(svgEl, state.choreoOverrides[st.id]);
-          window.VideoCraftAnimEngine.setStep(svgEl, item.step, true, { focusMode: state.focusMode });
-          renderChoreoDeck(st, svgEl, window.VideoCraftAnimEngine.inspect(svgEl));
-          label(`Step ${item.step} 动效已切换为 ${animSelect.value}（实时生效）`, "dirty");
-        });
-
-        // 虚拟摄像机推拉下拉框
-        const camSelect = document.createElement("select");
-        [
-          { id: "none", label: "🎥 镜头: 全景固定 (1.0x)" },
-          { id: "focus-step", label: "镜头: 特写当前步 (Auto Zoom)" },
-          { id: "focus-left", label: "◧ 镜头: 聚焦左栏论点" },
-          { id: "focus-right", label: "◨ 镜头: 聚焦右栏图解" },
-          { id: "zoom-center", label: "⊕ 镜头: 中心微推 (1.04x)" }
-        ].forEach(c => {
-          const opt = document.createElement("option");
-          opt.value = c.id;
-          opt.textContent = c.label;
-          if (c.id === item.camera) opt.selected = true;
-          camSelect.appendChild(opt);
-        });
-        camSelect.addEventListener("change", () => {
-          state.activeSvgStep = item.step;
-          ensureStepOverride(st.id, item.step, { camera: camSelect.value });
-          window.VideoCraftAnimEngine.setChoreography(svgEl, state.choreoOverrides[st.id]);
-          window.VideoCraftAnimEngine.setStep(svgEl, item.step, true, { focusMode: state.focusMode });
-          renderChoreoDeck(st, svgEl, window.VideoCraftAnimEngine.inspect(svgEl));
-          label(`Step ${item.step} 镜头已切换为 ${camSelect.value}`, "dirty");
-        });
-
-        // 子动作延迟调整
-        const delayWrap = document.createElement("label");
-        delayWrap.style.cssText = "display:flex;align-items:center;gap:4px;color:var(--text-secondary);font-size:11px;";
-        delayWrap.innerHTML = `<span>子延迟</span>`;
-        const delayInput = document.createElement("input");
-        delayInput.type = "number";
-        delayInput.min = "0";
-        delayInput.max = "2000";
-        delayInput.step = "60";
-        delayInput.value = String(item.subDelayMs || 0);
-        delayInput.title = "同一 Step 内左栏标题与右栏图形/印章之间的拆拍毫秒差";
-        delayInput.addEventListener("change", () => {
-          state.activeSvgStep = item.step;
-          ensureStepOverride(st.id, item.step, { subDelayMs: Number(delayInput.value || 0) });
-          window.VideoCraftAnimEngine.setChoreography(svgEl, state.choreoOverrides[st.id]);
-          window.VideoCraftAnimEngine.setStep(svgEl, item.step, true, { focusMode: state.focusMode });
-          label(`Step ${item.step} 子动作拆拍延迟设为 ${delayInput.value}ms`, "dirty");
-        });
-        delayWrap.appendChild(delayInput);
-
-        // 触发词与时间标签
-        const cueInfo = document.createElement("div");
-        cueInfo.style.cssText = "color:var(--text-muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
-        cueInfo.textContent = `@+${defaultRel}s · ${item.cue || item.id}`;
-
-        row.appendChild(playBtn);
-        row.appendChild(animSelect);
-        row.appendChild(camSelect);
-        row.appendChild(delayWrap);
-        row.appendChild(cueInfo);
-        rowsBox.appendChild(row);
-      });
-    }
-
-    function ensureStepOverride(stepId, snum, patch) {
-      if (!state.choreoOverrides[stepId]) {
-        state.choreoOverrides[stepId] = { focusMode: state.focusMode, steps: {} };
-      }
-      state.choreoOverrides[stepId].steps[snum] = Object.assign(
-        {},
-        state.choreoOverrides[stepId].steps[snum] || {},
-        patch
-      );
-    }
-
-    /* ---- 舞台工具栏按钮事件（连播、完整态、焦点聚光灯、慢放、模式切换） ---- */
-    document.getElementById("btn-play-screen").addEventListener("click", () => {
-      const svgEl = document.querySelector("#svg-stage-host > svg");
-      if (!state.currentScreenObj) return;
-      if (stageViewMode === "live") {
-        const st = state.currentScreenObj;
-        liveStage.range(st.startMs / 1000, st.endMs / 1000); return;
-      }
-      if (!svgEl) return;
-      playWithSpeakerOrTimers(state.currentScreenObj, svgEl, null);
-    });
-
-    document.getElementById("btn-show-all").addEventListener("click", () => {
-      if (stageViewMode === "live" && state.currentScreenObj) {
-        liveStage.seek(Math.max(state.currentScreenObj.startMs / 1000, state.currentScreenObj.endMs / 1000 - 0.04)); return;
-      }
-      const svgEl = document.querySelector("#svg-stage-host > svg");
-      if (!svgEl) return;
-      clearPlaySequence();
-      window.VideoCraftAnimEngine.setStep(svgEl, "all", false, { focusMode: "accumulate" });
-    });
-
-    document.getElementById("btn-focus-toggle").addEventListener("click", (e) => {
-      state.focusMode = state.focusMode === "spotlight" ? "accumulate" : "spotlight";
-      e.currentTarget.textContent = state.focusMode === "spotlight" ? "聚光灯: 开" : "聚光灯: 关";
-      if (state.step) {
-        const k = adjustKey();
-        if (!state.choreoOverrides[k]) state.choreoOverrides[k] = { steps: {} };
-        state.choreoOverrides[k].focusMode = state.focusMode;
-      }
-      const svgEl = document.querySelector("#svg-stage-host > svg");
-      if (svgEl) {
-        window.VideoCraftAnimEngine.setStep(svgEl, state.activeSvgStep || 1, true, { focusMode: state.focusMode });
-      }
-    });
 
     let playbackRate = 1;
     document.getElementById("btn-speed-toggle").addEventListener("click", (e) => {
@@ -3611,191 +3014,22 @@
       e.currentTarget.setAttribute("aria-label", "播放速度 " + playbackRate + " 倍");
     });
 
-    /* ---- 舞台交互模式切换（动效导演 / 点选元素微调 / 画布框选批注） ---- */
-    document.querySelectorAll("[data-stage-tool]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        state.stageTool = btn.getAttribute("data-stage-tool");
-        pauseGlobalPlayback();
-        if (state.stageTool === "select") {
-          setStageViewMode("svg");
-          noteStaleFree("正在调整静态源稿；提交后由 Agent 应用到工程。");
-        } else if (window.__REVIEW_DATA__?.media?.liveStage) {
-          setStageViewMode("live");
-        }
-        document.querySelectorAll("[data-stage-tool]").forEach(b => b.classList.toggle("active", b === btn));
-        const anno = document.getElementById("annotation-overlay");
-        anno.classList.toggle("drawing", state.stageTool === "box");
-        if (state.stageTool !== "select") {
-          document.getElementById("elem-edit-bar").hidden = true;
-          document.querySelectorAll(".svg-selected-outline").forEach(el => el.classList.remove("svg-selected-outline"));
-        }
-      });
-    });
-
-    /* ---- SVG 元素点选微调（改字 / 字号 / 位移 / 针对元素提意见） ---- */
-    function wireSvgElementInteraction(svgEl) {
-      svgEl.addEventListener("click", (e) => {
-        if (state.stageTool !== "select") return;
-        const target = e.target.closest("text, g.anim-card, g.anim-badge, g.anim-endpoint, g.anim-stamp");
-        if (!target || target === svgEl) return;
-        e.stopPropagation();
-        document.querySelectorAll(".svg-selected-outline").forEach(el => el.classList.remove("svg-selected-outline"));
-        target.classList.add("svg-selected-outline");
-        state.selectedElem = target;
-
-        const bar = document.getElementById("elem-edit-bar");
-        bar.hidden = false;
-        const isText = target.tagName.toLowerCase() === "text";
-        const textNode = isText ? target : target.querySelector("text");
-        document.getElementById("sel-elem-tag").textContent = isText ? "[文本节点]" : `[构件 ${target.getAttribute("class") || target.tagName}]`;
-        document.getElementById("sel-elem-input").value = textNode ? (textNode.textContent || "") : "";
-      });
-    }
-
-    document.getElementById("sel-elem-input").addEventListener("input", (e) => {
-      if (!state.selectedElem) return;
-      const textNode = state.selectedElem.tagName.toLowerCase() === "text"
-        ? state.selectedElem
-        : state.selectedElem.querySelector("text");
-      if (textNode) {
-        textNode.textContent = e.target.value;
-        recordSvgEdit("text", e.target.value);
-      }
-    });
-
-    function adjustSelectedFontSize(delta) {
-      if (!state.selectedElem) return;
-      const textNode = state.selectedElem.tagName.toLowerCase() === "text"
-        ? state.selectedElem
-        : state.selectedElem.querySelector("text");
-      if (!textNode) return;
-      const cur = parseFloat(textNode.getAttribute("font-size") || "24");
-      const next = Math.max(10, cur + delta);
-      textNode.setAttribute("font-size", String(next));
-      recordSvgEdit("fontSize", next);
-    }
-    document.getElementById("btn-font-dec").addEventListener("click", () => adjustSelectedFontSize(-2));
-    document.getElementById("btn-font-inc").addEventListener("click", () => adjustSelectedFontSize(2));
-
-    function nudgeSelectedElem(dx, dy) {
-      if (!state.selectedElem) return;
-      const prevX = Number(state.selectedElem.getAttribute("data-nudge-x") || 0) + dx;
-      const prevY = Number(state.selectedElem.getAttribute("data-nudge-y") || 0) + dy;
-      state.selectedElem.setAttribute("data-nudge-x", String(prevX));
-      state.selectedElem.setAttribute("data-nudge-y", String(prevY));
-      state.selectedElem.style.transform = `translate(${prevX}px, ${prevY}px)`;
-      recordSvgEdit("nudge", { dx: prevX, dy: prevY });
-    }
-    document.getElementById("btn-nudge-left").addEventListener("click", () => nudgeSelectedElem(-8, 0));
-    document.getElementById("btn-nudge-right").addEventListener("click", () => nudgeSelectedElem(8, 0));
-    document.getElementById("btn-nudge-up").addEventListener("click", () => nudgeSelectedElem(0, -8));
-    document.getElementById("btn-nudge-down").addEventListener("click", () => nudgeSelectedElem(0, 8));
-
-    document.getElementById("btn-comment-elem").addEventListener("click", () => {
-      if (!state.selectedElem) return;
-      const snippet = (state.selectedElem.textContent || "").trim().slice(0, 18);
-      if (state.step) setMode("step");
-      const fbText = document.getElementById("fb-text");
-      const prefix = `[定位元素「${snippet || state.selectedElem.tagName}」] `;
-      if (!fbText.value.includes(prefix)) fbText.value = prefix + fbText.value;
-      fbText.focus();
-    });
-
     /* 调整项的归属键 —— **单一出处**。
-       2026-10-16 修的缺陷：写入侧用过两个不同的兜底键（改字 `|| "global"`、
-       框选批注 `|| "overall"`），而读取侧（提交记录那三行）一律用裸 `state.step`。
-       没选中步时（`if (state.step)` 证明它可为空，见 btn-focus-toggle 那处守卫）
-       写入落到没人读的键上 → 作者在画布上改的字被**静默丢弃**，而「保存反馈」看着是成功的。
+       2026-10-16 修的缺陷：写入侧用过两个不同的兜底键，而读取侧一律用裸 `state.step`。
        现在写入与读取都走这一个函数，键域不可能再分叉。 */
     const UNSCOPED = "global";
     const adjustKey = () => state.step || UNSCOPED;
 
-    /* 提交时要带上的调整项。
-       2026-10-16 修的真实缺陷（作者在画布上改的字被静默丢弃）有两层：
-         ① 写入侧用过两个不同的兜底键（改字 `|| "global"`、框选批注 `|| "overall"`），
-            读取侧一律用裸 `state.step` —— 没选屏时写进没人读的键；
-         ② **「整片」记录根本没有 adjustments 字段**（`{ phase: "overall", ...common }`），
-            所以不选屏时做的画面微调，键对不对都进不了载荷。
-       作者的路径正是：先在画布上改字（此时没选屏）→ 再点一屏提交 → 改动永远丢失，
-       而「保存反馈」看着是成功的。
-       现在：未定范围的微调在**任何**提交里都跟着走，不再有静默丢弃的路径。 */
+    /* 提交时要带上的调整项。 */
     function collectAdjustments() {
-      const k = adjustKey();
-      const un = k === UNSCOPED ? null : UNSCOPED;
+      const sid = adjustKey();
+      const un = sid === UNSCOPED ? null : UNSCOPED;
       const merge = (a, b) => (a || []).concat(b || []);
       return {
-        choreography: state.choreoOverrides[k] || (un ? state.choreoOverrides[un] : null) || null,
-        svg_edits: merge(state.svgEdits[k], un ? state.svgEdits[un] : null),
-        annotations: merge(state.annotations[k], un ? state.annotations[un] : null),
+        choreography: state.choreoOverrides[sid] || (un ? state.choreoOverrides[un] : null) || null,
+        svg_edits: merge(state.svgEdits[sid], un ? state.svgEdits[un] : null),
+        annotations: merge(state.annotations[sid], un ? state.annotations[un] : null),
       };
-    }
-
-    function recordSvgEdit(kind, val) {
-      const sid = adjustKey();
-      if (!state.svgEdits[sid]) state.svgEdits[sid] = [];
-      state.svgEdits[sid].push({
-        kind,
-        value: val,
-        textSnippet: (state.selectedElem ? state.selectedElem.textContent : "").trim().slice(0, 20),
-        updatedAt: new Date().toISOString()
-      });
-      label(`已记录画面微调（点「保存反馈」一并落盘）`, "dirty");
-    }
-
-    /* ---- 画布常驻框选批注 (① ②) ---- */
-    const annoOverlay = document.getElementById("annotation-overlay");
-    let dragBoxStart = null;
-    annoOverlay.addEventListener("mousedown", (e) => {
-      if (state.stageTool !== "box") return;
-      const rect = annoOverlay.getBoundingClientRect();
-      dragBoxStart = {
-        x: ((e.clientX - rect.left) / rect.width) * 100,
-        y: ((e.clientY - rect.top) / rect.height) * 100
-      };
-    });
-    annoOverlay.addEventListener("mouseup", (e) => {
-      if (!dragBoxStart || state.stageTool !== "box") return;
-      const rect = annoOverlay.getBoundingClientRect();
-      const endX = ((e.clientX - rect.left) / rect.width) * 100;
-      const endY = ((e.clientY - rect.top) / rect.height) * 100;
-      const xPct = Math.round(Math.min(dragBoxStart.x, endX));
-      const yPct = Math.round(Math.min(dragBoxStart.y, endY));
-      const wPct = Math.max(6, Math.round(Math.abs(endX - dragBoxStart.x)));
-      const hPct = Math.max(6, Math.round(Math.abs(endY - dragBoxStart.y)));
-      dragBoxStart = null;
-
-      const sid = adjustKey();
-      if (!state.annotations[sid]) state.annotations[sid] = [];
-      const idx = state.annotations[sid].length + 1;
-      state.annotations[sid].push({ idx, xPct, yPct, wPct, hPct });
-      renderAnnotationsOverlay();
-
-      if (state.step) setMode("step");
-      const fbText = document.getElementById("fb-text");
-      fbText.value = `${fbText.value ? fbText.value + " " : ""}[框选区域 #${idx} (${xPct}%,${yPct}% ${wPct}×${hPct}%)] `;
-      fbText.focus();
-    });
-
-    function renderAnnotationsOverlay() {
-      annoOverlay.replaceChildren();
-      const sid = adjustKey();
-      const list = state.annotations[sid] || [];
-      list.forEach(b => {
-        const div = document.createElement("div");
-        div.className = "anno-box";
-        div.style.left = `${b.xPct}%`;
-        div.style.top = `${b.yPct}%`;
-        div.style.width = `${b.wPct}%`;
-        div.style.height = `${b.hPct}%`;
-        div.innerHTML = `<b>${b.idx}</b>`;
-        div.title = "点击删除此框选";
-        div.addEventListener("click", (ev) => {
-          ev.stopPropagation();
-          state.annotations[sid] = (state.annotations[sid] || []).filter(x => x.idx !== b.idx);
-          renderAnnotationsOverlay();
-        });
-        annoOverlay.appendChild(div);
-      });
     }
 
     /* ---- 加载时间轴并渲染左侧分屏清单（严格保持 .step 与 .step-caption 契约） ---- */
@@ -3808,7 +3042,7 @@
           data = window.__INLINE_TIMELINE__;
           if (window.__REVIEW_DATA__?.timelinePath) {
             staleNoted = true;
-            noteStaleFree("无法核对当前时间轴；显示的是构建时快照。", { withReload: true });
+            noteStaleFree("无法确认是否为最新内容，当前显示已保存版本。", { withReload: true });
           }
         } else {
           document.getElementById("project-name").textContent = "加载失败";
@@ -3854,8 +3088,7 @@
       if (spkVid && spkUrl && spkSize && spkSize.oversized) {
         spkVid.hidden = true;
         if (spkPill) spkPill.hidden = true;
-        label(`口播轨 ${spkSize.mb.toFixed(0)} MB，不在侧栏播放 —— 给它做审阅副本，`
-              + `或改用 review-core 本地宿主。`);
+        label("人声视频文件较大，请先生成轻量预览版或在本地播放器查看。");
       } else if (spkVid && spkUrl) {
         const ready = await attachMedia(spkVid, spkUrl);
         spkVid.hidden = !ready;
@@ -3881,8 +3114,7 @@
         if (!layerStack || !compVid || !layerDefs.length) return;
         if (layersBaked) {
           // 成片里已经烘焙了这些层。再叠一遍就是重影，所以宁可不叠并说清楚。
-          noteStaleFree("这一版成片已经把视觉层烘焙进去了，页面不再重复叠加——"
-            + "想在这里实时调层，就让项目声明一份未烘焙的底片（review/media.json 的 baseVideo）。");
+          noteStaleFree("当前成片已包含完整画面层，无需重复叠加。");
           return;
         }
         let skipped = 0;
@@ -3901,9 +3133,7 @@
         }
         layerStack.hidden = layerEls.length === 0;
         if (skipped) {
-          noteStaleFree(`${skipped} 个视觉层没有浏览器可合成的载体`
-            + `（MOV/ProRes 的 alpha 浏览器读不出来），这一版页面看不到它们。`
-            + `让模型对同一份源跑 encode_transparent.py --codec webm 即可就地预览。`);
+          noteStaleFree(`${skipped} 个透明图层暂不支持直接在网页叠加显示，可在最终导出成片中查看。`);
         }
         fitLayerStack();
       }
@@ -4019,8 +3249,8 @@
               <div class="step-meta">${st.screenIntent || ""}</div>`;
           } catch (error) {
             failed += 1;
-            el.innerHTML = `<div class="step-id">${st.id || "?"} · 画不出来：${error.message}</div>
-              <div class="step-caption">这一屏的数据与页面期望的不一致，先在时间轴上核对再提意见。</div>`;
+            el.innerHTML = `<div class="step-id">${st.id || "?"} · 加载异常</div>
+              <div class="step-caption">这一屏内容暂无法显示</div>`;
           }
           el.addEventListener("click", async () => {
             document.querySelectorAll(".step").forEach((e) => e.classList.remove("active"));
@@ -4074,8 +3304,7 @@
         }
       }
       if (failed) {
-        noteStaleFree(`${failed} 屏没能画出来（其余 ${drawn - failed} 屏可用）：时间轴的字段与这一版页面期望的不一致。`
-          + `这不是这一页能修的 —— 把那句话发回对话让模型处理；在那之前，别对着半张清单提意见。`);
+        noteStaleFree(`有 ${failed} 屏内容加载异常（其余 ${drawn - failed} 屏正常），请回对话重新整理后再继续审片。`);
       }
 
       renderScrubberMarkers();
@@ -4108,8 +3337,8 @@
             staleNoted = true;
             noteStaleFree(
               next.snapshot === loadedReviewSnapshot
-                ? "作品文件有更新；重新构建审阅后再核对当前画面。"
-                : "审阅快照已经变了；重新构建审阅后再核对当前画面。",
+                ? "作品内容已更新，请重新加载页面后再核对画面。"
+                : "作品版本已更新，请重新加载页面后再核对画面。",
               { withReload: true },
             );
             return;
@@ -4120,8 +3349,7 @@
         }
       }
       staleNoted = true;
-      noteStaleFree("时间轴已经变了（宿主戳过、页面自己读出来对不上）：页面上的 step 边界与 caption 是上一版。"
-        + "先点「重新加载」看这一版、再提交；现在提交也能存，但这一条会挂在旧的 step 上。",
+      noteStaleFree("时间轴已经变了，当前显示的是上一版内容。请先点「重新加载」获取最新版后再提交。",
         { withReload: true });
     }
 
@@ -4200,19 +3428,14 @@
     async function save() {
       if (saving) return;
       if (!review) {
-        label("保存失败（审阅桥未就绪）——文字仍在输入框里，没有丢", "error");
+        label("保存失败（连接尚未就绪）——文字仍在输入框里，没有丢", "error");
         return;
       }
       if (fbMode === "step" && !state.step) {
         label("「当前屏」要先点左边一屏；只想说整片就切到左边的「整片意见」", "dirty");
         return;
       }
-      let text = document.getElementById("fb-text").value.trim();
-      // 如果用户在舞台上调了动效原语或改了元素文字，但没手敲评论，自动生成结构化调整说明
-      if (!text && fbMode === "step" && state.step &&
-          (state.choreoOverrides[adjustKey()] || state.svgEdits[adjustKey()])) {
-        text = `[舞台微调已记录] 更新了 ${state.step} 的动效编排与元素属性`;
-      }
+      const text = document.getElementById("fb-text").value.trim();
       if (!text) { label("先写一点反馈再保存", "dirty"); return; }
 
       const saveBtn = document.getElementById("fb-save");
@@ -4226,7 +3449,6 @@
         await writeSubmissionsDoc(records);
         cachedRecords = records;
         renderHistoryList();
-        const landsIn = fbMode === "overall" ? "feedback/overall.jsonl" : `feedback/${record.chapterId}.jsonl`;
         const now = new Date();
         const hhmmss = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
         let wakeNote = " · 未核对";
@@ -4235,6 +3457,8 @@
           const result = await review.wake(wakeOpts);
           if (result && (result.verified || result.Delivered)) {
             wakeNote = " · 已送达";
+          } else if (result && result.woke === false) {
+            wakeNote = " · 已保存，回对话继续即可";
           }
         } catch (err) {
           wakeNote = " · 未送达";
@@ -4340,1143 +3564,6 @@
       if (window.console) console.error("review-init-failed", err);
     });
   </script>
-
-
-<style id="density-style">
-  body.density-on{
-    --d-left:minmax(0,1.75fr);
-    --d-right:minmax(280px,1fr);
-    --d-text:var(--dsw-alias-label-primary);
-    --d-bg:var(--dsw-alias-bg-base);
-    --d-panel:var(--dsw-alias-bg-layer-1);
-    --d-muted:var(--dsw-alias-label-tertiary);
-    --d-secondary:var(--dsw-alias-label-secondary);
-    --d-border:var(--dsw-alias-border-l2);
-    --d-chip:var(--dsw-alias-bg-layer-2);
-    --d-mid-bg:var(--dsw-alias-bg-multi-select);
-    --d-mid-fg:var(--dsw-alias-label-primary);
-    --d-strong-bg:var(--dsw-alias-button-contrast-fill);
-    --d-strong-fg:var(--dsw-alias-label-primary-inverted);
-  }
-  body.density-on .layout{grid-template-columns:var(--d-left) 10px var(--d-right);height:calc(100vh - 46px)}
-  body.density-on .side-left,body.density-on .side-right{display:none !important}
-  body.density-on .center-stage{padding:10px 12px 8px;display:flex;flex-direction:column;gap:8px;min-width:0}
-  body.density-on .canvas-toolbar,body.density-on #advanced-toggle{display:none !important}
-  body.density-on .player-box{flex:0 0 auto;width:min(100%,calc((100vh - 230px) * 16 / 9));max-width:100%;height:auto;aspect-ratio:16/9;max-height:none;margin:0 auto;overflow:hidden;background:#000;border-radius:6px;position:relative}
-  body.density-on #choreo-deck{display:none !important}
-
-  /* 视频下方：横向 Beat 分段控件 */
-  #beat-switcher{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:2px;flex:0 0 auto;width:100%;padding:3px;background:var(--d-panel);border-radius:8px}
-  .bs-tab{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-width:0;height:40px;border:0;background:transparent;color:var(--d-muted);border-radius:6px;cursor:pointer;font-family:var(--font-mono);transition:background .12s ease,color .12s ease}
-  .bs-tab:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--d-text)}
-  .bs-tab:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}
-  .bs-tab .bs-id{font-size:11px;font-weight:700;line-height:1;letter-spacing:.08em;white-space:nowrap}
-  .bs-tab .bs-meta{font-size:9px;line-height:1;letter-spacing:.03em;white-space:nowrap;color:var(--d-muted)}
-  .bs-tab.changed .bs-meta{color:var(--dsw-alias-state-warn-primary)}
-  .bs-tab.has-fb .bs-meta{color:var(--dsw-alias-state-success-primary)}
-  .bs-tab.active{background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-inverted)}
-  .bs-tab.active .bs-meta{color:var(--dsw-alias-label-primary-inverted);opacity:.82}
-  .bs-dots{position:absolute;top:5px;right:5px;display:flex;gap:3px;pointer-events:none}
-  .bs-dots i{display:block;width:4px;height:4px;border-radius:50%}
-  .bs-dots i.chg{background:var(--dsw-alias-state-warn-primary)}
-  .bs-dots i.fb{background:var(--dsw-alias-state-success-primary)}
-
-  /* 右侧：整栏反馈 */
-  #feedback-panel{display:flex;flex-direction:column;min-height:0;padding:2px 8px 8px 12px;background:var(--d-bg);color:var(--d-text)}
-  .fp-tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px;padding:3px;margin-bottom:10px;background:var(--d-panel);border-radius:8px;flex:0 0 auto}
-  .fp-tabs button{border:0;background:transparent;color:var(--d-muted);font-family:var(--font-mono);font-size:10px;letter-spacing:.04em;padding:7px 4px;cursor:pointer;border-radius:6px;white-space:nowrap;transition:background .12s ease,color .12s ease}
-  .fp-tabs button:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--d-text)}
-  .fp-tabs button:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}
-  .fp-tabs button.active{background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-inverted)}
-  .fp-body{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
-  .fp-panel{display:flex;flex-direction:column;gap:8px;min-height:0;flex:1 1 auto}
-  .fp-panel[hidden]{display:none !important}
-
-  /* 整 beat 反馈 */
-  #fb-panel{overflow:hidden}
-  .vfb-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex:0 0 auto}
-  #fb-panel .fbh{font-size:14px;font-weight:600;line-height:1.4;color:var(--d-text)}
-  #fb-panel .fbs{font-family:var(--font-mono);font-size:9px;line-height:1.55;color:var(--d-muted)}
-  #hist-panel #hist-head{font-size:14px;font-weight:600;line-height:1.4;color:var(--d-text);flex:0 0 auto}
-  .save-pill{flex:0 0 auto;display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:99px;background:var(--d-chip);color:var(--d-muted);font-family:var(--font-mono);font-size:9px;letter-spacing:.04em;white-space:nowrap}
-  .save-pill[data-state="dirty"]{background:var(--dsw-alias-state-warn-tertiary);color:var(--dsw-alias-state-warn-label)}
-  .save-pill[data-state="saving"]{background:var(--dsw-alias-bg-multi-select);color:var(--dsw-alias-label-primary)}
-  .save-pill[data-state="saved"]{background:var(--dsw-alias-state-success-tertiary);color:var(--dsw-alias-state-success-primary)}
-  .save-pill[data-state="error"]{background:var(--dsw-alias-state-error-secondary);color:var(--dsw-alias-state-error-primary)}
-  #fb-kind{background:var(--d-panel);border:0;color:var(--d-text);font-size:11px;padding:7px 8px;border-radius:5px;flex:0 0 auto;cursor:pointer}
-  #vfb-text{flex:0 1 auto;min-height:86px;max-height:26vh;background:var(--d-panel);border:0;color:var(--d-text);font-size:12px;line-height:1.65;padding:10px;resize:none;outline:none;border-radius:5px;scrollbar-width:thin;scrollbar-color:var(--dsw-alias-scrollbar-bg-l1) transparent}
-  #vfb-text::placeholder{color:var(--d-muted)}
-  #vfb-text:focus{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-1px}
-  .vfb-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:0 0 auto}
-  #vfb-save{border:0;background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-inverted);font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;padding:8px 12px;cursor:pointer;border-radius:5px;white-space:nowrap;transition:background .12s ease}
-  #vfb-save:hover{background:var(--dsw-alias-button-primary-hover)}
-  #vfb-save:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
-  #vfb-save:disabled{opacity:.45;cursor:default}
-  #vfb-status{font-family:var(--font-mono);font-size:9px;line-height:1.55;color:var(--d-muted);min-height:14px;flex:1 1 120px;overflow-wrap:anywhere}
-  #vfb-status.dirty{color:var(--dsw-alias-state-warn-label)}
-  #vfb-status.warn{color:var(--dsw-alias-state-warn-label)}
-  #vfb-status.err{color:var(--dsw-alias-state-error-primary)}
-  #vfb-status.ok{color:var(--dsw-alias-state-success-primary)}
-
-  .vfb-history{display:flex;flex-direction:column;gap:5px;flex:1 1 auto;min-height:128px}
-  .vfb-history[data-open="false"]{flex:0 0 auto;min-height:0}
-  .vfb-hist-head{display:flex;align-items:center;gap:6px;flex:0 0 auto}
-  #vfb-hist-toggle{display:flex;align-items:center;gap:6px;border:0;background:transparent;color:var(--d-secondary);font-family:var(--font-mono);font-size:9px;letter-spacing:.04em;padding:4px 2px;cursor:pointer;border-radius:4px;text-align:left}
-  #vfb-hist-toggle:hover{color:var(--d-text)}
-  #vfb-hist-toggle .caret{display:inline-block;color:var(--d-muted);transition:transform .15s ease}
-  .vfb-history[data-open="false"] #vfb-hist-toggle .caret{transform:rotate(-90deg)}
-  .hist-count{font-family:var(--font-mono);font-size:9px;color:var(--d-muted);white-space:nowrap}
-  #vfb-hist-refresh{margin-left:auto;border:0;background:transparent;color:var(--d-muted);font-family:var(--font-mono);font-size:9px;padding:4px 6px;cursor:pointer;border-radius:4px;white-space:nowrap}
-  #vfb-hist-refresh:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--d-text)}
-  #vfb-hist-refresh:disabled,#hist-refresh:disabled{opacity:.5;cursor:default}
-  .vfb-history[data-open="false"] .hist-list{display:none !important}
-  .hist-list{flex:1 1 auto;min-height:80px;overflow:auto;display:flex;flex-direction:column;gap:4px;padding-right:2px;scrollbar-width:thin;scrollbar-color:var(--dsw-alias-scrollbar-bg-l1) transparent}
-  .hist-item{padding:7px 9px;background:var(--d-panel);border-radius:6px;font-size:11px;line-height:1.55;color:var(--d-text)}
-  .hist-item.is-pending{background:var(--dsw-alias-bg-multi-select)}
-  .hist-item .hm{display:flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:8px;color:var(--d-muted);margin-bottom:3px;line-height:1.4}
-  .hist-item .hm .tag{padding:0 5px;border-radius:99px;background:var(--d-chip);color:var(--d-secondary);white-space:nowrap}
-  .hist-item .hx{overflow-wrap:anywhere;white-space:pre-wrap}
-  .hist-item .hx .note{display:block;margin-top:2px;color:var(--d-muted);font-style:italic}
-  .hist-empty{display:flex;align-items:center;justify-content:center;min-height:84px;padding:16px 12px;text-align:center;font-size:10px;line-height:1.6;color:var(--d-muted);background:var(--d-panel);border-radius:6px}
-  .hist-list > .hist-empty{flex:1 1 auto}
-  .hist-more{align-self:flex-start;border:0;background:transparent;color:var(--d-secondary);font-family:var(--font-mono);font-size:9px;padding:4px 2px;cursor:pointer;border-radius:4px}
-  .hist-more:hover{color:var(--d-text);background:var(--dsw-alias-interactive-bg-hover)}
-  #hist-panel .hist-tools{display:flex;align-items:center;gap:8px;font-family:var(--font-mono);font-size:9px;color:var(--d-muted);flex:0 0 auto}
-  #hist-refresh{margin-left:auto;border:0;background:transparent;color:var(--d-muted);font-family:var(--font-mono);font-size:9px;padding:4px 6px;cursor:pointer;border-radius:4px;white-space:nowrap}
-  #hist-refresh:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--d-text)}
-
-  /* 逐句调整 */
-  .dens-head{display:flex;flex-direction:column;gap:5px;flex:0 0 auto}
-  .dens-tools{display:flex;align-items:center;gap:12px;font-family:var(--font-mono);font-size:9px;color:var(--d-muted);min-width:0}
-  .dens-tools label{display:flex;align-items:center;gap:4px;cursor:pointer;white-space:nowrap}
-  .dens-tools input{accent-color:var(--dsw-alias-brand-primary)}
-  .dens-tools #dens-count{margin-left:auto;color:var(--d-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .dens-selbar{display:flex;flex-direction:column;gap:7px;padding:8px;background:var(--d-panel);border-radius:6px;flex:0 0 auto}
-  .dens-selrow{display:flex;align-items:center;gap:6px;flex-wrap:nowrap;min-width:0}
-  .dens-selrow #dens-sel-count{font-family:var(--font-mono);font-size:10px;color:var(--d-text);white-space:nowrap}
-  .dens-selrow .spacer{flex:1 1 auto}
-  .dens-selrow button{border:0;background:transparent;color:var(--d-secondary);font-family:var(--font-mono);font-size:9px;padding:4px 6px;cursor:pointer;border-radius:4px;white-space:nowrap}
-  .dens-selrow button:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--d-text)}
-  .dens-states{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:2px;padding:2px;background:var(--d-bg);border-radius:6px}
-  .dens-states button{border:0;background:transparent;color:var(--d-secondary);font-family:var(--font-mono);font-size:9px;padding:6px 2px;cursor:pointer;border-radius:5px;white-space:nowrap;transition:background .12s ease,color .12s ease}
-  .dens-states button:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--d-text)}
-  .dens-states button:active{background:var(--dsw-alias-interactive-bg-active)}
-  .dens-states button:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-1px}
-  .dens-bulk{display:flex;align-items:center;gap:6px;flex-wrap:nowrap}
-  .dens-bulk .spacer{flex:1 1 auto}
-  .dens-bulk button{border:0;background:var(--d-chip);color:var(--d-secondary);font-family:var(--font-mono);font-size:9px;padding:5px 8px;cursor:pointer;border-radius:4px;white-space:nowrap}
-  .dens-bulk button:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--d-text)}
-  .dens-bulk button:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
-  .dens-body{flex:1 1 auto;min-height:150px;overflow:auto;background:var(--d-panel);border-radius:6px;padding:2px;scrollbar-width:thin;scrollbar-color:var(--dsw-alias-scrollbar-bg-l1) transparent}
-  .dline{display:grid;grid-template-columns:54px minmax(0,1fr) auto;gap:8px;align-items:start;padding:7px 8px;cursor:pointer;user-select:none;border-left:2px solid transparent;border-radius:4px}
-  .dline + .dline{margin-top:1px}
-  .dline:hover{background:var(--dsw-alias-interactive-bg-hover)}
-  .dline.sel{border-left-color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-bg-multi-select)}
-  .dline.sel:hover{background:var(--dsw-alias-bg-multi-select)}
-  .dline.now{background:var(--dsw-alias-bg-document-selection)}
-  .dline.now.sel{background:var(--dsw-alias-bg-multi-select)}
-  .dline .lt{font-family:var(--font-mono);font-size:9px;color:var(--d-muted);padding-top:3px;white-space:nowrap}
-  .dline .lx{font-size:12px;line-height:1.55;color:var(--d-text);overflow-wrap:anywhere}
-  .dline .lx .note{display:block;font-size:9px;color:var(--d-muted);font-style:italic}
-  .dline.quiet .lx{color:var(--d-secondary)}
-  .dline .chip{justify-self:end;font-family:var(--font-mono);font-size:9px;border:1px solid var(--d-border);border-radius:99px;padding:2px 6px;white-space:nowrap;background:var(--d-chip);color:var(--d-text);cursor:pointer;transition:background .12s ease,color .12s ease}
-  .dline .chip:hover{background:var(--dsw-alias-interactive-bg-hover)}
-  .dline .chip:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
-  .dline[data-s="off"] .chip{border-style:dashed;color:var(--dsw-static-red-600);background:transparent}
-  .dline[data-s="light"] .chip{background:var(--d-mid-bg);color:var(--d-mid-fg);font-weight:700}
-  .dline[data-s="full"] .chip{background:var(--d-strong-bg);color:var(--d-strong-fg);font-weight:700;border-color:transparent}
-  .dens-foot{display:flex;flex-direction:column;gap:6px;flex:0 0 auto}
-  .dens-sel{font-family:var(--font-mono);font-size:9px;color:var(--d-muted);min-height:13px;line-height:1.5}
-  .dens-batch{display:flex;align-items:center;gap:6px;flex-wrap:nowrap;min-width:0}
-  .dens-batch #dens-note{flex:1 1 auto;min-width:0;background:var(--d-bg);border:1px solid var(--d-border);color:var(--d-text);font-size:10px;padding:5px 7px;border-radius:4px;outline:none}
-  .dens-batch #dens-note:focus{border-color:var(--dsw-alias-brand-primary)}
-  .dens-batch #dens-submit{flex:0 0 auto;border:0;background:var(--dsw-alias-button-primary-fill);color:var(--dsw-alias-label-primary-inverted);font-family:var(--font-mono);font-size:10px;letter-spacing:.06em;padding:7px 10px;cursor:pointer;border-radius:5px;white-space:nowrap;transition:background .12s ease}
-  .dens-batch #dens-submit:hover{background:var(--dsw-alias-button-primary-hover)}
-  .dens-batch #dens-submit:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
-  .dens-batch #dens-submit:disabled{opacity:.4;cursor:default}
-  #dens-status{font-family:var(--font-mono);font-size:9px;line-height:1.6;color:var(--d-muted);min-height:18px}
-  #dens-status.err{color:var(--dsw-alias-state-error-primary)}
-  #dens-status.ok{color:var(--dsw-alias-state-success-primary)}
-
-  body.density-on #beat-feedback-dock{flex:1 1 auto;min-height:150px;display:flex;flex-direction:column;padding:6px 2px 0;min-width:0}
-  body.density-on #beat-feedback-dock #fb-panel{display:flex;flex-direction:column;gap:6px;min-height:0;flex:1 1 auto;overflow:hidden}
-  body.density-on #beat-feedback-dock #vfb-kind,
-  body.density-on #beat-feedback-dock .vfb-history{display:none !important}
-  body.density-on #beat-feedback-dock #vfb-text{flex:1 1 auto;min-height:56px;max-height:none;overflow:auto;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1)}
-  body.density-on #beat-feedback-dock .vfb-head{flex:0 0 auto}
-  body.density-on #beat-feedback-dock .vfb-actions{flex:0 0 auto}
-  body.density-on #split-handle{width:10px;cursor:col-resize;position:relative;align-self:stretch;touch-action:none;z-index:3;background:var(--dsw-alias-bg-base)}
-  body.density-on #split-handle::after{content:"";position:absolute;left:4px;top:12%;bottom:12%;width:2px;border-radius:2px;background:var(--dsw-alias-border-l3);opacity:.9;transition:opacity .12s ease,background .12s ease}
-  body.density-on #split-handle::before{content:"";position:absolute;left:3px;top:50%;width:4px;height:52px;transform:translateY(-50%);border-radius:3px;background:repeating-linear-gradient(to bottom,var(--dsw-alias-label-tertiary) 0 2px,transparent 2px 8px);opacity:.85}
-  body.density-on #split-handle:hover::after,body.density-on.col-resizing #split-handle::after{opacity:1;background:var(--dsw-alias-brand-primary)}
-  body.density-on.col-resizing{cursor:col-resize;user-select:none}
-  #preview-fallback{position:absolute;left:12px;right:12px;bottom:12px;padding:10px 12px;background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary);border-radius:6px;font-family:var(--font-sans);font-size:11px;line-height:1.6;display:flex;flex-direction:column;gap:6px;z-index:5}
-  #preview-fallback .pf-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
-  #preview-fallback button{border:1px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-primary);font-family:var(--font-mono);font-size:9px;padding:4px 7px;cursor:pointer;border-radius:3px}
-
-  @media (max-width: 980px){
-    body.density-on{height:auto;overflow-x:hidden;overflow-y:auto}
-    body.density-on .layout{grid-template-columns:1fr !important;height:auto;min-height:calc(100vh - 46px);overflow:visible}
-    body.density-on #split-handle{display:none}
-    body.density-on #feedback-panel{min-height:58vh;padding:8px 0 0}
-    body.density-on .player-box{width:min(100%,calc((100vh - 230px) * 16 / 9));max-height:none}
-  }
-</style>
-<script>
-(function () {
-  "use strict";
-  const RD = window.__REVIEW_DATA__ || {};
-  const D = RD.density || {};
-  if (!D.enabled || !Array.isArray(D.beats)) return;
-  document.body.classList.add("density-on");
-  const layout = document.querySelector(".layout");
-  const center = document.querySelector(".center-stage");
-  const playerBox = document.querySelector(".player-box");
-  if (!layout || !center || !playerBox) return;
-
-  const DRAFT_REL = "review/review-draft.json";
-  const SUBMISSIONS_REL = "review/review-submissions.json";
-  const MAX_BEAT_HISTORY = 12;
-  const MAX_TAB_HISTORY = 40;
-
-  // 视频下方：横向 Beat 编号分段控件（只在视频宽度内）
-  const switcher = document.createElement("div");
-  switcher.id = "beat-switcher";
-  switcher.setAttribute("role", "tablist");
-  switcher.setAttribute("aria-label", "段落切换");
-  playerBox.after(switcher);
-
-  // 右侧：整栏反馈
-  const feedback = document.createElement("aside");
-  feedback.id = "feedback-panel";
-  feedback.innerHTML = `
-    <div class="fp-tabs" role="tablist" aria-label="反馈区域">
-      <button type="button" role="tab" data-fp="line" class="active" aria-selected="true">逐句</button>
-      <button type="button" role="tab" data-fp="hist" aria-selected="false">历史</button>
-    </div>
-    <div class="fp-body">
-      <div class="fp-panel" id="fb-panel" role="tabpanel">
-        <div class="vfb-head">
-          <div>
-            <div class="fbh" id="vfb-head">本段</div>
-            <div class="fbs" id="vfb-sub">—</div>
-          </div>
-          <span id="vfb-state" class="save-pill" data-state="idle" aria-live="polite">未填</span>
-        </div>
-        <select id="vfb-kind" aria-label="类型">
-          <option value="visual">画面与版式</option>
-          <option value="animation">动画与镜头</option>
-          <option value="timing">节奏与卡点</option>
-          <option value="copy">文字</option>
-          <option value="asset">素材</option>
-        </select>
-        <textarea id="vfb-text" aria-label="本段意见" placeholder="写下本段修改意见"></textarea>
-        <div class="vfb-actions">
-          <button type="button" id="vfb-save">保存</button>
-          <div id="vfb-status" aria-live="polite"></div>
-        </div>
-        <div class="vfb-history" id="vfb-history" data-open="true">
-          <div class="vfb-hist-head">
-            <button type="button" id="vfb-hist-toggle" aria-expanded="true" aria-controls="vfb-hist-list">
-              <span class="caret" aria-hidden="true">▾</span><span>最近</span><span class="hist-count" id="vfb-hist-count">—</span>
-            </button>
-            <button type="button" id="vfb-hist-refresh">刷新</button>
-          </div>
-          <div class="hist-list" id="vfb-hist-list" role="log" aria-live="polite">
-            <div class="hist-empty">暂无记录</div>
-          </div>
-        </div>
-      </div>
-      <div class="fp-panel" id="density-panel" role="tabpanel" hidden>
-        <div class="dens-head">
-          <div class="dens-tools">
-            <label><input type="checkbox" id="dens-follow" checked> 跟随</label>
-            <label><input type="checkbox" id="dens-only"> 仅已改</label>
-            <span id="dens-count">—</span>
-          </div>
-        </div>
-        <div class="dens-selbar">
-          <div class="dens-selrow">
-            <span id="dens-sel-count">已选 0 句</span>
-            <span class="spacer"></span>
-            <button type="button" id="dens-sel-all">全选</button>
-            <button type="button" id="dens-sel-clear">清除</button>
-          </div>
-          <div class="dens-states" role="group" aria-label="画面密度">
-            <button type="button" data-set="auto">自动</button>
-            <button type="button" data-set="off">无画面</button>
-            <button type="button" data-set="still">仅配图</button>
-            <button type="button" data-set="light">轻动效</button>
-            <button type="button" data-set="full">完整动效</button>
-          </div>
-          <div class="dens-bulk">
-            <span class="spacer"></span>
-            <button type="button" id="dens-beat-all">整段</button>
-            <button type="button" id="dens-undo">撤销</button>
-          </div>
-        </div>
-        <div class="dens-body" id="dens-body"></div>
-        <div class="dens-foot">
-          <div class="dens-sel" id="dens-sel"></div>
-          <div class="dens-batch">
-            <input id="dens-note" placeholder="备注" />
-            <button type="button" id="dens-submit">提交</button>
-          </div>
-          <div id="dens-status" aria-live="polite"></div>
-        </div>
-      </div>
-      <div class="fp-panel" id="hist-panel" role="tabpanel" hidden>
-        <div class="fbs" id="hist-head">历史</div>
-        <div class="hist-tools"><span id="hist-count">—</span><button type="button" id="hist-refresh">刷新</button></div>
-        <div class="hist-list" id="hist-list" role="log" aria-live="polite"><div class="hist-empty">暂无记录</div></div>
-      </div>
-    </div>`;
-  layout.appendChild(feedback);
-  const handle = document.createElement("div");
-  handle.id = "split-handle";
-  handle.title = "拖动调整预览与反馈宽度";
-  layout.insertBefore(handle, feedback);
-
-  const dock = document.createElement("section");
-  dock.id = "beat-feedback-dock";
-  const transport = document.querySelector(".global-transport-bar");
-  if (transport) transport.after(dock); else center.appendChild(dock);
-  dock.appendChild(document.getElementById("fb-panel"));
-
-  (function initSplit() {
-    let dragging = false;
-    const clamp = (x) => Math.max(680, Math.min(x, layout.clientWidth - 390));
-    handle.addEventListener("pointerdown", (e) => {
-      dragging = true;
-      document.body.classList.add("col-resizing");
-      try { handle.setPointerCapture(e.pointerId); } catch (err) {}
-      e.preventDefault();
-    });
-    window.addEventListener("pointermove", (e) => {
-      if (!dragging) return;
-      const left = clamp(e.clientX - layout.getBoundingClientRect().left);
-      layout.style.gridTemplateColumns = left + "px 10px minmax(380px,1fr)";
-    });
-    window.addEventListener("pointerup", () => {
-      dragging = false;
-      document.body.classList.remove("col-resizing");
-    });
-    window.addEventListener("resize", () => {
-      if (!layout.style.gridTemplateColumns) return;
-      const first = parseFloat(layout.style.gridTemplateColumns) || 900;
-      const left = clamp(first);
-      layout.style.gridTemplateColumns = left + "px 10px minmax(380px,1fr)";
-    });
-  })();
-
-  const STATES = ["auto", "off", "still", "light", "full"];
-  const LABEL = { auto: "自动", off: "无画面", still: "仅配图", light: "轻动效", full: "完整动效" };
-  const TYPE_LABEL = { visual: "画面与版式", animation: "动画与镜头", timing: "节奏与卡点", copy: "文字", asset: "素材" };
-  const STATE_CYCLE = "点击切换：自动 → 无画面 → 仅配图 → 轻动效 → 完整动效";
-  const state = D.beats.map(b => ({ id: b.id, title: b.title, startMs: b.startMs, endMs: b.endMs,
-    lines: (b.lines || []).map(l => ({ ...l })) }));
-  let current = 0, follow = true, onlyChanged = false;
-  let selected = new Set(), anchor = null, dragging = false, undo = null;
-  let shiftDown = false, metaDown = false;
-  let review = window.__vcReview || null;
-
-  const body = document.getElementById("dens-body");
-  const status = document.getElementById("dens-status");
-  const note = document.getElementById("dens-note");
-  const vfbText = document.getElementById("vfb-text");
-  const vfbKind = document.getElementById("vfb-kind");
-  const vfbStatus = document.getElementById("vfb-status");
-  const vfbPill = document.getElementById("vfb-state");
-  const vfbHistory = document.getElementById("vfb-history");
-  const vfbHistToggle = document.getElementById("vfb-hist-toggle");
-  const vfbHistList = document.getElementById("vfb-hist-list");
-  const vfbHistCount = document.getElementById("vfb-hist-count");
-  const histList = document.getElementById("hist-list");
-  const histCount = document.getElementById("hist-count");
-
-  let historyOpen = true;
-  let historySeq = 0;
-  const historyCache = new Map();   // beatId -> { entries, at }
-  const beatDrafts = new Map();     // beatId -> { text, kind }，只存未保存的内容
-  const savedBeats = new Set();     // 本次会话里保存过的 beat
-  const feedbackBeats = new Set();  // 已有历史反馈 / 待收件反馈的 beat
-  let draftTimer = null;
-  let draftChain = Promise.resolve();
-  let draftWritable = true;
-  let draftPatched = false;
-  let draftDirty = false;
-
-  const PILL_TEXT = { idle: "未填写", dirty: "未保存", saving: "保存中", saved: "已保存", error: "保存失败" };
-
-  const setStatus = (t, k) => { status.textContent = t; status.className = k || ""; };
-  function setVfbStatus(t, k) { vfbStatus.textContent = t; vfbStatus.className = k || ""; }
-  function setPill(kind, text) {
-    vfbPill.dataset.state = kind;
-    vfbPill.textContent = text || PILL_TEXT[kind] || "";
-  }
-  const flat = () => state.flatMap(b => b.lines.map(l => ({ beat: b, line: l })));
-  const lineById = id => flat().find(o => o.line.id === id);
-  const labelOf = l => l.state === "auto" ? ("自动·" + LABEL[l.proposal]) : LABEL[l.state];
-  const fmt = ms => { const s = Math.max(0, ms) / 1000; return String(Math.floor(s / 60)).padStart(2, "0") + ":" + (s % 60).toFixed(1).padStart(4, "0"); };
-  const fmtShort = ms => { const s = Math.max(0, ms) / 1000; return String(Math.floor(s / 60)) + ":" + String(Math.floor(s % 60)).padStart(2, "0"); };
-  const firstStep = beatId => {
-    const ch = (RD.timeline?.chapters || []).find(c => c.id === beatId);
-    return ch && ch.steps && ch.steps[0] ? ch.steps[0].id : null;
-  };
-  const clampBeat = i => Math.max(0, Math.min(state.length - 1, i));
-
-  function tab(which) {
-    feedback.querySelectorAll("[data-fp]").forEach(b => {
-      const on = b.dataset.fp === which;
-      b.classList.toggle("active", on);
-      b.setAttribute("aria-selected", String(on));
-    });
-    document.getElementById("density-panel").hidden = which !== "line";
-    document.getElementById("hist-panel").hidden = which !== "hist";
-    if (which === "hist") loadHistory();
-  }
-  feedback.querySelector(".fp-tabs").addEventListener("click", e => { const b = e.target.closest("[data-fp]"); if (b) tab(b.dataset.fp); });
-
-  function beatHasFeedback(id) { return feedbackBeats.has(id); }
-
-  function renderSwitch() {
-    switcher.innerHTML = "";
-    state.forEach((b, i) => {
-      const changed = b.lines.filter(l => l.state !== "auto").length;
-      const hasFb = beatHasFeedback(b.id);
-      const el = document.createElement("button");
-      el.type = "button";
-      el.className = "bs-tab" + (i === current ? " active" : "") + (changed ? " changed" : "") + (hasFb ? " has-fb" : "");
-      el.dataset.beat = b.id;
-      el.setAttribute("role", "tab");
-      el.setAttribute("aria-selected", String(i === current));
-      el.title = [b.id, b.title || "", changed ? "已改 " + changed + " 句" : "未改动", hasFb ? "有历史反馈" : ""]
-        .filter(Boolean).join(" · ");
-      const id = document.createElement("span");
-      id.className = "bs-id";
-      id.textContent = b.id.replace(/^beat-/, "B");
-      const meta = document.createElement("span");
-      meta.className = "bs-meta";
-      meta.textContent = changed ? ("改 " + changed) : (hasFb ? "有反馈" : "原始");
-      el.appendChild(id);
-      el.appendChild(meta);
-      if (changed || hasFb) {
-        const dots = document.createElement("span");
-        dots.className = "bs-dots";
-        if (changed) { const d = document.createElement("i"); d.className = "chg"; dots.appendChild(d); }
-        if (hasFb) { const d = document.createElement("i"); d.className = "fb"; dots.appendChild(d); }
-        el.appendChild(dots);
-      }
-      el.addEventListener("click", () => selectBeat(i));
-      switcher.appendChild(el);
-    });
-  }
-
-  function seekBeat() {
-    const stepId = firstStep(state[current].id);
-    if (!stepId) return;
-    const step = [...document.querySelectorAll(".step")].find(el => el.dataset.stepId === stepId);
-    if (step) step.click();
-  }
-
-  function activateBeat(i, { fromFollow = false } = {}) {
-    const next = clampBeat(i);
-    if (next === current) return false;
-    flushBeatDraft();
-    current = next;
-    selected.clear(); anchor = null; undo = null;
-    syncBeatFeedback();
-    render();
-    if (!fromFollow) {
-      follow = false;
-      const f = document.getElementById("dens-follow");
-      if (f) f.checked = false;
-    }
-    refreshHistoryForBeat();
-    return true;
-  }
-
-  function selectBeat(i) {
-    activateBeat(i);
-    seekBeat();
-  }
-
-  function render() {
-    renderSwitch();
-    renderRows();
-    renderSelection();
-    const changedAll = flat().filter(o => o.line.state !== "auto").length;
-    document.getElementById("dens-count").textContent = flat().length + " 行 · 已改 " + changedAll;
-    renderFbHead();
-  }
-
-  function renderRows() {
-    const beat = state[current];
-    const rows = beat.lines.filter(l => !onlyChanged || l.state !== "auto" || l.note);
-    body.innerHTML = "";
-    rows.forEach(line => {
-      const idx = beat.lines.indexOf(line);
-      const row = document.createElement("div");
-      row.className = "dline" + (selected.has(line.id) ? " sel" : "") + (line.state === "off" ? " quiet" : "");
-      row.dataset.id = line.id; row.dataset.s = line.state; row.dataset.idx = idx;
-      const t = document.createElement("span"); t.className = "lt"; t.textContent = fmt(line.startMs);
-      const x = document.createElement("span"); x.className = "lx"; x.textContent = line.text || "（无字）";
-      if (line.note) { const n = document.createElement("span"); n.className = "note"; n.textContent = line.note; x.appendChild(n); }
-      const chip = document.createElement("button"); chip.type = "button"; chip.className = "chip"; chip.textContent = labelOf(line);
-      chip.title = STATE_CYCLE;
-      chip.addEventListener("mousedown", e => e.stopPropagation());
-      chip.addEventListener("click", e => { e.stopPropagation(); cycle(line); });
-      row.appendChild(t); row.appendChild(x); row.appendChild(chip);
-      row.addEventListener("mousedown", e => {
-        if (e.button !== 0) return;
-        e.preventDefault();
-        if ((e.shiftKey || shiftDown) && anchor != null) selectRange(anchor, idx);
-        else if (e.metaKey || e.ctrlKey || metaDown) { toggle(line.id); anchor = idx; }
-        else { selected = new Set([line.id]); anchor = idx; dragging = true; renderSelection(); }
-        seekTo(line.startMs);
-      });
-      row.addEventListener("mouseenter", () => { if (dragging && anchor != null) selectRange(anchor, idx); });
-      body.appendChild(row);
-    });
-    if (!rows.length) body.innerHTML = '<div class="hist-empty">暂无条目</div>';
-  }
-
-  function renderSelection() {
-    const n = selected.size;
-    const el = document.getElementById("dens-sel");
-    document.getElementById("dens-sel-count").textContent = "已选 " + n + " 句";
-    if (!n) { el.textContent = ""; note.value = ""; note.disabled = true; return; }
-    const ids = [...selected]; const first = lineById(ids[0]), last = lineById(ids[ids.length - 1]);
-    el.textContent = fmtShort(first ? first.line.startMs : 0) + "–" + fmtShort(last ? last.line.endMs : 0);
-    note.disabled = n !== 1;
-    note.value = n === 1 && first ? (first.line.note || "") : "";
-    body.querySelectorAll(".dline").forEach(row => row.classList.toggle("sel", selected.has(row.dataset.id)));
-  }
-
-  function selectRange(a, b) {
-    const beat = state[current]; const [lo, hi] = a < b ? [a, b] : [b, a];
-    for (let i = lo; i <= hi; i++) if (beat.lines[i]) selected.add(beat.lines[i].id);
-    renderSelection();
-  }
-  function toggle(id) { if (selected.has(id)) selected.delete(id); else selected.add(id); renderSelection(); }
-  function cycle(line) {
-    const i = STATES.indexOf(line.state);
-    line.state = STATES[(i + 1) % STATES.length];
-    selected = new Set([line.id]); anchor = state[current].lines.indexOf(line);
-    render();
-  }
-  function applyTo(targets, s) {
-    if (!targets.length) { setStatus("请先选择", "err"); return; }
-    undo = targets.map(l => ({ id: l.id, state: l.state }));
-    targets.forEach(l => { l.state = s; });
-    setStatus("已设为「" + LABEL[s] + "」", "ok");
-    render();
-  }
-  feedback.querySelectorAll(".dens-selbar [data-set]").forEach(btn => {
-    btn.addEventListener("click", () => applyTo([...selected].map(lineById).filter(Boolean).map(o => o.line), btn.dataset.set));
-  });
-  document.getElementById("dens-sel-all").addEventListener("click", () => { state[current].lines.forEach(l => selected.add(l.id)); renderSelection(); });
-  document.getElementById("dens-sel-clear").addEventListener("click", () => { selected.clear(); renderSelection(); });
-  document.getElementById("dens-beat-all").addEventListener("click", () => applyTo(state[current].lines, "off"));
-  document.getElementById("dens-undo").addEventListener("click", () => {
-    if (!undo) { setStatus("没有可撤销的批量。", "err"); return; }
-    undo.forEach(u => { const hit = lineById(u.id); if (hit) hit.line.state = u.state; });
-    undo = null; setStatus("已撤销上一次批量。", "ok"); render();
-  });
-  note.addEventListener("input", () => {
-    if (selected.size !== 1) return;
-    const hit = lineById([...selected][0]); if (hit) hit.line.note = note.value;
-  });
-  document.getElementById("dens-follow").addEventListener("change", e => { follow = e.target.checked; if (follow) tick(); });
-  document.getElementById("dens-only").addEventListener("change", e => { onlyChanged = e.target.checked; renderRows(); renderSelection(); });
-
-  function activeEl() {
-    const live = document.getElementById("live-stage-frame");
-    if (live && live.ready) return live;
-    const comp = document.getElementById("composite-video-player");
-    if (comp && comp.getAttribute("src") && !comp.closest("[hidden]")) return comp;
-    const spk = document.getElementById("stage-speaker-video");
-    if (spk && spk.getAttribute("src") && !spk.hidden) return spk;
-    return live || comp || spk || null;
-  }
-  function playerMs() { const p = activeEl(); if (!p) return 0; const t = Number(p.currentTime); return Number.isFinite(t) ? t * 1000 : 0; }
-  function seekTo(ms) { const p = activeEl(); if (!p) return; try { if (typeof p.seek === "function") p.seek(ms / 1000); else p.currentTime = ms / 1000; } catch (e) {} }
-  function tick() {
-    const t = playerMs();
-    if (follow) {
-      const i = state.findIndex(b => t >= b.startMs && t < b.endMs);
-      if (i >= 0 && i !== current) activateBeat(i, { fromFollow: true });
-    }
-    const beat = state[current]; if (!beat) return;
-    const row = body.querySelector(".dline.now"); if (row) row.classList.remove("now");
-    const cur = beat.lines.find(l => t >= l.startMs && t < l.endMs);
-    if (cur) { const el = body.querySelector('.dline[data-id="' + cur.id + '"]'); if (el) el.classList.add("now"); }
-  }
-
-  function renderFbHead() {
-    const beat = state[current];
-    const changed = beat.lines.filter(l => l.state !== "auto").length;
-    document.getElementById("vfb-head").textContent = "本段 · " + beat.id;
-    document.getElementById("vfb-sub").textContent = beat.title + " · " + fmtShort(beat.startMs) + "–" + fmtShort(beat.endMs)
-      + " · " + beat.lines.length + " 句 / 已改 " + changed;
-  }
-
-  async function ensureReview() {
-    if (review) { decorateDraft(review); return review; }
-    // Do NOT open a second ReviewBridge connection: the page's main init owns
-    // the bridge and must finish it before it attaches the live player. A
-    // second connect from this panel can starve the main init in the sidebar,
-    // leaving srcdoc empty and the player never ready.
-    for (let i = 0; i < 75; i += 1) {
-      if (window.__vcReview) { review = window.__vcReview; decorateDraft(review); return review; }
-      await new Promise((resolve) => setTimeout(resolve, 200));
-    }
-    throw new Error("审阅桥尚未连接（主页面还没拿到宿主）");
-  }
-
-  /* ---- 整 beat 反馈：状态、草稿与历史 ---- */
-
-  function syncBeatFeedback() {
-    const beat = state[current];
-    const draft = beatDrafts.get(beat.id);
-    vfbText.value = draft ? draft.text : "";
-    vfbKind.value = draft ? (draft.kind || "visual") : "visual";
-    vfbText.placeholder = "这个 beat（" + beat.id + "）整体哪里不对？只针对这一 beat，不针对某一屏。";
-    if (draft && draft.text.trim()) {
-      setPill("dirty");
-      setVfbStatus("草稿已恢复 · 尚未保存", "dirty");
-    } else if (savedBeats.has(beat.id)) {
-      setPill("saved");
-      setVfbStatus("已保存；模型收件后会处理。", "ok");
-    } else {
-      setPill("idle");
-      setVfbStatus("提交后会进 feedback/" + beat.id + ".jsonl，并唤醒模型。");
-    }
-  }
-
-  function draftSnapshot() {
-    const out = {};
-    const stamp = new Date().toISOString();
-    beatDrafts.forEach((value, id) => {
-      if (value && typeof value.text === "string" && value.text.trim()) {
-        out[id] = { text: value.text, kind: value.kind || "visual", savedAt: stamp };
-      }
-    });
-    return out;
-  }
-
-  function decorateDraft(r) {
-    if (draftPatched || !r || typeof r.draft !== "function") return;
-    const original = r.draft;
-    try {
-      r.draft = function (payload) {
-        let next = payload;
-        if (next && typeof next === "object" && !Array.isArray(next)) {
-          next = Object.assign({}, next);
-          const prev = (next.density && typeof next.density === "object" && !Array.isArray(next.density)) ? next.density : {};
-          next.density = Object.assign({}, prev, {
-            mode: "recompose",
-            updatedAt: new Date().toISOString(),
-            beatFeedback: draftSnapshot(),
-          });
-        }
-        return original.call(r, next);
-      };
-      draftPatched = true;
-    } catch (e) { /* 冻结对象就退回显式合并写入 */ }
-  }
-
-  function persistDraft() {
-    const run = async () => {
-      if (!draftWritable || !draftDirty) return;
-      const signature = draftSignature();
-      try {
-        const r = await ensureReview();
-        if (typeof r.draft !== "function") return;
-        let base = {};
-        try {
-          const text = await r.readText(DRAFT_REL, { optional: true });
-          if (text) {
-            const parsed = JSON.parse(text);
-            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) base = parsed;
-          }
-        } catch (e) {}
-        base.density = {
-          mode: "recompose",
-          updatedAt: new Date().toISOString(),
-          beatFeedback: draftSnapshot(),
-        };
-        await r.draft(base);
-        if (signature === draftSignature()) draftDirty = false;
-      } catch (error) {
-        const message = error && error.message ? error.message : String(error);
-        if (/draft 能力|capabilit|not declared/i.test(message)) draftWritable = false;
-      }
-    };
-    draftChain = draftChain.then(run, run);
-    return draftChain;
-  }
-
-  function scheduleDraftPersist(delay = 600) {
-    if (draftTimer) clearTimeout(draftTimer);
-    draftTimer = setTimeout(() => { draftTimer = null; persistDraft(); }, delay);
-  }
-
-  function captureBeatDraft() {
-    const beat = state[current];
-    const text = vfbText.value;
-    if (text.trim()) {
-      beatDrafts.set(beat.id, { text, kind: vfbKind.value });
-      savedBeats.delete(beat.id);
-    } else {
-      beatDrafts.delete(beat.id);
-    }
-  }
-
-  function draftSignature() {
-    return JSON.stringify([...beatDrafts.entries()].map(([id, value]) => [id, value.text, value.kind]).sort());
-  }
-
-  function flushBeatDraft() {
-    const before = draftSignature();
-    captureBeatDraft();
-    const after = draftSignature();
-    if (draftTimer) { clearTimeout(draftTimer); draftTimer = null; }
-    if (draftDirty || after !== before) persistDraft();
-  }
-
-  async function restoreBeatDrafts() {
-    try {
-      const r = await ensureReview();
-      let draft = null;
-      try { const text = await r.readText(DRAFT_REL, { optional: true }); if (text) draft = JSON.parse(text); } catch (e) { return; }
-      const stored = draft && draft.density && draft.density.beatFeedback;
-      if (!stored || typeof stored !== "object") return;
-      Object.keys(stored).forEach(id => {
-        const value = stored[id];
-        if (!value || typeof value.text !== "string" || !value.text.trim()) return;
-        if (!state.some(b => b.id === id)) return;
-        beatDrafts.set(id, { text: value.text, kind: value.kind || "visual" });
-      });
-      if (!vfbText.value.trim()) syncBeatFeedback();
-    } catch (e) {}
-  }
-
-  vfbText.addEventListener("focus", () => {
-    // 正在写这一 beat 的意见时别让播放头把表单切走；要给别的 beat 写再手动开「跟随播放」。
-    if (follow) {
-      follow = false;
-      const f = document.getElementById("dens-follow");
-      if (f) f.checked = false;
-    }
-  });
-  vfbText.addEventListener("input", () => {
-    const beat = state[current];
-    const text = vfbText.value;
-    if (text.trim()) {
-      beatDrafts.set(beat.id, { text, kind: vfbKind.value });
-      savedBeats.delete(beat.id);
-      setPill("dirty");
-      setVfbStatus("未保存 · 正在存草稿", "dirty");
-    } else {
-      beatDrafts.delete(beat.id);
-      setPill(savedBeats.has(beat.id) ? "saved" : "idle");
-      setVfbStatus(savedBeats.has(beat.id) ? "已保存；模型收件后会处理。" : "先写一点这个 beat 的反馈。", savedBeats.has(beat.id) ? "ok" : "");
-    }
-    draftDirty = true;
-    scheduleDraftPersist();
-  });
-  vfbKind.addEventListener("change", () => {
-    const beat = state[current];
-    const draft = beatDrafts.get(beat.id);
-    if (draft) { draft.kind = vfbKind.value; draftDirty = true; scheduleDraftPersist(); }
-  });
-
-  async function loadLast() {
-    try {
-      const r = await ensureReview();
-      const text = await r.readText(SUBMISSIONS_REL, { optional: true });
-      if (!text) return;
-      const doc = JSON.parse(text); const recs = Array.isArray(doc.records) ? doc.records : [];
-      const last = [...recs].reverse().find(x => x && x.phase === "density");
-      if (!last || !Array.isArray(last.lines)) return;
-      const by = new Map(last.lines.map(l => [l.id, l]));
-      flat().forEach(o => { const hit = by.get(o.line.id); if (hit && STATES.includes(hit.state)) { o.line.state = hit.state; if (typeof hit.note === "string") o.line.note = hit.note; } });
-      render();
-    } catch (e) {}
-  }
-
-  async function submit() {
-    const btn = document.getElementById("dens-submit"); btn.disabled = true;
-    setStatus("正在写入提交…");
-    try {
-      const r = await ensureReview();
-      let doc = { contract_version: "video-craft-review-submissions/1.0.0", surface: "video-craft/visual", records: [] };
-      try { const text = await r.readText(SUBMISSIONS_REL, { optional: true }); if (text) doc = JSON.parse(text); } catch (e) {}
-      if (!Array.isArray(doc.records)) doc.records = [];
-      doc.records.push({ phase: "density", kind: "density", createdAt: new Date().toISOString(),
-        snapshot: RD.snapshot || null, buildId: RD.buildId || null, buildMode: "recompose",
-        lines: flat().map(o => ({ id: o.line.id, state: o.line.state, note: o.line.note || "" })) });
-      doc.updated_at = new Date().toISOString();
-      await r.write(doc);
-      setStatus("已写入，正在唤醒模型…", "ok");
-      state.forEach(b => {
-        if (b.lines.some(l => l.state !== "auto" || l.note)) feedbackBeats.add(b.id);
-      });
-      renderSwitch();
-      try {
-        await r.wake({ unit: "逐字密度", text: "逐字密度已提交（" + flat().length + " 行）。先运行 video-craft/helpers/review_inbox.py <本项目绝对路径> 收件；按 recompose/lines.json 的 state/proposal 只改受影响的视觉段。" });
-        setStatus("已提交并唤醒。", "ok");
-      } catch (error) {
-        setStatus("已提交，但唤醒失败：" + (error && error.message ? error.message : error), "err");
-      }
-      loadHistory({ force: true });
-    } catch (e) { setStatus("提交失败：" + (e && e.message ? e.message : e), "err"); }
-    finally { btn.disabled = false; }
-  }
-  document.getElementById("dens-submit").addEventListener("click", submit);
-
-  async function saveFb() {
-    const text = vfbText.value.trim();
-    if (!text) { setVfbStatus("先写一点这个 beat 的反馈。", "err"); setPill("idle"); vfbText.focus(); return; }
-    const beat = state[current];
-    const btn = document.getElementById("vfb-save");
-    btn.disabled = true;
-    setPill("saving");
-    setVfbStatus("正在保存…", "dirty");
-    try {
-      const r = await ensureReview();
-      let doc = { contract_version: "video-craft-review-submissions/1.0.0", surface: "video-craft/visual", records: [] };
-      try { const t = await r.readText(SUBMISSIONS_REL, { optional: true }); if (t) doc = JSON.parse(t); } catch (e) {}
-      if (!Array.isArray(doc.records)) doc.records = [];
-      const unit = (RD.binding?.units || []).find(u => u.chapterId === beat.id);
-      doc.records.push({ type: vfbKind.value, text, status: "open",
-        createdAt: new Date().toISOString(), snapshot: RD.snapshot || null, buildId: RD.buildId || null,
-        chapterId: beat.id, stepId: firstStep(beat.id), unitId: unit ? unit.unitId : null,
-        playbackTimeMs: Math.round(playerMs()) });
-      doc.updated_at = new Date().toISOString();
-      await r.write(doc);
-
-      beatDrafts.delete(beat.id);
-      savedBeats.add(beat.id);
-      feedbackBeats.add(beat.id);
-      vfbText.value = "";
-      setPill("saved");
-      setVfbStatus("已保存 · 模型收件后会处理。", "ok");
-      draftDirty = true;
-      scheduleDraftPersist(0);
-      renderSwitch();
-      loadHistory({ force: true });
-      try {
-        await r.wake({ unit: beat.id, text: "收到 " + beat.id + " 的整 beat 反馈。运行 video-craft/helpers/review_inbox.py <本项目绝对路径> 收件。" });
-        setVfbStatus("已保存并唤醒模型。", "ok");
-      } catch (error) {
-        setVfbStatus("已保存，但唤醒失败：" + (error && error.message ? error.message : error) + "（记录已写入）", "warn");
-      }
-    } catch (e) {
-      setPill("error");
-      setVfbStatus("保存失败：" + (e && e.message ? e.message : e), "err");
-    } finally { btn.disabled = false; }
-  }
-  document.getElementById("vfb-save").addEventListener("click", saveFb);
-
-  /* ---- 历史反馈：整 beat tab 与历史 tab 共用同一份数据 ---- */
-
-  function densityLinesFor(rec, beat) {
-    if (!rec || !Array.isArray(rec.lines)) return [];
-    const ids = new Set(beat.lines.map(l => l.id));
-    return rec.lines.filter(l => l && ids.has(l.id) && (l.state !== "auto" || l.note));
-  }
-
-  function entryKey(entry) {
-    const rec = entry.rec || {};
-    const lines = (entry.densityLines || []).map(l => l.id + ":" + l.state + ":" + (l.note || "")).join(",");
-    return [rec.createdAt || "", rec.text || "", rec.type || "", lines].join("|");
-  }
-
-  function pushEntry(out, seen, rec, source, pending, densityLines) {
-    if (!rec) return;
-    const entry = { rec, source, pending: !!pending, densityLines: densityLines || [] };
-    const key = entryKey(entry);
-    if (seen.has(key)) return;
-    seen.add(key);
-    out.push(entry);
-  }
-
-  async function collectHistory(beat) {
-    const r = await ensureReview();
-    const out = [];
-    const seen = new Set();
-
-    // 已写入 review-submissions.json、但还没被 review_inbox.py 收件的记录：立即出现在历史里
-    try {
-      const text = await r.readText(SUBMISSIONS_REL, { optional: true });
-      if (text) {
-        const doc = JSON.parse(text);
-        (Array.isArray(doc.records) ? doc.records : []).forEach(rec => {
-          if (!rec) return;
-          if (rec.phase === "density" || rec.kind === "density") {
-            const hits = densityLinesFor(rec, beat);
-            if (hits.length) pushEntry(out, seen, rec, "待收件", true, hits);
-          } else if (rec.chapterId === beat.id || rec.beatId === beat.id) {
-            pushEntry(out, seen, rec, "待收件", true, []);
-          }
-        });
-      }
-    } catch (e) {}
-
-    // 已经收件的整 beat 反馈
-    try {
-      const text = await r.readText("feedback/" + beat.id + ".jsonl", { optional: true });
-      if (text) {
-        text.split(/\r?\n/).forEach(line => {
-          line = line.trim(); if (!line) return;
-          try { pushEntry(out, seen, JSON.parse(line), "已收件", false, []); } catch (e) {}
-        });
-      }
-    } catch (e) {}
-
-    // 已经收件的逐句密度：只取与本 beat 相关的行
-    try {
-      const text = await r.readText("feedback/density.jsonl", { optional: true });
-      if (text) {
-        text.split(/\r?\n/).forEach(line => {
-          line = line.trim(); if (!line) return;
-          try {
-            const rec = JSON.parse(line);
-            const hits = densityLinesFor(rec, beat);
-            if (hits.length) pushEntry(out, seen, rec, "已收件", false, hits);
-          } catch (e) {}
-        });
-      }
-    } catch (e) {}
-
-    out.sort((a, b) => String(b.rec.createdAt || "").localeCompare(String(a.rec.createdAt || "")));
-    return out;
-  }
-
-  function whenText(rec) {
-    return String((rec && rec.createdAt) || "").replace("T", " ").slice(0, 16) || "时间未知";
-  }
-
-  function makeHistItem(entry) {
-    const rec = entry.rec || {};
-    const el = document.createElement("div");
-    el.className = "hist-item" + (entry.pending ? " is-pending" : "");
-    el.title = entry.source || "";
-    const meta = document.createElement("div");
-    meta.className = "hm";
-    const when = document.createElement("span");
-    when.textContent = whenText(rec);
-    const tag = document.createElement("span");
-    tag.className = "tag";
-    tag.textContent = entry.pending ? "待收件" : "已收件";
-    const kind = document.createElement("span");
-    kind.textContent = entry.densityLines.length ? "逐句" : (TYPE_LABEL[rec.type] || rec.type || "本段");
-    meta.appendChild(when);
-    meta.appendChild(tag);
-    meta.appendChild(kind);
-    const bodyEl = document.createElement("div");
-    bodyEl.className = "hx";
-    if (entry.densityLines.length) {
-      const summary = entry.densityLines.slice(0, 4).map(l => l.id + " " + (LABEL[l.state] || l.state)).join(" · ");
-      const tail = entry.densityLines.length > 4 ? " 等 " + entry.densityLines.length + " 句" : "";
-      bodyEl.textContent = "调整 " + entry.densityLines.length + " 句：" + summary + tail;
-      entry.densityLines.forEach(l => {
-        if (!l.note) return;
-        const n = document.createElement("span");
-        n.className = "note";
-        n.textContent = l.id + "：" + l.note;
-        bodyEl.appendChild(n);
-      });
-    } else {
-      bodyEl.textContent = rec.text || "—";
-    }
-    el.appendChild(meta);
-    el.appendChild(bodyEl);
-    return el;
-  }
-
-  function setEmptyState() {
-    vfbHistList.innerHTML = "";
-    histList.innerHTML = "";
-    const a = document.createElement("div"); a.className = "hist-empty"; a.textContent = "暂无记录";
-    const b = document.createElement("div"); b.className = "hist-empty"; b.textContent = "暂无记录";
-    vfbHistList.appendChild(a);
-    histList.appendChild(b);
-    vfbHistCount.textContent = "0 条";
-    histCount.textContent = "0 条";
-  }
-
-  function renderHistoryLists(entries, beat) {
-    vfbHistList.innerHTML = "";
-    histList.innerHTML = "";
-    vfbHistCount.textContent = entries.length + " 条";
-    histCount.textContent = entries.length + " 条";
-    if (!entries.length) { setEmptyState(); return; }
-    entries.slice(0, MAX_BEAT_HISTORY).forEach(entry => vfbHistList.appendChild(makeHistItem(entry)));
-    entries.slice(0, MAX_TAB_HISTORY).forEach(entry => histList.appendChild(makeHistItem(entry)));
-    if (entries.length > MAX_BEAT_HISTORY) {
-      const more = document.createElement("button");
-      more.type = "button";
-      more.className = "hist-more";
-      more.textContent = "在「历史反馈」里看全部 " + entries.length + " 条 →";
-      more.addEventListener("click", () => tab("hist"));
-      vfbHistList.appendChild(more);
-    }
-    if (entries.length) feedbackBeats.add(beat.id);
-  }
-
-  function setHistoryLoading(on) {
-    const a = document.getElementById("vfb-hist-refresh");
-    const b = document.getElementById("hist-refresh");
-    a.disabled = on; b.disabled = on;
-    a.textContent = on ? "读取中…" : "刷新";
-    b.textContent = on ? "读取中…" : "刷新";
-  }
-
-  async function loadHistory({ force = false } = {}) {
-    const beat = state[current];
-    const cached = historyCache.get(beat.id);
-    if (!force && cached && Date.now() - cached.at < 30000) {
-      renderHistoryLists(cached.entries, beat);
-      return;
-    }
-    const seq = ++historySeq;
-    setHistoryLoading(true);
-    try {
-      const entries = await collectHistory(beat);
-      if (seq !== historySeq) return;
-      historyCache.set(beat.id, { entries, at: Date.now() });
-      renderHistoryLists(entries, beat);
-      if (entries.length) { feedbackBeats.add(beat.id); renderSwitch(); }
-    } catch (e) {
-      if (seq !== historySeq) return;
-      vfbHistList.innerHTML = "";
-      histList.innerHTML = "";
-      const msg = "读取失败：" + (e && e.message ? e.message : e);
-      const a = document.createElement("div"); a.className = "hist-empty"; a.textContent = msg;
-      const b = document.createElement("div"); b.className = "hist-empty"; b.textContent = msg;
-      vfbHistList.appendChild(a); histList.appendChild(b);
-      vfbHistCount.textContent = "—";
-      histCount.textContent = "—";
-    } finally {
-      if (seq === historySeq) setHistoryLoading(false);
-    }
-  }
-
-  function refreshHistoryForBeat() {
-    const beat = state[current];
-    const cached = historyCache.get(beat.id);
-    const beatVisible = !document.getElementById("fb-panel").hidden;
-    const histVisible = !document.getElementById("hist-panel").hidden;
-    if (cached) { renderHistoryLists(cached.entries, beat); renderSwitch(); }
-    else if ((beatVisible && historyOpen) || histVisible) loadHistory();
-    else vfbHistCount.textContent = "—";
-  }
-
-  vfbHistToggle.addEventListener("click", () => {
-    historyOpen = !historyOpen;
-    vfbHistory.dataset.open = String(historyOpen);
-    vfbHistToggle.setAttribute("aria-expanded", String(historyOpen));
-    if (historyOpen) loadHistory();
-  });
-  document.getElementById("vfb-hist-refresh").addEventListener("click", () => loadHistory({ force: true }));
-  document.getElementById("hist-refresh").addEventListener("click", () => loadHistory({ force: true }));
-
-  async function loadFeedbackFlags() {
-    try {
-      const r = await ensureReview();
-      // 1) 还没收件的提交：整 beat 反馈带 chapterId，逐句密度要按本 beat 的行筛。
-      try {
-        const text = await r.readText(SUBMISSIONS_REL, { optional: true });
-        if (text) {
-          const doc = JSON.parse(text);
-          (Array.isArray(doc.records) ? doc.records : []).forEach(rec => {
-            if (!rec) return;
-            if (rec.phase === "density" || rec.kind === "density") {
-              state.forEach(b => { if (densityLinesFor(rec, b).length) feedbackBeats.add(b.id); });
-              return;
-            }
-            const id = rec.chapterId || rec.beatId;
-            if (id && state.some(b => b.id === id)) feedbackBeats.add(id);
-          });
-        }
-      } catch (e) {}
-      // 2) 已经收件的历史：逐 beat 文件有内容就点亮，密度日志按行归属到 beat。
-      await Promise.all(state.map(async b => {
-        try {
-          const text = await r.readText("feedback/" + b.id + ".jsonl", { optional: true });
-          if (text && text.trim()) feedbackBeats.add(b.id);
-        } catch (e) {}
-      }));
-      try {
-        const text = await r.readText("feedback/density.jsonl", { optional: true });
-        if (text) {
-          text.split(/\r?\n/).forEach(line => {
-            line = line.trim(); if (!line) return;
-            try {
-              const rec = JSON.parse(line);
-              state.forEach(b => { if (densityLinesFor(rec, b).length) feedbackBeats.add(b.id); });
-            } catch (e) {}
-          });
-        }
-      } catch (e) {}
-      renderSwitch();
-    } catch (e) {}
-  }
-
-  document.addEventListener("mouseup", () => { dragging = false; });
-  document.addEventListener("keydown", e => { if (e.key === "Shift") shiftDown = true; if (e.key === "Meta" || e.key === "Control") metaDown = true; }, true);
-  document.addEventListener("keyup", e => { if (e.key === "Shift") shiftDown = false; if (e.key === "Meta" || e.key === "Control") metaDown = false; }, true);
-  document.addEventListener("keydown", e => {
-    const panel = document.getElementById("density-panel");
-    if (!panel || panel.hidden) return;
-    const tag = (e.target && e.target.tagName || "").toLowerCase();
-    if (tag === "input" || tag === "textarea" || tag === "select") return;
-    const map = { "0": "off", "1": "still", "2": "light", "3": "full", "a": "auto" };
-    if (map[e.key] && selected.size) { applyTo([...selected].map(lineById).filter(Boolean).map(o => o.line), map[e.key]); e.preventDefault(); }
-    else if (e.key === "Escape") { selected.clear(); renderSelection(); }
-  });
-
-  function watchPreview() {
-    setTimeout(() => {
-      const live = document.getElementById("live-stage-frame");
-      const liveMedia = RD.media && RD.media.liveStage;
-      // 没有工程态（例如从成品轨搭建的工程）是正常形态：当前就是成片态，
-      // 不许把它显示成"工程预览没有就绪"的报错。
-      if (!liveMedia || !(liveMedia.url || liveMedia.studioUrl || liveMedia.serverUrl)) return;
-      if (live && live.ready) return;
-      if (window.__vcStageMode !== "live") return;
-      const box = document.querySelector(".player-box");
-      if (!box || document.getElementById("preview-fallback")) return;
-      const el = document.createElement("div");
-      el.id = "preview-fallback";
-      el.innerHTML = '<div class="pf-row"><b>预览暂未就绪</b>'
-        + '<button type="button" id="pf-composite">切换成片</button>'
-        + '<button type="button" id="pf-local">新窗打开</button>'
-        + '<button type="button" id="pf-retry">重试</button></div>';
-      box.appendChild(el);
-      const c = document.getElementById("pf-composite");
-      const l = document.getElementById("pf-local");
-      const r = document.getElementById("pf-retry");
-      if (c) c.addEventListener("click", () => { if (window.__vcSetStageMode) window.__vcSetStageMode("composite"); el.remove(); });
-      if (l) l.addEventListener("click", () => { const live = RD.media && RD.media.liveStage; const url = live && (live.studioUrl || live.serverUrl); if (url) window.open(url, "_blank"); });
-      if (r) r.addEventListener("click", () => location.reload());
-    }, 10000);
-  }
-  watchPreview();
-
-  render();
-  tab("line");
-  setInterval(() => { if (!document.getElementById("density-panel").hidden) tick(); }, 350);
-
-  // 初始化顺序：先把界面画出来，桥连上后再补历史与草稿；任何一步失败都不该让页面停住。
-  restoreBeatDrafts();
-  loadFeedbackFlags();
-  loadLast();
-})();
-</script>
 
 </body>
 </html>

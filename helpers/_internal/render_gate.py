@@ -5,23 +5,25 @@
 渲出了一版 43 秒的成片——因为渲染命令本身不检查任何东西。这个工具把那条规则变成
 一道可执行的闸门：**至少一条人工提交覆盖当前审阅快照**，才打印放行。
 
-判据
-----
+判据（双轨二选一，且均须当前快照无漂移）
+------------------------------------------
 1. `review/review_data.json` 存在，且带 `snapshot`（构建时算的工程指纹）；
 2. `review/review-submissions.json`（surface 声明的那份）或 `feedback/*.jsonl` 里
-   至少有一条记录，其 `snapshot` 等于当前快照；
+   至少有一条覆盖当前快照的记录——可以是浏览器人工提交，也可以是作者在对话中
+   明确指示导出后通过 `--approve-in-chat` 写入的 `chat-approval` 审计记录；
 3. `sourceManifest` 里的文件与快照记录一致 —— 有人看过之后源又改过、却没重建审阅，
-   那条提交就不覆盖"现在这一版"。
+   那条提交或授权就不覆盖"现在这一版"（`--approve-in-chat` 也会直接拒批）。
 
 工程态预览不拦：`--engineering --out <project>/edit/_engineering/xxx.mp4` 放行，
 但输出必须真的落在 `edit/_engineering/` 里，不能拿它渲 `final.mp4`。
 
 用法与退出码
 ------------
-    python3 helpers/render_gate.py <project>
-    python3 helpers/render_gate.py <project> --out <final.mp4>
-    python3 helpers/render_gate.py <project> --engineering --out <edit/_engineering/cut.mp4>
-    python3 helpers/render_gate.py <project> --json
+    python3 helpers/_internal/render_gate.py <project>
+    python3 helpers/_internal/render_gate.py <project> --out <final.mp4>
+    python3 helpers/_internal/render_gate.py <project> --approve-in-chat [--approval-note "..."]
+    python3 helpers/_internal/render_gate.py <project> --engineering --out <edit/_engineering/cut.mp4>
+    python3 helpers/_internal/render_gate.py <project> --json
 
 退出 0 = 放行；1 = 拒绝；2 = 无法判断（缺审阅数据，先 build_review）。
 """
@@ -29,9 +31,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+import tempfile
 from datetime import datetime, timezone
-import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -42,10 +45,13 @@ SUBMISSIONS_REL = "review/review-submissions.json"
 REVIEW_DATA_REL = "review/review_data.json"
 FEEDBACK_DIR = "feedback"
 ENGINEERING_REL = "edit/_engineering"
+SUBMISSIONS_CONTRACT_VERSION = "video-craft-review-submissions/1.0.0"
+SUBMISSIONS_SURFACE = "video-craft/visual"
+DEFAULT_APPROVAL_NOTE = "作者在对话中明确授权导出"
 
 
 def project_root(arg: str) -> Path:
-    """统一实现见 `helpers/_paths.py`（合并地图 M3）。"""
+    """统一实现见 `helpers/_internal/_paths.py`（合并地图 M3）。"""
     from _paths import resolve
     return resolve(arg)[0]
 
@@ -215,11 +221,83 @@ def evaluate(project: Path, out: Path | None, engineering: bool) -> dict:
         report["notes"].append(
             "提交只证明人看过它自己那一版；改过源之后必须重建审阅并重新提交")
     else:
-        report["notes"].append(
-            f"{len(covering)} 条人工提交覆盖当前快照（最近 {_latest(covering)}）")
+        chat_count = sum(
+            1 for r in covering
+            if r.get("kind") == "chat-approval" or r.get("source") == "chat"
+        )
+        if chat_count:
+            report["notes"].append(
+                f"{len(covering)} 条提交/会话授权覆盖当前快照（含 {chat_count} 条会话授权，最近 {_latest(covering)}）")
+        else:
+            report["notes"].append(
+                f"{len(covering)} 条人工提交覆盖当前快照（最近 {_latest(covering)}）")
 
     report["ok"] = not report["reasons"]
     return report
+
+
+def _write_json_atomic(path: Path, doc: dict) -> None:
+    """Write JSON atomically via same-directory temp file + os.replace."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps(doc, ensure_ascii=False, indent=2) + "\n"
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(payload)
+        os.replace(tmp_path, path)
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
+
+
+def record_chat_approval(project: Path, note: str = DEFAULT_APPROVAL_NOTE) -> dict:
+    """Record an explicit in-chat export approval after strict snapshot + drift verification."""
+    project = Path(project)
+    data = read_json(project / REVIEW_DATA_REL)
+    if not isinstance(data, dict) or not str(data.get("snapshot") or "").strip():
+        return evaluate(project, None, False)
+
+    snapshot = str(data.get("snapshot") or "").strip()
+    drift = manifest_drift(project, data.get("sourceManifest"))
+    if drift:
+        report = evaluate(project, None, False)
+        report["notes"].append("未写入会话授权记录：当前源码或素材存在漂移，请先重建审阅快照")
+        return report
+
+    target = submissions_path(project)
+    existing = read_json(target)
+    if target.is_file() and not isinstance(existing, dict):
+        try:
+            raw = target.read_text(encoding="utf-8")
+        except OSError:
+            raw = ""
+        if raw.strip():
+            report = evaluate(project, None, False)
+            report["ok"] = False
+            report["reasons"].append(f"提交记录文件损坏且非空，已拒绝覆盖：{target}")
+            return report
+
+    doc = dict(existing) if isinstance(existing, dict) else {}
+    if not doc.get("contract_version"):
+        doc["contract_version"] = SUBMISSIONS_CONTRACT_VERSION
+    if not doc.get("surface"):
+        doc["surface"] = SUBMISSIONS_SURFACE
+    records = list(doc.get("records")) if isinstance(doc.get("records"), list) else []
+
+    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    records.append({
+        "phase": "approval",
+        "kind": "chat-approval",
+        "source": "chat",
+        "createdAt": now,
+        "snapshot": snapshot,
+        "note": str(note or "").strip() or DEFAULT_APPROVAL_NOTE,
+    })
+    doc["records"] = records
+    doc["updated_at"] = now
+    _write_json_atomic(target, doc)
+    return evaluate(project, None, False)
 
 
 def print_report(report: dict) -> None:
@@ -247,23 +325,38 @@ def print_report(report: dict) -> None:
         print(f"  × {reason}")
     print()
     print("先 build_review 交给人审：")
-    print(f'  python3 "<craft>/helpers/build_review.py" "{report["project"]}" --mode auto')
-    print(f'  python3 "<craft>/helpers/review_surface.py" "{report["project"]}" --surface-only')
+    print(f'  python3 "<craft>/helpers/_internal/build_review.py" "{report["project"]}" --mode auto')
+    print(f'  python3 "<craft>/helpers/_internal/review_surface.py" "{report["project"]}" --surface-only')
     print("人提交之后再重跑本闸门。工程态预览用 --engineering --out edit/_engineering/...")
 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(
-        description="渲染前闸门：至少一条人工提交覆盖当前审阅快照才放行",
+        description="渲染前闸门：覆盖当前审阅快照的人工提交或明确对话授权（且源码零漂移）才放行",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="退出码：0 放行；1 拒绝；2 无法判断（缺审阅数据）。")
+        epilog=(
+            "退出码：0 放行；1 拒绝；2 无法判断（缺审阅数据）。\n\n"
+            "WARNING: --approve-in-chat may ONLY be used when the user has explicitly "
+            "instructed exporting in the active conversation.\n"
+            "红线警告：--approve-in-chat 仅允许在作者当轮对话已明确指示导出成片时传入，"
+            "严禁未获授权时自动注入；且仍强制核验当前审阅快照存在与源码/素材零漂移。"
+        ))
     ap.add_argument("project", help="项目根（也可以是 edit/）")
     ap.add_argument("--out", type=Path, default=None,
                     help="即将渲染的输出路径（工程态必须落在 edit/_engineering/）")
     ap.add_argument("--engineering", action="store_true",
                     help="工程态预览放行开关；必须配 --out 且落在 edit/_engineering/")
+    ap.add_argument("--approve-in-chat", action="store_true",
+                    help="仅在用户于当前对话明确指示导出时使用：核验当前快照与零漂移后写入会话授权审计记录并放行")
+    ap.add_argument("--approval-note", default=None,
+                    help="可选：配合 --approve-in-chat 记录到审计条目的授权原因说明")
     ap.add_argument("--json", action="store_true", help="输出机器可读结果")
     args = ap.parse_args(argv)
+
+    if args.approval_note is not None and not args.approve_in_chat:
+        ap.error("--approval-note 只能配合 --approve-in-chat 使用")
+    if args.approve_in_chat and args.engineering:
+        ap.error("--approve-in-chat 不能与 --engineering 同时使用")
 
     project = project_root(args.project)
     if not project.is_dir():
@@ -272,7 +365,15 @@ def main(argv=None) -> int:
     out = args.out.expanduser() if args.out else None
     if out is not None and not out.is_absolute():
         out = (project / out).resolve()
-    report = evaluate(project, out, args.engineering)
+    if args.approve_in_chat:
+        note = DEFAULT_APPROVAL_NOTE if args.approval_note is None else args.approval_note
+        report = record_chat_approval(project, note)
+        if report["ok"] and out is not None:
+            report = evaluate(project, out, False)
+        elif out is not None and report.get("out") is None:
+            report["out"] = str(out)
+    else:
+        report = evaluate(project, out, args.engineering)
     report["checkedAt"] = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2))

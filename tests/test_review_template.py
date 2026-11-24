@@ -56,6 +56,38 @@ class ReviewTemplateGuardrailTest(unittest.TestCase):
                          f"没有自证的检查：{codes - proofs}；"
                          f"没有对应检查的自证：{proofs - codes}")
 
+    def test_s10_catches_removed_controls_and_engineering_jargon(self):
+        """S10 必须能抓住已下线控件和用户可见工程术语，但不误伤注释。"""
+        codes = {code for code, _t, _fn in check_review_template.CHECKS}
+        self.assertIn("S10", codes)
+        self.assertNotIn("verbatim-iframe-wrap", check_review_template.STAGE_WRAPS)
+
+        clean = check_review_template.DEFAULT_TEMPLATE.read_text(encoding="utf-8")
+        s10 = dict((c, fn) for c, _t, fn in check_review_template.CHECKS)["S10"]
+
+        # 注释里提到不误报
+        with_comment = clean.replace(
+            "</body>",
+            "<!-- #view-verbatim-btn live_stage.py composition -->\n</body>",
+            1,
+        )
+        self.assertEqual(s10(with_comment), [])
+
+        bad_snippets = [
+            '<button type="button" id="view-verbatim-btn">逐字剪辑</button>',
+            '<div id="verbatim-iframe-wrap" hidden></div>',
+            '<div id="density-panel" hidden></div>',
+            '<div id="elem-edit-bar" hidden></div>',
+            '<script>const msg1 = "请先跑 helpers/live_stage.py";</script>',
+            '<script>const msg2 = "运行 edl_review_surface.py";</script>',
+            '<script>const msg3 = "调用 review_open 打开";</script>',
+            '<script>const msg4 = "没有可播的活 composition";</script>',
+        ]
+        for snippet in bad_snippets:
+            with self.subTest(snippet=snippet):
+                mutated = clean.replace("</body>", f"{snippet}\n</body>", 1)
+                self.assertTrue(s10(mutated), f"S10 未拦住回归片段：{snippet}")
+
 
 if __name__ == "__main__":
     unittest.main()

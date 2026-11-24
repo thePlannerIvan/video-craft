@@ -77,7 +77,7 @@ else:
 
 
 def parse_srt(path: Path) -> list[dict]:
-    """统一实现见 `helpers/_timecode.py`（合并地图 M1）；输出 {"s","e","t"} 形状不变。"""
+    """统一实现见 `helpers/_internal/_timecode.py`（合并地图 M1）；输出 {"s","e","t"} 形状不变。"""
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from _timecode import flatten as _flatten, parse_srt_file as _parse_srt_file
     return [{"s": round(cue["startMs"] / 1000, 3),
@@ -232,7 +232,7 @@ coarse_info = {
 if coarse_tokens:
     print(f"[warn] {EDIT.name}: {len(coarse_tokens)} 个 token 超过 1.5s（最长 "
           f"{coarse_info['max_seconds']:.1f}s）—— 这份 transcript 还是句子级，"
-          f"页面只能整句选。先跑 helpers/refine_transcript.py 补词级时间戳再重建。",
+          f"页面只能整句选。先跑 helpers/_internal/refine_transcript.py 补词级时间戳再重建。",
           file=sys.stderr)
 
 HTML = """<!DOCTYPE html>
@@ -805,6 +805,7 @@ HTML = """<!DOCTYPE html>
                style="width:52px;background:var(--bg-card);color:var(--text-primary);border:1px solid var(--border-strong);border-radius:6px;padding:3px 6px;"> s
       </label>
     </div>
+    <div id="save-state" role="status" hidden></div>
     <div id="w-delpanel" hidden></div>
     <div id="w-root"></div>
   </div>
@@ -1677,8 +1678,17 @@ document.getElementById("w-save").onclick = async () => {
   const pageDir = __EDIT_REL__;
   const payload = { words, pauses, restore: restores, fixes: fixArr, dir: pageDir };
   const btn = document.getElementById("w-save");
+  const saveState = document.getElementById("save-state");
+  const showSaveState = (msg, isError = false) => {
+    if (!saveState) return;
+    saveState.textContent = msg;
+    saveState.classList.toggle("err", !!isError);
+    saveState.classList.toggle("ok", !isError);
+    saveState.hidden = false;
+  };
   if (!review) {
     btn.textContent = "未连接";
+    showSaveState("尚未连接，暂时无法保存", true);
     setTimeout(() => (btn.textContent = "保存"), 4000);
     return;
   }
@@ -1688,23 +1698,32 @@ document.getElementById("w-save").onclick = async () => {
     ok = true;
   } catch (error) {
     btn.textContent = "保存失败";
+    showSaveState("保存失败，请重试", true);
     setTimeout(() => (btn.textContent = "保存"), 4000);
     return;
   }
   if (ok) {
     const extraNote = document.getElementById("ov-text").value.trim();
-    const wakeMsg = "剪接选择已保存（整份覆盖 selections.json）——跑 helpers/apply_selection.py 应用剪点，再重出这一页。"
+    const wakeMsg = "剪接选择已保存（整份覆盖 selections.json）——跑 helpers/_internal/apply_selection.py 应用剪点，再重出这一页。"
       + (extraNote ? (" 附整体备注：" + extraNote) : "");
+    let standaloneSaved = false;
     try {
-      await review.wake({ unit: "剪接", text: wakeMsg });
+      const wakeRes = await review.wake({ unit: "剪接", text: wakeMsg });
+      standaloneSaved = !wakeRes || wakeRes.woke === false;
       if (extraNote) {
         document.getElementById("ov-text").value = "";
-        document.getElementById("ov-state").textContent = "已发送";
+        document.getElementById("ov-state").textContent =
+          standaloneSaved ? "已发送（已保存修改，请回对话告知继续处理）" : "已发送";
       }
       btn.textContent = "已保存";
     } catch (error) {
+      standaloneSaved = true;
       btn.textContent = "已保存";
     }
+    showSaveState(
+      standaloneSaved ? "已保存修改，请回对话告知继续处理" : "已保存并通知继续处理",
+      false
+    );
     setTimeout(() => (btn.textContent = "保存"), 4000);
   } else {
     btn.textContent = "保存失败";
@@ -1730,10 +1749,11 @@ document.getElementById("ov-send").onclick = async () => {
   if (!text) return;
   if (!review) { state.textContent = "未连接"; return; }
   try {
-    await review.wake({ unit: "整段", text: "整段剪辑有一条整体意见：" + text });
+    const wakeRes = await review.wake({ unit: "整段", text: "整段剪辑有一条整体意见：" + text });
     document.getElementById("ov-text").value = "";
-    state.textContent = "已发送";
-    setTimeout(() => (state.textContent = ""), 4000);
+    const standaloneSaved = !wakeRes || wakeRes.woke === false;
+    state.textContent = standaloneSaved ? "已发送（已保存修改，请回对话告知继续处理）" : "已发送";
+    setTimeout(() => (state.textContent = ""), 5000);
   } catch (error) {
     state.textContent = "发送失败";
   }
@@ -1892,6 +1912,19 @@ body {
 .primary-cta, #w-save, #ov-send { background: var(--accent-blue) !important; border-color: var(--accent-blue) !important; color: #fff !important; }
 .primary-cta:hover, #w-save:hover, #ov-send:hover { background: var(--dsw-static-deepseek-600) !important; }
 #w-save, #ov-send { font-weight: 600; }
+#save-state {
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+#save-state[hidden] { display: none; }
+#save-state.ok { color: var(--accent-emerald); border-color: var(--accent-emerald); }
+#save-state.err { color: var(--accent-crimson); border-color: var(--accent-crimson); }
 @media (max-width: 980px) {
   #wrap { grid-template-columns: 1fr; height: auto; }
   #side { min-height: 520px; max-height: none; }
@@ -1909,4 +1942,4 @@ print(f"edl_preview.html written ({out.stat().st_size/1024:.0f} KB, {len(segment
       f"{total}s, {len(cues)} caption cues, {gidx} words, {len(deleted)} deleted chunks, "
       f"sources: {sorted(set(s['src'] for s in segments))})")
 print(f"serve root: {ROOT}（审阅宿主会 serve 它）→ {PAGE_REL.as_posix()} "
-      f"(run helpers/edl_review_surface.py {EDIT})")
+      f"(run helpers/_internal/edl_review_surface.py {EDIT})")

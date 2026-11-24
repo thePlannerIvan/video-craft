@@ -26,10 +26,10 @@ file is the authoritative source for caption offsets — never assume the
 rendered timeline equals the EDL's nominal total.
 
 Usage:
-    python helpers/render.py <edl.json> -o final.mp4
-    python helpers/render.py <edl.json> -o preview.mp4 --preview
-    python helpers/render.py <edl.json> -o final.mp4 --no-subtitles
-    python helpers/render.py <edl.json> -o final.mp4 --no-cache
+    python helpers/_internal/render.py <edl.json> -o final.mp4
+    python helpers/_internal/render.py <edl.json> -o preview.mp4 --preview
+    python helpers/_internal/render.py <edl.json> -o final.mp4 --no-subtitles
+    python helpers/_internal/render.py <edl.json> -o final.mp4 --no-cache
 """
 
 from __future__ import annotations
@@ -946,7 +946,7 @@ def build_final_composite(
             problems.extend(hard)
         if problems:
             raise SystemExit(
-                "拒绝合成——覆盖层不满足接口约定（先跑 helpers/check_overlay.py 看全貌）：\n  "
+                "拒绝合成——覆盖层不满足接口约定（先跑 helpers/_internal/check_overlay.py 看全貌）：\n  "
                 + "\n  ".join(problems))
 
     if not has_overlays and not has_subs:

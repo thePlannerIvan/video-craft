@@ -20,9 +20,9 @@
 
 用法与退出码
 ------------
-    python3 helpers/check_live_stage.py <project>
-    python3 helpers/check_live_stage.py <project> --composition composition-v2
-    python3 helpers/check_live_stage.py <project> --json
+    python3 helpers/_internal/check_live_stage.py <project>
+    python3 helpers/_internal/check_live_stage.py <project> --composition composition-v2
+    python3 helpers/_internal/check_live_stage.py <project> --json
 
 退出 0 = 没有 error（warning 不影响放行）；退出 1 = 至少一条 error；
 退出 2 = 连 composition 都找不到（先修路径，不是契约问题）。

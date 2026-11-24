@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build the shared visual timeline from externally edited audio/SRT.
 
-python3 helpers/import_srt_timeline.py <project> --srt <srt> --alignment <json>
+python3 helpers/_internal/import_srt_timeline.py <project> --srt <srt> --alignment <json>
 This preserves srt-import provenance; it never manufactures measured EDL proof.
 """
 from __future__ import annotations

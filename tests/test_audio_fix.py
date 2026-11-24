@@ -91,6 +91,18 @@ class AudioFixTests(unittest.TestCase):
         self.assertAlmostEqual(in_delta, out_delta, delta=0.5)
         self.assertAlmostEqual(stats["input_lufs"], stats["output_lufs"], delta=0.6)
 
+    def test_cli_help_clarifies_auditioning_role_vs_audio_mix(self) -> None:
+        proc = subprocess.run(
+            [sys.executable, str(HELPER), "--help"],
+            check=True, capture_output=True, text=True,
+        )
+        help_text = " ".join(proc.stdout.split())
+        self.assertIn("audio_mix.py", help_text)
+        self.assertIn("podcast-warm", help_text)
+        self.assertIn("--ab", help_text)
+        self.assertIn("twice", help_text)
+        self.assertIn("--voice-preset none", help_text)
+
 
 if __name__ == "__main__":
     unittest.main()

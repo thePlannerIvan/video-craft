@@ -7,7 +7,7 @@ Decouples open-source `video-craft` from the author's private `_video-vault`:
 3. Open-source fallback (`references/author-spec.md` + `references/style-spec.md`)
 
 Usage:
-    python3 helpers/resolve_vault.py [--style <style_id>] [--frame <frame_id>] [--json]
+    python3 helpers/_internal/resolve_vault.py [--style <style_id>] [--frame <frame_id>] [--json]
 """
 from __future__ import annotations
 

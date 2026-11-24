@@ -34,7 +34,7 @@
 
 **每轮的默认终点是侧边栏审阅页可播 + 本轮待办，不是出成片。** 渲染产物严格分两级：
 - `edit/_engineering/**` = **审阅素材**（工程态，可随时重渲，**不算交付**）；
-- `成品/**` = **交付件**（只有「作者明确出片指令」+「人工提交覆盖当前快照（`render_gate.py` 放行）」同时成立才允许写入）。
+- `成品/**` = **交付件**（只有「作者明确出片指令」+「当前审阅快照零漂移且存在网页提交或对话授权 `--approve-in-chat`（`render_gate.py` 放行）」同时成立才允许写入）。
 
 有视觉层才进入第 7 步；`pure-talking` 模式直接完成第 3–6 步与剪辑/口播成片交付，严禁为通过检查捏造 `film` / `recompose` 或静态参考页。
 
@@ -54,17 +54,17 @@
 
 ## 3. 声音与剪辑
 
-1. **首选在线词级转写**：`_internal/transcribe_seedasr.py <source-video> --edit-dir <edit>`（需 `.env` 豆包语音凭据与 `node ws`）。历史回退 `_internal/transcribe.py --backend auto` 只在无语音凭据时使用，严禁用 Ark 通用模型当 ASR（[captions-and-audio.md](captions-and-audio.md)）。
-2. **音质诊断与处理**：先 `_internal/audio_diag.py <媒体> --json`，再由 `helpers/audio_fix.py` 输出增强副本；最终成片混音由 `helpers/audio_mix.py` 统一产出 `-14.0 LUFS / -1.5 dBTP`。
+1. **首选在线词级转写**：通过 `helpers/stage_cut.py prepare --project "<project>" --source "<原片>"` 自动首选豆包 SeedASR 2.0（`_internal/transcribe_seedasr.py`，需 `.env` 豆包语音凭据与 `node ws`）；缺豆包凭据时若存在 Scribe 凭据则走 Scribe，否则明确报错提示，绝不静默降级至被禁用的 `--backend ark`（[captions-and-audio.md](captions-and-audio.md)）；离线兜底须显式 `--backend mlx`。
+2. **音质诊断与处理**：先按需 `_internal/audio_diag.py <媒体> --json`（短试听/盲听可用 `helpers/audio_fix.py --ab`）；最终全片音频由 `helpers/audio_mix.py` 直接吃原始干声并默认套用 `podcast-warm` 输出 `-14.0 LUFS / -1.5 dBTP`（不要先跑 `audio_fix.py` 再混音以防二次压限）。
 3. **建剪辑决定（EDL）**：取舍写进 `edl.json`，禁止直接修改原母版；用 `_internal/edl_from_keep.py` 吸附实测静音，用 `_internal/check_edl.py` 查边界与停顿。
 
 **完成标准**：EDL 可检查；`transcripts/<source>.json` 为真实词/字级 token（粗粒度先跑 `_internal/refine_transcript.py`）；未将预览渲染当作正式底片。
 
 ## 4. 逐字剪辑审阅
 
-由 `stage_cut.py` 协调或单跑 `_internal/edl_preview_build.py <edit>` 与 `_internal/edl_review_surface.py <edit> --surface-only`。DSH 有 `review_open` 时交返回 surface 绝对路径；无插件（或源媒体 >200MB / 内存 <8GB）直接运行本地宿主（去 `--surface-only`）。
+唯一协调入口：`helpers/stage_cut.py review --project "<project>"`（内部调用 `_internal/edl_preview_build.py <edit>` 与 `_internal/edl_review_surface.py <edit>`）。DSH 有 `review_open` 时可加 `--surface-only` 只出契约路径；无插件（或源媒体 >200MB / 内存 <8GB）不加 `--surface-only` 自动拉起本地浏览器宿主并返回 URL，独立浏览器保存后给出明确闭环提示。
 
-人审完成提交写入 `edit/selections.json` 后，模型跑 `_internal/apply_selection.py <edit>`（或 `stage_cut.py apply`）并重建逐字预览。
+人审完成提交写入 `edit/selections.json` 后，模型跑 `helpers/stage_cut.py apply --project "<project>"` 并重建逐字预览。
 
 ## 5. 工程时间与字幕
 
@@ -103,8 +103,8 @@
 
 ## 10. 核验与严格交付
 
-仅当**作者明确要求出片**且**当前审阅快照已有提交**时执行：
+仅当**作者明确要求出片**且**当前审阅快照零漂移并已有网页提交或对话授权 `--approve-in-chat`**时执行：
 - 渲染前置按 [visual-timeline.md](visual-timeline.md)「渲染前置」与 [visual-checks.md](visual-checks.md) 执行（先过 `_internal/render_gate.py`；先 `probe_env.py` + `check_render_env.py`；停预览服务；`--workers 1`）；
-- **`keyframe-svg` / 合成交付**：`python3 "<craft>/helpers/deliver.py" "<project>" --render`（或 `--visuals <已渲染画面>`；无人物加 `--no-person`；渲染后必过 `check_render_fidelity.py` + `verify_delivery.py`）；
+- **`keyframe-svg` / 交付**：`python3 "<craft>/helpers/deliver.py" "<project>" --render [--approve-in-chat]`（有真人口播默认分轨三件套：`人物成片 + 无声画面成片 + 空隙字幕`；单视频合流加 `--composite`；已有画面用 `--visuals <已渲染画面>`；无人物加 `--no-person`；渲染后必过 `check_render_fidelity.py` + `verify_delivery.py`）；
 - **`footage-montage` 三件套**：`montage.py render --concat --out <成品/...> --deliver` + `montage.py voice-cut --master <母版> --audio <口播音>` + `srt_export.py --build --check` + `check_montage.py --video`（细节与包装指纹见 [review-and-delivery.md](review-and-delivery.md)）；
 - **发送前指纹**：`state_fingerprint.py capture` → 发送前 `verify`；核验真实文件首中尾帧、响度（`-14.0 LUFS / -1.5 dBTP`）、音轨、字幕与交付说明。

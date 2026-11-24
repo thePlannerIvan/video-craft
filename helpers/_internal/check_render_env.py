@@ -27,8 +27,8 @@ a render that crawls is a nuisance, a render that swaps the machine out is an
 outage, and only one of those is recoverable.
 
 Usage:
-    python3 helpers/check_render_env.py [composition_dir]
-    python3 helpers/check_render_env.py [composition_dir] --json   # {ok, workers, memory}
+    python3 helpers/_internal/check_render_env.py [composition_dir]
+    python3 helpers/_internal/check_render_env.py [composition_dir] --json   # {ok, workers, memory}
 """
 from __future__ import annotations
 

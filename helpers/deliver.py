@@ -1,35 +1,27 @@
 #!/usr/bin/env python3
-"""`交付` —— 画面层 + 人物 + 声音 + 字幕 → 成片 + 核验报告。
+"""`交付` —— 画面层 + 人物 + 声音 + 字幕 → 默认分轨三件套（或显式合流成片）+ 核验报告。
 
-它替代的是手写 ffmpeg
-----------------------
-2026-10-21 的三条片用的是真实形态：**composition 只做画面层**（黑底，左侧 500 给人物、
-底部 200 给字幕），人物与声音在交付阶段贴回。Skill 里有 `render.py`、`export_video.py`、
-`export_deliverables.py`，但没有一个接口负责这件事，交付方只能自己写 ffmpeg overlay ——
-那是草稿，不是模块。
+默认分轨三件套（包含真人口播与画面层时）
+------------------------------------------
+1. `<片名>_人物成片.mp4`：无损流式复制高码率人物视频（优先 `edit/cut.mp4`）+ 立体声 AAC 音轨；
+2. `<片名>_画面成片.mp4`：剥离音轨（0 音轨）的纯画面成片（含实机演示清晰文字拼合）；
+3. `<片名>_字幕.srt`：经过剪映/PR 导入空隙保护（句间间隙 ≥30ms）的外挂字幕（源 `edit/subtitles.srt` 保持不动）。
+
+纯口播（`pure-talking`）仅输出人物成片 + 字幕；无人物轨（`--no-person`）输出全幅成片 + 字幕；
+显式合流（`--composite` / `--mode composite` / `--burn-subtitles`）输出单轨视听成片 + 字幕。
 
 接口
 ----
-    python3 helpers/deliver.py <project> --render              # 显式渲染画面层并合成
+    python3 helpers/deliver.py <project> --render              # 默认分轨三件套交付
     python3 helpers/deliver.py <project> --visuals <mp4>       # 已有画面层，跳过渲染
-    python3 helpers/deliver.py <project> --person <mp4> --audio <m4a> --srt <srt>
-    python3 helpers/deliver.py <project> --no-person      # 纯画面 + 旁白：画面层全幅交付
+    python3 helpers/deliver.py <project> --composite           # 显式合流输出单轨成片
+    python3 helpers/deliver.py <project> --approve-in-chat     # 作者对话明确授权导出后留档放行
+    python3 helpers/deliver.py <project> --no-person           # 纯画面 + 旁白：画面层全幅交付
     python3 helpers/deliver.py <project> --json
 
-它保证
-------
-1. 人物按 `recompose.json` 的 `personSlot` 贴回（cover 裁切，不挤压）；没有人物轨的片子用
-   `--no-person` 全幅交付，并在报告 notes 里写明；
-2. 声音接上，且成片**真的有音轨**；
-3. 字幕区（`captionSafe`）在画面层里是空的 —— 有内容就报 warning 并指出哪一帧；
-4. 逐项核验：分辨率、帧率、时长、音轨、首/中/尾帧非全黑，产出 JSON 报告；
-5. 字幕优先外挂（`--burn-subtitles` 需要 ffmpeg 带 libass，没有就明确报错，不静默降级）。
-
-前置：`render_gate.py` 必须放行（有人工提交且源未漂移）。
+前置：`render_gate.py` 必须放行（浏览器人工提交或明确 `--approve-in-chat` 留档，且源码零漂移）。
 默认**不渲染**：缺画面层或画面层比 composition 旧时直接拒绝，要渲染必须显式 `--render`
 （那是交付动作，不是审阅动作）。`--skip-gate` 只对测试进程（`DSH_TEST=1`）开放。
-`composition/_render/visuals.mp4` 比 composition 源旧时**默认拒绝**，显式 `--render` 才重渲
-（否则会交付上一版画面，或把审阅变成导出）。
 """
 from __future__ import annotations
 
@@ -82,6 +74,12 @@ def _duration(path: Path) -> float:
 
 def _frame_luma(path: Path, at: float, crop: tuple[int, int, int, int] | None = None) -> float | None:
     """取一帧，返回区域平均亮度（0–255）。crop=(w,h,x,y)。"""
+    stats = _frame_luma_stats(path, at, crop)
+    return stats[0] if stats is not None else None
+
+
+def _frame_luma_stats(path: Path, at: float, crop: tuple[int, int, int, int] | None = None) -> tuple[float, int] | None:
+    """取一帧，返回 (区域平均亮度, 峰值亮度 0–255)。crop=(w,h,x,y)。"""
     try:
         from PIL import Image
         import io
@@ -101,7 +99,7 @@ def _frame_luma(path: Path, at: float, crop: tuple[int, int, int, int] | None = 
     with Image.open(io.BytesIO(proc.stdout)) as im:
         grey = im.convert("L").resize((120, 68))
         data = list(grey.getdata())
-    return sum(data) / len(data)
+    return (sum(data) / len(data)), int(max(data))
 
 
 def _pick(project: Path, explicit: Path | None, candidates: list[Path]) -> Path | None:
@@ -253,7 +251,8 @@ def _load_demo_segments(project: Path) -> list[dict]:
 
 def _splice_demo_segments(project: Path, visual_path: Path, demo_segs: list[dict], geo: dict,
                           out: Path, name: str, person_path: Path | None,
-                          vis_dur: float) -> tuple[Path, Path | None, dict]:
+                          vis_dur: float, *, visual_dest: Path | None = None,
+                          emit_person_track: bool = False) -> tuple[Path, Path | None, dict]:
     """Splice HD demo recordings cleanly into video-only visual track with screen-text encoding."""
     fps = int(round(float(geo["fps"])))
     if person_path is None:
@@ -261,7 +260,8 @@ def _splice_demo_segments(project: Path, visual_path: Path, demo_segs: list[dict
     else:
         default_box = geo["stage"]
 
-    visual_track = out / f"{name}_画面成片.mp4"
+    visual_track = visual_dest or (out / f"{name}_画面成片.mp4")
+    visual_track.parent.mkdir(parents=True, exist_ok=True)
     inputs = ["-i", str(visual_path)]
     filters = [f"[0:v]fps={fps},format=yuv420p,setsar=1[v0]"]
     prev = "v0"
@@ -333,7 +333,7 @@ def _splice_demo_segments(project: Path, visual_path: Path, demo_segs: list[dict
             tmp_visual.unlink(missing_ok=True)
 
     person_track = None
-    if person_path is not None and person_path.is_file():
+    if emit_person_track and person_path is not None and person_path.is_file():
         slot = geo["person"]
         pw, ph = int(slot["w"]), int(slot["h"])
         person_track = out / f"{name}_人物轨.mp4"
@@ -386,6 +386,264 @@ def _record_visual_source(project: Path, visual: Path, origin: str, sources: dic
              'visual': entry(visual)}
     visual.with_suffix(visual.suffix + '.sources.json').write_text(
         json.dumps(proof, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+
+
+def _parse_fps(video_stream: dict) -> float:
+    raw = video_stream.get("r_frame_rate") or "0/1"
+    try:
+        num, den = str(raw).split("/", 1)
+        return float(num) / float(den or 1)
+    except (ValueError, ZeroDivisionError):
+        return 0.0
+
+
+def _is_pure_talking_project(project: Path) -> bool:
+    """Detect explicitly declared pure-talking projects without a visual layer."""
+    has_visual_infra = (
+        (project / "composition").is_dir()
+        or (project / "recompose.json").is_file()
+        or (project / "visual-plan.json").is_file()
+        or (project / "pages").exists()
+        or (project / ".pages").exists()
+    )
+    if has_visual_infra:
+        return False
+    import re
+    for rel in ("edit/project.md", "production-plan.md"):
+        doc_path = project / rel
+        if doc_path.is_file():
+            text = doc_path.read_text(encoding="utf-8", errors="ignore")
+            if re.search(r"\bpure-talking\b", text):
+                return True
+    return False
+
+
+def _stage_ffmpeg_replace(cmd_prefix: list[str], dest: Path) -> subprocess.CompletedProcess:
+    """Run ffmpeg into local /tmp (never cloud-synced target dirs) then move into dest on success."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="craft-deliver-") as td:
+        tmp_path = Path(td) / f"{dest.stem}.tmp{dest.suffix or '.mp4'}"
+        proc = _run([*cmd_prefix, str(tmp_path)])
+        if proc.returncode == 0 and tmp_path.is_file():
+            shutil.move(str(tmp_path), str(dest))
+        return proc
+
+
+def _check_caption_safe(visual_file: Path, dur_v: float, geo: dict, check) -> None:
+    band = geo["caption"]
+    crop = (int(band["w"]), int(band["h"]), int(band["x"]), int(band["y"]))
+    intrusions = []
+    for at in (dur_v * 0.25, dur_v * 0.5, dur_v * 0.75):
+        luma = _frame_luma(visual_file, at, crop)
+        if luma is not None and luma > BAND_LUMA:
+            intrusions.append((round(at, 1), round(luma, 1)))
+    check("字幕安全区无内容", not intrusions,
+          "空" if not intrusions else f"这些时刻有内容会被字幕压住：{intrusions[:4]}")
+
+
+def _check_non_black_frames(video_file: Path, dur: float, check) -> None:
+    for label, at in (("首帧", 0.4), ("中帧", dur / 2), ("尾帧", max(0.0, dur - 0.6))):
+        luma = _frame_luma(video_file, at)
+        check(f"{label}非全黑", luma is None or luma >= BLACK_LUMA,
+              f"mean_luma={None if luma is None else round(luma, 1)} @ {at:.1f}s")
+
+
+def _stream_spec(path: Path) -> dict:
+    v, a = _streams(path)
+    return {
+        "path": str(path),
+        "duration_s": round(_duration(path), 3),
+        "width": v.get("width"),
+        "height": v.get("height"),
+        "fps": round(_parse_fps(v), 3) if v else None,
+        "video_codec": v.get("codec_name"),
+        "audio_codec": a.get("codec_name") if a else None,
+        "audio_channels": a.get("channels") if a else None,
+        "audio_sample_rate": int(float(a["sample_rate"])) if a and a.get("sample_rate") else None,
+    }
+
+
+def _check_visual_non_black(visual_file: Path, dur_v: float, geo: dict, check) -> None:
+    """Check split visual track has non-empty drawn strokes/content (supports dark vector backdrops)."""
+    stage = geo.get("stage") or {"x": 0, "y": 0, "w": int(geo["width"]), "h": int(geo["height"])}
+    crop = (int(stage["w"]), int(stage["h"]), int(stage["x"]), int(stage["y"]))
+    for label, at in (("画面中帧", dur_v / 2), ("画面尾帧", max(0.0, dur_v - 0.6))):
+        stats = _frame_luma_stats(visual_file, at, crop)
+        ok = stats is None or stats[1] >= 40 or stats[0] >= BLACK_LUMA
+        detail = (
+            "skipped" if stats is None
+            else f"max_luma={stats[1]}, mean_luma={round(stats[0], 1)} @ {at:.1f}s"
+        )
+        check(f"{label}非全黑", ok, detail)
+
+
+def _check_video_specs(path: Path, geo: dict, check, *, require_audio: bool,
+                       silent_visual: bool = False) -> tuple[dict, dict, float]:
+    v, a = _streams(path)
+    check("分辨率", (v.get("width"), v.get("height")) == (geo["width"], geo["height"]),
+          f"{v.get('width')}×{v.get('height')} 期望 {geo['width']}×{geo['height']}")
+    fps = _parse_fps(v)
+    check("帧率", abs(fps - geo["fps"]) < 0.01, f"{fps:.2f} 期望 {geo['fps']}")
+    dur = _duration(path)
+    if silent_visual:
+        check("画面成片无音轨", bool(v) and not a,
+              "0 音轨（纯画面）" if (v and not a) else f"异常音轨或无视频：{a}")
+    elif require_audio:
+        audio_ch = a.get("channels")
+        check("成片有音轨", bool(a) and (audio_ch in (None, 2)),
+              f"{a.get('codec_name', '无')} {audio_ch or ''}ch")
+    return v, a, dur
+
+
+def _subtitle_staging(srt_path: Path | None, burn: bool):
+    if not burn or not (srt_path and srt_path.is_file()):
+        return None, None
+    td = tempfile.TemporaryDirectory(prefix="craft-subtitles-")
+    staged_srt = Path(td.name) / "captions.srt"
+    shutil.copyfile(srt_path, staged_srt)
+    return td, f"subtitles=filename='{staged_srt.as_posix()}'"
+
+
+def _mux_person_track(person_path: Path, audio_path: Path, dest: Path, max_dur: float, check,
+                      *, srt_path: Path | None = None, burn: bool = False, fps: int = 30) -> bool:
+    """Copy high-bitrate person video and mux stereo AAC audio capped to max_dur (burns SRT if requested)."""
+    sub_tmp, sub_filter = _subtitle_staging(srt_path, burn)
+    cmd = ["ffmpeg", "-y", "-v", "error", "-i", str(person_path), "-i", str(audio_path), "-map", "0:v:0", "-map", "1:a:0"]
+    if sub_filter:
+        cmd += ["-vf", sub_filter, "-c:v", "libx264", "-preset", "medium", "-crf", "17", "-pix_fmt", "yuv420p", "-r", str(fps)]
+    else:
+        cmd += ["-c:v", "copy"]
+    cmd += ["-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2", "-movflags", "+faststart"]
+    if max_dur > 0:
+        cmd += ["-t", f"{max_dur:.3f}"]
+    try:
+        proc = _stage_ffmpeg_replace(cmd, dest)
+    finally:
+        if sub_tmp is not None:
+            sub_tmp.cleanup()
+    return check("人物成片封装", proc.returncode == 0 and dest.is_file(),
+                 (proc.stderr or "ok")[-300:] if proc.returncode != 0 else dest.name)
+
+
+def _finalize_report(project: Path, edit_dir: Path, out: Path, name: str, report: dict, *,
+                     delivery_mode: str, primary_video: Path, deliverables: dict,
+                     spec_targets: dict[str, Path], inputs: dict[str, Path | None],
+                     srt_out: Path, audio_path: Path, srt_path: Path | None,
+                     as_json: bool, note, headline: str) -> int:
+    """Run verify_delivery, record deliverable specs/identities, write JSON report, and emit summary."""
+    report["composition_ok"] = all(c["ok"] for c in report["checks"])
+    report["delivery_verdict"] = _delivery_verdict(edit_dir, primary_video, audio_path, srt_path)
+    report["delivery_ok"] = report["delivery_verdict"]["ok"]
+    note("交付核验（verify_delivery）：" + ("通过" if report["delivery_ok"] else
+         "失败：" + "；".join(report["delivery_verdict"]["hard"][:3])))
+
+    from state_fingerprint import source_entries, entry
+    report["delivery_mode"] = delivery_mode
+    report["deliverables"] = deliverables
+    report["deliverable_specs"] = {k: _stream_spec(p) for k, p in spec_targets.items()}
+    report["source_fingerprint"] = source_entries(project)
+    report["output_identity"] = entry(primary_video)
+    report["deliverable_identities"] = {
+        k: entry(Path(v)) for k, v in deliverables.items() if v and Path(v).is_file()
+    }
+    report["input_identities"] = {key: entry(path) for key, path in inputs.items() if path}
+    report["output"] = str(primary_video)
+    report["subtitles"] = str(srt_out) if srt_out.is_file() else None
+    report["ok"] = report["composition_ok"] and report["delivery_ok"]
+    (out / f"{name}_核验报告.json").write_text(
+        json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if not as_json:
+        print(f"\n{'✓' if report['ok'] else '✗'} {headline}")
+        print(f"  核验报告：{out / f'{name}_核验报告.json'}")
+    else:
+        print(json.dumps(report, ensure_ascii=False, indent=1))
+    return 0 if report["ok"] else 1
+
+
+def _needs_gap_fix(srt_path: Path, min_gap_ms: int = 30) -> bool:
+    from _timecode import parse_srt_file
+    cues = parse_srt_file(srt_path)
+    return any(
+        cues[i + 1]["startMs"] - cues[i]["endMs"] < min_gap_ms
+        for i in range(len(cues) - 1)
+    )
+
+
+def _export_delivered_srt(srt_path: Path | None, srt_out: Path, edit_dir: Path,
+                          project: Path, dur: float, burn: bool, check, note) -> int | None:
+    """Export delivered SRT through import-gap protection while keeping source SRT untouched."""
+    if not (srt_path and srt_path.is_file()):
+        note("没有字幕源；如需字幕请 --srt")
+        return None
+    import export_deliverables
+    if srt_path.resolve() != srt_out.resolve():
+        fixed_count = export_deliverables.fix_srt_gaps(srt_path, srt_out)
+    elif _needs_gap_fix(srt_out):
+        fixed_count = export_deliverables.fix_srt_gaps(srt_path, srt_out)
+    else:
+        fixed_count = 0
+
+    from _cutmap import (DURATION_TOLERANCE_S, compare_srt,
+                         expected_film_duration_s, load as load_cut_map,
+                         paths as cut_paths, validate as validate_cut_map,
+                         verify_srt_pair)
+    from _timecode import parse_srt_file
+
+    cut_map, cut_problems = load_cut_map(edit_dir)
+    if cut_map is not None:
+        cut_problems += validate_cut_map(cut_map, project)
+
+    src_cues = parse_srt_file(srt_path)
+    out_cues = parse_srt_file(srt_out) if srt_out.is_file() else []
+    overrun = bool(out_cues) and out_cues[-1]["endMs"] / 1000 > dur + 0.05
+
+    gap_problems: list[str] = []
+    if len(src_cues) != len(out_cues):
+        gap_problems.append(f"交付字幕条数不一致：{len(src_cues)} -> {len(out_cues)}")
+    else:
+        for idx, (sc, oc) in enumerate(zip(src_cues, out_cues), start=1):
+            st = "\n".join(sc.get("lines") or []).strip()
+            ot = "\n".join(oc.get("lines") or []).strip()
+            if st != ot:
+                gap_problems.append(f"交付字幕第 {idx} 条文字被改动")
+                break
+            if abs(oc["startMs"] - sc["startMs"]) > 2 or oc["endMs"] <= oc["startMs"]:
+                gap_problems.append(f"交付字幕第 {idx} 条起点或时长异常")
+                break
+        if not gap_problems:
+            for idx in range(len(out_cues) - 1):
+                if out_cues[idx + 1]["startMs"] - out_cues[idx]["startMs"] >= 40:
+                    gap = out_cues[idx + 1]["startMs"] - out_cues[idx]["endMs"]
+                    if gap < 30:
+                        gap_problems.append(f"交付字幕第 {idx + 1} 条空隙 {gap}ms < 30ms")
+                        break
+
+    if cut_problems:
+        check("字幕时间轴", False, "；".join(cut_problems[:2]))
+    elif cut_map is not None:
+        resolved = cut_paths(cut_map, project)
+        pair = verify_srt_pair(resolved["srt_source"], srt_path, cut_map, film_duration_s=dur)
+        expected = expected_film_duration_s(cut_map)
+        same_film = expected is not None and abs(dur - expected) <= DURATION_TOLERANCE_S
+        all_problems = list(pair) + gap_problems
+        detail = (
+            f"{srt_out.name} 是按 cut-map 复算并修正空隙的剪后字幕，成片 {dur:.3f}s 与 cut-map 一致"
+            if not all_problems and same_film else
+            "；".join((all_problems or [f"成片 {dur:.3f}s 与 cut-map 推算的 {expected:.3f}s 不一致"])[:2])
+        )
+        check("字幕时间轴", not all_problems and same_film, detail)
+    else:
+        master = edit_dir / "subtitles.srt"
+        problems = compare_srt(srt_path, master) if master.is_file() else []
+        problems = list(problems) + gap_problems
+        detail = (
+            "；".join(problems[:2]) if problems else
+            (f"字幕末条 {out_cues[-1]['endMs'] / 1000:.3f}s 超出成片 {dur:.3f}s" if overrun else
+             "与流水线字幕同一条时间轴（已做剪映/PR 安全空隙处理）")
+        )
+        check("字幕时间轴", not problems and not overrun, detail)
+    check("字幕交付", True, f"外挂 {srt_out.name}（烧录={burn}，导入空隙修正 {fixed_count} 处）")
+    return fixed_count
 
 
 def _delivery_verdict(edit_dir: Path, target: Path, media: Path | None = None,
@@ -444,7 +702,10 @@ def _delivery_verdict(edit_dir: Path, target: Path, media: Path | None = None,
 def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Path | None,
             srt: Path | None, out_dir: Path | None, burn: bool, skip_gate: bool,
             as_json: bool, no_person: bool = False, render: bool = False,
-            visuals_confirm_current: bool = False) -> int:
+            visuals_confirm_current: bool = False,
+            mode: str = "split", composite: bool = False,
+            approve_in_chat: bool = False,
+            approval_note: str | None = None) -> int:
     from _geometry import resolve_project_frame
     geo = resolve_project_frame(project)
     edit_dir = project / "edit"
@@ -485,12 +746,26 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
 
     # 0) 渲染闸门
     if not skip_gate:
-        code, = (_run([sys.executable, str(INTERNAL / "render_gate.py"), str(project)]).returncode,)
-        if code != 0:
-            if not check("渲染闸门", False, "没有人审覆盖当前快照（先 review.py 交给人审；夹具用 --skip-gate）"):
+        if approve_in_chat:
+            import render_gate
+            effective_note = (
+                render_gate.DEFAULT_APPROVAL_NOTE if approval_note is None else approval_note
+            )
+            gate_report = render_gate.record_chat_approval(project, effective_note)
+            if not gate_report.get("ok"):
+                reasons = "；".join(gate_report.get("reasons") or ["渲染闸门拒绝放行"])
+                check("渲染闸门", False, reasons)
                 return stop()
+            detail = "；".join(gate_report.get("notes") or []) or "会话授权覆盖当前快照（chat-approval 已留档）"
+            check("渲染闸门", True, detail)
+            note("渲染闸门已记录会话授权（chat-approval）")
         else:
-            check("渲染闸门", True, "有人审覆盖当前快照")
+            code, = (_run([sys.executable, str(INTERNAL / "render_gate.py"), str(project)]).returncode,)
+            if code != 0:
+                if not check("渲染闸门", False, "没有人审覆盖当前快照（先 review.py 交给人审；夹具用 --skip-gate）"):
+                    return stop()
+            else:
+                check("渲染闸门", True, "有人审覆盖当前快照")
 
     try:
         preflight_ok, workers = _preflight(project, check, note)
@@ -500,9 +775,13 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
     if not preflight_ok:
         return stop()
 
-    # 1) 三路素材
-    person_path = _pick(project, person, [project / "composition/assets/person.mp4",
-                                         project / "edit/_engineering/person_master.mp4"])
+    # 1) 三路素材（优先高码率 edit/cut.mp4）
+    person_path = _pick(project, person, [
+        project / "edit/cut.mp4",
+        project / "composition/assets/person.mp4",
+        project / "edit/_engineering/person_master.mp4",
+        project / "edit/_engineering/cut.mp4",
+    ])
     audio_path = _pick(project, audio, [project / "composition/assets/audio.m4a",
                                         project / "edit/_engineering/review_audio.m4a"])
     srt_path = _pick(project, srt, [project / "edit/subtitles.srt",
@@ -534,6 +813,55 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
         check('当前时间依据', False, str(exc))
         return stop()
 
+    pure_talking = (
+        not no_person
+        and person_path is not None
+        and visuals is None
+        and not render
+        and _is_pure_talking_project(project)
+    )
+    if no_person:
+        effective_mode = "no-person"
+    elif pure_talking:
+        effective_mode = "pure-talking"
+    elif composite or mode == "composite" or burn:
+        if burn and not (composite or mode == "composite"):
+            note("烧录字幕（--burn-subtitles）需要单轨成片：自动切换为合流输出")
+        effective_mode = "composite"
+    else:
+        effective_mode = "split"
+
+    srt_out = out / f"{name}_字幕.srt"
+
+    if effective_mode == "pure-talking":
+        note("纯口播模式（pure-talking）：无画面视觉层，不拆分空画面轨，仅交付人物成片与字幕")
+        person_out = out / f"{name}_人物成片.mp4"
+        expected_dur = (_ms / 1000.0) if (_ms and _ms > 0) else _duration(audio_path)
+        if not _mux_person_track(person_path, audio_path, person_out, expected_dur, check,
+                                  srt_path=srt_path, burn=burn, fps=geo["fps"]):
+            return stop()
+        pv, pa = _streams(person_out)
+        if not check("人物成片可读", bool(pv), f"{pv.get('width')}×{pv.get('height')}"):
+            return stop()
+        dur_p = _duration(person_out)
+        if expected_dur > 0:
+            check("时长", abs(dur_p - expected_dur) <= 0.5, f"{dur_p:.2f}s（音频/时间轴 {expected_dur:.2f}s）")
+        audio_ch = pa.get("channels")
+        check("成片有音轨", bool(pa) and (audio_ch in (None, 2)),
+              f"{pa.get('codec_name', '无')} {audio_ch or ''}ch")
+        _check_non_black_frames(person_out, dur_p, check)
+        _export_delivered_srt(srt_path, srt_out, edit_dir, project, dur_p, burn, check, note)
+        return _finalize_report(
+            project, edit_dir, out, name, report,
+            delivery_mode="pure-talking",
+            primary_video=person_out,
+            deliverables={"person": str(person_out), "subtitles": str(srt_out) if srt_out.is_file() else None},
+            spec_targets={"person": person_out},
+            inputs={"audio": audio_path, "person": person_path, "srt": srt_path},
+            srt_out=srt_out, audio_path=audio_path, srt_path=srt_path,
+            as_json=as_json, note=note, headline=f"人物成片：{person_out}",
+        )
+
     # 2) 画面层：已有就用，没有就渲
     visual_path = _pick(project, visuals, [project / "composition/_render/visuals.mp4"])
     if visual_path is not None and visuals_confirm_current:
@@ -544,11 +872,7 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
             detail = (f"{visual_path.name} 来源缺记录或已过期。重渲用 --render；"
                       "旧缓存/外部画面经人工核对属于当前版后，用 --visuals-confirm-current 补记一次来源")
             check("画面层", False, detail)
-            if not as_json:
-                print(f"  ✗ {detail}")
             report["ok"] = False
-            (out / f"{name}_核验报告.json").write_text(
-                json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
             return stop()
         note(f"画面层比 composition 源旧（{visual_path.name}），按 --render 重新渲染")
         visual_path = None
@@ -556,11 +880,7 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
         if not render:
             detail = ("没有画面层。工程态审阅不需要它；要出成片请显式加 --render，并先过 render_gate")
             check("画面层", False, detail)
-            if not as_json:
-                print(f"  ✗ {detail}")
             report["ok"] = False
-            (out / f"{name}_核验报告.json").write_text(
-                json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
             return stop()
         (project / "composition/_render").mkdir(parents=True, exist_ok=True)
         from state_fingerprint import source_entries
@@ -568,13 +888,12 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
         # --workers 1：多 worker 截图通道会在长片的后半段静默丢内容
         # （2026-11-04 品牌屋：4 worker 渲染 78s 之后整栋画面不画，退出码仍为 0；见 GOTCHAS #79）。
         # 单 worker 慢一倍，但交付只渲这一次；一致性由下面的 check_render_fidelity 核。
-        render = _run(["hyperframes", "render", str(project / "composition"),
-                       "-o", str(project / "composition/_render/visuals.mp4"),
-                       "--workers", "1", "-q", "looks"])
+        render_proc = _run(["hyperframes", "render", str(project / "composition"),
+                            "-o", str(project / "composition/_render/visuals.mp4"),
+                            "--workers", "1", "-q", "looks"])
         visual_path = project / "composition/_render/visuals.mp4"
-        if render.returncode != 0 or not visual_path.is_file():
-            check("画面层渲染", False, (render.stderr or render.stdout or "")[-400:])
-            print(json.dumps(report, ensure_ascii=False, indent=1))
+        if render_proc.returncode != 0 or not visual_path.is_file():
+            check("画面层渲染", False, (render_proc.stderr or render_proc.stdout or "")[-400:])
             return stop()
         if rendering_sources != source_entries(project):
             check('画面层来源', False, '渲染期间来源改变；核对当前版本后重新渲染')
@@ -602,8 +921,6 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
             if not check("画面层与 composition 一致", False,
                          f"{len(failed_t)} 个采样对不上：{failed_t[:6]}"
                          f"（--workers 1 重渲后仍不一致，才是 composition 的问题）"):
-                (out / f"{name}_核验报告.json").write_text(
-                    json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
                 return stop()
         else:
             # 检查跑不起来（没有可用的 snapshot 通道）与「跑通了但内容不一致」不是一件事
@@ -611,168 +928,142 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
     else:
         note("composition 不是 HyperFrames 工程（无 hyperframes.json）：跳过画面一致性检查")
 
-    # 2b) 若 visual-plan.json 存在实机演示录屏段，由 ffmpeg 从高清原录屏裁切并开启屏幕文字清晰编码，与动效底片无损同轨拼合，人物轨保持独立
-    demo_segs = _load_demo_segments(project)
-    if demo_segs:
-        vis_dur_base = _duration(visual_path)
-        if vis_dur_base <= 0:
-            vis_dur_base = max(s["t1"] for s in demo_segs)
-        try:
-            spliced_visual, _, splice_info = _splice_demo_segments(
-                project, visual_path, demo_segs, geo, out, name,
-                person_path=None if no_person else person_path,
-                vis_dur=vis_dur_base,
+    raw_visual_path = visual_path
+    demo_tmp_dir = None
+    try:
+        # 2b) 若 visual-plan.json 存在实机演示录屏段，由 ffmpeg 从高清原录屏裁切并开启屏幕文字清晰编码，与动效底片无损同轨拼合，人物轨保持独立
+        demo_segs = _load_demo_segments(project)
+        if demo_segs:
+            vis_dur_base = _duration(visual_path)
+            if vis_dur_base <= 0:
+                vis_dur_base = max(s["t1"] for s in demo_segs)
+            if effective_mode == "split":
+                splice_dest = out / f"{name}_画面成片.mp4"
+            else:
+                demo_tmp_dir = tempfile.TemporaryDirectory(prefix="craft-demo-visual-")
+                splice_dest = Path(demo_tmp_dir.name) / f"{name}_画面成片.mp4"
+            try:
+                spliced_visual, _, splice_info = _splice_demo_segments(
+                    project, visual_path, demo_segs, geo, out, name,
+                    person_path=None if no_person else person_path,
+                    vis_dur=vis_dur_base,
+                    visual_dest=splice_dest,
+                    emit_person_track=False,
+                )
+            except RuntimeError as exc:
+                check("实机演示同轨拼合", False, str(exc))
+                return stop()
+            visual_path = spliced_visual
+            report["demo_splice"] = splice_info
+            check("实机演示同轨拼合", True,
+                  f"{splice_info['count']} 段高清原录屏已并入 {Path(splice_info['visual_track']).name}（屏幕清晰文字编码）")
+
+        if effective_mode == "split":
+            # 3A) 默认分轨三件套交付：高码率人物成片（含声） + 无声画面成片 + 导入空隙保护字幕
+            person_out = out / f"{name}_人物成片.mp4"
+            visual_out = out / f"{name}_画面成片.mp4"
+            vis_dur = _duration(visual_path)
+            if not _mux_person_track(person_path, audio_path, person_out, vis_dur, check):
+                return stop()
+
+            if visual_path.resolve() != visual_out.resolve():
+                v_cmd = [
+                    "ffmpeg", "-y", "-v", "error",
+                    "-i", str(visual_path),
+                    "-map", "0:v:0", "-c:v", "copy", "-an",
+                    "-movflags", "+faststart",
+                ]
+                proc_v = _stage_ffmpeg_replace(v_cmd, visual_out)
+                if not check("画面成片封装", proc_v.returncode == 0 and visual_out.is_file(),
+                             (proc_v.stderr or "ok")[-300:] if proc_v.returncode != 0 else visual_out.name):
+                    return stop()
+            else:
+                check("画面成片封装", visual_out.is_file(), visual_out.name)
+
+            # 4A) 核验分轨产物
+            vv, va, dur_v = _check_video_specs(visual_out, geo, check, require_audio=False, silent_visual=True)
+            dur_p = _duration(person_out)
+            pv, pa = _streams(person_out)
+            check("人物成片可读", bool(pv), f"{pv.get('width')}×{pv.get('height')} {pv.get('codec_name', '')}")
+            check("时长", dur_p > 0 and dur_v > 0 and abs(dur_p - dur_v) <= 0.5,
+                  f"人物 {dur_p:.2f}s / 画面 {dur_v:.2f}s（差 {dur_p - dur_v:+.2f}s）")
+            audio_ch = pa.get("channels")
+            check("成片有音轨", bool(pa) and (audio_ch in (None, 2)),
+                  f"{pa.get('codec_name', '无')} {audio_ch or ''}ch")
+            _check_non_black_frames(person_out, dur_p, check)
+            _check_visual_non_black(visual_out, dur_v, geo, check)
+            _check_caption_safe(visual_out, dur_v, geo, check)
+            _export_delivered_srt(srt_path, srt_out, edit_dir, project, dur_p, burn, check, note)
+            return _finalize_report(
+                project, edit_dir, out, name, report,
+                delivery_mode="split",
+                primary_video=person_out,
+                deliverables={
+                    "person": str(person_out),
+                    "visuals": str(visual_out),
+                    "subtitles": str(srt_out) if srt_out.is_file() else None,
+                },
+                spec_targets={"person": person_out, "visuals": visual_out},
+                inputs={"visuals": raw_visual_path, "audio": audio_path, "person": person_path, "srt": srt_path},
+                srt_out=srt_out, audio_path=audio_path, srt_path=srt_path,
+                as_json=as_json, note=note, headline=f"分轨交付：{person_out.name} + {visual_out.name}",
             )
-        except RuntimeError as exc:
-            check("实机演示同轨拼合", False, str(exc))
-            return stop()
-        visual_path = spliced_visual
-        report["demo_splice"] = splice_info
-        check("实机演示同轨拼合", True,
-              f"{splice_info['count']} 段高清原录屏已并入 {Path(splice_info['visual_track']).name}（屏幕清晰文字编码）")
 
-    # 3) 合成：人物 cover 贴回 + 声音（无人物轨时画面层全幅交付）
-    slot = geo["person"]
-    pw, ph, px, py = int(slot["w"]), int(slot["h"]), int(slot["x"]), int(slot["y"])
-    target = out / f"{name}_成片.mp4"
-    # 画面层是时长主人：人物轨 / 旁白常常比画面层长一点（母版 368.4 vs 画面 367.6），
-    # 只写 -shortest 在 filter_complex + overlay 下并不保证截断（2026-10-21 真实素材上
-    # 交付出 368.33s，比画面层长 0.7s，核验报红）。这里显式用 -t 钉住。
-    vis_dur = _duration(visual_path)
-    tail = ["-c:v", "libx264", "-preset", "medium", "-crf", "17", "-pix_fmt", "yuv420p",
-            "-r", str(geo["fps"]), "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
-            "-movflags", "+faststart"]
-    if vis_dur > 0:
-        tail += ["-t", f"{vis_dur:.3f}"]
-    tail.append(str(target))
-    # libavfilter has several escaping layers. A private ASCII filename avoids
-    # interpreting punctuation in the user's path; the SRT bytes stay unchanged.
-    subtitle_tmp = tempfile.TemporaryDirectory(prefix="craft-subtitles-") if burn else None
-    subtitle_filter = None
-    if subtitle_tmp is not None:
-        staged_srt = Path(subtitle_tmp.name) / "captions.srt"
-        shutil.copyfile(srt_path, staged_srt)
-        subtitle_filter = f"subtitles=filename='{staged_srt.as_posix()}'"
-    if person_path is None:
-        note("无人物轨：画面层全幅交付，personSlot 区域保持画面层原样")
-        cmd = ["ffmpeg", "-y", "-v", "error", "-i", str(visual_path), "-i", str(audio_path),
-               "-map", "0:v", "-map", "1:a"]
-        if subtitle_filter:
-            cmd += ["-vf", subtitle_filter]
-        cmd += tail
-    else:
-        vf = (f"[1:v]scale={pw}:{ph}:force_original_aspect_ratio=increase,"
-              f"crop={pw}:{ph},setsar=1[person];"
-              f"[0:v][person]overlay={px}:{py}:format=auto[composed]")
-        vf += f";[composed]{subtitle_filter or 'null'}[v]"
-        cmd = ["ffmpeg", "-y", "-v", "error", "-i", str(visual_path), "-i", str(person_path),
-               "-i", str(audio_path), "-filter_complex", vf, "-map", "[v]", "-map", "2:a"] + tail
-    try:
-        proc = _run(cmd)
-    finally:
-        if subtitle_tmp is not None:
-            subtitle_tmp.cleanup()
-    if not check("合成", proc.returncode == 0 and target.is_file(),
-                 (proc.stderr or "ok")[-300:] if proc.returncode != 0 else target.name):
-        print(json.dumps(report, ensure_ascii=False, indent=1))
-        return stop()
-
-    # 4) 核验
-    v, a = _streams(target)
-    check("分辨率", (v.get("width"), v.get("height")) == (geo["width"], geo["height"]),
-          f"{v.get('width')}×{v.get('height')} 期望 {geo['width']}×{geo['height']}")
-    got_fps = v.get("r_frame_rate") or "0/1"
-    try:
-        num, den = got_fps.split("/")
-        fps = float(num) / float(den or 1)
-    except (ValueError, ZeroDivisionError):
-        fps = 0.0
-    check("帧率", abs(fps - geo["fps"]) < 0.01, f"{fps:.2f} 期望 {geo['fps']}")
-    dur_v = _duration(visual_path)
-    dur = _duration(target)
-    check("时长", abs(dur - dur_v) <= 0.5, f"{dur:.2f}s（画面层 {dur_v:.2f}s）")
-    check("成片有音轨", bool(a), f"{a.get('codec_name', '无')} {a.get('channels', '')}ch")
-
-    for label, at in (("首帧", 0.4), ("中帧", dur / 2), ("尾帧", max(0.0, dur - 0.6))):
-        luma = _frame_luma(target, at)
-        check(f"{label}非全黑", luma is None or luma >= BLACK_LUMA,
-              f"mean_luma={None if luma is None else round(luma, 1)} @ {at:.1f}s")
-
-    # 5) 字幕安全区在画面层里必须是空的
-    band = geo["caption"]
-    crop = (int(band["w"]), int(band["h"]), int(band["x"]), int(band["y"]))
-    intrusions = []
-    for at in (dur_v * 0.25, dur_v * 0.5, dur_v * 0.75):
-        luma = _frame_luma(visual_path, at, crop)
-        if luma is not None and luma > BAND_LUMA:
-            intrusions.append((round(at, 1), round(luma, 1)))
-    check("字幕安全区无内容", not intrusions,
-          "空" if not intrusions else f"这些时刻有内容会被字幕压住：{intrusions[:4]}")
-
-    # 6) 字幕：外挂优先；交付的字幕必须与成片同一条时间轴
-    srt_out = out / f"{name}_字幕.srt"
-    if srt_path and srt_path.is_file():
-        if srt_path.resolve() != srt_out.resolve():
-            shutil.copyfile(srt_path, srt_out)
-        from _cutmap import (DURATION_TOLERANCE_S, compare_srt,
-                             expected_film_duration_s, load as load_cut_map,
-                             paths as cut_paths, validate as validate_cut_map,
-                             verify_srt_pair)
-        from _timecode import parse_srt_file
-        cut_map, cut_problems = load_cut_map(edit_dir)
-        if cut_map is not None:
-            cut_problems += validate_cut_map(cut_map, project)
-        cues = parse_srt_file(srt_out) if srt_out.is_file() else []
-        overrun = bool(cues) and cues[-1]["endMs"] / 1000 > dur + 0.05
-        if cut_problems:
-            check("字幕时间轴", False, "；".join(cut_problems[:2]))
-        elif cut_map is not None:
-            # deliver.py 产出的是渲染时间轴成片；二次剪成片由项目的剪片脚本产出，
-            # 交付字幕只能按 cut-map 逐条复算（项目剪片后应直接用 verify_delivery 核验）。
-            resolved = cut_paths(cut_map, project)
-            pair = verify_srt_pair(resolved["srt_source"], srt_out, cut_map,
-                                   film_duration_s=dur)
-            expected = expected_film_duration_s(cut_map)
-            same_film = expected is not None and abs(dur - expected) <= DURATION_TOLERANCE_S
-            detail = (f"{srt_out.name} 是按 cut-map 复算的剪后字幕，成片 {dur:.3f}s 与 cut-map 一致"
-                      if not pair and same_film else
-                      "；".join((pair or [f"成片 {dur:.3f}s 与 cut-map 推算的 {expected:.3f}s 不一致"])[:2]))
-            check("字幕时间轴", not pair and same_film, detail)
+        # 3B) 显式合流（--composite / --mode composite）或无人物（--no-person）：合成单轨成片
+        slot = geo["person"]
+        pw, ph, px, py = int(slot["w"]), int(slot["h"]), int(slot["x"]), int(slot["y"])
+        target = out / f"{name}_成片.mp4"
+        vis_dur = _duration(visual_path)
+        tail = ["-c:v", "libx264", "-preset", "medium", "-crf", "17", "-pix_fmt", "yuv420p",
+                "-r", str(geo["fps"]), "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2",
+                "-movflags", "+faststart"]
+        if vis_dur > 0:
+            tail += ["-t", f"{vis_dur:.3f}"]
+        subtitle_tmp, subtitle_filter = _subtitle_staging(srt_path, burn)
+        if person_path is None:
+            note("无人物轨：画面层全幅交付，personSlot 区域保持画面层原样")
+            cmd_prefix = ["ffmpeg", "-y", "-v", "error", "-i", str(visual_path), "-i", str(audio_path),
+                          "-map", "0:v", "-map", "1:a"]
+            if subtitle_filter:
+                cmd_prefix += ["-vf", subtitle_filter]
+            cmd_prefix += tail
         else:
-            master = edit_dir / "subtitles.srt"
-            problems = compare_srt(srt_out, master) if master.is_file() else []
-            detail = ("；".join(problems[:2]) if problems else
-                      (f"字幕末条 {cues[-1]['endMs'] / 1000:.3f}s 超出成片 {dur:.3f}s" if overrun else
-                       "与流水线字幕同一条时间轴"))
-            check("字幕时间轴", not problems and not overrun, detail)
-        check("字幕交付", True, f"外挂 {srt_out.name}（烧录={burn}）")
-    else:
-        note("没有字幕源；如需字幕请 --srt")
+            vf = (f"[1:v]scale={pw}:{ph}:force_original_aspect_ratio=increase,"
+                  f"crop={pw}:{ph},setsar=1[person];"
+                  f"[0:v][person]overlay={px}:{py}:format=auto[composed]")
+            vf += f";[composed]{subtitle_filter or 'null'}[v]"
+            cmd_prefix = ["ffmpeg", "-y", "-v", "error", "-i", str(visual_path), "-i", str(person_path),
+                          "-i", str(audio_path), "-filter_complex", vf, "-map", "[v]", "-map", "2:a"] + tail
+        try:
+            proc = _stage_ffmpeg_replace(cmd_prefix, target)
+        finally:
+            if subtitle_tmp is not None:
+                subtitle_tmp.cleanup()
+        if not check("合成", proc.returncode == 0 and target.is_file(),
+                     (proc.stderr or "ok")[-300:] if proc.returncode != 0 else target.name):
+            return stop()
 
-    # 7) 最终签字：交付核验。判据仍归 verify_delivery（它回答"这一版能不能发"），
-    #    deliver 只把它的结论并入报告，不再自己下第二个结论（合并地图 M5-A）。
-    report["composition_ok"] = all(c["ok"] for c in report["checks"])
-    report["delivery_verdict"] = _delivery_verdict(edit_dir, target, audio_path, srt_path)
-    report["delivery_ok"] = report["delivery_verdict"]["ok"]
-    note("交付核验（verify_delivery）：" + ("通过" if report["delivery_ok"] else
-         "失败：" + "；".join(report["delivery_verdict"]["hard"][:3])))
+        # 4B) 核验单轨成片
+        dur_v = _duration(visual_path)
+        _v, _a, dur = _check_video_specs(target, geo, check, require_audio=True)
+        check("时长", abs(dur - dur_v) <= 0.5, f"{dur:.2f}s（画面层 {dur_v:.2f}s）")
+        _check_non_black_frames(target, dur, check)
+        _check_caption_safe(visual_path, dur_v, geo, check)
+        _export_delivered_srt(srt_path, srt_out, edit_dir, project, dur, burn, check, note)
 
-    from state_fingerprint import source_entries, entry
-    report["source_fingerprint"] = source_entries(project)
-    report["output_identity"] = entry(target)
-    report['input_identities'] = {key: entry(path) for key, path in (
-        ('visuals', visual_path), ('audio', audio_path), ('person', person_path), ('srt', srt_path)) if path}
-    report["output"] = str(target)
-    report["subtitles"] = str(srt_out) if srt_out.is_file() else None
-    report["ok"] = report["composition_ok"] and report["delivery_ok"]
-    (out / f"{name}_核验报告.json").write_text(
-        json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    if not as_json:
-        print(f"\n{'✓' if report['ok'] else '✗'} 成片：{target}")
-        print(f"  核验报告：{out / f'{name}_核验报告.json'}")
-    else:
-        print(json.dumps(report, ensure_ascii=False, indent=1))
-    return 0 if report["ok"] else 1
+        return _finalize_report(
+            project, edit_dir, out, name, report,
+            delivery_mode=effective_mode,
+            primary_video=target,
+            deliverables={"video": str(target), "subtitles": str(srt_out) if srt_out.is_file() else None},
+            spec_targets={"video": target},
+            inputs={"visuals": raw_visual_path, "audio": audio_path, "person": person_path, "srt": srt_path},
+            srt_out=srt_out, audio_path=audio_path, srt_path=srt_path,
+            as_json=as_json, note=note, headline=f"成片：{target}",
+        )
+    finally:
+        if demo_tmp_dir is not None:
+            demo_tmp_dir.cleanup()
 
 
 def main(argv=None) -> int:
@@ -787,19 +1078,33 @@ def main(argv=None) -> int:
     parser.add_argument("--srt", type=Path, help="字幕（默认外挂）")
     parser.add_argument("--out", type=Path, help="输出目录（默认 <project>/成品）")
     parser.add_argument("--burn-subtitles", dest="burn", action="store_true",
-                        help="烧录字幕（需要 ffmpeg 带 libass）")
+                        help="烧录字幕（需要 ffmpeg 带 libass；有真人轨时自动切为合流模式）")
     parser.add_argument("--no-person", action="store_true",
                         help="纯画面 + 旁白：不贴人物，画面层全幅交付")
+    parser.add_argument("--mode", choices=("split", "composite"), default="split",
+                        help="交付模式：split（默认：人物成片 + 无声画面成片 + 空隙字幕三件套）或 composite（单轨合成）")
+    parser.add_argument("--composite", action="store_true",
+                        help="显式合流开关：等效 --mode composite，把人物与画面合成单轨成片")
     parser.add_argument("--render", action="store_true",
                         help="显式渲染画面层（交付动作；默认不渲染，缺画面层时拒绝）")
+    parser.add_argument("--approve-in-chat", action="store_true",
+                        help="仅在作者于当前对话明确指示导出时使用：核验当前快照与零漂移后写入会话授权审计记录并放行")
+    parser.add_argument("--approval-note", default=None,
+                        help="可选：配合 --approve-in-chat 记录到审计条目的授权原因说明（默认：作者在对话中明确授权导出）")
     parser.add_argument("--skip-gate", action="store_true", help="测试夹具用：跳过 render_gate")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
+    if args.approval_note is not None and not args.approve_in_chat:
+        parser.error("--approval-note 只能配合 --approve-in-chat 使用")
+    if args.skip_gate and args.approve_in_chat:
+        parser.error("--skip-gate 不能与 --approve-in-chat 同时使用")
     if args.skip_gate and os.environ.get("DSH_TEST") != "1":
         parser.error("--skip-gate 只允许测试夹具（DSH_TEST=1）；正式流程必须过 render_gate")
     return deliver(args.project.expanduser().resolve(), args.visuals, args.person, args.audio,
                    args.srt, args.out, args.burn, args.skip_gate, args.json, args.no_person,
-                   args.render, args.visuals_confirm_current)
+                   args.render, args.visuals_confirm_current,
+                   mode=args.mode, composite=args.composite,
+                   approve_in_chat=args.approve_in_chat, approval_note=args.approval_note)
 
 
 if __name__ == "__main__":

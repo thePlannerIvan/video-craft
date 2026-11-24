@@ -28,6 +28,159 @@ sys.path.insert(0, str(HELPERS / "_internal"))
 import deliver  # noqa: E402
 
 
+DELIVER_SCRIPT = Path(__file__).parents[1] / "helpers" / "deliver.py"
+
+
+class DeliverChatApprovalAndCliTests(unittest.TestCase):
+    def _seed_review_project(self, root: Path, *, drift: bool = False, with_index: bool = True) -> Path:
+        import hashlib
+        project = root / "chat_proj"
+        (project / "edit").mkdir(parents=True, exist_ok=True)
+        (project / "composition/_render").mkdir(parents=True, exist_ok=True)
+        (project / "composition/assets").mkdir(parents=True, exist_ok=True)
+        if with_index:
+            src = project / "composition/index.html"
+            src.write_text("<html><body>v1</body></html>", encoding="utf-8")
+            stat = src.stat()
+            manifest = [{
+                "path": "composition/index.html",
+                "size": stat.st_size,
+                "mtime_ns": stat.st_mtime_ns,
+                "sha256": hashlib.sha256(src.read_bytes()).hexdigest(),
+            }]
+        else:
+            manifest = []
+        (project / "review").mkdir(parents=True, exist_ok=True)
+        (project / "review/review_data.json").write_text(
+            json.dumps({"snapshot": "snap-v21-01", "sourceManifest": manifest}),
+            encoding="utf-8",
+        )
+        if drift and with_index:
+            src.write_text("<html><body>drifted-after-review</body></html>", encoding="utf-8")
+        return project
+
+    def test_cli_rejects_stray_approval_note_and_conflicting_skip_gate(self):
+        with tempfile.TemporaryDirectory() as td:
+            project = Path(td) / "demo"
+            project.mkdir()
+            p1 = subprocess.run(
+                [sys.executable, str(DELIVER_SCRIPT), str(project), "--approval-note", "私自备注"],
+                capture_output=True, text=True, check=False,
+            )
+            self.assertNotEqual(p1.returncode, 0)
+            self.assertIn("--approve-in-chat", p1.stderr)
+
+            env = dict(os.environ, DSH_TEST="1")
+            p2 = subprocess.run(
+                [sys.executable, str(DELIVER_SCRIPT), str(project), "--skip-gate", "--approve-in-chat"],
+                env=env, capture_output=True, text=True, check=False,
+            )
+            self.assertNotEqual(p2.returncode, 0)
+            self.assertIn("--skip-gate", p2.stderr)
+
+    def test_approve_in_chat_blocks_without_review_or_on_source_drift(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            no_rev = root / "no_rev"
+            (no_rev / "edit").mkdir(parents=True)
+            with patch.object(deliver, "_preflight", return_value=(True, 1)), \
+                 patch.object(deliver, "_run") as enc, redirect_stdout(io.StringIO()):
+                code1 = deliver.deliver(
+                    no_rev, None, None, None, None, no_rev / "成品",
+                    False, False, True, approve_in_chat=True,
+                )
+            self.assertNotEqual(code1, 0)
+            enc.assert_not_called()
+            rep1 = json.loads((no_rev / "成品" / f"{no_rev.name}_核验报告.json").read_text(encoding="utf-8"))
+            gate1 = next(c for c in rep1["checks"] if c["name"] == "渲染闸门")
+            self.assertFalse(gate1["ok"])
+            self.assertIn("review_data.json", gate1["detail"])
+            self.assertFalse((no_rev / "review/review-submissions.json").exists())
+
+            drifted = self._seed_review_project(root, drift=True)
+            with patch.object(deliver, "_preflight", return_value=(True, 1)), \
+                 patch.object(deliver, "_run") as enc2, redirect_stdout(io.StringIO()):
+                code2 = deliver.deliver(
+                    drifted, None, None, None, None, drifted / "成品",
+                    False, False, True, approve_in_chat=True, approval_note="未建快照尝试导出",
+                )
+            self.assertNotEqual(code2, 0)
+            enc2.assert_not_called()
+            rep2 = json.loads((drifted / "成品" / f"{drifted.name}_核验报告.json").read_text(encoding="utf-8"))
+            gate2 = next(c for c in rep2["checks"] if c["name"] == "渲染闸门")
+            self.assertFalse(gate2["ok"])
+            self.assertIn("源又改过", gate2["detail"])
+            self.assertFalse((drifted / "review/review-submissions.json").exists())
+
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "需要 ffmpeg/ffprobe")
+    def test_cli_approve_in_chat_records_audit_entry_and_delivers(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td).resolve()
+            project = self._seed_review_project(root, drift=False, with_index=False)
+            # Build clean visuals, person, audio, EDL, and recompose.json
+            subprocess.run([
+                "ffmpeg", "-y", "-v", "error", "-f", "lavfi",
+                "-i", "color=c=0x050607:s=1920x1080:r=30:d=1",
+                "-vf", "drawbox=x=700:y=200:w=1000:h=500:color=0xF2EBDD@1:t=fill",
+                "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                str(project / "composition/_render/visuals.mp4"),
+            ], check=True)
+            subprocess.run([
+                "ffmpeg", "-y", "-v", "error", "-f", "lavfi",
+                "-i", "testsrc2=s=720x1280:r=30:d=1",
+                "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                str(project / "composition/assets/person.mp4"),
+            ], check=True)
+            subprocess.run([
+                "ffmpeg", "-y", "-v", "error", "-f", "lavfi",
+                "-i", "sine=frequency=440:duration=1", "-c:a", "aac", "-ar", "48000", "-ac", "2",
+                str(project / "composition/assets/audio.m4a"),
+            ], check=True)
+            (project / "recompose.json").write_text(json.dumps({
+                "canvas": {"w": 1920, "h": 1080, "fps": 30},
+                "personSlot": {"x": 0, "y": 0, "w": 500, "h": 1080},
+                "captionSafe": {"x": 0, "y": 880, "w": 1920, "h": 200},
+            }), encoding="utf-8")
+            from _edl import edl_digest
+            edl = project / "edit/edl.json"
+            edl.write_text(json.dumps({"ranges": [{"start": 0, "end": 1}]}), encoding="utf-8")
+            (project / "edit/segment_durations.json").write_text(json.dumps({
+                "final": {"durations": [1.0], "total_s": 1.0, "edl_sha256": edl_digest(edl)},
+            }), encoding="utf-8")
+            # Refresh review manifest after adding composition/assets and recompose/edl
+            from state_fingerprint import source_entries
+            manifest = [
+                {"path": k, "size": v["bytes"], "sha256": v["sha256"]}
+                for k, v in source_entries(project).items()
+                if not k.startswith("review/")
+            ]
+            (project / "review/review_data.json").write_text(
+                json.dumps({"snapshot": "snap-v21-01", "sourceManifest": manifest}),
+                encoding="utf-8",
+            )
+            deliver._record_visual_source(project, project / "composition/_render/visuals.mp4", "manual-confirmation")
+            # Without --approve-in-chat, gate blocks
+            blocked = subprocess.run(
+                [sys.executable, str(DELIVER_SCRIPT), str(project), "--json"],
+                capture_output=True, text=True, check=False,
+            )
+            self.assertNotEqual(blocked.returncode, 0)
+
+            # With --approve-in-chat and custom note, gate approves and records audit entry
+            note = "作者已在对话核对当前成片，确认导出"
+            ok_proc = subprocess.run(
+                [sys.executable, str(DELIVER_SCRIPT), str(project),
+                 "--approve-in-chat", "--approval-note", note, "--json"],
+                capture_output=True, text=True, check=False,
+            )
+            self.assertEqual(ok_proc.returncode, 0, ok_proc.stdout + ok_proc.stderr)
+            subs = json.loads((project / "review/review-submissions.json").read_text(encoding="utf-8"))
+            self.assertEqual(len(subs["records"]), 1)
+            self.assertEqual(subs["records"][0]["kind"], "chat-approval")
+            self.assertEqual(subs["records"][0]["snapshot"], "snap-v21-01")
+            self.assertEqual(subs["records"][0]["note"], note)
+
+
 class DeliveryVerdict(unittest.TestCase):
     def test_burn_without_libass_fails_before_encoder(self):
         with tempfile.TemporaryDirectory() as td:
@@ -198,9 +351,9 @@ class DeliverIntegration(unittest.TestCase):
         visual = tmp / 'composition/_render/visuals.mp4'
         if visual.is_file(): deliver._record_visual_source(tmp, visual, 'manual-confirmation')
 
-    def _run(self, tmp: Path) -> dict:
+    def _run(self, tmp: Path, *, composite: bool = False) -> dict:
         self._edl(tmp)
-        code = deliver.deliver(tmp, None, None, None, None, tmp / "成品", False, True, True)
+        code = deliver.deliver(tmp, None, None, None, None, tmp / "成品", False, True, True, composite=composite)
         report = tmp / "成品" / f"{tmp.name}_核验报告.json"
         data = json.loads(report.read_text(encoding="utf-8")) if report.is_file() else {}
         data["exit"] = code
@@ -283,13 +436,22 @@ class DeliverIntegration(unittest.TestCase):
                 "captionSafe": {"x": 0, "y": 880, "w": 1920, "h": 200},
             }), encoding="utf-8")
 
-            data = self._run(tmp)
+            data = self._run(tmp, composite=True)
             self.assertEqual(data["exit"], 0, data)
             names = {c["name"]: c for c in data["checks"]}
             self.assertTrue(names["时长"]["ok"], names["时长"])
             out = tmp / "成品" / f"{tmp.name}_成片.mp4"
             got = float(deliver._duration(out))
             self.assertAlmostEqual(got, 1.0, delta=0.15, msg=f"成片 {got:.2f}s，应跟画面层 1s")
+
+            # Default split mode also caps 人物成片 to 画面成片 duration within 0.5s
+            split_out = tmp / "成品分轨"
+            with redirect_stdout(io.StringIO()):
+                split_code = deliver.deliver(tmp, None, None, None, None, split_out, False, True, True)
+            self.assertEqual(split_code, 0)
+            p_dur = float(deliver._duration(split_out / f"{tmp.name}_人物成片.mp4"))
+            v_dur = float(deliver._duration(split_out / f"{tmp.name}_画面成片.mp4"))
+            self.assertLessEqual(abs(p_dur - v_dur), 0.5, (p_dur, v_dur))
 
     def test_missing_person_still_red_without_flag(self):
         with tempfile.TemporaryDirectory() as td:
@@ -341,7 +503,8 @@ class DeliverIntegration(unittest.TestCase):
                         out = project / ("burn" if burn else "sidecar")
                         with redirect_stdout(io.StringIO()):
                             code = deliver.deliver(project, None, None, None, srt, out,
-                                                   burn, True, True, no_person=no_person)
+                                                   burn, True, True, no_person=no_person,
+                                                   composite=not no_person)
                         self.assertEqual(code, 0, (out / f"{project.name}_核验报告.json").read_text())
                         video = out / f"{project.name}_成片.mp4"
                         values.append(deliver._frame_luma(video, .5, (1920, 200, 0, 880)))
@@ -419,11 +582,14 @@ class DeliverIntegration(unittest.TestCase):
             self.assertTrue(report["demo_splice"]["screen_text_protection"])
 
             visual_track = tmp / "成品" / f"{tmp.name}_画面成片.mp4"
-            person_track = tmp / "成品" / f"{tmp.name}_人物轨.mp4"
+            person_track = tmp / "成品" / f"{tmp.name}_人物成片.mp4"
             final_video = tmp / "成品" / f"{tmp.name}_成片.mp4"
             self.assertTrue(visual_track.is_file())
             self.assertTrue(person_track.is_file())
-            self.assertTrue(final_video.is_file())
+            self.assertFalse(final_video.exists())
+            pv, pa = deliver._streams(person_track)
+            self.assertEqual((pv.get("width"), pv.get("height")), (720, 1280))
+            self.assertEqual(pa.get("channels"), 2)
 
             vt_v, vt_a = deliver._streams(visual_track)
             self.assertEqual((vt_v.get("width"), vt_v.get("height")), (1920, 1080))
@@ -436,6 +602,389 @@ class DeliverIntegration(unittest.TestCase):
             self.assertLess(before_luma, 20.0)
             self.assertGreater(demo_luma, 100.0)
             self.assertLess(after_luma, 20.0)
+
+
+@unittest.skipUnless(_have("ffmpeg") and _have("ffprobe"), "需要 ffmpeg/ffprobe")
+class SplitDeliveryContractTests(unittest.TestCase):
+    def _make_video(self, path: Path, *, size: str, dur: float, vf: str | None = None, color: str | None = None) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        lavfi = f"color=c={color}:s={size}:r=30:d={dur}" if color else f"testsrc2=s={size}:r=30:d={dur}"
+        cmd = ["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", lavfi]
+        if vf:
+            cmd += ["-vf", vf]
+        cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", str(path)]
+        subprocess.run(cmd, check=True)
+
+    def _make_audio(self, path: Path, *, dur: float) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run([
+            "ffmpeg", "-y", "-v", "error", "-f", "lavfi",
+            "-i", f"sine=frequency=440:duration={dur}",
+            "-c:a", "aac", "-ar", "48000", "-ac", "2", str(path),
+        ], check=True)
+
+    def test_default_split_delivery_outputs_three_piece_tracks_with_gap_fixed_srt(self):
+        with tempfile.TemporaryDirectory() as td:
+            project = (Path(td) / "split_demo").resolve()
+            (project / "composition/_render").mkdir(parents=True)
+            (project / "composition/assets").mkdir(parents=True)
+            (project / "edit").mkdir(parents=True)
+
+            # Dark talk-only opening for first 0.6s, bright stage thereafter (empty captionSafe y>=880)
+            self._make_video(
+                project / "composition/_render/visuals.mp4",
+                size="1920x1080",
+                dur=1.5,
+                color="0x030405",
+                vf="drawbox=x=700:y=200:w=1000:h=500:color=0xF2EBDD@1:t=fill:enable='gte(t,0.6)'",
+            )
+            # High-res edit/cut.mp4 (2.5s, 720x1280) vs decoy low-res composition/assets/person.mp4 (360x640)
+            self._make_video(project / "edit/cut.mp4", size="720x1280", dur=2.5)
+            self._make_video(project / "composition/assets/person.mp4", size="360x640", dur=2.5)
+            self._make_audio(project / "composition/assets/audio.m4a", dur=2.5)
+
+            (project / "recompose.json").write_text(json.dumps({
+                "canvas": {"w": 1920, "h": 1080, "fps": 30},
+                "personSlot": {"x": 0, "y": 0, "w": 500, "h": 1080},
+                "captionSafe": {"x": 0, "y": 880, "w": 1920, "h": 200},
+            }), encoding="utf-8")
+
+            raw_srt = (
+                "1\n00:00:00,000 --> 00:00:00,500\n第一句开场\n\n"
+                "2\n00:00:00,500 --> 00:00:01,000\n第二句紧接\n\n"
+                "3\n00:00:01,000 --> 00:00:01,420\n第三句收尾\n\n"
+            )
+            srt_file = project / "edit/subtitles.srt"
+            srt_file.write_text(raw_srt, encoding="utf-8")
+
+            from _edl import edl_digest
+            edl = project / "edit/edl.json"
+            edl.write_text(json.dumps({"ranges": [{"start": 0, "end": 1.5}]}), encoding="utf-8")
+            (project / "edit/segment_durations.json").write_text(json.dumps({
+                "final": {"durations": [1.5], "total_s": 1.5, "edl_sha256": edl_digest(edl)},
+            }), encoding="utf-8")
+            deliver._record_visual_source(project, project / "composition/_render/visuals.mp4", "manual-confirmation")
+
+            env = dict(os.environ, DSH_TEST="1")
+            proc = subprocess.run(
+                [sys.executable, str(DELIVER_SCRIPT), str(project), "--skip-gate", "--json"],
+                env=env, capture_output=True, text=True, check=False,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            report = json.loads((project / "成品" / f"{project.name}_核验报告.json").read_text(encoding="utf-8"))
+            self.assertTrue(report["ok"], report)
+            self.assertTrue(report["delivery_ok"], report)
+            self.assertEqual(report["delivery_mode"], "split")
+
+            person_out = project / "成品" / f"{project.name}_人物成片.mp4"
+            visual_out = project / "成品" / f"{project.name}_画面成片.mp4"
+            srt_out = project / "成品" / f"{project.name}_字幕.srt"
+            composite_out = project / "成品" / f"{project.name}_成片.mp4"
+
+            self.assertTrue(person_out.is_file())
+            self.assertTrue(visual_out.is_file())
+            self.assertTrue(srt_out.is_file())
+            self.assertFalse(composite_out.exists(), "default split mode must not emit composite video")
+            self.assertEqual(report["output"], str(person_out))
+            self.assertEqual(report["deliverables"], {
+                "person": str(person_out),
+                "visuals": str(visual_out),
+                "subtitles": str(srt_out),
+            })
+
+            pv, pa = deliver._streams(person_out)
+            self.assertEqual((pv.get("width"), pv.get("height")), (720, 1280))
+            self.assertEqual(pa.get("codec_name"), "aac")
+            self.assertEqual(pa.get("channels"), 2)
+
+            vv, va = deliver._streams(visual_out)
+            self.assertEqual((vv.get("width"), vv.get("height")), (1920, 1080))
+            self.assertEqual(va, {}, "visual track must have 0 audio streams")
+
+            dur_p = deliver._duration(person_out)
+            dur_v = deliver._duration(visual_out)
+            self.assertLessEqual(abs(dur_p - dur_v), 0.5, (dur_p, dur_v))
+
+            # edit/subtitles.srt stays untouched; delivered SRT has >= 30ms gaps
+            self.assertEqual(srt_file.read_text(encoding="utf-8"), raw_srt)
+            from _timecode import parse_srt_file
+            cues = parse_srt_file(srt_out)
+            self.assertEqual(len(cues), 3)
+            for i in range(len(cues) - 1):
+                self.assertGreaterEqual(cues[i + 1]["startMs"] - cues[i]["endMs"], 30, cues)
+
+    def test_person_source_priority_picks_highest_bitrate_candidate_in_order(self):
+        candidates = [
+            ("edit/cut.mp4", (640, 360)),
+            ("composition/assets/person.mp4", (480, 270)),
+            ("edit/_engineering/person_master.mp4", (320, 180)),
+            ("edit/_engineering/cut.mp4", (160, 90)),
+        ]
+        for idx in range(len(candidates)):
+            with self.subTest(expected=candidates[idx][0]), tempfile.TemporaryDirectory() as td:
+                project = (Path(td) / f"prio_{idx}").resolve()
+                (project / "composition/_render").mkdir(parents=True)
+                (project / "composition/assets").mkdir(parents=True)
+                (project / "edit/_engineering").mkdir(parents=True)
+
+                self._make_video(
+                    project / "composition/_render/visuals.mp4",
+                    size="1920x1080", dur=1.0,
+                    color="0x050607",
+                    vf="drawbox=x=700:y=200:w=1000:h=500:color=0xF2EBDD@1:t=fill",
+                )
+                self._make_audio(project / "composition/assets/audio.m4a", dur=1.0)
+                for rel, (w, h) in candidates[idx:]:
+                    self._make_video(project / rel, size=f"{w}x{h}", dur=1.0)
+
+                (project / "recompose.json").write_text(json.dumps({
+                    "canvas": {"w": 1920, "h": 1080, "fps": 30},
+                    "personSlot": {"x": 0, "y": 0, "w": 500, "h": 1080},
+                    "captionSafe": {"x": 0, "y": 880, "w": 1920, "h": 200},
+                }), encoding="utf-8")
+                from _edl import edl_digest
+                edl = project / "edit/edl.json"
+                edl.write_text(json.dumps({"ranges": [{"start": 0, "end": 1.0}]}), encoding="utf-8")
+                (project / "edit/segment_durations.json").write_text(json.dumps({
+                    "final": {"durations": [1.0], "total_s": 1.0, "edl_sha256": edl_digest(edl)},
+                }), encoding="utf-8")
+                deliver._record_visual_source(project, project / "composition/_render/visuals.mp4", "manual-confirmation")
+
+                with redirect_stdout(io.StringIO()):
+                    code = deliver.deliver(project, None, None, None, None, project / "成品", False, True, True)
+                self.assertEqual(code, 0)
+                person_out = project / "成品" / f"{project.name}_人物成片.mp4"
+                pv, _ = deliver._streams(person_out)
+                self.assertEqual((pv.get("width"), pv.get("height")), candidates[idx][1])
+
+    def _seed_composite_ready_project(self, project: Path, *, tight_srt: bool = True) -> Path:
+        (project / "composition/_render").mkdir(parents=True)
+        (project / "composition/assets").mkdir(parents=True)
+        (project / "edit").mkdir(parents=True)
+        self._make_video(
+            project / "composition/_render/visuals.mp4",
+            size="1920x1080", dur=1.5, color="0x050607",
+            vf="drawbox=x=700:y=200:w=1000:h=500:color=0xF2EBDD@1:t=fill",
+        )
+        self._make_video(project / "edit/cut.mp4", size="720x1280", dur=1.5)
+        self._make_audio(project / "composition/assets/audio.m4a", dur=1.5)
+        (project / "recompose.json").write_text(json.dumps({
+            "canvas": {"w": 1920, "h": 1080, "fps": 30},
+            "personSlot": {"x": 0, "y": 0, "w": 500, "h": 1080},
+            "captionSafe": {"x": 0, "y": 880, "w": 1920, "h": 200},
+        }), encoding="utf-8")
+        if tight_srt:
+            (project / "edit/subtitles.srt").write_text(
+                "1\n00:00:00,000 --> 00:00:00,500\n第一行\n\n"
+                "2\n00:00:00,500 --> 00:00:01,000\n第二行\n\n"
+                "3\n00:00:01,000 --> 00:00:01,420\n第三行\n\n",
+                encoding="utf-8",
+            )
+        from _edl import edl_digest
+        edl = project / "edit/edl.json"
+        edl.write_text(json.dumps({"ranges": [{"start": 0, "end": 1.5}]}), encoding="utf-8")
+        (project / "edit/segment_durations.json").write_text(json.dumps({
+            "final": {"durations": [1.5], "total_s": 1.5, "edl_sha256": edl_digest(edl)},
+        }), encoding="utf-8")
+        deliver._record_visual_source(project, project / "composition/_render/visuals.mp4", "manual-confirmation")
+        return project
+
+    def test_explicit_composite_cli_and_mode_flag_produce_single_video_and_gap_fixed_srt(self):
+        env = dict(os.environ, DSH_TEST="1")
+        for flag in (["--composite"], ["--mode", "composite"]):
+            with self.subTest(flag=flag), tempfile.TemporaryDirectory() as td:
+                project = self._seed_composite_ready_project((Path(td) / "comp_proj").resolve())
+                raw_srt = (project / "edit/subtitles.srt").read_text(encoding="utf-8")
+                proc = subprocess.run(
+                    [sys.executable, str(DELIVER_SCRIPT), str(project), "--skip-gate", *flag, "--json"],
+                    env=env, capture_output=True, text=True, check=False,
+                )
+                self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+                report = json.loads((project / "成品" / f"{project.name}_核验报告.json").read_text(encoding="utf-8"))
+                self.assertTrue(report["ok"], report)
+                self.assertEqual(report["delivery_mode"], "composite")
+
+                target = project / "成品" / f"{project.name}_成片.mp4"
+                srt_out = project / "成品" / f"{project.name}_字幕.srt"
+                self.assertTrue(target.is_file())
+                self.assertTrue(srt_out.is_file())
+                self.assertFalse((project / "成品" / f"{project.name}_人物成片.mp4").exists())
+                self.assertFalse((project / "成品" / f"{project.name}_画面成片.mp4").exists())
+                self.assertEqual(report["deliverables"], {"video": str(target), "subtitles": str(srt_out)})
+                self.assertEqual((project / "edit/subtitles.srt").read_text(encoding="utf-8"), raw_srt)
+
+                from _timecode import parse_srt_file
+                cues = parse_srt_file(srt_out)
+                self.assertEqual(len(cues), 3)
+                for i in range(len(cues) - 1):
+                    self.assertGreaterEqual(cues[i + 1]["startMs"] - cues[i]["endMs"], 30, cues)
+
+    def test_no_person_cli_outputs_single_video_and_gap_fixed_srt(self):
+        env = dict(os.environ, DSH_TEST="1")
+        with tempfile.TemporaryDirectory() as td:
+            project = self._seed_composite_ready_project((Path(td) / "noperson_proj").resolve())
+            (project / "edit/cut.mp4").unlink()
+            proc = subprocess.run(
+                [sys.executable, str(DELIVER_SCRIPT), str(project), "--no-person", "--skip-gate", "--json"],
+                env=env, capture_output=True, text=True, check=False,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            report = json.loads((project / "成品" / f"{project.name}_核验报告.json").read_text(encoding="utf-8"))
+            self.assertTrue(report["ok"], report)
+            self.assertEqual(report["delivery_mode"], "no-person")
+            target = project / "成品" / f"{project.name}_成片.mp4"
+            srt_out = project / "成品" / f"{project.name}_字幕.srt"
+            self.assertTrue(target.is_file())
+            self.assertTrue(srt_out.is_file())
+            self.assertFalse((project / "成品" / f"{project.name}_人物成片.mp4").exists())
+            self.assertFalse((project / "成品" / f"{project.name}_画面成片.mp4").exists())
+            from _timecode import parse_srt_file
+            cues = parse_srt_file(srt_out)
+            for i in range(len(cues) - 1):
+                self.assertGreaterEqual(cues[i + 1]["startMs"] - cues[i]["endMs"], 30, cues)
+
+    def test_pure_talking_project_delivers_person_and_gap_fixed_srt_without_empty_visual_track(self):
+        env = dict(os.environ, DSH_TEST="1")
+        with tempfile.TemporaryDirectory() as td:
+            project = (Path(td) / "talking_proj").resolve()
+            (project / "edit/_engineering").mkdir(parents=True)
+            (project / "edit/project.md").write_text("production_mode: pure-talking\n", encoding="utf-8")
+            self._make_video(project / "edit/cut.mp4", size="720x1280", dur=1.5)
+            self._make_audio(project / "edit/_engineering/review_audio.m4a", dur=1.5)
+            (project / "edit/subtitles.srt").write_text(
+                "1\n00:00:00,000 --> 00:00:00,500\n纯口播第一句\n\n"
+                "2\n00:00:00,500 --> 00:00:01,400\n纯口播第二句\n\n",
+                encoding="utf-8",
+            )
+            from _edl import edl_digest
+            edl = project / "edit/edl.json"
+            edl.write_text(json.dumps({"ranges": [{"start": 0, "end": 1.5}]}), encoding="utf-8")
+            (project / "edit/segment_durations.json").write_text(json.dumps({
+                "final": {"durations": [1.5], "total_s": 1.5, "edl_sha256": edl_digest(edl)},
+            }), encoding="utf-8")
+
+            proc = subprocess.run(
+                [sys.executable, str(DELIVER_SCRIPT), str(project), "--skip-gate", "--json"],
+                env=env, capture_output=True, text=True, check=False,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            report = json.loads((project / "成品" / f"{project.name}_核验报告.json").read_text(encoding="utf-8"))
+            self.assertTrue(report["ok"], report)
+            self.assertEqual(report["delivery_mode"], "pure-talking")
+            person_out = project / "成品" / f"{project.name}_人物成片.mp4"
+            srt_out = project / "成品" / f"{project.name}_字幕.srt"
+            self.assertTrue(person_out.is_file())
+            self.assertTrue(srt_out.is_file())
+            self.assertFalse((project / "成品" / f"{project.name}_画面成片.mp4").exists())
+            self.assertFalse((project / "成品" / f"{project.name}_成片.mp4").exists())
+            self.assertEqual(report["deliverables"], {"person": str(person_out), "subtitles": str(srt_out)})
+            pv, pa = deliver._streams(person_out)
+            self.assertEqual((pv.get("width"), pv.get("height")), (720, 1280))
+            self.assertEqual(pa.get("channels"), 2)
+
+    def test_burn_subtitles_with_person_auto_switches_to_composite_via_cli(self):
+        libass_dir = Path("/opt/homebrew/opt/ffmpeg@7/bin")
+        with patch.dict(os.environ, {"PATH": str(libass_dir) + os.pathsep + os.environ["PATH"]}):
+            import probe_env
+            if not probe_env.ffmpeg_capabilities()["filters"].get("subtitles"):
+                self.skipTest("libass unavailable")
+            env = dict(os.environ, DSH_TEST="1")
+            with tempfile.TemporaryDirectory() as td:
+                project = self._seed_composite_ready_project((Path(td) / "burn_auto").resolve())
+                proc = subprocess.run(
+                    [sys.executable, str(DELIVER_SCRIPT), str(project),
+                     "--burn-subtitles", "--skip-gate", "--json"],
+                    env=env, capture_output=True, text=True, check=False,
+                )
+                self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+                report = json.loads((project / "成品" / f"{project.name}_核验报告.json").read_text(encoding="utf-8"))
+                self.assertEqual(report["delivery_mode"], "composite")
+                self.assertTrue((project / "成品" / f"{project.name}_成片.mp4").is_file())
+                self.assertFalse((project / "成品" / f"{project.name}_人物成片.mp4").exists())
+
+    def test_rerun_with_existing_delivered_srt_does_not_double_trim_gaps(self):
+        with tempfile.TemporaryDirectory() as td:
+            project = self._seed_composite_ready_project((Path(td) / "idemp_srt").resolve(), tight_srt=False)
+            delivered_srt = project / "成品" / f"{project.name}_字幕.srt"
+            delivered_srt.parent.mkdir(parents=True, exist_ok=True)
+            already_fixed = (
+                "1\n00:00:00,000 --> 00:00:00,460\n第一行\n\n"
+                "2\n00:00:00,500 --> 00:00:01,400\n第二行\n\n"
+            )
+            delivered_srt.write_text(already_fixed, encoding="utf-8")
+            with redirect_stdout(io.StringIO()):
+                code = deliver.deliver(project, None, None, None, None, project / "成品", False, True, True)
+            self.assertEqual(code, 0)
+            self.assertEqual(delivered_srt.read_text(encoding="utf-8"), already_fixed)
+
+    def test_state_fingerprint_and_stage_deliver_status_accept_split_delivery(self):
+        with tempfile.TemporaryDirectory() as td:
+            project = self._seed_composite_ready_project((Path(td) / "fp_split").resolve())
+            # Add review snapshot + chat approval so stage_deliver status sees green gate
+            from state_fingerprint import capture, compare, source_entries
+            manifest = [
+                {"path": k, "size": v["bytes"], "sha256": v["sha256"]}
+                for k, v in source_entries(project).items()
+            ]
+            (project / "review").mkdir(parents=True, exist_ok=True)
+            (project / "review/review_data.json").write_text(
+                json.dumps({"snapshot": "snap-fp-01", "sourceManifest": manifest}),
+                encoding="utf-8",
+            )
+            deliver._record_visual_source(project, project / "composition/_render/visuals.mp4", "manual-confirmation")
+
+            proc = subprocess.run(
+                [sys.executable, str(DELIVER_SCRIPT), str(project), "--approve-in-chat", "--json"],
+                capture_output=True, text=True, check=False,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            doc = capture(project)
+            (project / "成品/delivery.json").write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
+            self.assertEqual(compare(doc, capture(project)), [])
+
+            import stage_deliver
+            out_buf = io.StringIO()
+            with redirect_stdout(out_buf):
+                rc = stage_deliver.main(["status", "--project", str(project), "--json"])
+            self.assertEqual(rc, 0)
+            st = json.loads(out_buf.getvalue())["state"]
+            self.assertTrue(st["gate"]["ok"], st)
+            self.assertTrue(st["report_current"], st)
+            self.assertTrue(st["fingerprint_current"], st)
+            self.assertTrue(st["stage_complete"], st)
+
+    def test_split_delivery_flags_black_visual_mid_tail_and_verify_delivery_dir_tolerates_silent_visual(self):
+        with tempfile.TemporaryDirectory() as td:
+            project = self._seed_composite_ready_project((Path(td) / "split_blk").resolve())
+            env = dict(os.environ, DSH_TEST="1")
+            # Good split run first -> verify_delivery --deliver-dir accepts silent 画面成片.mp4
+            ok_proc = subprocess.run(
+                [sys.executable, str(DELIVER_SCRIPT), str(project), "--skip-gate", "--json"],
+                env=env, capture_output=True, text=True, check=False,
+            )
+            self.assertEqual(ok_proc.returncode, 0, ok_proc.stdout + ok_proc.stderr)
+            vd = subprocess.run(
+                [sys.executable, str(DELIVER_SCRIPT.parent / "_internal" / "verify_delivery.py"), str(project / "edit"),
+                 "--video", str(project / "成品" / f"{project.name}_人物成片.mp4"),
+                 "--deliver-dir", str(project / "成品"), "--json"],
+                capture_output=True, text=True, check=False,
+            )
+            vd_payload = deliver._delivery_verdict(project / "edit", project / "成品" / f"{project.name}_人物成片.mp4")
+            self.assertTrue(vd_payload["ok"], vd.stdout + vd.stderr)
+            # Direct CLI check with --deliver-dir must not complain about missing audio channels on _画面成片.mp4
+            self.assertNotIn("声道数 None", vd.stdout + vd.stderr)
+
+            # Corrupt visual track to pure black -> split delivery must fail 画面中帧/尾帧非全黑
+            self._make_video(project / "composition/_render/visuals.mp4", size="1920x1080", dur=1.5, color="0x020202")
+            deliver._record_visual_source(project, project / "composition/_render/visuals.mp4", "manual-confirmation")
+            bad_proc = subprocess.run(
+                [sys.executable, str(DELIVER_SCRIPT), str(project), "--skip-gate", "--json"],
+                env=env, capture_output=True, text=True, check=False,
+            )
+            self.assertNotEqual(bad_proc.returncode, 0)
+            bad_report = json.loads((project / "成品" / f"{project.name}_核验报告.json").read_text(encoding="utf-8"))
+            failed_names = {c["name"] for c in bad_report["checks"] if not c["ok"]}
+            self.assertTrue("画面中帧非全黑" in failed_names or "画面尾帧非全黑" in failed_names, bad_report["checks"])
 
 
 if __name__ == "__main__":

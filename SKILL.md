@@ -14,7 +14,7 @@ description: 承接上游制片总控内容包、静态参考页或已有音视�
 
 ## 转录与凭据（优先在线服务，环境在 Skill 仓库根）
 
-词级时间戳同时决定剪辑、字幕和交付，**优先用在线转录服务**：豆包流式语音识别 2.0（SeedASR SAUC，`volc.seedasr.sauc.duration`），入口 `helpers/_internal/transcribe_seedasr.py`（`transcribe_seedasr.py`）。`helpers/_internal/transcribe.py --backend ark` 是通用多模态模型，**不是 ASR**，禁用于词级时间（见 [GOTCHAS.md](GOTCHAS.md) #1）。Scribe 仅作第二引擎交叉校验，本地 `mlx_transcribe.py` 为离线最后手段。
+词级时间戳同时决定剪辑、字幕和交付，**优先用在线转录服务**：豆包流式语音识别 2.0（SeedASR SAUC，`volc.seedasr.sauc.duration`），入口 `helpers/stage_cut.py prepare`（默认自动优先路由至 `helpers/_internal/transcribe_seedasr.py`）。`helpers/_internal/transcribe.py --backend ark` 是通用多模态模型，**不是 ASR**，禁用于自动回退与词级时间（见 [GOTCHAS.md](GOTCHAS.md) #1）。Scribe 仅作第二引擎交叉校验，本地 `--backend mlx` 为离线最后手段。
 
 **环境（本机 Skill 仓库根）**：凭据只写在本 Skill 仓库根的 `.env`（即 `02-skills-library/03-design-delivery/video-craft/.env`；Codex / Claude / Antigravity 副本各读自己的 `.env`），绝不写入用户素材目录或任何提交。首次配置见 [install.md](install.md)。
 
@@ -49,12 +49,12 @@ description: 承接上游制片总控内容包、静态参考页或已有音视�
 | 工程审阅与返修 | 8–9 | `review.py`、`review_inbox.py` | [review-and-delivery.md](references/review-and-delivery.md) |
 | 严格核验与交付 | 10 | `deliver.py`（或 `montage.py --deliver`） | [review-and-delivery.md](references/review-and-delivery.md)、[visual-timeline.md](references/visual-timeline.md) |
 
-全部 **12 个顶层公开入口**与底层 `_internal` 诊断调用清单集中在 [tools.md](references/tools.md)；模块边界、失效范围与历史不变式维护在 [architecture.md](references/architecture.md) 与 [implementation-brief.md](references/implementation-brief.md)。
+全部 **12 个顶层公开入口**与底层 `_internal` 诊断调用清单集中在 [tools.md](references/tools.md)；模块边界、失效范围与历史迁移索引维护在 [architecture.md](references/architecture.md) 与 [gotchas-index.md](references/gotchas-index.md)。
 
 ## 每轮终点：审阅页，不是成片
 
 - `edit/_engineering/**` = **审阅素材**（工程态，可重渲、不算交付）；
-- `成品/**` = **交付件**（必须同时满足「作者明确出片指令」+「人工提交覆盖当前快照（`render_gate.py` 放行）」）。
+- `成品/**` = **交付件**（必须同时满足「作者明确出片指令」+「审阅快照零漂移且存在网页提交或对话授权 `--approve-in-chat`」；有真人口播与画面层时默认分轨导出 `人物成片 + 无声画面成片 + 空隙字幕`，单视频合流用 `--composite`）。
 
 | 常见来料起点 | 首选动作 | 本轮可交付证据 |
 |---|---|---|

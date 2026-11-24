@@ -29,7 +29,7 @@ A projected record carries `"projected": true` and is deliberately weaker:
     real file against a real render. A projection can never stand in for that.
 
 Usage:
-    python3 helpers/duration_plan.py <edit_dir> [--fps 30] [--force] [--json]
+    python3 helpers/_internal/duration_plan.py <edit_dir> [--fps 30] [--force] [--json]
 
 Writes one extra key (`plan`) into `segment_durations.json`; existing records are
 left untouched.

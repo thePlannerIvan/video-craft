@@ -111,7 +111,7 @@ python3 helpers/_internal/lib/planners_modules_install_test.py
 
 ### 历史演进与血统
 
-- **2026-09-15 合并与事故防线**：由 `video-use`（时间脊柱/合成器/字幕链/交付）与 `web-video-presentation`（视觉层/alpha 编码/视觉审阅）合并脱离上游；因一次本机 libvpx 未编入 alpha 导致渲染 6 分钟全黑的教训，新增了 `check_overlay.py` 入口门禁。历史记录留在 [upstream-diff.md](upstream-diff.md)。
+- **2026-09-15 合并与事故防线**：由 `video-use`（时间脊柱/合成器/字幕链/交付）与 `web-video-presentation`（视觉层/alpha 编码/视觉审阅）合并脱离上游；因一次本机 libvpx 未编入 alpha 导致渲染 6 分钟全黑的教训，新增了 `check_overlay.py` 入口门禁。第三方许可保留在 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 ### 目录结构
 

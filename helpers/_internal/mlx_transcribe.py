@@ -20,8 +20,8 @@ venv (has mlx_whisper). Cached like Scribe: existing transcript is
 never re-computed.
 
 Usage:
-    python helpers/mlx_transcribe.py <video> --edit-dir <dir>
-    python helpers/mlx_transcribe.py <video> --edit-dir <dir> --language zh
+    python helpers/_internal/mlx_transcribe.py <video> --edit-dir <dir>
+    python helpers/_internal/mlx_transcribe.py <video> --edit-dir <dir> --language zh
 """
 
 from __future__ import annotations
@@ -116,7 +116,7 @@ def main() -> None:
     except ImportError:
         sys.exit(
             "mlx_whisper not installed in this Python. Run it from the video-use venv:\n"
-            "  <video-use>/.venv/bin/python helpers/mlx_transcribe.py ..."
+            "  <video-use>/.venv/bin/python helpers/_internal/mlx_transcribe.py ..."
         )
 
 

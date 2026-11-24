@@ -16,7 +16,7 @@ already left the body. So the checks below are stricter than "the file exists":
   A rule that only a human can apply must say `judgment:` and must spell out
   **看什么** (what to look at, and what counts as wrong).
 * every `#n` (and `第 n 条`) in the prose must resolve to a live entry or to a
-  number recorded in `references/implementation-brief.md`'s migration index.
+  number recorded in `references/gotchas-index.md`'s migration index.
 * the heading level is uniform, so "which of these is an entry" is not a guess.
 """
 from __future__ import annotations
@@ -27,7 +27,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
 GOTCHAS = ROOT / "GOTCHAS.md"
-HISTORY = ROOT / "references" / "implementation-brief.md"
+HISTORY = ROOT / "references" / "gotchas-index.md"
 PREFIXES = ("test", "check", "env", "judgment")
 # 2026-10-19: 74 → 51 (retire upgraded) → 40 (merge same-root)
 # 2026-10-21: 40 → 42 — 活舞台静默失败（#74）与渲染闸门（#75）各一条，机制是新检查脚本

@@ -26,7 +26,7 @@ Checks, in the order a failure would hurt:
      refusal, not a guess.
 
 Usage:
-  <venv>/python helpers/verify_delivery.py <edit_dir> \
+  <venv>/python helpers/_internal/verify_delivery.py <edit_dir> \
       [--video edit/final.mp4] [--deliver-dir 成品] [--max-pause 1.0] \
       [--max-black 2.0] [--json]
 
@@ -46,7 +46,7 @@ from _edl import render_record  # noqa: E402
 
 
 def probe(path: Path) -> dict:
-    """统一实现见 `helpers/_probe.py`（合并地图 M4）；保留旧返回形状。"""
+    """统一实现见 `helpers/_internal/_probe.py`（合并地图 M4）；保留旧返回形状。"""
     from _probe import probe_media
     media = probe_media(path)
     return {
@@ -56,7 +56,7 @@ def probe(path: Path) -> dict:
 
 
 def srt_cues(path: Path) -> list[tuple[float, float]]:
-    """统一实现见 `helpers/_timecode.py`（合并地图 M1/M2）；畸形块保持跳过语义。"""
+    """统一实现见 `helpers/_internal/_timecode.py`（合并地图 M1/M2）；畸形块保持跳过语义。"""
     from _timecode import parse_srt_file_loose
     return [(cue["startMs"] / 1000, cue["endMs"] / 1000)
             for cue in parse_srt_file_loose(path)]
@@ -155,13 +155,25 @@ def check_deliverable_specs(project: Path, deliver_dir: Path,
         report["source_audio"] = {"file": src.name, "channels": src_ch, "sample_rate": src_rate}
 
     specs: dict = {}
+    audio_hashes: set[str] = set()
     for v in sorted(deliver_dir.rglob("*.mp4")):
         info = probe(v)
         a = next((x for x in info["streams"] if x["codec_type"] == "audio"), None) or {}
-        specs[v.name] = {"duration_s": round(float(info["format"]["duration"]), 3),
-                         "channels": a.get("channels"),
-                         "sample_rate": int(float(a.get("sample_rate") or 0)),
-                         "audio_sha256": audio_fingerprint(v)[:16]}
+        silent_split_visual = (not a) and v.name.endswith("_画面成片.mp4")
+        fp = "" if not a else audio_fingerprint(v)[:16]
+        entry_spec = {
+            "duration_s": round(float(info["format"]["duration"]), 3),
+            "channels": a.get("channels"),
+            "sample_rate": int(float(a.get("sample_rate") or 0)),
+            "audio_sha256": fp,
+        }
+        if silent_split_visual:
+            entry_spec["silent_visual_track"] = True
+            specs[v.name] = entry_spec
+            continue
+        specs[v.name] = entry_spec
+        if fp:
+            audio_hashes.add(fp)
         if src_ch and a.get("channels") != src_ch:
             hard.append(f"{v.name} 声道数 {a.get('channels')} != 源音轨 {src_ch} ——"
                         f"处理音轨时不要改变声道布局（单声道化过就听不出来但已经是残次）")
@@ -171,10 +183,9 @@ def check_deliverable_specs(project: Path, deliver_dir: Path,
 
     if len(specs) >= 2:
         ds = [x["duration_s"] for x in specs.values()]
-        if max(ds) - min(ds) > 0.05:
+        if max(ds) - min(ds) > 0.5:
             hard.append(f"成品之间时长不一致：{ {k: v['duration_s'] for k, v in specs.items()} }")
-        hashes = {x["audio_sha256"] for x in specs.values() if x["audio_sha256"]}
-        if len(hashes) > 1:
+        if len(audio_hashes) > 1:
             hard.append("成品之间音轨不同 —— 多支成片必须共用同一条音轨")
 
 

@@ -14,7 +14,7 @@ a 0.75 / 0.5 / 0.35 ladder is what makes such a file reachable instead of leavin
 the page to carry 70MB of base64. The record says whether it stepped down, so the
 review page can say "picture is a 0.5x proxy" instead of pretending nothing changed.
 
-    python3 helpers/review_copy.py <src.mp4> [--out <dst.mp4>] [--max-mb 80] [--force]
+    python3 helpers/_internal/review_copy.py <src.mp4> [--out <dst.mp4>] [--max-mb 80] [--force]
 
 Default output is `<stem>.review.mp4` next to the source. Prints the decision as
 one line of JSON so a caller (build_review) can consume the path.

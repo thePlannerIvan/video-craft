@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Canonical EDL identity — one definition shared by every contract.
 
-`edl_digest()` is sha256 over the EDL file's bytes. The render pipeline writes
-it next to the measured segment durations, and both the caption builder and the
-EDL health check compare against it. A single definition means "is this render
-stale?" has one answer; before, the render wrote durations nobody consumed and
-the caption timeline silently assumed the render matched the EDL.
+`edl_digest()` computes a path-independent sha256 over the canonical EDL
+structure (source basenames + normalized ranges), while `edl_raw_digest()`
+preserves the legacy byte-level sha256 for backward-compatible matching. The
+render pipeline writes `edl_digest()` next to the measured segment durations,
+and both the caption builder and the EDL health check compare against it.
 """
 from __future__ import annotations
 
@@ -15,8 +15,69 @@ import math
 from pathlib import Path
 
 
-def edl_digest(edl_path: Path) -> str:
+def edl_raw_digest(edl_path: Path) -> str:
+    """Return raw-byte sha256 for legacy compatibility and malformed EDL fallback."""
     return hashlib.sha256(Path(edl_path).read_bytes()).hexdigest()
+
+
+def edl_canonical_digest(edl_path: Path) -> str:
+    """Return path-independent canonical structural sha256 for an EDL JSON file."""
+    path = Path(edl_path)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return edl_raw_digest(path)
+    if not isinstance(data, dict):
+        return edl_raw_digest(path)
+    raw_sources = data.get("sources")
+    if raw_sources is None:
+        raw_sources = {}
+    if not isinstance(raw_sources, dict):
+        return edl_raw_digest(path)
+    raw_ranges = data.get("ranges")
+    if raw_ranges is None:
+        raw_ranges = []
+    if not isinstance(raw_ranges, list):
+        return edl_raw_digest(path)
+
+    sources = {
+        str(k): ("" if v is None else Path(str(v)).name)
+        for k, v in sorted(raw_sources.items(), key=lambda kv: str(kv[0]))
+    }
+    ranges: list[dict] = []
+    try:
+        for item in raw_ranges:
+            if not isinstance(item, dict) or "start" not in item or "end" not in item:
+                return edl_raw_digest(path)
+            start = round(float(item["start"]), 4)
+            end = round(float(item["end"]), 4)
+            if not (math.isfinite(start) and math.isfinite(end)):
+                return edl_raw_digest(path)
+            norm = {
+                "source": item.get("source"),
+                "start": start,
+                "end": end,
+                "beat": item.get("beat"),
+            }
+            if "speed" in item and item["speed"] is not None:
+                speed = round(float(item["speed"]), 4)
+                if not math.isfinite(speed):
+                    return edl_raw_digest(path)
+                norm["speed"] = speed
+            ranges.append(norm)
+    except (TypeError, ValueError):
+        return edl_raw_digest(path)
+
+    canonical = {"sources": sources, "ranges": ranges}
+    encoded = json.dumps(
+        canonical, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def edl_digest(edl_path: Path) -> str:
+    """Return the canonical EDL identity digest."""
+    return edl_canonical_digest(edl_path)
 
 
 def load_edl(edit_dir: Path) -> dict:
@@ -26,7 +87,34 @@ def load_edl(edit_dir: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _file_digests(edl_path: Path) -> tuple[str | None, str | None]:
+    """Return `(canonical_digest, raw_digest)` when `edl_path` exists."""
+    if not edl_path.exists():
+        return None, None
+    return edl_digest(edl_path), edl_raw_digest(edl_path)
+
+
+def _match_by_digest(
+    records: list[tuple[str, dict]],
+    digest: str | None,
+    legacy_digest: str | None,
+) -> list[tuple[str, dict]]:
+    """Prefer canonical digest matches; fall back to legacy raw-byte digest."""
+    if digest:
+        canonical = [
+            (tag, entry) for tag, entry in records if entry.get("edl_sha256") == digest
+        ]
+        if canonical:
+            return canonical
+    if legacy_digest:
+        return [
+            (tag, entry) for tag, entry in records if entry.get("edl_sha256") == legacy_digest
+        ]
+    return []
+
+
 def select_render_record(blob: dict, digest: str | None, *,
+                         legacy_digest: str | None = None,
                          allow_projected: bool = False) -> tuple:
     """Pick the render record that belongs to THIS EDL.
 
@@ -38,7 +126,8 @@ def select_render_record(blob: dict, digest: str | None, *,
 
     Returns `(tag, entry, how)`:
 
-    - `"digest"`  — the record whose `edl_sha256` is this EDL's digest
+    - `"digest"`  — the record whose `edl_sha256` matches this EDL's canonical
+                    (or legacy raw-byte) digest
     - `"mismatch"`— records carry digests and none matches: the render is stale
     - `"no-digest"` — older records without a digest; the newest is the best guess
     - `"none"`    — nothing usable in the file
@@ -52,9 +141,8 @@ def select_render_record(blob: dict, digest: str | None, *,
                and (allow_projected or not entry.get("projected"))]
     if not records:
         return None, None, "none"
-    if digest:
-        matching = [(tag, entry) for tag, entry in records
-                    if entry.get("edl_sha256") == digest]
+    if digest or legacy_digest:
+        matching = _match_by_digest(records, digest, legacy_digest)
         if matching:
             tag, entry = matching[-1]
             return tag, entry, "projected" if entry.get("projected") else "digest"
@@ -75,9 +163,10 @@ def render_record(edit_dir: Path, *, allow_projected: bool = False) -> tuple:
         return None, None, "unparsable"
     if not isinstance(blob, dict):
         return None, None, "none"
-    edl_path = Path(edit_dir) / "edl.json"
-    digest = edl_digest(edl_path) if edl_path.exists() else None
-    return select_render_record(blob, digest, allow_projected=allow_projected)
+    digest, legacy_digest = _file_digests(Path(edit_dir) / "edl.json")
+    return select_render_record(
+        blob, digest, legacy_digest=legacy_digest, allow_projected=allow_projected
+    )
 
 def measured_total_ms(edit_dir: Path, edl_path: Path | None = None
                       ) -> tuple[int | None, str, str | None]:
@@ -96,11 +185,13 @@ def measured_total_ms(edit_dir: Path, edl_path: Path | None = None
     """
     edit_dir = Path(edit_dir)
     edl_file = Path(edl_path) if edl_path is not None else edit_dir / "edl.json"
-    digest = edl_digest(edl_file) if edl_file.exists() else None
+    digest, legacy_digest = _file_digests(edl_file)
     blob = _load_duration_blob(edit_dir)
     if blob is None:
         return None, "none", None
-    tag, entry, how = select_render_record(blob, digest, allow_projected=False)
+    tag, entry, how = select_render_record(
+        blob, digest, legacy_digest=legacy_digest, allow_projected=False
+    )
     if entry is None and how == "none":
         # 更老的项目把记录写成 `{输出名: [每段秒数]}`，没有 total_s 也没有指纹。
         # 按同一策略当"推定"用：取最新一条，总长 = 各段之和。
@@ -141,7 +232,8 @@ def duration_record(edit_dir: Path, count: int, edl_path: Path | None = None,
         time_source = "projected"
     edit_dir = Path(edit_dir)
     edl_file = Path(edl_path) if edl_path is not None else edit_dir / "edl.json"
-    digest = edl_digest(edl_file) if edl_file.exists() else None
+    digest, legacy_digest = _file_digests(edl_file)
+    accepted = {d for d in (digest, legacy_digest) if d}
     blob = _load_duration_blob(edit_dir)
     if blob is None:
         return None, None, None, "缺少有效 segment_durations.json" if time_source != "auto" else None
@@ -156,12 +248,12 @@ def duration_record(edit_dir: Path, count: int, edl_path: Path | None = None,
     # digest at all (pre-digest projects), the newest record is the best guess; if
     # records carry digests but none matches, the render is stale — do not silently
     # fall back to a no-digest record.
-    use_no_digest = not hashed and bool(digest) and time_source == "auto"
+    use_no_digest = not hashed and bool(accepted) and time_source == "auto"
 
     def _matching(allow_projected: bool):
         records = _candidates(allow_projected)
-        if digest and not use_no_digest:
-            return [(t, e) for t, e in records if e.get("edl_sha256") == digest]
+        if accepted and not use_no_digest:
+            return _match_by_digest(records, digest, legacy_digest)
         if use_no_digest:
             return [(t, e) for t, e in records if not e.get("edl_sha256")]
         return records
@@ -184,7 +276,7 @@ def duration_record(edit_dir: Path, count: int, edl_path: Path | None = None,
                 count_problem = f"{tag}: 段时长必须是有限正数"
                 continue
             if len(durations) == count:
-                if time_source != "auto" and (not digest or entry.get("edl_sha256") != digest):
+                if time_source != "auto" and (not accepted or entry.get("edl_sha256") not in accepted):
                     continue
                 return durations, "measured-guessed" if use_no_digest and source == "measured" else source, tag, None
             count_problem = f"{tag}: {len(durations)} 段，EDL 有 {count} 段"

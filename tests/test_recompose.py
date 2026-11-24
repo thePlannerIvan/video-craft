@@ -187,12 +187,15 @@ class RecomposeTest(unittest.TestCase):
         doc = json.loads((self.root / "recompose/lines.json").read_text(encoding="utf-8"))
         self.assertEqual(doc["lines"][0]["state"], "auto")
 
-    def test_template_has_density_panel(self):
+    def test_template_removed_legacy_density_panel(self):
         template = (Path(__file__).resolve().parents[1] / "visual/assets/review-page-template.html").read_text(encoding="utf-8")
-        self.assertIn("feedback-panel", template)
-        self.assertIn("beat-switcher", template)
+        self.assertNotIn("feedback-panel", template)
+        self.assertNotIn("beat-switcher", template)
+        self.assertNotIn("density-panel", template)
+        self.assertNotIn("body.density-on", template)
+        self.assertNotIn('phase: "density"', template)
         self.assertIn("window.__vcReview", template)
-        self.assertIn('phase: "density"', template)
+        self.assertIn("normalizeTimeline", template)
 
 
 if __name__ == "__main__":

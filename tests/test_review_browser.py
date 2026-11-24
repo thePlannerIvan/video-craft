@@ -157,28 +157,6 @@ class ReviewBrowserTests(unittest.TestCase):
                 "() => !document.getElementById('fb-save').disabled", timeout=15000)
             page.fill("#fb-text", "整片节奏偏慢，第三段可以再压一压")
 
-            # ③b 不选屏时，画布上的微调也必须进**同一条**记录。
-            #     2026-10-16 的缺陷：写入侧用 `state.step || "global"`（框选批注那处还用过
-            #     `|| "overall"`），读取侧一律用裸 `state.step` —— 没选屏时写入落进
-            #     没有任何读者的键，作者在画布上改的字被静默丢弃，而「保存反馈」看着是成功的。
-            #     这条是那次缺陷的**行为**判据；静态判据见 check_review_template.py 的 S9。
-            page.click("#tool-box")
-            # 直接在 overlay 上派发事件：page.mouse 的落点会冒泡到左边那一列 step 上，
-            # 于是页面切到「当前屏」，这次断言就测不到「不选屏」那条路了。
-            page.evaluate("""() => {
-                const ov = document.getElementById("annotation-overlay");
-                const r = ov.getBoundingClientRect();
-                const fire = (type, fx, fy) => ov.dispatchEvent(new MouseEvent(type, {
-                    clientX: r.left + r.width * fx, clientY: r.top + r.height * fy, bubbles: true }));
-                fire("mousedown", 0.30, 0.30);
-                fire("mouseup", 0.50, 0.50);
-            }""")
-            # 切工具会顺带切舞台、可能自动选中一屏；这里显式切回「整片意见」，
-            # 让这一条仍然走「不选屏提交」的路径。
-            page.click("#mode-overall")
-            page.wait_for_function(
-                "() => document.getElementById('mode-overall').classList.contains('active')")
-
             page.click("#fb-save")
             page.wait_for_function(
                 "() => /已写入/.test(document.getElementById('save-state').textContent)", timeout=15000)
@@ -191,10 +169,10 @@ class ReviewBrowserTests(unittest.TestCase):
             for field in ("chapterId", "stepId", "stepIndex", "caption", "durationMs"):
                 with self.subTest(field=field):
                     self.assertNotIn(field, overall[0])
-            # ③c 画布微调没有丢 —— 写读键域一致的判据
-            self.assertTrue(
-                overall[0]["adjustments"]["annotations"],
-                "没选屏时记录的画布微调没有进同一条记录 —— 写读键域又分叉了")
+            self.assertEqual(
+                set(overall[0]["adjustments"]),
+                {"choreography", "svg_edits", "annotations"},
+            )
 
             # ④ **第二条路：选中某一屏 → 逐屏那条行为不变。**
             page.click(".step:nth-child(2)")           # chapter header 之后第一个 step
@@ -240,8 +218,10 @@ class ReviewBrowserTests(unittest.TestCase):
             self.assertIn("feedback/*.jsonl", wakes[0]["text"])
             self.assertEqual(wakes[1]["unit"], record["stepId"])
             self.assertIn(record["stepId"], wakes[1]["text"])
-            # 状态条说的是**诚实的**那一档：宿主没核对，别和"已进队列"混为一谈
-            self.assertIn("未核对", page.inner_text("#save-state"))
+            # 独立浏览器模式下应诚实反馈“已保存，回对话继续即可”，且不伪造“已送达”
+            save_text = page.inner_text("#save-state")
+            self.assertIn("已保存，回对话继续即可", save_text)
+            self.assertNotIn("已送达", save_text)
 
             # ⑦ 宿主戳 → 页面自己重读、自己 diff。
             #    **只改一句 caption 也要被发现** —— 那是记录会抄走的字段，也正是旧指纹漏掉的
@@ -381,9 +361,25 @@ class ReviewBrowserTests(unittest.TestCase):
                     "VIDEO CRAFT", "复合双通道", "审阅宿主", "serve-review.mjs",
                     "feedback/overall.jsonl", "choreography.json", "HyperFrames",
                     "工程态", "反馈给 Agent", "整 beat", "本 beat",
+                    "live_stage.py", "edl_review_surface.py", "review_open",
+                    "build_review", "composition", "审阅桥", "宿主", "快照",
                 ]
                 for term in forbidden:
                     self.assertNotIn(term, visible, f"画面审阅页可见文本出现禁用工程术语/说明：{term}")
+                removed_selectors = [
+                    "#view-verbatim-btn", "#verbatim-iframe-wrap", "#density-panel",
+                    "#elem-edit-bar", "#interaction-mode-group", "#choreo-deck",
+                    "#advanced-toggle", "#btn-play-screen", "#btn-show-all",
+                    "#btn-focus-toggle", "#btn-toggle-cues", "#beat-switcher",
+                    "#feedback-panel", "#tool-box", "#tool-select", "#tool-director",
+                    "#annotation-overlay", ".canvas-toolbar",
+                ]
+                for selector in removed_selectors:
+                    with self.subTest(selector=selector):
+                        self.assertEqual(
+                            page.locator(selector).count(), 0,
+                            f"已下线控件不应再出现在审阅页 DOM：{selector}",
+                        )
             finally:
                 browser.close()
 
@@ -424,7 +420,7 @@ class ReviewBrowserTests(unittest.TestCase):
                                 scrollH: document.documentElement.scrollHeight,
                                 innerH: window.innerHeight,
                                 player: rect(".player-box"),
-                                toolbar: rect(".canvas-toolbar"),
+                                steps: rect("#steps"),
                                 transport: rect("#global-transport-bar"),
                                 feedback: rect(".feedback"),
                             };
@@ -439,7 +435,7 @@ class ReviewBrowserTests(unittest.TestCase):
                         self.assertLess(abs(p["width"] / p["height"] - (16.0 / 9.0)), 0.05, p)
                         self.assertGreaterEqual(p["x"], -1.0, p)
                         self.assertLessEqual(p["x"] + p["width"], vw + 1.0, p)
-                        for other_name in ("toolbar", "transport", "feedback"):
+                        for other_name in ("steps", "transport", "feedback"):
                             other = metrics[other_name]
                             self.assertIsNotNone(other)
                             self.assertFalse(
@@ -533,6 +529,63 @@ class ReviewBrowserTests(unittest.TestCase):
                         timeout=10000,
                     )
                     self.assertEqual(btn.inner_text().strip(), "播客音色")
+                finally:
+                    browser.close()
+
+    def test_recompose_mode_keeps_minimal_ui_and_submits(self):
+        import build_review
+        from playwright.sync_api import sync_playwright
+
+        with tempfile.TemporaryDirectory() as td:
+            proj = Path(td)
+            (proj / "edit").mkdir()
+            (proj / "timeline").mkdir()
+            (proj / "timeline" / "timeline.json").write_text(
+                json.dumps(TIMELINE, ensure_ascii=False), encoding="utf-8"
+            )
+            (proj / "recompose.json").write_text(json.dumps({
+                "canvas": {"w": 1920, "h": 1080, "fps": 30},
+                "personSlot": {"x": 0, "y": 0, "w": 500, "h": 1080},
+                "captionSafe": {"x": 0, "y": 880, "w": 1920, "h": 200},
+            }), encoding="utf-8")
+
+            data = build_review.build_review_data(proj, proj / "edit")
+            data["density"] = {
+                "enabled": True,
+                "beats": [
+                    {"id": "b1", "caption": "开场段落", "stepIds": ["intro-001"]},
+                ],
+            }
+            build_review.write_review_files(proj, data)
+            host = review_surface.open_review(proj, open_browser=False)
+            self.addCleanup(review_host.stop_host, host)
+
+            with sync_playwright() as pw:
+                browser = pw.chromium.launch()
+                try:
+                    page = browser.new_page(viewport={"width": 1440, "height": 900})
+                    page.route("**/localhost:5176/**", lambda route: route.abort())
+                    page.route("**/cdn.jsdelivr.net/**", lambda route: route.abort())
+                    page.goto(host["url"], wait_until="domcontentloaded")
+                    page.wait_for_selector(".step", timeout=15000)
+                    page.wait_for_function("() => !document.getElementById('fb-save').disabled", timeout=15000)
+
+                    self.assertFalse(page.evaluate("() => document.body.classList.contains('density-on')"))
+                    for sel in ("#density-panel", "#beat-switcher", "#feedback-panel", "#vfb-save"):
+                        self.assertEqual(page.locator(sel).count(), 0, sel)
+                    self.assertTrue(page.locator("#steps").is_visible())
+                    self.assertTrue(page.locator("#fb-save").is_visible())
+
+                    page.fill("#fb-text", "口播段落衔接再紧凑一点")
+                    page.click("#fb-save")
+                    page.wait_for_function(
+                        "() => /已写入/.test(document.getElementById('save-state').textContent)", timeout=15000
+                    )
+                    self.assertIn("已保存，回对话继续即可", page.inner_text("#save-state"))
+                    submissions = proj / "review" / "review-submissions.json"
+                    records = json.loads(submissions.read_text(encoding="utf-8"))["records"]
+                    self.assertEqual(len(records), 1)
+                    self.assertEqual(records[0]["text"], "口播段落衔接再紧凑一点")
                 finally:
                     browser.close()
 

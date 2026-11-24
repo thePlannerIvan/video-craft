@@ -37,7 +37,7 @@ reported here and deliberately NOT fixed — clamping a hand-written anchor is a
 content decision, not a repair, so this check only ever warns.
 
 Usage:
-    python helpers/check_overlay.py <edit_dir> [--json] [--duration-tolerance 0.05]
+    python helpers/_internal/check_overlay.py <edit_dir> [--json] [--duration-tolerance 0.05]
 """
 from __future__ import annotations
 

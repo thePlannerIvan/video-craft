@@ -16,8 +16,8 @@ Why it exists (measured, not hypothetical):
   * a running `hyperframes preview` dropped capture from ~25 fps to ~0.9 fps.
 
 Usage:
-    python3 helpers/probe_env.py [project] [--json]
-    python3 helpers/probe_env.py [project] --strict --require node,libass
+    python3 helpers/_internal/probe_env.py [project] [--json]
+    python3 helpers/_internal/probe_env.py [project] --strict --require node,libass
 """
 from __future__ import annotations
 

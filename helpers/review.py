@@ -132,7 +132,7 @@ def resolve_review_mode(project: Path, final_cut: bool = False) -> str:
         return "final-cut"
     print("✗ 这个工程既没有 recompose.json 也没有 edit/montage-plan.json —— "
           "审阅页只支持 recompose 布局或成片态（final-cut）。", file=sys.stderr)
-    print(f"  · 有 recompose 工程：先跑 python3 helpers/recompose_plan.py init {project}", file=sys.stderr)
+    print(f"  · 有 recompose 工程：先跑 python3 helpers/_internal/recompose_plan.py init {project}", file=sys.stderr)
     print("  · 只有渲好的成片：加 --final-cut 再跑（成片态审阅不要求工程态）", file=sys.stderr)
     raise SystemExit(2)
 

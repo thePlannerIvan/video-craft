@@ -26,9 +26,9 @@
 
 用法
 ----
-    python3 helpers/check_review_playable.py <project>
-    python3 helpers/check_review_playable.py <project> --at 30,120 --json
-    python3 helpers/check_review_playable.py <project> --keep-host   # 失败时留下宿主便于手看
+    python3 helpers/_internal/check_review_playable.py <project>
+    python3 helpers/_internal/check_review_playable.py <project> --at 30,120 --json
+    python3 helpers/_internal/check_review_playable.py <project> --keep-host   # 失败时留下宿主便于手看
 
 前置：项目已经有 `review/review_data.json` 与 `review/index.html`（跑过 build_review）。
 本检查自己起本地宿主、自己关；不写任何项目文件，只往 /tmp 落截图。

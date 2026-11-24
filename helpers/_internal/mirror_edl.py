@@ -5,7 +5,7 @@ Same ranges, same speed/mute, source time shifted by a fixed sync offset.
 This is the only supported way to keep multi-camera cuts in sync.
 
 Usage:
-    python helpers/mirror_edl.py canonical.json -o selfie.json \
+    python helpers/_internal/mirror_edl.py canonical.json -o selfie.json \
         --source VID_001 --path /abs/VID_001.MP4 --offset 2.04
 """
 

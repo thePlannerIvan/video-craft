@@ -2,8 +2,8 @@
 
 Video Craft includes modified code and assets from the following projects. Their original notices remain applicable to those portions; the project-level LICENSE covers the original contributions of Video Craft.
 
-- **browser-use/video-use** — MIT, Copyright (c) 2026 Browser Use. Contributed the time spine, compositor, caption chain, and delivery verification (adaptations documented in `upstream-diff.md`). Full license reproduced below.
-- **ConardLi/garden-skills** — MIT. Includes work originating from `skills/web-video-presentation`, retrieved from upstream commit `7a6d5a72e4f44bb4cc0c23c01b3d97205c723b68` on 2026-10-13. The local presentation workflow was rewritten; see `upstream-diff.md` for the boundary.
+- **browser-use/video-use** — MIT, Copyright (c) 2026 Browser Use. Contributed the time spine, compositor, caption chain, and delivery verification. Full license reproduced below.
+- **ConardLi/garden-skills** — MIT. Includes work originating from `skills/web-video-presentation`, retrieved from upstream commit `7a6d5a72e4f44bb4cc0c23c01b3d97205c723b68` on 2026-10-13. The local presentation workflow was rewritten for headless HyperFrames rendering.
 
 ## MIT License (`browser-use/video-use`)
 

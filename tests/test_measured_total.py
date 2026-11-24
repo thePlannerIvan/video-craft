@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 import tempfile
@@ -79,6 +80,122 @@ class MeasuredTotal(unittest.TestCase):
         })
         ms, how, tag = _edl.measured_total_ms(self.edit)
         self.assertEqual((ms, how, tag), (6500, "no-digest", "final"))
+
+    def test_directory_copy_and_formatting_keep_digest_and_measured_match(self):
+        v1 = {
+            "version": 1,
+            "sources": {
+                "B": "/workspace/creator/projects/my-film-v1/raw/b_roll.mp4",
+                "A": "/workspace/creator/projects/my-film-v1/raw/talk.mp4",
+            },
+            "ranges": [
+                {"source": "A", "start": 0.0, "end": 12.5, "beat": "HOOK", "quote": "原话", "reason": "初版"},
+            ],
+            "total_duration_s": 12.5,
+        }
+        v2 = {
+            "total_duration_s": 12.5,
+            "ranges": [
+                {"reason": "迁移目录后润色注释", "quote": "改标点", "beat": "HOOK", "end": 12.5000, "start": 0, "source": "A"},
+            ],
+            "sources": {
+                "A": "/Volumes/SSD/copied-film-v2/assets/talk.mp4",
+                "B": "/Volumes/SSD/copied-film-v2/assets/b_roll.mp4",
+            },
+            "version": 2,
+        }
+        self.edl.write_text(json.dumps(v1, ensure_ascii=False), encoding="utf-8")
+        digest_v1 = _edl.edl_digest(self.edl)
+        expected_canonical = (
+            '{"ranges":[{"beat":"HOOK","end":12.5,"source":"A","start":0.0}],'
+            '"sources":{"A":"talk.mp4","B":"b_roll.mp4"}}'
+        ).encode("utf-8")
+        self.assertEqual(digest_v1, hashlib.sha256(expected_canonical).hexdigest())
+        self.write_records({
+            "final": {"durations": [12.5], "total_s": 12.5, "edl_sha256": digest_v1},
+        })
+
+        self.edl.write_text(json.dumps(v2, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        self.assertNotEqual(_edl.edl_raw_digest(self.edl), digest_v1)
+        self.assertEqual(_edl.edl_digest(self.edl), digest_v1)
+        ms, how, tag = _edl.measured_total_ms(self.edit)
+        self.assertEqual((ms, how, tag), (12500, "digest", "final"))
+
+    def test_structural_edits_and_source_rename_cause_mismatch(self):
+        base = {
+            "sources": {"A": "/tmp/v1/talk.mp4", "B": "/tmp/v1/b.mp4"},
+            "ranges": [
+                {"source": "A", "start": 0.0, "end": 5.0, "beat": "HOOK", "speed": 1.0},
+                {"source": "B", "start": 5.0, "end": 12.5, "beat": "BODY"},
+            ],
+        }
+        self.edl.write_text(json.dumps(base), encoding="utf-8")
+        base_digest = _edl.edl_digest(self.edl)
+        self.write_records({
+            "final": {"durations": [5.0, 7.5], "total_s": 12.5, "edl_sha256": base_digest},
+        })
+
+        mutations = {
+            "change_start": {
+                **base,
+                "ranges": [
+                    {"source": "A", "start": 0.05, "end": 5.0, "beat": "HOOK", "speed": 1.0},
+                    base["ranges"][1],
+                ],
+            },
+            "change_end": {
+                **base,
+                "ranges": [
+                    {"source": "A", "start": 0.0, "end": 5.1, "beat": "HOOK", "speed": 1.0},
+                    base["ranges"][1],
+                ],
+            },
+            "change_beat": {
+                **base,
+                "ranges": [
+                    {"source": "A", "start": 0.0, "end": 5.0, "beat": "OTHER", "speed": 1.0},
+                    base["ranges"][1],
+                ],
+            },
+            "change_speed": {
+                **base,
+                "ranges": [
+                    {"source": "A", "start": 0.0, "end": 5.0, "beat": "HOOK", "speed": 1.5},
+                    base["ranges"][1],
+                ],
+            },
+            "add_range": {
+                **base,
+                "ranges": [*base["ranges"], {"source": "A", "start": 13.0, "end": 14.0}],
+            },
+            "remove_range": {
+                **base,
+                "ranges": [base["ranges"][0]],
+            },
+            "reorder_ranges": {
+                **base,
+                "ranges": [base["ranges"][1], base["ranges"][0]],
+            },
+            "rename_source_file": {
+                **base,
+                "sources": {"A": "/tmp/v1/talk_retake.mp4", "B": "/tmp/v1/b.mp4"},
+            },
+        }
+        for label, mutated in mutations.items():
+            with self.subTest(mutation=label):
+                self.edl.write_text(json.dumps(mutated), encoding="utf-8")
+                self.assertNotEqual(_edl.edl_digest(self.edl), base_digest)
+                ms, how, tag = _edl.measured_total_ms(self.edit)
+                self.assertEqual((ms, how, tag), (None, "mismatch", "final"))
+
+    def test_invalid_or_nondict_edl_falls_back_to_raw_digest(self):
+        for raw_payload in (b"{not valid json", b"[1, 2, 3]"):
+            with self.subTest(payload=raw_payload):
+                self.edl.write_bytes(raw_payload)
+                self.assertEqual(
+                    _edl.edl_digest(self.edl),
+                    hashlib.sha256(raw_payload).hexdigest(),
+                )
 
 
 if __name__ == "__main__":

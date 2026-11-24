@@ -9,7 +9,7 @@ a contract anyone can check; text is.
 
 Every deletion therefore states what it expects to remove:
 
-    helpers/edl_edit.py <edit_dir> \\
+    helpers/_internal/edl_edit.py <edit_dir> \\
         --delete "455.88,459.76=人处理能力的能力会变大因为AI有协助你|真实口误，双引擎复核" \\
         --delete "281.88,282.16=那|口吃重复" \\
         --restore "459.95,463.96=那么之前我们需要很多的层级是因为人的" \\

@@ -7,20 +7,21 @@ to <edit_dir>/transcripts/<video_stem>.json.
 Cached: if the output file already exists, the upload is skipped.
 
 Backend:
-  --backend auto   (default) Scribe first; on quota exhaustion or a 401,
-                    fall back to 火山方舟 doubao-seed-2.0 (multimodal audio
-                    transcription), then to local mlx-whisper.
+  --backend auto   (default) Scribe only; if ELEVENLABS_API_KEY is missing,
+                    quota is insufficient, or Scribe returns 401, fail clearly
+                    and recommend transcribe_seedasr.py or explicit --backend mlx
+                    (NEVER silently falls back to ark; see GOTCHAS #1).
   --backend scribe Scribe only — fail hard when quota is insufficient.
-  --backend ark    Ark only (doubao multimodal). Model via ARK_MODEL env.
+  --backend ark    Explicit opt-in only (doubao multimodal, NOT a word-level ASR).
   --backend mlx    Local only, never touches the network.
 
 Usage:
-    python helpers/transcribe.py <video_path>
-    python helpers/transcribe.py <video_path> --edit-dir /custom/edit
-    python helpers/transcribe.py <video_path> --language en
-    python helpers/transcribe.py <video_path> --num-speakers 2
-    python helpers/transcribe.py <video_path> --backend ark
-    python helpers/transcribe.py <video_path> --audio-track 1
+    python helpers/_internal/transcribe.py <video_path>
+    python helpers/_internal/transcribe.py <video_path> --edit-dir /custom/edit
+    python helpers/_internal/transcribe.py <video_path> --language en
+    python helpers/_internal/transcribe.py <video_path> --num-speakers 2
+    python helpers/_internal/transcribe.py <video_path> --backend ark
+    python helpers/_internal/transcribe.py <video_path> --audio-track 1
 
 Multi-track sources: OBS and most screen recorders write the application on
 track 0 and the microphone on track 1. Without `--audio-track` ffmpeg applies
@@ -49,21 +50,44 @@ import requests
 
 
 SCRIBE_URL = "https://api.elevenlabs.io/v1/speech-to-text"
+_NO_ARK_FALLBACK_HINT = (
+    "词级转写请改用首选 helpers/_internal/transcribe_seedasr.py"
+    "（需 DOUBAO_APP_ID / DOUBAO_ACCESS_TOKEN），或离线本地兜底显式传 --backend mlx；"
+    "禁止自动回退至 ark（见 GOTCHAS #1）。"
+)
 
 
-def load_api_key() -> str:
-    for candidate in [Path(__file__).resolve().parents[2] / ".env", Path(".env")]:
-        if candidate.exists():
-            for line in candidate.read_text().splitlines():
+def _read_env_key(key: str) -> str:
+    env_val = os.environ.get(key, "").strip()
+    if env_val:
+        return env_val
+    override = os.environ.get("VIDEO_CRAFT_ENV_FILE")
+    if override is None:
+        candidates = [Path(__file__).resolve().parents[2] / ".env", Path(".env")]
+    elif override.strip().lower() in ("", "none", "0", "false"):
+        candidates = []
+    else:
+        candidates = [Path(override).expanduser()]
+    for candidate in candidates:
+        if candidate.is_file():
+            for line in candidate.read_text(encoding="utf-8").splitlines():
                 line = line.strip()
                 if not line or line.startswith("#") or "=" not in line:
                     continue
+                if line.startswith("export "):
+                    line = line[7:].strip()
                 k, v = line.split("=", 1)
-                if k.strip() == "ELEVENLABS_API_KEY":
-                    return v.strip().strip('"').strip("'")
-    v = os.environ.get("ELEVENLABS_API_KEY", "")
-    if not v:
-        sys.exit("ELEVENLABS_API_KEY not found in .env or environment")
+                if k.strip() == key:
+                    val = v.strip().strip('"').strip("'")
+                    if val:
+                        return val
+    return ""
+
+
+def load_api_key(required: bool = True) -> str:
+    v = _read_env_key("ELEVENLABS_API_KEY")
+    if not v and required:
+        sys.exit(f"ELEVENLABS_API_KEY not found in .env or environment — {_NO_ARK_FALLBACK_HINT}")
     return v
 
 
@@ -206,7 +230,7 @@ def mlx_python() -> str:
 
 
 def transcribe_mlx(video: Path, edit_dir: Path, language: str | None, verbose: bool) -> Path:
-    """Transcribe locally with mlx-whisper (helpers/mlx_transcribe.py)."""
+    """Transcribe locally with mlx-whisper (helpers/_internal/mlx_transcribe.py)."""
     helper = Path(__file__).resolve().parent / "mlx_transcribe.py"
     cmd = [mlx_python(), str(helper), str(video), "--edit-dir", str(edit_dir)]
     if language:
@@ -227,13 +251,7 @@ ARK_CHUNK_WORKERS = 4
 
 
 def load_ark_key() -> str | None:
-    for candidate in [Path(__file__).resolve().parents[2] / ".env", Path(".env")]:
-        if candidate.exists():
-            for line in candidate.read_text().splitlines():
-                line = line.strip()
-                if line.startswith("ARK_API_KEY="):
-                    return line.split("=", 1)[1].strip().strip('"').strip("'")
-    return os.environ.get("ARK_API_KEY", "") or None
+    return _read_env_key("ARK_API_KEY") or None
 
 
 def _parse_ark_words(content: str) -> list[dict]:
@@ -427,8 +445,8 @@ def transcribe_one(
     Cached: returns existing path immediately if the transcript already exists.
     The cache key includes the audio track, so rerunning with --audio-track does
     not hand back the transcript of the track it was meant to replace.
-    backend: auto | scribe | ark | mlx — auto chains Scribe → Ark → local mlx,
-    falling through when quota is insufficient, Scribe 401s, or Ark fails.
+    backend: auto | scribe | ark | mlx — auto runs Scribe only (never falls
+    back silently to Ark; recommends transcribe_seedasr.py or explicit --backend mlx).
     """
     transcripts_dir = edit_dir / "transcripts"
     transcripts_dir.mkdir(parents=True, exist_ok=True)
@@ -443,16 +461,8 @@ def transcribe_one(
         return transcribe_mlx(video, edit_dir, language, verbose)
     if backend == "ark":
         return transcribe_ark(video, edit_dir, language, num_speakers, verbose, audio_track)
-
-    def _ark_or_mlx(reason: str):
-        """auto chain: Scribe failed → Ark → mlx (both may be unavailable)."""
-        print(f"  {reason} — falling back to Ark (doubao-seed-2.0-lite)", flush=True)
-        try:
-            return transcribe_ark(video, edit_dir, language, num_speakers, verbose, audio_track)
-        except RuntimeError as ark_err:
-            print(f"  Ark failed too ({ark_err}) — falling back to local mlx-whisper",
-                  flush=True)
-            return transcribe_mlx(video, edit_dir, language, verbose)
+    if not api_key:
+        sys.exit(f"ELEVENLABS_API_KEY not found in .env or environment — {_NO_ARK_FALLBACK_HINT}")
 
     n_tracks = count_audio_tracks(video)
     if n_tracks > 1 and verbose:
@@ -463,14 +473,9 @@ def transcribe_one(
     if quota is not None:
         remaining, needed = quota
         if remaining < needed:
-            if backend == "auto":
-                return _ark_or_mlx(
-                    f"Scribe quota insufficient ({remaining:.0f} credits left, "
-                    f"~{needed:.0f} needed)")
             sys.exit(
                 f"Scribe quota insufficient: {remaining:.0f} credits left, "
-                f"~{needed:.0f} needed for {video.name} — use --backend ark/mlx to "
-                "transcribe with another backend instead")
+                f"~{needed:.0f} needed for {video.name} — {_NO_ARK_FALLBACK_HINT}")
 
     if verbose:
         print(f"  extracting audio from {video.name}", flush=True)
@@ -489,7 +494,7 @@ def transcribe_one(
             payload = call_scribe(audio, api_key, language, num_speakers)
         except RuntimeError as e:
             if "401" in str(e) and backend == "auto":
-                return _ark_or_mlx(f"Scribe rejected the upload ({e})")
+                raise RuntimeError(f"Scribe rejected the upload ({e}) — {_NO_ARK_FALLBACK_HINT}") from e
             raise
 
     out_path.write_text(json.dumps(payload, indent=2))
@@ -529,7 +534,7 @@ def main() -> None:
         "--backend",
         choices=["auto", "scribe", "ark", "mlx"],
         default="auto",
-        help="Transcription backend: auto (Scribe → Ark → local mlx), scribe, ark, mlx",
+        help="Transcription backend: auto (Scribe only; no Ark fallback), scribe, ark (explicit only), mlx",
     )
     ap.add_argument(
         "--audio-track",
@@ -547,7 +552,7 @@ def main() -> None:
         sys.exit(f"video not found: {video}")
 
     edit_dir = (args.edit_dir or (video.parent / "edit")).resolve()
-    api_key = load_api_key()
+    api_key = load_api_key(required=False)
 
     transcribe_one(
         video=video,

@@ -135,6 +135,26 @@ class CaptionRecordConsistency(unittest.TestCase):
             if durations is not None:
                 self.assertEqual(tag, select_tag, (case, tag, select_tag))
 
+    def test_duration_record_accepts_legacy_raw_digest_and_rejects_after_edit(self):
+        raw_digest = _edl.edl_raw_digest(self.edit / "edl.json")
+        (self.edit / "segment_durations.json").write_text(json.dumps({
+            "final": {"edl_sha256": raw_digest, "durations": [1.0, 1.0]},
+        }), encoding="utf-8")
+        durations, source, tag, problem = _edl.duration_record(self.edit, 2, time_source="measured")
+        self.assertEqual(durations, [1.0, 1.0])
+        self.assertEqual(source, "measured")
+        self.assertEqual(tag, "final")
+        self.assertIsNone(problem)
+
+        (self.edit / "edl.json").write_text(json.dumps({
+            "sources": {"SRC": "/tmp/x.mp4"},
+            "ranges": [{"source": "SRC", "start": 0.0, "end": 1.0},
+                       {"source": "SRC", "start": 1.0, "end": 2.2}],
+        }), encoding="utf-8")
+        durations, source, tag, problem = _edl.duration_record(self.edit, 2, time_source="measured")
+        self.assertIsNone(durations)
+        self.assertIsNotNone(problem)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -34,7 +34,7 @@ ASR input accepted
 
 Usage
 -----
-    python3 helpers/refine_transcript.py <edit_dir> --source <source> \\
+    python3 helpers/_internal/refine_transcript.py <edit_dir> --source <source> \\
         --asr <asr.json> [--phrases takes_packed.md] [--offset 0] [--dry-run]
 
 `--offset` shifts every ASR token (useful for a chunk that starts mid-source).

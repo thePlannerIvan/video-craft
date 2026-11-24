@@ -10,7 +10,7 @@
 编译出统一契约 <project>/review/review_data.json，并装配 <project>/review/index.html 与 review-surface.json。
 
 用法：
-    python3 helpers/build_review.py <project_dir_or_edit_dir> [--mode {auto,composite,speaker_only,animation_only}] [--final-cut]
+    python3 helpers/_internal/build_review.py <project_dir_or_edit_dir> [--mode {auto,composite,speaker_only,animation_only}] [--final-cut]
 """
 from __future__ import annotations
 
@@ -78,7 +78,7 @@ def find_scene_files(project_root: Path, edit_dir: Path) -> dict:
 
 
 def parse_srt(srt_text: str) -> list[dict]:
-    """解析 SRT 字幕为结构化 cue 列表。统一实现见 `helpers/_timecode.py`（合并地图 M1）。"""
+    """解析 SRT 字幕为结构化 cue 列表。统一实现见 `helpers/_internal/_timecode.py`（合并地图 M1）。"""
     from _timecode import flatten as _flatten, parse_srt_text as _parse_srt_text
     return [{
         "id": cue["index"],
@@ -91,7 +91,7 @@ def parse_srt(srt_text: str) -> list[dict]:
 
 
 def resolve_project_paths(target: Path) -> tuple[Path, Path]:
-    """统一实现见 `helpers/_paths.py`（合并地图 M3）。"""
+    """统一实现见 `helpers/_internal/_paths.py`（合并地图 M3）。"""
     from _paths import resolve
     return resolve(target)
 
@@ -216,23 +216,23 @@ def _resolve_live_stage(project_root: Path, notes: list, *,
         if expected:
             notes.append(f"没有 {LIVE_STAGE_STATE} —— 拿不到活舞台地址，"
                          "这一次审的不是当前 composition。"
-                         "要工程态审阅就先跑 helpers/live_stage.py <project>")
+                         "要工程态审阅就先跑 helpers/_internal/live_stage.py <project>")
         return None
     try:
         doc = json.loads(state.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         notes.append(f"{LIVE_STAGE_STATE} 读不出来 —— 这一次不进活舞台，"
-                     "重跑 helpers/live_stage.py <project> 可重建")
+                     "重跑 helpers/_internal/live_stage.py <project> 可重建")
         return None
     url, server = doc.get("stageUrl"), doc.get("serverUrl")
     if not (doc.get("ok") and url and server):
         notes.append(f"{LIVE_STAGE_STATE} 内容不完整（缺 ok/stageUrl/serverUrl）—— "
-                     "这一次不进活舞台，重跑 helpers/live_stage.py <project> 可重建")
+                     "这一次不进活舞台，重跑 helpers/_internal/live_stage.py <project> 可重建")
         return None
     if not _server_alive(server):
         notes.append(f"活舞台服务 {server} 现在没有响应（{LIVE_STAGE_STATE} 是上一次会话留下的）"
                      "—— 页面会退回静态舞台或合成成片。要看活的 composition，"
-                     "先跑 helpers/live_stage.py <project>")
+                     "先跑 helpers/_internal/live_stage.py <project>")
         return None
     return {"url": url, "serverUrl": server, "projectId": doc.get("projectId"),
             "compositionDir": doc.get("composition") or "composition"}
@@ -275,7 +275,7 @@ def resolve_review_media(project_root: Path, edit_dir: Path, *,
     media["layersBaked"] = True
 
     # 活 composition：审阅时直接演工程态的源，不渲任何东西。入口由
-    # helpers/live_stage.py 起服务时写进 edit/_engineering/live-stage.json；
+    # helpers/_internal/live_stage.py 起服务时写进 edit/_engineering/live-stage.json；
     # 这里只验证它**现在还活着**——状态文件很容易是上一条会话留下的，
     # 指过去只会让页面挂一个连不上的 iframe。
     has_composition = (project_root / "composition" / "index.html").is_file()
@@ -287,9 +287,9 @@ def resolve_review_media(project_root: Path, edit_dir: Path, *,
     # 只有一条 mediaNote 记着。作者对着一个「看起来正常、审的不是当前合成」的页面提意见。
     if media["liveStage"] is None and has_composition:
         notes.append("**这一版审阅没有活舞台**：页面会退回静态舞台/成片，审的不是当前 "
-                     "composition。要看工程态：先跑 helpers/live_stage.py <project>，再重建审阅。")
+                     "composition。要看工程态：先跑 helpers/_internal/live_stage.py <project>，再重建审阅。")
         print("  ! 这个工程有 composition，但没有活舞台 —— 这一版审的不是当前合成，"
-              "先跑 helpers/live_stage.py 再重建（详见 review_data.json 的 mediaNotes）")
+              "先跑 helpers/_internal/live_stage.py 再重建（详见 review_data.json 的 mediaNotes）")
 
     if declared_at is not None and declared:
         for key in _MEDIA_GUESSES:
@@ -1381,7 +1381,7 @@ def main():
     if data["buildMode"] == "page" and not args.allow_page:
         print("✗ 旧十步审阅页（page 模式）已退休。审阅页只保留 recompose 布局：", file=sys.stderr)
         print("  左侧大预览 + 横向 Beat + 右侧逐句调整/历史反馈。", file=sys.stderr)
-        print(f"  先跑：python3 helpers/recompose_plan.py init {project_root}", file=sys.stderr)
+        print(f"  先跑：python3 helpers/_internal/recompose_plan.py init {project_root}", file=sys.stderr)
         sys.exit(2)
 
     # 有 composition 却没有活舞台 = 审的不是当前合成。静默退回成片态是流程错误：
@@ -1389,7 +1389,7 @@ def main():
     has_composition = (project_root / "composition" / "index.html").is_file()
     if has_composition and not data["media"].get("liveStage") and not args.allow_static:
         print("✗ 这个工程有 composition，但活舞台没有就绪——这一版审的不是工程态。", file=sys.stderr)
-        print("  先跑：python3 helpers/review.py <项目>（或先 helpers/live_stage.py <项目> 再重建）", file=sys.stderr)
+        print("  先跑：python3 helpers/review.py <项目>（或先 helpers/_internal/live_stage.py <项目> 再重建）", file=sys.stderr)
         print("  确实只要静态页/成片态时，显式加 --allow-static。", file=sys.stderr)
         sys.exit(2)
 
@@ -1402,7 +1402,7 @@ def main():
     print(f"    - 字幕条数: {len(data['captions'])} 条")
     print(f"    - SVG 场景数: {len(data['svgs'])} 个")
     print(f"✓ 统一审阅控制台已就绪: {index_path}")
-    print(f"    - 下一步: python3 helpers/review_surface.py \"{project_root}\" --surface-only；"
+    print(f"    - 下一步: python3 helpers/_internal/review_surface.py \"{project_root}\" --surface-only；"
           "有 review_open 时传返回的 surface；无插件时去掉 --surface-only")
 
 

@@ -10,10 +10,10 @@ Exit code 0 = all checks passed, 1 = any check failed (--pair also exits 1
 when the best lag is farther than 0.5s from 0).
 
 Usage:
-    python helpers/verify_av.py --tracks a.mp4 b.mp4        # V/A stream delta ≤ 0.05s
-    python helpers/verify_av.py --tails  a.mp4              # last-loud window + silent-tail warning
-    python helpers/verify_av.py --pair face.mp4 base.mp4    # envelope xcorr: expect lag ≈ 0, corr ≥ 0.5
-    python helpers/verify_av.py --all   a.mp4 b.mp4         # tracks + tails
+    python helpers/_internal/verify_av.py --tracks a.mp4 b.mp4        # V/A stream delta ≤ 0.05s
+    python helpers/_internal/verify_av.py --tails  a.mp4              # last-loud window + silent-tail warning
+    python helpers/_internal/verify_av.py --pair face.mp4 base.mp4    # envelope xcorr: expect lag ≈ 0, corr ≥ 0.5
+    python helpers/_internal/verify_av.py --all   a.mp4 b.mp4         # tracks + tails
 """
 from __future__ import annotations
 

@@ -16,7 +16,7 @@ Alpha is verified before reporting success, and the verdict is the PLANE:
   2. pix_fmt is only printed as a note — it under-reports real alpha
      (HEVC+alpha reports yuv420p) so it must never be the gate.
 
-For an arbitrary file (not one of ours), `helpers/check_alpha.py <file>` runs
+For an arbitrary file (not one of ours), `helpers/_internal/check_alpha.py <file>` runs
 the same plane test and exits non-zero when transparency is missing.
 
 Usage:

@@ -49,6 +49,7 @@ class Stage:
         self.steps: list[dict] = []
         self.notes: list[str] = []
         self.next: str | None = None
+        self.extra: dict = {}
 
     def run(self, tool: str, *args: object, allow_fail: bool = False) -> int:
         target = (HELPERS / tool) if (HELPERS / tool).is_file() else (INTERNAL / tool)
@@ -76,6 +77,7 @@ class Stage:
             "steps": self.steps,
             "notes": self.notes,
             "next": self.next,
+            **self.extra,
         }
         if as_json:
             print(json.dumps(payload, ensure_ascii=False, indent=2))

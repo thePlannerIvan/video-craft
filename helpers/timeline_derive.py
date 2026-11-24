@@ -109,9 +109,10 @@ def load_contract(edit_dir: Path, *, edl_path: Path | None = None) -> tuple[list
 
     edl_file = (edl_path or (edit_dir / EDIT_DEFAULT)).resolve()
     if edl_file.exists():
-        from _edl import edl_digest  # same directory
+        from _edl import edl_digest, edl_raw_digest  # same directory
         digest = edl_digest(edl_file)
-        if words.get("edl_sha256") and words["edl_sha256"] != digest:
+        raw_digest = edl_raw_digest(edl_file)
+        if words.get("edl_sha256") and words["edl_sha256"] not in (digest, raw_digest):
             _fail(
                 f"{WORDS_NAME} was built from a different EDL "
                 f"({words['edl_sha256'][:12]}… vs {digest[:12]}…). "

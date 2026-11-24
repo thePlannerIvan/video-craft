@@ -20,9 +20,9 @@ Agent 日常只围绕这 12 个顶层入口组织工作；每个文件对应一�
 
 | 分类 | 命令 | 职责 |
 |---|---|---|
-| **剪辑与转写协同** | `python3 "<craft>/helpers/stage_cut.py" {status\|prepare\|review\|apply} --project "<project>" [--source "<原片>"]` | 准备转写与 Take 视图、搭建逐字剪辑页、消费 `selections.json` 更新 EDL 并重建预览 |
-| **人声处理** | `python3 "<craft>/helpers/audio_fix.py" "<媒体>" -o "<处理.wav>" [--preset podcast-warm\|raw] [--raw]` | 默认 C 档播客浑厚预设 + `-14.0 LUFS / -1.5 dBTP`；`--raw` 一键导出纯干声 |
-| **全片混音** | `python3 "<craft>/helpers/audio_mix.py" "<voice.wav>" -o "<mix.wav>" [--bgm ...] [--sfx ...] [--no-sfx\|--dry]` | 唯一混音出口，支持克制本地 SFX 护栏与一键纯干声剥离 |
+| **剪辑与转写协同** | `python3 "<craft>/helpers/stage_cut.py" {status\|prepare\|review\|apply} --project "<project>" [--source "<原片>" --backend auto\|seedasr\|scribe\|mlx] [--surface-only]` | `prepare` 首选 SeedASR 2.0 词级转写（禁自动 `ark`）；`review` 支持 DSH `--surface-only` 或无插件自动起本地浏览器宿主 |
+| **人声诊断试听** | `python3 "<craft>/helpers/audio_fix.py" "<媒体>" -o "<处理.wav>" [--preset podcast-warm\|raw] [--ab "起始,时长"]` | 单轨声学试听与短片段 A/B 盲听对比；终混请直接传原始干声给 `audio_mix.py`，勿二次压限 |
+| **全片混音** | `python3 "<craft>/helpers/audio_mix.py" "<原始干声>" -o "<mix.m4a>" [--bgm ...] [--sfx ...] [--voice-preset podcast-warm\|none\|raw] [--no-sfx\|--dry]` | 唯一混音出口：默认启用 `podcast-warm` 与 `-14.0 LUFS / -1.5 dBTP`，支持稀疏 CC0 SFX 护栏与 `--dry` 纯干声 |
 | **语义字幕** | `python3 "<craft>/helpers/srt_export.py" "<edit>" {--prepare\|--lock\|--build\|--check} [--force-prepare --time-source measured]` | Article-First 字幕准备、锁定全文、对齐词契约生成 `captions.json` / `subtitles.srt` 与校验 |
 | **唯一时间脊柱** | `python3 "<craft>/helpers/timeline_derive.py" "<edit>" [--stats \| --entries-only \| --grouping <g> --output-timeline <t> --output-durations <d>]` | 由 EDL + 锁定字幕（+ 可选 `--alignment`）派生项目根 `timeline/timeline.json` |
 | **四档分拍与演示代理** | `python3 "<craft>/helpers/film.py" {init\|proxy\|verify} "<project>" ...` | 初始化 `visual-plan.json` 四档视觉语法、生成 `demo-footage` 审阅轻代理与构建校验 |
@@ -31,7 +31,7 @@ Agent 日常只围绕这 12 个顶层入口组织工作；每个文件对应一�
 | **统一画面体检** | `python3 "<craft>/helpers/check_visual.py" ...` | 统一画面环境、静态规范、运动与像素检查入口（子动作详 `check_visual.py --help`） |
 | **工程审阅构建** | `python3 "<craft>/helpers/review.py" "<project>" [--final-cut]` | 按形态构建工程活舞台或成片态审阅页、校验 Playable 四判据并准备 surface |
 | **反馈收件** | `python3 "<craft>/helpers/review_inbox.py" "<project>" [--dry-run]` | 收取提交进 `feedback/*.jsonl`、去重验绑定、回写 `recompose/lines.json` |
-| **严格交付合成** | `python3 "<craft>/helpers/deliver.py" "<project>" {--render \| --visuals <mp4>} [--no-person --burn-subtitles]` | 先过 `render_gate`，拼合高清原录屏演示段并保持人物独立轨、合成声音字幕并跑 `verify_delivery` |
+| **严格交付合成** | `python3 "<craft>/helpers/deliver.py" "<project>" {--render \| --visuals <mp4>} [--mode split\|composite] [--composite] [--approve-in-chat] [--no-person --burn-subtitles]` | 过 `render_gate`（支持网页提交或 `--approve-in-chat`）；有真人口播默认分轨输出人物成片+无声画面成片+空隙字幕，加 `--composite` 合流单视频 |
 
 退出码通用约定（适用于 `stage_cut.py` 与各检查/交付命令）：`0` 成功 · `1` 失败或闸门拦截 · `2` 前置条件不满足或用法错误；加 `--json` 返回机器可读字段。
 

@@ -20,7 +20,7 @@
 7. 措辞：author-spec / style-spec / preferences 不得出现单路线口径
 
 用法：
-    python3 helpers/spec_lint.py [--json] [--spec-dir <目录>]
+    python3 helpers/_internal/spec_lint.py [--json] [--spec-dir <目录>]
 
 退出码：0 无问题 · 1 有问题 · 2 文件缺失
 """

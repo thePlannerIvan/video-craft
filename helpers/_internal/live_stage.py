@@ -61,7 +61,7 @@ BUNDLE_SRC = re.compile(r'<script[^>]+src="(/assets/[^"]+\.js)"')
 
 
 def project_root(arg: str) -> Path:
-    """统一实现见 `helpers/_paths.py`（合并地图 M3）；仍要求项目下有 composition/。"""
+    """统一实现见 `helpers/_internal/_paths.py`（合并地图 M3）；仍要求项目下有 composition/。"""
     from _paths import resolve
     root, _edit = resolve(arg)
     if not (root / "composition").is_dir():

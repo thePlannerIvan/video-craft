@@ -31,7 +31,7 @@ These are **bring-your-own**: the repository ships no credentials, and no docume
 
 The shipped `.gitignore` blocks `.env`, `.env.*` (with `.env.example` allowed through), `*.pem`, and `*.key`. No credential is hardcoded in any source file; if a helper cannot find one it fails loudly rather than calling a provider with an empty value.
 
-Rotate any credential you believe has been exposed. A published key is compromised even after the line is removed, because git history retains it — which is why the upstream-inlined Doubao credentials were redacted before this repository was published (see `upstream-diff.md`).
+Rotate any credential you believe has been exposed. A published key is compromised even after the line is removed, because git history retains it — which is why the upstream-inlined Doubao credentials were redacted before this repository was published.
 
 ## Media Handling
 

@@ -11,8 +11,8 @@ Answers the four classic complaints with numbers:
   crest(4-8k) - crest(1-4k) > 3 dB -> de-ess candidate
 
 Usage:
-    python helpers/audio_diag.py <audio1> [audio2 ...]
-    python helpers/audio_diag.py in.wav --chart diag.png
+    python helpers/_internal/audio_diag.py <audio1> [audio2 ...]
+    python helpers/_internal/audio_diag.py in.wav --chart diag.png
 Inputs: wav/mp3/m4a/mp4 (ffmpeg-decoded, mono-converted internally).
 """
 

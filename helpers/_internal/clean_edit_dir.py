@@ -18,10 +18,10 @@ and just report what they removed — which is what "首次确认，之后默认
 practice.
 
 Usage:
-  <venv>/python helpers/clean_edit_dir.py <edit_dir>            # report only
-  <venv>/python helpers/clean_edit_dir.py <edit_dir> --approve  # remember + apply
-  <venv>/python helpers/clean_edit_dir.py <edit_dir> --apply    # apply once
-  <venv>/python helpers/clean_edit_dir.py <edit_dir> --json
+  <venv>/python helpers/_internal/clean_edit_dir.py <edit_dir>            # report only
+  <venv>/python helpers/_internal/clean_edit_dir.py <edit_dir> --approve  # remember + apply
+  <venv>/python helpers/_internal/clean_edit_dir.py <edit_dir> --apply    # apply once
+  <venv>/python helpers/_internal/clean_edit_dir.py <edit_dir> --json
 """
 from __future__ import annotations
 

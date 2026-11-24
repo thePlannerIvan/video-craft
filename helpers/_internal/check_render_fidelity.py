@@ -21,10 +21,10 @@ only" tracks that skip `deliver.py`.
 
 Usage
 -----
-    python3 helpers/check_render_fidelity.py <project> --video <mp4>
-    python3 helpers/check_render_fidelity.py <project>                  # composition/_render/visuals.mp4
-    python3 helpers/check_render_fidelity.py <project> --samples 24 --json
-    python3 helpers/check_render_fidelity.py <project> --times 30,90,240
+    python3 helpers/_internal/check_render_fidelity.py <project> --video <mp4>
+    python3 helpers/_internal/check_render_fidelity.py <project>                  # composition/_render/visuals.mp4
+    python3 helpers/_internal/check_render_fidelity.py <project> --samples 24 --json
+    python3 helpers/_internal/check_render_fidelity.py <project> --times 30,90,240
 
 Exit 0 = every sample matches; 1 = at least one sample diverged (printed worst
 first); 2 = could not run (missing video / snapshot failure).

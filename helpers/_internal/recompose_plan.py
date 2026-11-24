@@ -66,7 +66,7 @@ def config(project: Path) -> dict:
 
 
 def parse_srt(text: str) -> list[dict]:
-    """统一实现见 `helpers/_timecode.py`（合并地图 M1）；输出形状保持不变。"""
+    """统一实现见 `helpers/_internal/_timecode.py`（合并地图 M1）；输出形状保持不变。"""
     from _timecode import flatten as _flatten, parse_srt_text as _parse_srt_text
     return [{
         "id": f"l{cue['index']:03d}",

@@ -4,11 +4,11 @@
 契约见 `references/stages.md`。本脚本不重新实现交付：它按顺序调用既有工具，
 统一退出码与下一步提示；旧命令继续可用。
 
-    python3 helpers/stage_deliver.py status  --project <项目>
-    python3 helpers/stage_deliver.py run     --project <项目> [--visuals <mp4>] [--no-person] [--out <目录>]
-    python3 helpers/stage_deliver.py verify  --project <项目> --video <成片> [--deliver-dir <目录>]
-    python3 helpers/stage_deliver.py export  --project <项目> [--out <目录>]
-    python3 helpers/stage_deliver.py fingerprint capture|verify --project <项目>
+    python3 helpers/_internal/stage_deliver.py status  --project <项目>
+    python3 helpers/_internal/stage_deliver.py run     --project <项目> [--visuals <mp4>] [--no-person] [--out <目录>]
+    python3 helpers/_internal/stage_deliver.py verify  --project <项目> --video <成片> [--deliver-dir <目录>]
+    python3 helpers/_internal/stage_deliver.py export  --project <项目> [--out <目录>]
+    python3 helpers/_internal/stage_deliver.py fingerprint capture|verify --project <项目>
 
 退出码：0 完成 · 1 某条命令失败（含闸门拒绝）· 2 前置条件不满足。
 """
@@ -52,7 +52,8 @@ def _state(project: Path, edit: Path) -> dict:
              and report.get("source_fingerprint") == sources
              and report.get("output_identity") == entry(Path(report["output"]))
              and isinstance(report.get('input_identities'), dict) and bool(report['input_identities'])
-             and all(record and record == entry(Path(record['path'])) for record in report['input_identities'].values()))
+             and all(record and record == entry(Path(record['path'])) for record in report['input_identities'].values())
+             and all(record and record == entry(Path(record['path'])) for record in (report.get('deliverable_identities') or {}).values()))
     except (OSError, ValueError, KeyError, TypeError):
         pass
     if state["fingerprint"]:
@@ -95,9 +96,12 @@ def do_status(project: Path, edit: Path, as_json: bool) -> int:
 def do_run(args) -> int:
     if args.no_audio:
         raise Prereq("--no-audio 只支持 verify；run 仍要求声音素材，无声合成未在此入口提供")
+    if args.approval_note is not None and not args.approve_in_chat:
+        raise Prereq("--approval-note 只能配合 --approve-in-chat 使用")
+    if args.skip_gate and args.approve_in_chat:
+        raise Prereq("--skip-gate 不能与 --approve-in-chat 同时使用")
     project, edit = resolve_project(args.project)
     out_dir = Path(args.out).expanduser().resolve() if args.out else project / "成品"
-    target = out_dir / f"{project.name}_成片.mp4"
     stage = Stage("deliver")
     if args.skip_gate and os.environ.get("DSH_TEST") != "1":
         raise Failed("--skip-gate 只允许测试夹具（DSH_TEST=1）；正式流程必须过 render_gate")
@@ -106,10 +110,14 @@ def do_run(args) -> int:
     forward += ["--audio", args.audio] if args.audio else []
     forward += ["--srt", args.srt_run] if args.srt_run else []
     forward += ["--out", str(out_dir)]
+    forward += ["--mode", args.mode] if args.mode else []
+    forward += ["--composite"] if args.composite else []
     forward += ["--burn-subtitles"] if args.burn_subtitles else []
     forward += ["--no-person"] if args.no_person else []
     forward += ["--render"] if args.render else []
     forward += ['--visuals-confirm-current'] if args.visuals_confirm_current else []
+    forward += ["--approve-in-chat"] if args.approve_in_chat else []
+    forward += ["--approval-note", args.approval_note] if args.approval_note is not None else []
     forward += ["--json"] if args.json else []
     forward += ["--skip-gate"] if args.skip_gate else []
     stage.run("deliver.py", project, *forward)
@@ -163,10 +171,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--srt", nargs="+", default=None,
                     help="run 时：外挂字幕（一条）；export 时：字幕文件对（可多条）")
     ap.add_argument("--out", default=None, help="run/export 时：输出目录（默认 成品/）")
+    ap.add_argument("--mode", choices=("split", "composite"), default=None, help="run 时：交付模式（默认 split）")
+    ap.add_argument("--composite", action="store_true", help="run 时：显式合流输出单轨成片")
     ap.add_argument("--burn-subtitles", action="store_true", help="run 时：把字幕烧进画面")
     ap.add_argument("--no-person", action="store_true", help="run 时：没有人物轨（纯画面 + 旁白）")
     ap.add_argument("--render", action="store_true",
                     help="run 时：显式渲染画面层（默认不渲染，缺画面层会拒绝）")
+    ap.add_argument("--approve-in-chat", action="store_true",
+                    help="run 时：作者在对话明确授权导出时记录会话授权并过闸门")
+    ap.add_argument("--approval-note", default=None, help="run 时：配合 --approve-in-chat 记录授权原因")
     ap.add_argument("--skip-gate", action="store_true", help="run 时：仅测试夹具可跳过闸门")
     ap.add_argument("--video", default=None, help="verify 时：要核验的成片")
     ap.add_argument("--deliver-dir", default=None, help="verify 时：交付目录")

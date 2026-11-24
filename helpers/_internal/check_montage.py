@@ -20,10 +20,10 @@ ffmpeg 退 0、每个文件大小正常、拼接也成功。肉眼发现它的�
 
 用法
 ----
-    python3 helpers/check_montage.py <project> [--plan edit/montage-plan.json]
-    python3 helpers/check_montage.py <project> --shots-dir /tmp/montage_xxx --base material/frame/base.png
-    python3 helpers/check_montage.py <project> --video edit/_engineering/picture.mp4
-    python3 helpers/check_montage.py <project> --json
+    python3 helpers/_internal/check_montage.py <project> [--plan edit/montage-plan.json]
+    python3 helpers/_internal/check_montage.py <project> --shots-dir /tmp/montage_xxx --base material/frame/base.png
+    python3 helpers/_internal/check_montage.py <project> --video edit/_engineering/picture.mp4
+    python3 helpers/_internal/check_montage.py <project> --json
 
 退出码：0 全部通过；1 有硬失败；2 输入不成立（读不到计划/媒体）。
 """

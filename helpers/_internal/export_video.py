@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Package explicitly rendered tracks; this CLI does not invent a renderer.
 
-python3 helpers/export_video.py <project> --mode speaker
-python3 helpers/export_video.py <project> --mode animation --animation <rendered.mp4>
-python3 helpers/export_video.py <project> --mode composite --final <rendered.mp4>
-python3 helpers/export_video.py <project> --mode split --animation <mp4> --final <mp4>
+python3 helpers/_internal/export_video.py <project> --mode speaker
+python3 helpers/_internal/export_video.py <project> --mode animation --animation <rendered.mp4>
+python3 helpers/_internal/export_video.py <project> --mode composite --final <rendered.mp4>
+python3 helpers/_internal/export_video.py <project> --mode split --animation <mp4> --final <mp4>
 
 Packaging preserves bytes and source frame rate. Verify the actual result with
 verify_delivery.py; frame size, captions and audio belong to the renderer.
@@ -20,7 +20,7 @@ from pathlib import Path
 
 
 def resolve_project_paths(target: Path) -> tuple[Path, Path]:
-    """统一实现见 `helpers/_paths.py`（合并地图 M3）。"""
+    """统一实现见 `helpers/_internal/_paths.py`（合并地图 M3）。"""
     from _paths import resolve
     return resolve(target)
 

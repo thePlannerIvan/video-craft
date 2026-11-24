@@ -39,9 +39,9 @@ python3 "<craft>/helpers/film.py" verify "<project>" [--json]
 - `<project>/feedback/density.jsonl`：`review_inbox.py` 收件后追加。
 
 ```bash
-python3 "<craft>/helpers/recompose_plan.py" init  "<project>" --composition "<project>/composition" --person-slot "0,0,620,1080" --caption-safe "0,885,1920,195"
-python3 "<craft>/helpers/recompose_plan.py" check "<project>"
-python3 "<craft>/helpers/recompose_plan.py" lines "<project>"
+python3 "<craft>/helpers/_internal/recompose_plan.py" init  "<project>" --composition "<project>/composition" --person-slot "0,0,620,1080" --caption-safe "0,885,1920,195"
+python3 "<craft>/helpers/_internal/recompose_plan.py" check "<project>"
+python3 "<craft>/helpers/_internal/recompose_plan.py" lines "<project>"
 ```
 
 **几何规则**：场景文件（`src/scenes/*.js`）严禁手算或硬编码 `500/620/880` 等像素数，一律从 `recompose.json` 读取：

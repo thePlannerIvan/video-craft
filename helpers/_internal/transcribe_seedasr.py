@@ -11,8 +11,8 @@ auto` (Scribe→Ark→mlx) is the historical fallback for when no 豆包 speech-
 credentials exist; the Ark leg it can reach is exactly the path GOTCHAS #1 bans.
 
 Usage:
-  python3 helpers/transcribe_seedasr.py <video> --edit-dir <edit_dir>
-  python3 helpers/transcribe_seedasr.py <video> <edit_dir>    # 位置参数（旧调用）
+  python3 helpers/_internal/transcribe_seedasr.py <video> --edit-dir <edit_dir>
+  python3 helpers/_internal/transcribe_seedasr.py <video> <edit_dir>    # 位置参数（旧调用）
 
 Requirements:
   - Node.js 22+ and the `ws` npm package (npm install ws) in the video-use repo

@@ -92,7 +92,7 @@ own deps are listed in `pyproject.toml` (`requests`, `librosa`, `matplotlib`, `p
 
 It is a `--system-site-packages` venv built from `/usr/bin/python3`, offline-ready,
 and it already carries `pptx` / `lxml` / `PIL` / `playwright` / `numpy`. Run helpers
-and tests with it: `"$CATEGORY_PY" helpers/render.py ...`. Install this Skill's deps
+and tests with it: `"$CATEGORY_PY" helpers/_internal/render.py ...`. Install this Skill's deps
 into it the same way: `"$CATEGORY_PY" -m pip install -e .`.
 
 ### 3. Install ffmpeg (+ optional yt-dlp)

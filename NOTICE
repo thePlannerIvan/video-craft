@@ -17,10 +17,8 @@ delivery.
 ## Provenance
 
 This Skill is a merge of two upstream projects and was decoupled from both on
-2026-09-15. `upstream-diff.md` records what was absorbed and what deliberately
-diverges (historical frozen upstream snapshots were removed from the shipped tree
-in v2, while all required MIT license texts remain preserved in
-`THIRD_PARTY_NOTICES.md`).
+2026-09-15. Historical frozen upstream snapshots were removed from the shipped tree in v2,
+while all required MIT license texts remain preserved in `THIRD_PARTY_NOTICES.md`.
 
 - `browser-use/video-use` — MIT License, Copyright (c) 2026 Browser Use.
   Contributed the time spine, the compositor, the caption chain, and delivery
@@ -33,7 +31,7 @@ in v2, while all required MIT license texts remain preserved in
 Credential handling note: the Doubao App ID and access token that upstream
 inlined as string literals in `helpers/doubao_asr_file.js` have been redacted to
 `DOUBAO_APP_ID` / `DOUBAO_ACCESS_TOKEN` from the environment (falling back to
-`<repo>/.env`). See `upstream-diff.md` for why.
+`<repo>/.env`).
 
 The review faces (visual review and EDL cut preview) are served by the shared
 review seam (`planners-review-core`) and are meant to run locally only.

@@ -494,7 +494,7 @@ def main() -> None:
     ap.add_argument("--layout", type=str, default=None,
                     help=f"layout: landscape|portrait|overlay (default: .layout file or {DEFAULT_LAYOUT})")
     ap.add_argument("--studio-notes-url", type=str, default="http://127.0.0.1:4319/note",
-                    help="studio 意见收集器地址（helpers/studio_notes.py 起的那个）；"
+                    help="studio 意见收集器地址（helpers/_internal/studio_notes.py 起的那个）；"
                          "传空字符串则不给 composition 装这个钩子")
     ap.add_argument("--media-box", type=str, default=None,
                     help="录屏/实拍段落在画布上的落位 x,y,w,h（像素）。默认满幅；"

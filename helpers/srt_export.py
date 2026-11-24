@@ -66,7 +66,7 @@ def _fail(message: str) -> None:
 
 
 def _srt_timestamp(seconds: float) -> str:
-    """统一实现见 `helpers/_timecode.py`（合并地图 M1）。"""
+    """统一实现见 `helpers/_internal/_timecode.py`（合并地图 M1）。"""
     from _timecode import format_time as _format_time
     return _format_time(int(round(seconds * 1000)))
 
@@ -237,7 +237,7 @@ def _measured_durations(edit_dir: Path, edl_file: Path, count: int,
     if problem:
         if strict or mode != "auto":
             _fail(f"没有找到与当前 EDL 匹配的段时长记录（{problem}）——"
-                  "先跑 helpers/duration_plan.py 得到预演时间轴，或重新渲染后再生成字幕")
+                  "先跑 helpers/_internal/duration_plan.py 得到预演时间轴，或重新渲染后再生成字幕")
         print(f"  ! 没有找到与当前 EDL 匹配的段时长记录（{problem}）——"
               "本次按标称时间轴生成，不能作为交付版本")
         return None, None
@@ -323,7 +323,7 @@ def _load_timeline_words(edit_dir: Path, edl_path: Path | None = None,
 
     contract = {
         "version": CONTRACT_VERSION,
-        "edl_sha256": _sha256(edl_file),
+        "edl_sha256": _edl.edl_digest(edl_file),
         "transcript_sha256": transcript_hashes,
         "corrections_sha256": corrections_sha256,
         "segments": segments,
@@ -361,7 +361,9 @@ def _load_words_contract(edit_dir: Path, edl_path: Path | None = None,
             _fail(f"{path.name} is missing required field {key}")
     if stored["version"] != CONTRACT_VERSION:
         _fail(f"{path.name} version {stored['version']} is not supported")
-    if stored["edl_sha256"] != contract["edl_sha256"]:
+    edl_file = (edl_path or (edit_dir / "edl.json")).resolve()
+    accepted_edl = {contract["edl_sha256"], _edl.edl_raw_digest(edl_file)}
+    if stored["edl_sha256"] not in accepted_edl:
         _fail(f"{path.name} was made from a different EDL; run --prepare again")
     if stored["transcript_sha256"] != contract["transcript_sha256"]:
         _fail(f"{path.name} was made from a different transcript; run --prepare again")
@@ -614,7 +616,7 @@ def build_article_srt(edit_dir: Path, edl_path: Path | None = None,
 
 
 def parse_srt(path: Path) -> list[tuple[float, float, str]]:
-    """统一实现见 `helpers/_timecode.py`（合并地图 M1）；返回 (起秒, 止秒, 文本)。"""
+    """统一实现见 `helpers/_internal/_timecode.py`（合并地图 M1）；返回 (起秒, 止秒, 文本)。"""
     from _timecode import flatten as _flatten, parse_srt_file as _parse_srt_file
     return [(cue["startMs"] / 1000, cue["endMs"] / 1000, _flatten(cue, "\n"))
             for cue in _parse_srt_file(path)]

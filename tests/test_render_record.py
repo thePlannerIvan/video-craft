@@ -86,6 +86,25 @@ class SelectRenderRecordTests(unittest.TestCase):
         self.assertEqual(EDL_LIB.select_render_record({}, self.DIGEST), (None, None, "none"))
         self.assertEqual(EDL_LIB.select_render_record({"x": 1}, self.DIGEST), (None, None, "none"))
 
+    def test_legacy_digest_fallback_matches_when_canonical_absent(self):
+        legacy = hashlib.sha256(b"legacy-raw-edl").hexdigest()
+        blob = {
+            "poc": record([6.0, 6.0], hashlib.sha256(b"poc-edl").hexdigest()),
+            "final": record([8.4] * 10, legacy),
+        }
+        tag, entry, how = EDL_LIB.select_render_record(blob, self.DIGEST, legacy_digest=legacy)
+        self.assertEqual((tag, how), ("final", "digest"))
+        self.assertAlmostEqual(sum(entry["durations"]), 84.0, places=6)
+
+    def test_canonical_digest_wins_over_legacy_digest(self):
+        legacy = hashlib.sha256(b"legacy-raw-edl").hexdigest()
+        blob = {
+            "v2": record([8.4] * 10, self.DIGEST),
+            "v1": record([8.0] * 10, legacy),
+        }
+        tag, _entry, how = EDL_LIB.select_render_record(blob, self.DIGEST, legacy_digest=legacy)
+        self.assertEqual((tag, how), ("v2", "digest"))
+
 
 class FixtureTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -138,6 +157,31 @@ class CheckEdlTests(FixtureTests):
         result = CHECK.check(self.edit)
         self.assertTrue(any("哈希不符" in w for w in result["warn"]), result["warn"])
 
+    def test_legacy_raw_digest_record_still_accepted_without_warning(self):
+        raw_digest = EDL_LIB.edl_raw_digest(self.edit / "edl.json")
+        self.assertNotEqual(raw_digest, self.digest())
+        self.write_records(final_digest=raw_digest)
+        result = CHECK.check(self.edit)
+        self.assertEqual(result["measured_total_s"], 84.0, result)
+        self.assertFalse(any("哈希不符" in w for w in result["warn"]), result["warn"])
+
+    def test_directory_copy_keeps_check_edl_matching_canonical_record(self):
+        self.write_records()
+        (self.edit / "edl.json").write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "sources": {"A": "/Volumes/moved-copy/project_v2/raw/A.mp4"},
+                    "ranges": self.ranges,
+                },
+                indent=2,
+            ) + "\n",
+            encoding="utf-8",
+        )
+        result = CHECK.check(self.edit)
+        self.assertEqual(result["measured_total_s"], 84.0, result)
+        self.assertFalse(any("哈希不符" in w for w in result["warn"]), result["warn"])
+
 
 class VerifyDeliveryTests(FixtureTests):
     def test_measured_total_reads_the_current_edl_record(self):
@@ -150,6 +194,85 @@ class VerifyDeliveryTests(FixtureTests):
         self.write_records(final_digest=hashlib.sha256(b"an-older-edl").hexdigest())
         measured, tag, how = VERIFY.measured_total(self.edit)
         self.assertEqual(how, "mismatch")
+
+    def test_legacy_raw_digest_record_matches_measured_total(self):
+        raw_digest = EDL_LIB.edl_raw_digest(self.edit / "edl.json")
+        self.write_records(final_digest=raw_digest)
+        measured, tag, how = VERIFY.measured_total(self.edit)
+        self.assertEqual((tag, how), ("final", "digest"))
+        self.assertAlmostEqual(measured, 84.0, places=6)
+
+    @unittest.skipUnless(HAVE_FFMPEG, "ffmpeg/ffprobe not on PATH")
+    def test_legacy_raw_digest_record_passes_verify_delivery_cli(self):
+        self.ranges = [{"source": "A", "start": 0.0, "end": 2.0}]
+        self.write_edl()
+        video = self.edit / "final.mp4"
+        subprocess.run(
+            ["ffmpeg", "-y", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=30:duration=2",
+             "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
+             "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "ultrafast",
+             "-c:a", "aac", "-shortest", str(video)],
+            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        raw_digest = EDL_LIB.edl_raw_digest(self.edit / "edl.json")
+        (self.edit / "segment_durations.json").write_text(json.dumps({
+            "final": record([2.0], raw_digest),
+        }, ensure_ascii=False), encoding="utf-8")
+
+        proc = subprocess.run(
+            [sys.executable, str(HELPERS / "_internal" / "verify_delivery.py"), str(self.edit)],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn("时长与渲染记录（final）一致", proc.stdout)
+
+    @unittest.skipUnless(HAVE_FFMPEG, "ffmpeg/ffprobe not on PATH")
+    def test_copied_project_dir_passes_verify_delivery_and_range_edit_fails(self):
+        self.ranges = [{"source": "A", "start": 0.0, "end": 2.0}]
+        self.write_edl()
+        video = self.edit / "final.mp4"
+        subprocess.run(
+            ["ffmpeg", "-y", "-f", "lavfi", "-i", "testsrc=size=320x240:rate=30:duration=2",
+             "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
+             "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "ultrafast",
+             "-c:a", "aac", "-shortest", str(video)],
+            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        (self.edit / "segment_durations.json").write_text(json.dumps({
+            "final": record([2.0], self.digest()),
+        }, ensure_ascii=False), encoding="utf-8")
+
+        copied_edit = Path(self._tmp.name) / "renamed_project_v2" / "edit"
+        shutil.copytree(self.edit, copied_edit)
+        (copied_edit / "edl.json").write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "sources": {"A": str(copied_edit / "A.mp4")},
+                    "ranges": [{"source": "A", "start": 0.0, "end": 2.0}],
+                },
+                indent=2,
+            ) + "\n",
+            encoding="utf-8",
+        )
+        ok_proc = subprocess.run(
+            [sys.executable, str(HELPERS / "_internal" / "verify_delivery.py"), str(copied_edit)],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(ok_proc.returncode, 0, ok_proc.stdout + ok_proc.stderr)
+
+        (copied_edit / "edl.json").write_text(
+            json.dumps({
+                "version": 1,
+                "sources": {"A": str(copied_edit / "A.mp4")},
+                "ranges": [{"source": "A", "start": 0.0, "end": 1.8}],
+            }),
+            encoding="utf-8",
+        )
+        bad_proc = subprocess.run(
+            [sys.executable, str(HELPERS / "_internal" / "verify_delivery.py"), str(copied_edit)],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(bad_proc.returncode, 1, bad_proc.stdout + bad_proc.stderr)
+        self.assertIn("哈希不符", bad_proc.stdout)
 
     @unittest.skipUnless(HAVE_FFMPEG, "ffmpeg/ffprobe not on PATH")
     def test_the_delivery_gate_no_longer_fails_a_correct_film(self):

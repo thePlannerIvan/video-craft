@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""The one mix output: voice (+ optional ducked music + restrained local SFX) -> delivery loudness.
+"""The one mix output: raw/dry cut voice (+ optional ducked music + restrained local SFX) -> delivery loudness.
+
+Default voice preset is C-preset `podcast-warm` (-14.0 LUFS / -1.5 dBTP). Pass raw/dry cut
+speech directly into `audio_mix.py`; if input was already processed by `audio_fix.py`, pass
+`--voice-preset none` explicitly to avoid double compression.
 
 Guardrails for --sfx (when not bypassed via --no-sfx or --dry):
   1. Trigger whitelist: only `chapter`, `reveal`, `turn` are permitted.
@@ -163,17 +167,40 @@ def validate_sfx_plan(sfx_path: Path, dur: float, sfx_under_db: float) -> list[d
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="single mix: voice (+music + restrained local SFX) -> delivery loudness")
-    ap.add_argument("voice", nargs="?", type=Path, default=None)
+    ap = argparse.ArgumentParser(
+        description=(
+            "Single final mix output: pass raw/dry cut voice directly (applies C-preset "
+            "'podcast-warm' by default to -14.0 LUFS / -1.5 dBTP) + optional ducked BGM + "
+            "restrained local SFX. Normally call audio_mix.py directly; only pass "
+            "--voice-preset none if input voice was already processed by audio_fix.py."
+        )
+    )
+    ap.add_argument(
+        "voice", nargs="?", type=Path, default=None,
+        help="Raw/dry cut voice input track (normally call audio_mix.py directly without pre-running audio_fix.py)",
+    )
     ap.add_argument("-o", "--output", type=Path, default=None)
     ap.add_argument("--bgm", type=Path, default=None)
     ap.add_argument("--bgm-lufs", type=float, default=-32.0)
     ap.add_argument("--target-lufs", type=float, default=-14.0)
     ap.add_argument("--tail", type=float, default=0.0, help="seconds of BGM tail after voice")
-    ap.add_argument("--voice-preset", choices=("none", "podcast-warm", "raw"), default="none",
-                    help="Optional voice preset applied before mix (use 'none' if voice is pre-fixed)")
-    ap.add_argument("--raw-voice", action="store_true", help="Force pure raw voice without EQ/compression")
-    ap.add_argument("--dry", action="store_true", help="One-flag pure dry voice export: bypass EQ/compression, BGM, and SFX")
+    ap.add_argument(
+        "--voice-preset", "--preset", dest="voice_preset",
+        choices=("none", "podcast-warm", "raw"), default="podcast-warm",
+        help=(
+            "Voice preset applied before mix (default: podcast-warm; expects raw/dry cut speech). "
+            "Pass --voice-preset none if voice was already processed by audio_fix.py to avoid "
+            "double compression; 'raw' bypasses EQ/compression/loudnorm."
+        ),
+    )
+    ap.add_argument("--raw-voice", "--raw", dest="raw_voice", action="store_true",
+                    help="Force pure raw voice without EQ/compression")
+    ap.add_argument("--allow-reprocess", action="store_true",
+                    help="Explicitly allow re-applying a voice preset on input tagged by audio_fix.py (not recommended)")
+    ap.add_argument(
+        "--dry", action="store_true",
+        help="One-flag pure dry voice export: bypass EQ/compression, BGM, and SFX (ignores preset/BGM/SFX)",
+    )
     ap.add_argument("--sfx", type=Path, default=None, help="JSON SFX plan [{t, kind, sound}]")
     ap.add_argument("--sfx-under-db", type=float, default=20.0,
                     help="Level delta below voice target LUFS (must stay in [18, 22], default: 20)")
@@ -203,6 +230,23 @@ def main() -> int:
     use_sfx = [] if (a.dry or a.no_sfx or a.sfx is None) else validate_sfx_plan(a.sfx, dur, a.sfx_under_db)
 
     voice_mode = "raw" if (a.dry or a.raw_voice) else a.voice_preset
+
+    if voice_mode == "podcast-warm" and not a.allow_reprocess:
+        probe = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format_tags", "-of", "json", str(a.voice)],
+            capture_output=True, text=True,
+        )
+        if probe.returncode == 0 and probe.stdout:
+            try:
+                tags = (json.loads(probe.stdout).get("format") or {}).get("tags") or {}
+            except ValueError:
+                tags = {}
+            tag_val = str(tags.get("comment") or tags.get("COMMENT") or "")
+            if tag_val.startswith("video-craft:") and tag_val != "video-craft:raw":
+                sys.exit(
+                    f"拒绝二次压限：{a.voice.name} 已带有预处理标记（{tag_val}）；"
+                    "请传原始干声给 audio_mix.py，或加 --voice-preset none 跳过人声压缩（确需强制重处理加 --allow-reprocess）"
+                )
 
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)

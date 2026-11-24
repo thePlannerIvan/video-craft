@@ -9,8 +9,8 @@ word-boundary precision from text alone.
 Output: <edit>/takes_packed.md
 
 Usage:
-    python helpers/pack_transcripts.py --edit-dir <edit_dir>
-    python helpers/pack_transcripts.py --edit-dir <edit_dir> --silence-threshold 0.5
+    python helpers/_internal/pack_transcripts.py --edit-dir <edit_dir>
+    python helpers/_internal/pack_transcripts.py --edit-dir <edit_dir> --silence-threshold 0.5
 """
 
 from __future__ import annotations

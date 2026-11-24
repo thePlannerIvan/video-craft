@@ -13,7 +13,7 @@ a slice that claims to start at the step boundary while actually starting 0.4s
 earlier silently shifts every annotation on the page.
 
 Usage:
-    python3 helpers/review_slices.py <project_root> [--composite <rel path>]
+    python3 helpers/_internal/review_slices.py <project_root> [--composite <rel path>]
                                      [--edit <edit dir>] [--force] [--json]
 """
 from __future__ import annotations

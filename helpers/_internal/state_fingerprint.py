@@ -16,8 +16,8 @@
 
 ## 用法
 
-    python3 helpers/state_fingerprint.py capture <project> [-o <path>]
-    python3 helpers/state_fingerprint.py verify  <project> [-f <path>]
+    python3 helpers/_internal/state_fingerprint.py capture <project> [-o <path>]
+    python3 helpers/_internal/state_fingerprint.py verify  <project> [-f <path>]
 
 默认指纹路径 `<project>/成品/delivery.json`。`verify` 退出码非 0 = 交付过期或成品被改过。
 

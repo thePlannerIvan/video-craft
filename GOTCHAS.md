@@ -11,7 +11,7 @@
 
 2. **解决了就删。** 一条候选被机制完全接管后，在末尾「已移除的条目」表里留一行指向那个机制，
    然后从正文删掉——机制才是记忆，正文里的第二份 prose 只会烂掉。**`已升级` 的条目移出正文**，
-   只在 `references/implementation-brief.md` 的迁移索引里留一行（2026-10-19 起）；正文只留
+   只在 `references/gotchas-index.md` 的迁移索引里留一行（2026-10-19 起）；正文只留
    **当前仍会造成错误**的条目。每条必须有 `enforcement` 指针，没有执行点的条目不许新增——
    由 `tests/test_gotchas.py` 强制。
 
@@ -456,7 +456,7 @@ the picture.
 - **enforcement**：check:helpers/_internal/check_review_template.py
 - **现象**：第一版两条检查对着**正确代码**报红：S2 把工具栏那三个按钮判成死的（它们是 `data-stage-tool` + 一个委托监听，正当写法）；S6 把三处「同步播放头」判成缺陷（切舞台、拖进度条本就不该自动播放）。
 - **原因**：判据抓的是「形状」而不是「出问题的那一段」。宽到把正确代码也罩进去的检查，和永远绿的检查一样没用 —— 区别只是它更快地被忽略。
-- **修正原则**：每条检查都要能说出**它只对哪一种缺陷响**；S6 因此收窄到只查分屏点击处理函数那一段。并且每条检查必须配一份自证（`--prove`：把历史缺陷从干净基线打回去，检查必须响），否则它可能就是一条永远不会失败的判据——那一条已升级，见 `references/implementation-brief.md` 迁移索引 #30。
+- **修正原则**：每条检查都要能说出**它只对哪一种缺陷响**；S6 因此收窄到只查分屏点击处理函数那一段。并且每条检查必须配一份自证（`--prove`：把历史缺陷从干净基线打回去，检查必须响），否则它可能就是一条永远不会失败的判据——那一条已升级，见 `references/gotchas-index.md` 迁移索引 #30。
 - **证据**：收窄前后的两次实跑；`--prove` 九条全响（S1–S9）。
 
 **同根并入**（合并后仍按本条处理）：
@@ -611,7 +611,7 @@ matters** — redirect to a file and read the tail separately.
 
 Kept as a subtraction audit trail, so a future session can tell a deliberate
 deletion from an accidental loss. 旧的「已升级」条目不在正文，编号见
-`references/implementation-brief.md` 的迁移索引。
+`references/gotchas-index.md` 的迁移索引。
 
 | Removed gotcha | Now guaranteed by |
 |---|---|
@@ -645,7 +645,7 @@ deletion from an accidental loss. 旧的「已升级」条目不在正文，编�
 | 不收的类别 | 为什么 | 例子 |
 |---|---|---|
 | **一次性的规格缺失** | 它是「这个 Skill 还没写清」，不是「会稳定导致错误的具体行为」。修法是补那份规格，补完就没有候选了 | 上游契约要一个新字段而我这边没读；某份 reference 少了一节 |
-| **已经修好的环境与脚手架** | 它是一次性事实，不是行为。留着只会让人以为还要处理 | 本机没有 `uv`、`<skill>/.venv` 是空壳、Python 下限被写成 3.10、`install.md` 里的 `uv sync`——统一解释器之后全部失效，见 `implementation-brief.md` |
+| **已经修好的环境与脚手架** | 它是一次性事实，不是行为。留着只会让人以为还要处理 | 本机没有 `uv`、`<skill>/.venv` 是空壳、Python 下限被写成 3.10、`install.md` 里的 `uv sync`——统一解释器之后全部失效，见 `gotchas-index.md` |
 | **别的 Skill 的问题** | 记在这里会被当成我们的待办；它的 owner 在那边 | `planners-ppt-hell` 的模板库锁层、`init` 的 `--assets` 路径口径、`validate_svg_layout.py` 把出画布降级成 info、两套审阅面不能互操作（作者已裁定不合并） |
 | **作者已裁定接受的设计** | 它已经是一个决定，不是待修的缺陷。重复登记等于每轮重新讨论一次 | 两个审阅面不合并；`--assets` 与契约引用必须全等；审阅服务端口被占就报错退出；重渲会改变已交付文件的字节（见 #24 的 accepted consequence） |
 | **一次运行的偶发失败** | 没有稳定复现路径的偶发失败只写现象是噪音。要收就先做一次可复现的（#52 的两次记录就是这么来的）。**边界：由默认值稳定复现的资源事故不属于这一类**——只要用了那个默认值、在那台机器上就必然发生，它是「会稳定导致错误的具体行为」，收进正文（见 #70 的同根并入） | 「这次 ffmpeg 卡住了」而没有复现步骤 |

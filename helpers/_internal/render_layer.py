@@ -20,7 +20,7 @@ MOV is PNG-in-MOV — lossless RGBA with real alpha, matching the overlays it re
 rather than a ProRes/YUV round trip.
 
 Usage:
-    python3 helpers/render_layer.py <composition_dir> -o <out_stem> \\
+    python3 helpers/_internal/render_layer.py <composition_dir> -o <out_stem> \\
         [--variables '{"set":"bolt"}'] [--fps 30] [--formats mov,webm] \\
         [--no-check] [--json]
 """

@@ -15,7 +15,7 @@ The MOV stays the delivery artefact; the WebM exists only so the layer can be
 looked at without rendering.
 
 Usage:
-    python3 helpers/preview_layers.py <edit_dir> [--force] [--crf 24] [--json]
+    python3 helpers/_internal/preview_layers.py <edit_dir> [--force] [--crf 24] [--json]
 """
 from __future__ import annotations
 

@@ -1,6 +1,6 @@
 # 架构与维护规则（`architecture.md`）
 
-本文回答“该改哪个 owner、改动会让哪些产物过期、怎样证明结果可用”。制作顺序与完成标准只维护在 [stages.md](stages.md)，命令与参数只维护在 [tools.md](tools.md)。待实现与已验收的机械修复及 GOTCHAS 历史迁移索引见 [implementation-brief.md](implementation-brief.md)。
+本文回答“该改哪个 owner、改动会让哪些产物过期、怎样证明结果可用”。制作顺序与完成标准只维护在 [stages.md](stages.md)，命令与参数只维护在 [tools.md](tools.md)。待实现与已验收的机械修复及 GOTCHAS 历史迁移索引见 [gotchas-index.md](gotchas-index.md)。
 
 ## 1. 系统边界：创作判断与机械保证
 
@@ -32,7 +32,7 @@
 | 双审阅面、DSH/本地宿主、收件返修与严格交付多腿核验 | [review-and-delivery.md](review-and-delivery.md) |
 | 跨风格全局判准、四风格动效准则与规则准入淘汰 | [author-spec.md](author-spec.md)、[style-spec.md](style-spec.md)、[preferences.md](preferences.md) |
 | 模块边界、失效依赖、新脚本准入与调试闭环 | 本文（`architecture.md`） |
-| B1–B10 工作包、当前不变式与 GOTCHAS 历史迁移索引 | [implementation-brief.md](implementation-brief.md)、根目录 [GOTCHAS.md](../GOTCHAS.md) |
+| B1–B10 工作包、当前不变式与 GOTCHAS 历史迁移索引 | [gotchas-index.md](gotchas-index.md)、根目录 [GOTCHAS.md](../GOTCHAS.md) |
 
 ## 3. 模块 owner 与工具边界
 

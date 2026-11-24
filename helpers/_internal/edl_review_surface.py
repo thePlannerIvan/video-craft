@@ -49,7 +49,7 @@ ID = 'video-craft/edl-preview'
 # 一动，页面上的时间轴可能就是旧版。宿主不知道什么变了，页面也没法自己 diff（它手上没有
 # 构建时那份 edl.json），所以那一条提示只说戳证明了的事。
 WATCH = [EDIT_NAME]
-WAKE_TEXT = ('{unit}：剪接选择有更新，读 ' + FEEDBACK_NAME + '，跑 helpers/apply_selection.py 应用，'
+WAKE_TEXT = ('{unit}：剪接选择有更新，读 ' + FEEDBACK_NAME + '，跑 helpers/_internal/apply_selection.py 应用，'
              '再重出这一页。')
 HOST_STATE_REL = review_host.HOST_STATE_NAME                      # 与 surface 同目录
 
@@ -121,7 +121,7 @@ def check_project(edit) -> None:
     load_edl(edit)
     page = page_path(edit)
     if not page.is_file():
-        raise ValueError(f'还没有这一页：{page}\n先跑 helpers/edl_preview_build.py {edit}')
+        raise ValueError(f'还没有这一页：{page}\n先跑 helpers/_internal/edl_preview_build.py {edit}')
 
 
 def write_surface(edit):

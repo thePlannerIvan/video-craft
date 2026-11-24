@@ -16,11 +16,11 @@ Two modes:
      use `--preset warm_cinematic` explicitly.
 
 Usage:
-    python helpers/grade.py <input> -o <output>                   # auto mode
-    python helpers/grade.py <input> -o <output> --preset warm_cinematic
-    python helpers/grade.py <input> -o <output> --filter 'eq=contrast=1.1'
-    python helpers/grade.py --print-preset warm_cinematic         # print filter only
-    python helpers/grade.py --analyze <input>                     # print auto-grade analysis
+    python helpers/_internal/grade.py <input> -o <output>                   # auto mode
+    python helpers/_internal/grade.py <input> -o <output> --preset warm_cinematic
+    python helpers/_internal/grade.py <input> -o <output> --filter 'eq=contrast=1.1'
+    python helpers/_internal/grade.py --print-preset warm_cinematic         # print filter only
+    python helpers/_internal/grade.py --analyze <input>                     # print auto-grade analysis
 
 Can also be imported by render.py: `get_preset(name)` and `auto_grade_for_clip(path, edl_range)`.
 """

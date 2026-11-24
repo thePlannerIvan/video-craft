@@ -168,6 +168,25 @@ class ArticleFirstSrtTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             MODULE._measured_durations(edit, edl, 2, True)
 
+    def test_legacy_raw_digest_in_caption_words_still_locks_and_builds(self) -> None:
+        edit = self.make_edit()
+        MODULE.prepare_article(edit)
+        words_path = edit / "caption_words.json"
+        blob = json.loads(words_path.read_text(encoding="utf-8"))
+        blob["edl_sha256"] = MODULE._sha256(edit / "edl.json")
+        words_path.write_text(json.dumps(blob, ensure_ascii=False), encoding="utf-8")
+        (edit / "captions_article.txt").write_text("你好世界\n\nBrand Vision\n", encoding="utf-8")
+        (edit / "semantic_lines.txt").write_text("你好\n世界\n\nBrand Vision\n", encoding="utf-8")
+        MODULE.lock_article(edit)
+        MODULE.build_article_srt(edit)
+        self.assertTrue((edit / "subtitles.srt").is_file())
+
+        edl = json.loads((edit / "edl.json").read_text(encoding="utf-8"))
+        edl["ranges"][0]["end"] = 2.5
+        (edit / "edl.json").write_text(json.dumps(edl), encoding="utf-8")
+        with self.assertRaises(SystemExit):
+            MODULE.build_article_srt(edit)
+
 
 if __name__ == "__main__":
     unittest.main()

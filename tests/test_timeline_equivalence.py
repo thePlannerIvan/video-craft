@@ -167,6 +167,22 @@ class EquivalenceTests(unittest.TestCase):
             timeline_derive.derive_entries(self.edit)
         self.assertIn("different EDL", str(ctx.exception))
 
+    def test_legacy_raw_digest_caption_words_is_accepted_while_edit_is_refused(self):
+        from _edl import edl_raw_digest
+        path = self.edit / "caption_words.json"
+        blob = json.loads(path.read_text(encoding="utf-8"))
+        blob["edl_sha256"] = edl_raw_digest(self.edit / "edl.json")
+        path.write_text(json.dumps(blob, ensure_ascii=False), encoding="utf-8")
+        derived = timeline_derive.derive_entries(self.edit)
+        self.assertEqual(len(derived), len(self.cues))
+
+        edited = json.loads((self.edit / "edl.json").read_text(encoding="utf-8"))
+        edited["ranges"][0]["end"] = 12.0
+        (self.edit / "edl.json").write_text(json.dumps(edited), encoding="utf-8")
+        with self.assertRaises(SystemExit) as ctx:
+            timeline_derive.derive_entries(self.edit)
+        self.assertIn("different EDL", str(ctx.exception))
+
 
 class BuildTimelineTests(unittest.TestCase):
     """`build_timeline` keeps the SRT path's numbers exactly."""

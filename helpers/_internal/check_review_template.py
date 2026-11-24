@@ -26,6 +26,7 @@ Checks
   S7  标记里不得出现声明了却没人定义的自定义元素（空壳）
   S8  舞台提升必须在初始化 IIFE 之外也被调用一次
   S9  调整项的归属键只能有一个出处（写读键域不得分叉）
+  S10 不得残留跨阶段死按钮、旧画布直改条、五档密度面板及用户可见工程术语
 
 Usage
 -----
@@ -47,9 +48,8 @@ from pathlib import Path
 
 DEFAULT_TEMPLATE = Path(__file__).resolve().parents[2] / "visual/assets/review-page-template.html"
 
-STAGE_WRAPS = ["svg-stage-wrap", "live-stage-wrap", "composite-player-wrap",
-               "verbatim-iframe-wrap"]
-# 永远有内容可画的那块：其余三块都取决于项目有没有对应数据
+STAGE_WRAPS = ["svg-stage-wrap", "live-stage-wrap", "composite-player-wrap"]
+# 永远有内容可画的那块：其余两块都取决于项目有没有对应数据
 ALWAYS_STAGEABLE = "svg-stage-wrap"
 
 # 宿主框架提供的元素（这些不需要本文件 define）
@@ -251,6 +251,117 @@ def s9_adjustment_key_has_one_source(html: str) -> list[str]:
     return out
 
 
+def _strip_all_comments(text: str) -> str:
+    """Strip HTML comments and JS/CSS comments outside string literals."""
+    out: list[str] = []
+    i = 0
+    n = len(text)
+    in_quote: str | None = None
+    while i < n:
+        ch = text[i]
+        if in_quote is not None:
+            out.append(ch)
+            if ch == "\\" and i + 1 < n:
+                out.append(text[i + 1])
+                i += 2
+                continue
+            if ch == in_quote:
+                in_quote = None
+            i += 1
+            continue
+        if text.startswith("<!--", i):
+            end = text.find("-->", i + 4)
+            i = n if end < 0 else end + 3
+            continue
+        if text.startswith("/*", i):
+            end = text.find("*/", i + 2)
+            i = n if end < 0 else end + 2
+            continue
+        if text.startswith("//", i) and (i == 0 or text[i - 1] != ":"):
+            end = text.find("\n", i + 2)
+            i = n if end < 0 else end
+            continue
+        if ch in ('"', "'", "`"):
+            in_quote = ch
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def _visible_html_and_string_literals(stripped: str) -> list[str]:
+    """Collect visible markup text outside style/script plus JS string literals."""
+    chunks: list[str] = []
+    # HTML body outside <style> and <script>
+    no_blocks = re.sub(r"<(script|style)\b[^>]*>.*?</\1>", "", stripped, flags=re.S | re.I)
+    for txt in re.findall(r">([^<]+)<", no_blocks):
+        t = txt.strip()
+        if t:
+            chunks.append(t)
+    # JS string literals inside <script> blocks (skip pure relative asset paths like composition/pages/...)
+    _rel_path_re = re.compile(r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.\-${}]+)+$")
+    for script in re.findall(r"<script\b[^>]*>(.*?)</script>", stripped, flags=re.S | re.I):
+        for m in re.finditer(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|`(?:\\.|[^`\\])*`', script, flags=re.S):
+            val = m.group(0)[1:-1]
+            if _rel_path_re.match(val):
+                continue
+            chunks.append(val)
+    return chunks
+
+
+LEGACY_CONTROL_IDS = (
+    "view-verbatim-btn",
+    "verbatim-iframe-wrap",
+    "density-panel",
+    "elem-edit-bar",
+    "interaction-mode-group",
+    "btn-play-screen",
+    "btn-show-all",
+    "btn-focus-toggle",
+    "advanced-toggle",
+    "btn-toggle-cues",
+    "choreo-deck",
+    "dens-submit",
+    "density-on",
+)
+ENGINEERING_SCRIPTS = (
+    "live_stage.py",
+    "edl_review_surface.py",
+    "review_open",
+    "build_review",
+    "encode_transparent.py",
+    "serve-review.mjs",
+)
+VISIBLE_JARGON_TERMS = (
+    "composition",
+    "review-core",
+    "审阅桥",
+    "审阅宿主",
+    "宿主",
+    "快照",
+    "工程态",
+    "Agent",
+)
+
+
+def s10_minimal_ui_no_legacy_controls_or_jargon(html: str) -> list[str]:
+    """Ensure retired UI controls and engineering jargon cannot creep back into non-comment template content."""
+    stripped = _strip_all_comments(html)
+    out: list[str] = []
+    for token in LEGACY_CONTROL_IDS:
+        if re.search(rf"(?<![\w-]){re.escape(token)}(?![\w-])", stripped):
+            out.append(f"模板非注释部分仍包含已下线控件/样式标识 `{token}` —— 极简审片台不得保留或回流旧控件")
+    for script_name in ENGINEERING_SCRIPTS:
+        if script_name in stripped:
+            out.append(f"模板非注释部分仍暴露内部脚本/工具名 `{script_name}`")
+    visible_chunks = _visible_html_and_string_literals(stripped)
+    visible_blob = "\n".join(visible_chunks)
+    for term in VISIBLE_JARGON_TERMS:
+        pat = rf"\b{re.escape(term)}\b" if term.isascii() else re.escape(term)
+        if re.search(pat, visible_blob):
+            out.append(f"模板用户可见文本或提示字符串仍含工程术语 `{term}`")
+    return out
+
+
 CHECKS = [
     ("S1", "舞台选择函数保住参数", s1_stage_function_keeps_its_argument),
     ("S2", "可交互 id 都挂了事件", s2_buttons_are_wired),
@@ -261,6 +372,7 @@ CHECKS = [
     ("S7", "没有空壳自定义元素", s7_no_undeclared_custom_elements),
     ("S8", "舞台提升不依赖初始化成败", s8_stage_promotion_survives_init_failure),
     ("S9", "调整项归属键只有一个出处", s9_adjustment_key_has_one_source),
+    ("S10", "无已下线控件与用户可见工程术语", s10_minimal_ui_no_legacy_controls_or_jargon),
 ]
 
 # 把历史缺陷原样打回去，证明每条检查真的会响（对着 GOTCHA #30「一个永远不会失败的判据」）。
@@ -323,8 +435,18 @@ def _proof_s9(h):
     return h.replace('const sid = adjustKey();', 'const sid = state.step || "overall";', 1)
 
 
+def _proof_s10(h):
+    return h.replace(
+        "</body>",
+        '<button type="button" id="view-verbatim-btn">逐字剪辑</button>\n'
+        '<script>console.log("live_stage.py");</script>\n</body>',
+        1,
+    )
+
+
 PROOFS = {"S1": _proof_s1, "S2": _proof_s2, "S3": _proof_s3, "S4": _proof_s4,
-          "S5": _proof_s5, "S6": _proof_s6, "S7": _proof_s7, "S8": _proof_s8, "S9": _proof_s9}
+          "S5": _proof_s5, "S6": _proof_s6, "S7": _proof_s7, "S8": _proof_s8, "S9": _proof_s9,
+          "S10": _proof_s10}
 
 
 def check_template(path: Path) -> dict:

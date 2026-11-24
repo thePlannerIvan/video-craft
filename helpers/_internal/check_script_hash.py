@@ -25,8 +25,8 @@ Exit codes: 0 match · 1 mismatch (or the script is gone) · 2 cannot verify
 (no `script_hash` in the contract, no plan, or no script at all).
 
 Usage:
-    python3 helpers/check_script_hash.py <project>
-    python3 helpers/check_script_hash.py --script <script.md> --plan <visual-plan.json>
+    python3 helpers/_internal/check_script_hash.py <project>
+    python3 helpers/_internal/check_script_hash.py --script <script.md> --plan <visual-plan.json>
 """
 from __future__ import annotations
 

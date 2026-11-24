@@ -24,6 +24,6 @@
         "role": "visual layer authoring (HyperFrames compositions, themes, alpha encoding), visual review loop"
       }
     ],
-    "status": "decoupled from both upstreams — see upstream-diff.md"
+    "status": "decoupled from both upstreams (2026-09-15); rewritten for HyperFrames + split delivery"
   }
 }

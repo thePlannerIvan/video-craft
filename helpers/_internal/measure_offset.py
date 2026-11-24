@@ -20,7 +20,7 @@ If any anchor disagrees with the curve by > 0.3s, or the curve is not flat
 you know why (clock drift between the recorders is a real failure mode).
 
 Usage:
-    python helpers/measure_offset.py <screen.mp4> <face.mp4> [--anchors 75 200 300]
+    python helpers/_internal/measure_offset.py <screen.mp4> <face.mp4> [--anchors 75 200 300]
 """
 from __future__ import annotations
 

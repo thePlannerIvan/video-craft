@@ -24,7 +24,7 @@ HELPERS = Path(__file__).parents[1] / "helpers"
 
 
 def load(name: str):
-    spec = importlib.util.spec_from_file_location(f"video_craft_{name}", HELPERS / f"{name}.py")
+    spec = importlib.util.spec_from_file_location(f"video_craft_{name}", (HELPERS / f"{name}.py" if (HELPERS / f"{name}.py").is_file() else HELPERS / "_internal" / f"{name}.py"))
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(module)

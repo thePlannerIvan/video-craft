@@ -16,27 +16,23 @@ them. All three are now covered by tests in `tests/`.
 
 | Upstream commit | What it fixes | Where it landed here |
 |---|---|---|
-| **#134** `9575612` | `extract_audio` ran without `-map`, so ffmpeg's default stream selection picked the track with the most channels — on an OBS capture that is the **application audio**, and the narration was uploaded and dropped without a word. Adds `--audio-track`, a `-60 dBFS` silence refusal, and a transcript cache keyed by track. | `helpers/transcribe.py` (`count_audio_tracks`, `peak_dbfs`, `silence_guard`, `transcript_path`, `--audio-track`), `helpers/transcribe_batch.py`. **Extended here:** the same selection and guard apply to the Ark path too, which upstream does not have. |
+| **#134** `9575612` | `extract_audio` ran without `-map`, so ffmpeg's default stream selection picked the track with the most channels — on an OBS capture that is the **application audio**, and the narration was uploaded and dropped without a word. Adds `--audio-track`, a `-60 dBFS` silence refusal, and a transcript cache keyed by track. | `helpers/transcribe.py` (`count_audio_tracks`, `peak_dbfs`, `silence_guard`, `transcript_path`, `--audio-track`). **Extended here:** the same selection and guard apply to the Ark path too, which upstream does not have. |
 | **#137** `b5352cf` | Portrait detection read a plain `rotation` metadata tag, which does not guarantee ffmpeg autorotates. Upstream now reads display-matrix side data only. | `helpers/render.py::is_portrait_source` replaced; upstream's 6 tests copied to `tests/test_render_orientation.py`. |
 | **#55** `0c40770` | `--fps` was an unvalidated float; a multi-source EDL could resolve a different rate per segment, which breaks the `-c copy` concat. | `helpers/render.py` (`parse_fps`, `probe_source_fps`, one rate resolved per render); upstream's 10 tests copied to `tests/test_render_fps.py`. |
 
 ### Deliberate divergences from upstream
 
-- **Credential redaction inside the frozen archive** (security fix, 2026-09-26).
+- **Credential redaction** (security fix, 2026-09-26).
   Upstream `helpers/doubao_asr_file.js` inlined the Doubao App ID and access
-  token as string literals (`const APP_KEY = …` / `const ACCESS_KEY = …`). Both
-  the live `helpers/doubao_asr_file.js` and the `archive/video-use/` copy now
-  read `DOUBAO_APP_ID` / `DOUBAO_ACCESS_TOKEN` from the environment, falling back
-  to `<repo>/.env` and failing loudly when neither is present — semantically the
-  same path the Python sibling (`transcribe_seedasr.py`) already documented and
-  used. This is the **only** deliberate edit inside the otherwise frozen
-  `archive/video-use/` copy: shipping a live credential would put it in git
-  history permanently, which is far harder to undo than a two-line change. If you
-  diff the archive against upstream and these lines are the only difference, that
-  is expected and intentional. The same sweep removed a real App ID that sat as
-  a usage example in the `transcribe_seedasr.py` docstring (live and archive
-  copies): every shipped document and example now carries key names and
-  placeholders only.
+  token as string literals (`const APP_KEY = …` / `const ACCESS_KEY = …`). Our
+  live `helpers/doubao_asr_file.js` reads `DOUBAO_APP_ID` / `DOUBAO_ACCESS_TOKEN`
+  from the environment, falling back to `<repo>/.env` and failing loudly when
+  neither is present — semantically the same path the Python sibling
+  (`transcribe_seedasr.py`) already documented and used. The same sweep removed a
+  real App ID that sat as a usage example in the `transcribe_seedasr.py`
+  docstring: every shipped document and example now carries key names and
+  placeholders only. (Historical frozen upstream copies under `archive/` were
+  later removed cleanly in v2.)
 - **`normalize_output_rate`** (local addition, 5 tests). Upstream preserves the
   observed `avg_frame_rate` verbatim, which is right for a genuine `30000/1001`.
   It is wrong for a phone whose clock is 0.025 % off: this fork's own footage
@@ -68,5 +64,4 @@ already in the local copy:
   `PRINCIPLES.md` into a single `CHAPTER-CRAFT.md`, and `fe12ba4` cut
   `OUTLINE-FORMAT.md` by 116 lines.
 
-The TTS pipeline that upstream grew in 1.2.1 lives in `archive/legacy-tts/` and is
-deliberately out of the active path.
+The TTS pipeline that upstream grew in 1.2.1 is retired and deliberately out of the active path.

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Video Craft · 视觉与动效导演工作台</title>
+  <title>逐画面审阅</title>
   <!--
     审阅桥的注入点＝下面单独一行那个双花括号标记。**这里不放桥的副本**：宿主 serve 时把这个
     标记**原地**换成桥本身（有插件时内联源码；无插件时给 base + 一个外链脚本）。
@@ -1036,16 +1036,7 @@
     .choreo-deck { max-height: 260px; overflow: auto; }
     #theme-mode { max-width: 76px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text); padding: 4px; }
     #advanced-toggle { border: 0; background: transparent; color: var(--text-secondary); padding: 8px; cursor: pointer; text-align: left; }
-    @media (max-width: 1100px) {
-      body { height: auto; min-height: 100vh; overflow: auto; }
-      header.top { height: auto; min-height: 46px; flex: none; flex-wrap: wrap; padding: 10px; }
-      .layout { grid-template-columns: 180px minmax(0, 1fr); }
-      .side-right { grid-column: 1 / -1; min-height: 300px; border-top: 1px solid var(--border); }
-      .history-box { max-height: 200px; }
-      .center-stage { overflow: visible; }
-      .player-box { min-height: 0; flex: none; }
-    }
-    /* Final review surface layout: tools stay in the work area; feedback stays in the right rail. */
+    /* Unified responsive layout: container-adaptive grid & dual-constrained 16:9 stage */
     body {
       --bg-app: var(--dsw-alias-bg-base);
       --bg-panel: var(--dsw-alias-bg-layer-1);
@@ -1065,58 +1056,78 @@
       background: var(--bg-app);
       color: var(--text);
     }
+    header.top, .layout, .center-stage, .side-left, .side-right { max-width: 100%; }
     header.top {
-      height: 52px;
-      flex-basis: 52px;
-      padding: 0 16px;
+      height: auto;
+      min-height: 46px;
+      flex: 0 0 auto;
+      flex-wrap: wrap;
+      padding: 8px 16px;
+      gap: 8px;
       background: var(--bg-panel);
       border-bottom-color: var(--border);
     }
-    .layout {
-      grid-template-columns: 236px minmax(480px, 1fr) 360px;
-      background: var(--bg-app);
-    }
+    .topbar { min-height: 46px; padding: 8px 16px; }
     .side-left, .side-right, .center-stage {
       background: var(--bg-panel);
       color: var(--text);
+      min-width: 0;
     }
     .side-left { border-right-color: var(--border); }
-    .side-right { border-left-color: var(--border); }
-    .center-stage { min-width: 0; }
+    .side-right { border-left-color: var(--border); display: flex; flex-direction: column; }
     .panel-head, .canvas-toolbar, .transport-bar, .choreo-deck,
     .history-box, .feedback, .elem-edit-bar { border-color: var(--border); }
     .panel-head {
-      min-height: 42px;
+      min-height: 40px;
       padding: 10px 14px;
+      font-size: 12px;
       color: var(--text-secondary);
       background: var(--bg-panel);
     }
     .steps { padding: 8px; }
-    .step { border-radius: 6px; color: var(--text-secondary); }
+    .step { border: 1px solid transparent; border-radius: 6px; margin: 2px 6px; padding: 9px 10px; color: var(--text-secondary); }
+    .step:not(.active) { background: transparent; }
     .step.active {
-      background: var(--dsw-static-deepseek-50);
+      background: var(--dsw-alias-interactive-bg-hover-accent);
       border-color: var(--dsw-static-deepseek-500);
-      color: var(--dsw-static-deepseek-700);
+      color: var(--text);
+    }
+    .step.active .step-caption { color: var(--text); }
+    .step-badge { background: var(--dsw-alias-interactive-bg-hover-accent); }
+    .step-caption { font-size: 13px; line-height: 1.55; -webkit-line-clamp: 2; }
+    .step:not(.chapter-header) > .step-meta { display: none; }
+    .step.active > .step-meta { display: block; font-size: 11px; }
+    .step-id { flex-wrap: wrap; font-size: 12px; color: var(--text-muted); }
+    .step-id > span:first-child { min-width: 65px; }
+    .chapter-header .step-id { display: none; }
+    h1 #project-name { color: var(--text-muted); font-weight: 400; }
+    .step-meta, .transport-time { color: var(--text-muted); font-weight: 500; font-size: 11px; }
+    .chapter-head { padding: 14px 14px 6px; }
+    .center-stage {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      min-height: 0;
+      padding: 12px 14px;
+      gap: 10px;
     }
     .canvas-toolbar {
-      padding: 8px 14px;
+      padding: 0 0 6px;
+      flex: 0 0 auto;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 6px;
       background: var(--bg-panel);
-    }
-    .canvas-toolbar::before {
-      content: "工具";
-      display: inline-flex;
-      align-items: center;
-      color: var(--text-muted);
-      font-size: 11px;
-      font-weight: 700;
-      margin-right: 2px;
     }
     .tool-btn, .transport-btn, .reload, .stage-switch, .stage-switch button {
       border-color: var(--border-strong);
       border-radius: 6px;
       background: var(--bg-card);
       color: var(--text-secondary);
+      font-weight: 500;
     }
+    .transport-btn:not(.primary), .reload { background: var(--bg-card); color: var(--text-secondary); border-color: var(--border); }
     .tool-btn:hover, .transport-btn:hover, .reload:hover { border-color: var(--dsw-static-deepseek-500); color: var(--text); }
     .tool-btn.active, .transport-btn.primary, .tool-btn.accent, .stage-switch button.active {
       background: var(--dsw-static-deepseek-500);
@@ -1124,7 +1135,14 @@
       color: #fff;
     }
     .player-box {
-      margin-top: 14px;
+      position: relative;
+      flex: 0 0 auto;
+      width: min(100%, calc((100vh - 230px) * 16 / 9));
+      max-width: 100%;
+      aspect-ratio: 16 / 9;
+      height: auto;
+      max-height: none;
+      margin: 4px auto;
       background: var(--dsw-alias-bg-document-preview);
       border-color: var(--border);
       box-shadow: 0 8px 24px rgba(31, 41, 55, 0.08);
@@ -1134,180 +1152,169 @@
       background: rgba(31, 41, 55, 0.88);
       border-color: rgba(255, 255, 255, 0.24);
     }
-    .transport-bar { background: var(--bg-panel); }
-    .timeline-track, .cue-pills-bar, .step-choreo-rows { border-color: var(--border); background: var(--bg-card); }
-    .history-box { background: var(--bg-card); }
-    .side-right { display: flex; flex-direction: column; min-width: 0; }
-    .history-box { flex: 1 1 auto; min-height: 160px; overflow: auto; }
-    .feedback {
-      flex: 0 0 auto;
-      background: var(--bg-panel);
-      padding: 14px;
+    #canvas-caption-layer { z-index: 12; pointer-events: none; bottom: 6%; border-radius: 5px; padding: 3px 10px; box-shadow: none; }
+    #canvas-caption-text { border: 0; border-radius: 4px; padding: 5px 12px; font-size: clamp(14px, 1.25vw, 22px); }
+    #annotation-overlay { z-index: 15; }
+    #demo-proxy-video {
+      position: absolute;
+      pointer-events: none;
+      object-fit: contain;
+      background: #11131a;
+      z-index: 4;
     }
+    .main-split-handle {
+      display: none;
+      width: 8px;
+      cursor: col-resize;
+      position: relative;
+      align-self: stretch;
+      touch-action: none;
+      background: var(--bg-panel);
+      z-index: 3;
+    }
+    .main-split-handle::after {
+      content: "";
+      position: absolute;
+      left: 3px;
+      top: 14%;
+      bottom: 14%;
+      width: 2px;
+      border-radius: 2px;
+      background: var(--border-strong);
+      opacity: .75;
+    }
+    .main-split-handle:hover::after,
+    body.col-resizing .main-split-handle::after {
+      opacity: 1;
+      background: var(--accent);
+    }
+    body.col-resizing { cursor: col-resize; user-select: none; }
+    body.density-on .main-split-handle { display: none !important; }
+    #live-stage-note { background: var(--bg-panel); z-index: 10; }
+    body[data-stage="live"] #btn-focus-toggle { display: none; }
+    .global-transport-bar { margin: 0; max-width: 100%; border: 0; padding: 6px 0; gap: 8px; flex-wrap: wrap; background: transparent; }
+    .timeline-track, .cue-pills-bar, .step-choreo-rows { border-color: var(--border); background: var(--bg-card); }
+    .history-box { flex: 0 1 auto; min-height: 72px; max-height: 32vh; overflow: auto; padding: 12px; background: var(--bg-card); }
+    .feedback { flex: 1 0 auto; background: var(--bg-panel); padding: 14px; }
     .feedback::before {
-      content: "反馈给 Agent";
+      content: "意见";
       display: block;
       color: var(--text-secondary);
       font-size: 11px;
       font-weight: 700;
-      letter-spacing: 0.02em;
       margin-bottom: 5px;
     }
+    .feedback textarea { min-height: 92px; }
+    .tool-btn, .transport-btn, .feedback select, .feedback textarea { font-size: 13px; }
     textarea, input, select { background: var(--bg-input) !important; color: var(--text) !important; border-color: var(--border-strong) !important; }
     textarea:focus, input:focus, select:focus { border-color: var(--dsw-static-deepseek-500) !important; outline: 2px solid var(--dsw-static-deepseek-100); }
     .save-bar { align-items: center; gap: 8px; }
     #save-state { overflow-wrap: anywhere; color: var(--text-secondary); }
     #save-state.ok { color: var(--dsw-static-green-600); }
     #save-state.error { color: var(--dsw-static-red-600); }
-    @media (max-width: 1100px) {
-      .layout { grid-template-columns: 200px minmax(0, 1fr); }
-      .side-right { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--border); }
+    .mode-note { font-size: 11px; line-height: 1.5; }
+    @media (min-width: 1180px) {
+      body { height: 100vh; overflow: hidden; display: flex; flex-direction: column; --panel-w: clamp(260px, 22vw, 340px); }
+      .layout {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: grid;
+        grid-template-columns: clamp(190px, 15vw, 230px) minmax(0, 1fr) 8px var(--panel-w);
+        overflow: hidden;
+      }
+      .main-split-handle { display: block; }
+      .side-left, .center-stage, .side-right { min-width: 0; min-height: 0; overflow: hidden; }
+      .center-stage { overflow-y: auto; }
     }
-    @media (min-width: 901px) and (max-width: 1100px) {
-      .layout { grid-template-columns: 180px minmax(420px, 1fr) 300px; }
-      .side-right { grid-column: auto; border-left: 1px solid var(--border); border-top: 0; }
-      .history-box { min-height: 120px; }
-      .feedback { padding: 10px; }
-      .mode-tab { padding: 5px 7px; }
-    }
-    @media (max-width: 680px) {
-      .layout { display: flex; flex-direction: column; }
-      .side-left { order: 1; max-height: 240px; border-right: 0; border-bottom: 1px solid var(--border); }
-      .center-stage { order: 0; }
-      .side-right { order: 2; }
-      .steps { max-height: 190px; }
-    }
-    @media (max-width: 680px) {
-      .layout { display: flex; flex-direction: column; }
-      .center-stage { order: 0; padding: 8px; }
-      .side-left { order: 1; border-right: 0; max-height: 220px; border-top: 1px solid var(--border); }
-      .side-right { order: 2; }
-      .steps { max-height: 180px; }
-      .stage-switch { flex-wrap: wrap; }
-      .stage-switch button { padding: 7px; }
-      .canvas-toolbar { height: auto; flex: none; }
-      .tool-btn { min-height: 30px; }
-      .save-bar { align-items: flex-start; }
-      .feedback { padding: 12px; }
-      .choreo-deck { max-height: 220px; }
-    }
-
-    /* Quiet review workspace; semantic aliases all resolve to shared DSH tokens. */
-    .layout { grid-template-columns: 224px minmax(0, 1fr) 300px; }
-    .topbar { min-height: 52px; padding: 10px 18px; }
-    .panel-head { padding: 12px 14px; font-size: 12px; }
-    .center-stage { padding: 16px; gap: 12px; }
-    .canvas-toolbar { padding: 0 0 8px; flex-wrap: wrap; gap: 8px; }
-    .tool-btn, .transport-btn { font-weight: 500; border-radius: 6px; }
-    .step { border: 1px solid transparent; border-radius: 6px; margin: 2px 8px; padding: 10px; }
-    .step:not(.active) { background: transparent; }
-    .step.active { background: var(--dsw-alias-interactive-bg-hover-accent); color: var(--text); }
-    .step.active .step-caption { color: var(--text); }
-    .transport-btn:not(.primary), .reload { background: var(--bg-card); color: var(--text-secondary); border-color: var(--border); }
-    .step-badge { background: var(--dsw-alias-interactive-bg-hover-accent); }
-    .step-caption { font-size: 13px; line-height: 1.6; -webkit-line-clamp: 2; }
-    .step:not(.chapter-header) > .step-meta { display: none; }
-    .step.active > .step-meta { display: block; font-size: 11px; }
-    .step-id { flex-wrap: wrap; font-size: 12px; color: var(--text-muted); }
-    .step-id > span:first-child { min-width: 65px; }
-    .chapter-header .step-id { display: none; }
-    h1 #project-name { color: var(--text-muted); font-weight: 400; }
-    #mode-badge { display: none; }
-    .step-meta, .transport-time { color: var(--text-muted); font-weight: 500; font-size: 11px; }
-    .chapter-head { padding: 16px 16px 8px; }
-    .global-transport-bar { border: 0; padding: 8px 0; gap: 8px; background: transparent; }
-    .history-box { min-height: 72px; max-height: 32vh; flex: 0 1 auto; padding: 12px; }
-    .canvas-toolbar::before { content: none; }
-    .canvas-toolbar { justify-content: space-between; }
-    .feedback::before { content: "添加意见"; }
-    .feedback { flex: 1; }
-    .tool-btn, .transport-btn, .feedback select, .feedback textarea { font-size: 13px; }
-    .feedback { padding: 14px; }
-    .feedback textarea { min-height: 100px; }
-    .mode-note { font-size: 11px; line-height: 1.6; }
-    #connection-label { font-size: 11px; }
-    #canvas-caption-layer { z-index: 12; pointer-events: none; bottom: 6%; border-radius: 5px; padding: 3px 10px; box-shadow: none; }
-    #canvas-caption-text { border: 0; border-radius: 4px; padding: 5px 12px; font-size: clamp(14px, 1.25vw, 22px); }
-    #annotation-overlay { z-index: 15; }
-    #live-stage-note { background: var(--bg-panel); z-index: 10; }
-    body[data-stage="live"] #btn-focus-toggle { display: none; }
-    .player-box > .hint { display: none; }
-    @media (max-width: 1100px) {
-      .layout { grid-template-columns: 170px minmax(0, 1fr); }
-      .side-right { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; }
+    @media (min-width: 760px) and (max-width: 1179px) {
+      body { height: auto; min-height: 100vh; overflow-x: hidden; overflow-y: auto; display: flex; flex-direction: column; }
+      .layout {
+        flex: 1 0 auto;
+        display: grid;
+        grid-template-columns: clamp(160px, 24vw, 210px) minmax(0, 1fr);
+        height: auto;
+        overflow: visible;
+      }
+      .side-left { min-width: 0; max-height: 70vh; overflow: auto; }
+      .center-stage { min-width: 0; overflow: visible; }
+      .side-right {
+        grid-column: 1 / -1;
+        min-width: 0;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        border-left: 0;
+        border-top: 1px solid var(--border);
+        overflow: visible;
+      }
       .side-right > .panel-head { grid-column: 1 / -1; }
     }
-    @media (max-width: 700px) {
-      .layout { display: flex; flex-direction: column; height: auto; }
-      .side-left { max-height: 155px; }
-      .steps { display: flex; overflow: auto; }
-      .step { min-width: 180px; }
-      .center-stage { padding: 12px; }
-      .side-right { display: flex; flex-direction: column; }
-      .history-box { max-height: 180px; }
-      .canvas-toolbar { justify-content: flex-start; }
-      .global-transport-bar { flex-wrap: wrap; }
+    @media (max-width: 759px) {
+      body { height: auto; min-height: 100vh; overflow-x: hidden; overflow-y: auto; display: flex; flex-direction: column; }
+      .layout { display: flex; flex-direction: column; height: auto; overflow: visible; }
+      .center-stage { order: 0; padding: 10px; overflow: visible; min-width: 0; }
+      .side-left { order: 1; max-height: 190px; border-right: 0; border-top: 1px solid var(--border); min-width: 0; }
+      .side-left .steps { display: flex; flex-direction: row; gap: 6px; overflow-x: auto; overflow-y: hidden; }
+      .side-left .step { flex: 0 0 180px; max-width: 180px; }
+      .side-right { order: 2; display: flex; flex-direction: column; border-left: 0; border-top: 1px solid var(--border); min-width: 0; overflow: visible; }
+      .history-box { max-height: 200px; }
     }
   </style>
 </head>
 <body>
   <header class="top">
     <div class="brand-wrap">
-      <span class="brand-badge">VIDEO CRAFT</span>
-      <h1>逐画面审阅 · <span id="project-name">project</span><span id="mode-badge" style="font-size:11px; padding:2px 7px; border-radius:4px; background:var(--accent-soft); color:var(--amber); margin-left:8px; font-weight:700; font-family:var(--font-mono);">复合双通道</span></h1>
+      <h1>逐画面审阅 · <span id="project-name">project</span></h1>
     </div>
     <div class="top-right">
-      <select id="theme-mode" aria-label="界面主题"><option value="auto">自动</option><option value="light">浅色</option><option value="dark">深色</option></select>
-      <button type="button" id="view-verbatim-btn" title="打开独立剪辑审阅面">剪辑审阅</button>
-      <a class="reload" id="page-reload" href="" title="重新加载页面">⟳ 刷新</a>
+      <select id="theme-mode" aria-label="主题"><option value="auto">自动</option><option value="light">浅色</option><option value="dark">深色</option></select>
+      <button type="button" id="view-verbatim-btn">逐字剪辑</button>
+      <a class="reload" id="page-reload" href="">⟳</a>
     </div>
   </header>
 
   <div class="layout">
-    <!-- 左栏：章节与分屏导航 -->
+    <!-- 左栏：分屏导航 -->
     <aside class="side-left">
       <div class="panel-head">
-        <span>分屏列表</span>
+        <span>分屏</span>
         <span id="step-counter-badge">0 屏</span>
       </div>
       <div class="steps" id="steps"></div>
     </aside>
 
-    <!-- 中央：严格 16:9 舞台 + 底部紧凑分步控制条 -->
+    <!-- 中央：严格 16:9 舞台 + 控制条 -->
     <main class="center-stage">
       <div class="canvas-toolbar">
         <div class="tool-group" id="interaction-mode-group">
           <button type="button" class="tool-btn active" data-stage-tool="director" id="tool-director">预览</button>
-          <button type="button" class="tool-btn" data-stage-tool="select" id="tool-select">点选调整</button>
-          <button type="button" class="tool-btn" data-stage-tool="box" id="tool-box">框选批注</button>
+          <button type="button" class="tool-btn" data-stage-tool="select" id="tool-select">点选</button>
+          <button type="button" class="tool-btn" data-stage-tool="box" id="tool-box">框选</button>
         </div>
         <div class="tool-group">
-          <button type="button" class="tool-btn" id="btn-play-screen" title="连播本屏口播与所有分步动效">连播本屏</button>
-          <button type="button" class="tool-btn" id="btn-show-all" title="展示本屏最终完整态">最终完整态</button>
+          <button type="button" class="tool-btn" id="btn-play-screen">播本屏</button>
+          <button type="button" class="tool-btn" id="btn-show-all">终态</button>
           <div class="tool-sep"></div>
-          <button type="button" class="tool-btn" id="btn-focus-toggle" title="切换焦点聚光灯">聚光灯: 开</button>
+          <button type="button" class="tool-btn" id="btn-focus-toggle">聚光: 开</button>
           
         </div>
       </div>
 
-      <!-- 选中 SVG 元素时的轻量直改工具条 -->
+      <!-- 选中元素时的直改工具条 -->
       <div class="elem-edit-bar" id="elem-edit-bar" hidden>
         <span style="color:#38bdf8;font-family:var(--font-mono);font-weight:700;" id="sel-elem-tag">[文本]</span>
-        <input type="text" id="sel-elem-input" placeholder="直接修改选中元素文字…" />
+        <input type="text" id="sel-elem-input" placeholder="修改文字" />
         <button type="button" class="tool-btn" id="btn-font-dec">A-</button>
         <button type="button" class="tool-btn" id="btn-font-inc">A+</button>
         <button type="button" class="tool-btn" id="btn-nudge-left">←</button>
         <button type="button" class="tool-btn" id="btn-nudge-right">→</button>
         <button type="button" class="tool-btn" id="btn-nudge-up">↑</button>
         <button type="button" class="tool-btn" id="btn-nudge-down">↓</button>
-        <button type="button" class="tool-btn accent" id="btn-comment-elem">反馈当前选择</button>
+        <button type="button" class="tool-btn accent" id="btn-comment-elem">反馈此项</button>
       </div>
 
       <div class="player-box" id="player-box">
 
-        <!-- 标记给的默认舞台是 SVG 舞台：它最不挑数据（有分屏就能画），
-             所以任何项目打开都不会停在空占位上。初始化末尾再按项目数据提升到
-             活 composition 或合成成片（见 setStageViewMode 的调用点）。 -->
+        <!-- 默认舞台为 SVG 舞台 -->
         <div id="svg-stage-wrap">
           <video id="stage-speaker-video" playsinline hidden></video>
           <div id="speaker-time-pill" hidden>🔊 00:00.0</div>
@@ -1315,87 +1322,86 @@
 
         </div>
 
-        <!-- 最终合成成片预览（没有成片时初始化会退回 SVG 舞台） -->
+        <!-- 成片预览 -->
         <div id="composite-player-wrap" hidden>
           <video id="composite-video-player" controls playsinline></video>
           <div id="layer-stack" hidden aria-hidden="true"></div>
           <div id="composite-empty-placeholder" hidden>
-            <div style="font-size:32px;margin-bottom:8px;">预览</div>
-            <div style="font-size:14px;color:var(--text);font-weight:700;margin-bottom:6px;">合成成片尚未导出</div>
-            <button type="button" class="tool-btn active" id="btn-back-to-stage">返回动效舞台</button>
+            <div style="font-size:14px;color:var(--text);font-weight:700;margin-bottom:6px;">暂无成片</div>
+            <button type="button" class="tool-btn active" id="btn-back-to-stage">返回画面</button>
           </div>
         </div>
 
-        <!-- 活 composition 舞台：审阅页直接演工程态的源，不是任何渲染产物。
-             页面在不透明源 iframe 里，进不去子页，靠 postMessage 驱动
-             （composition 自带 visual/assets/composition-embed-bridge.js）。 -->
+        <!-- 实时预览舞台 -->
         <div id="live-stage-wrap" hidden>
           <hyperframes-player id="live-stage-frame" aria-label="视频预览"></hyperframes-player>
           <div id="live-stage-note" hidden></div>
         </div>
 
-        <!-- 剪辑选择是独立审阅面，不嵌入第二份桥。 -->
+        <!-- 逐字剪辑占位 -->
         <div id="verbatim-iframe-wrap" hidden>
-          <p id="edl-open-state" role="status">正在打开剪辑审阅…</p>
+          <p id="edl-open-state" role="status">正在打开剪辑…</p>
         </div>
+        <video id="demo-proxy-video" muted playsinline preload="metadata" hidden></video>
           <!-- 悬浮单行药丸字幕 -->
           <div id="canvas-caption-layer" hidden>
             <span id="canvas-caption-text"></span>
           </div>
           <div id="annotation-overlay"></div>
-        <div class="hint">暂停画面即可批注；空格播放 / 暂停，方括号切换分屏。</div>
       </div>
 
-      <!-- 全局视听播放与时间轴 Scrubber 控制条 -->
+      <!-- 播放与时间轴控制条 -->
       <div class="global-transport-bar" id="global-transport-bar">
-        <button type="button" class="transport-btn primary" id="btn-global-play" title="播放/暂停全片 (快捷键: 空格键)">播放</button>
-        <button type="button" class="transport-btn" id="btn-prev-screen" title="上一屏 (快捷键: [)">上一屏</button>
-        <button type="button" class="transport-btn" id="btn-next-screen" title="下一屏 (快捷键: ])">下一屏</button>
+        <button type="button" class="transport-btn primary" id="btn-global-play">播放</button>
+        <button type="button" class="transport-btn" id="btn-prev-screen">上一屏</button>
+        <button type="button" class="transport-btn" id="btn-next-screen">下一屏</button>
         <span class="transport-time" id="global-time-display">00:00.0 / 00:00.0</span>
-        <span id="stage-mode-chip" title="当前看到的是工程态（活 composition）还是成片态">成片态</span>
-        <div class="timeline-scrubber-wrap" id="timeline-scrubber-wrap" title="拖拽或点击跳转全片时间点">
+        <span id="stage-mode-chip">成片</span>
+        <div class="timeline-scrubber-wrap" id="timeline-scrubber-wrap">
           <div class="timeline-track" id="timeline-track">
             <div class="timeline-progress" id="timeline-progress"></div>
             <div class="timeline-thumb" id="timeline-thumb"></div>
             <div class="timeline-markers" id="timeline-markers"></div>
           </div>
         </div>
-        <button type="button" class="tool-btn" id="btn-speed-toggle" title="播放速度：0.5、1、1.5、2、4 倍">1×</button>
-        <button type="button" class="tool-btn active" id="btn-toggle-subtitles" title="切换画面底部字幕显示">字幕: 开</button>
+        <button type="button" class="tool-btn" id="btn-speed-toggle">1×</button>
+        <button type="button" class="tool-btn active" id="btn-toggle-subtitles">字幕</button>
+        <button type="button" class="tool-btn active" id="btn-audio-ab">播客音色</button>
+        <audio id="review-audio-alt" preload="auto" hidden></audio>
       </div>
 
-      <!-- 底部紧凑分步动效轨道 -->
-      <button type="button" id="advanced-toggle" aria-expanded="false" aria-controls="choreo-deck">分步动效</button>
+      <!-- 底部紧凑分步 -->
+      <button type="button" id="advanced-toggle" aria-expanded="false" aria-controls="choreo-deck">分步</button>
       <section class="choreo-deck" id="choreo-deck" hidden>
         <div class="choreo-head">
           <div class="choreo-title">
-            <span id="choreo-screen-label">分步动效轨道（点左侧分屏加载）</span>
+            <span id="choreo-screen-label">分步</span>
           </div>
           <div class="choreo-controls">
-            <button type="button" class="tool-btn" id="btn-toggle-cues" style="padding:2px 8px;font-size:11px;">分句卡点微调</button>
+            <button type="button" class="tool-btn" id="btn-toggle-cues" style="padding:2px 8px;font-size:11px;">卡点</button>
           </div>
         </div>
         <div class="choreo-live-note" id="choreo-live-note" hidden>
           <span class="choreo-live-dot" aria-hidden="true"></span>
-          <span><strong>HyperFrames 工程预览</strong> 正在接管分步显示。这里可连播本屏、定位最终态和调节倍速；原语、镜头和子延迟请在 composition 的 choreography.json 调整后重新构建审阅。</span>
+          <span>实时预览</span>
         </div>
-        <!-- 口播词级触发胶囊条（默认折叠，点击按钮展开） -->
         <div class="cue-pills-bar" id="cue-pills-bar" hidden>
-          <span class="cue-pills-label">点分句绑到当前 Step：</span>
+          <span class="cue-pills-label">卡点：</span>
         </div>
-        <!-- Step 列表 -->
         <div class="step-choreo-rows" id="step-choreo-rows"></div>
       </section>
     </main>
 
-    <!-- 右栏：本批已提反馈与微调记录 + 反馈输入表单 -->
+    <div id="main-split-handle" class="main-split-handle" role="separator" aria-orientation="vertical" aria-label="调整布局比例"></div>
+
+    <!-- 右栏：历史与意见表单 -->
     <aside class="side-right">
       <div class="panel-head">
-        <span>审阅意见清单</span>
+        <span>意见</span>
         <span id="records-count-badge">0 条</span>
       </div>
       <div class="history-box" id="fb-history-list">
-        <div class="history-empty">尚未提交意见。可写「整片意见」，或点选左侧分屏、画布元素后精准提交。</div>
+        <div class="history-empty">暂无意见</div>
       </div>
 
       <div class="feedback">
@@ -1403,7 +1409,7 @@
           <button type="button" class="mode-tab active" data-mode="overall" id="mode-overall">整片意见</button>
           <button type="button" class="mode-tab" data-mode="step" id="mode-step">当前屏 · <span id="fb-step">未选中</span></button>
         </div>
-        <p class="mode-note" id="mode-note"></p>
+        <p class="mode-note" id="mode-note" hidden></p>
         <select id="fb-type">
           <option value="visual">画面与版式</option>
           <option value="animation">动画与镜头</option>
@@ -1411,11 +1417,11 @@
           <option value="copy">文字</option>
           <option value="asset">素材</option>
         </select>
-        <textarea id="fb-text" placeholder="整片看完总想说的一点…（不针对某一屏）"></textarea>
+        <textarea id="fb-text" placeholder="写下修改意见"></textarea>
         <div id="stale-note" hidden></div>
         <div class="save-bar">
           <button id="fb-save" disabled>保存反馈</button>
-          <div id="save-state">正在连接审阅宿主…</div>
+          <div id="save-state">连接中</div>
         </div>
       </div>
     </aside>
@@ -2341,21 +2347,14 @@
       await review.draft({ text: "", snapshot: window.__REVIEW_DATA__?.snapshot || loadedTimelineId });
     }
 
-    const MODE_NOTES = {
-      overall: "这一条不针对任何一屏：整片看完总想说的一点。收件后进 feedback/overall.jsonl。",
-      step: "这一条针对当前选中屏；你在舞台上调整的动效原语、镜头推拉与元素微调也会一并保存。",
-      "step-none": "「当前屏」这一路要先在左边点一屏。只想说整片，就切回「整片意见」——那条不需要选屏。",
-    };
     function setMode(mode) {
       fbMode = mode;
       document.getElementById("mode-overall").classList.toggle("active", mode === "overall");
       document.getElementById("mode-step").classList.toggle("active", mode === "step");
       const text = document.getElementById("fb-text");
-      text.placeholder = mode === "overall"
-        ? "整片看完总想说的一点…（不针对某一屏）"
-        : (state.step ? `针对 ${state.step} 的修改意见（或直接用上方动效台/元素工具微调）…` : "先点左边一屏；或切回「整片意见」");
-      document.getElementById("mode-note").textContent =
-        mode === "overall" ? MODE_NOTES.overall : (state.step ? MODE_NOTES.step : MODE_NOTES["step-none"]);
+      text.placeholder = mode === "overall" ? "写下修改意见" : "针对当前屏写下意见";
+      const noteEl = document.getElementById("mode-note");
+      if (noteEl) { noteEl.textContent = ""; noteEl.hidden = true; }
     }
 
     async function resolveSubmissionsRel() {
@@ -2451,7 +2450,7 @@
         ? `${pendingRecords.length} 条待处理 · ${historyRecords.length} 条历史`
         : `${pendingRecords.length} 条`;
       if (!cachedRecords.length) {
-        box.innerHTML = `<div class="history-empty">尚未提交意见。可写「整片意见」，或点选左侧分屏、画布元素后精准提交。</div>`;
+        box.innerHTML = `<div class="history-empty">暂无意见</div>`;
         return;
       }
       box.replaceChildren();
@@ -2627,6 +2626,12 @@
         play() { if (player.ready) player.play(); else pendingPlay = true; },
         pause() { pendingPlay = false; if (player.ready) player.pause(); },
         rate(value) { player.playbackRate = value; },
+        mute(flag) {
+          try {
+            if ("muted" in player) player.muted = !!flag;
+            if ("volume" in player) player.volume = flag ? 0 : 1;
+          } catch {}
+        },
         range(start, end) { this.seek(start); stopAt = end; this.play(); },
         hello() {},
         explain,
@@ -2643,13 +2648,11 @@
           watchdog = setTimeout(() => {
             if (player.ready) return;
             if (!review) {
-              explain("审阅宿主没有回应，页面还没连上审阅桥。刷新页面重试；反馈草稿会保留。");
+              explain("离线，刷新重试。");
             } else if (loading) {
-              explain("素材仍在解码 —— 体积较大时首次会久一点。若长时间停在这里，"
-                      + "重新 build review 让活舞台资产走审阅副本。");
+              explain("素材解码中，请稍候。");
             } else {
-              explain("工程预览加载超时：可能是侧栏 iframe 的播放器或素材传输较慢。"
-                      + "先点「刷新」；仍不行就用下方「切到成片预览」，并把诊断行发回对话。");
+              explain("加载超时，可刷新或切到成片。");
             }
           }, budget);
         }
@@ -2667,7 +2670,7 @@
       if (rows) rows.hidden = isLive;
       if (cues && isLive) cues.hidden = true;
       const toggle = document.getElementById("advanced-toggle");
-      if (toggle) toggle.textContent = isLive ? "工程动效" : "分步动效";
+      if (toggle) toggle.textContent = "分步";
     }
     function setStageViewMode(mode) {
       window.__vcSetStageMode = setStageViewMode;
@@ -2681,7 +2684,7 @@
       document.body.dataset.stage = mode;
       const modeChip = document.getElementById("stage-mode-chip");
       if (modeChip) {
-        const labels = { live: "工程态", composite: "成片态", svg: "动效舞台", verbatim: "逐字剪辑" };
+        const labels = { live: "预览", composite: "成片", svg: "画面", verbatim: "剪辑" };
         modeChip.textContent = labels[mode] || mode;
       }
       updateChoreoDeckMode(mode);
@@ -2760,6 +2763,8 @@
           try { compVid.pause(); } catch {}
         }
       }
+      if (typeof syncDemoProxyAt === "function") syncDemoProxyAt(liveStage.currentMs / 1000, false);
+      if (typeof syncAltAudioState === "function") syncAltAudioState();
     }
     // 初始可见性由标记给默认、初始化末尾按数据提升，不在这里顶层调
     // setStageViewMode —— 它会碰到还没初始化的 let（TDZ），页面整个挂掉。
@@ -2851,7 +2856,9 @@
           playBtn.textContent = isPlaying ? "⏸ 暂停" : "播放";
           playBtn.classList.toggle("primary", !isPlaying);
         }
+        syncAltAudioState();
       }
+      syncDemoProxyAt(ms / 1000, isPlaying);
     });
 
     function renderScrubberMarkers() {
@@ -2916,6 +2923,8 @@
         await switchToScreen(targetScreen, false);
       }
       updateStageSubtitle(targetScreen, targetSec);
+      syncDemoProxyAt(targetSec, isGlobalPlaying);
+      syncAltAudioState();
     }
 
     // 拖拽与点击 Scrubber
@@ -2949,7 +2958,13 @@
     }
 
     function startGlobalPlayback() {
-      if (stageViewMode === "live") { clearPlaySequence(); liveStage.play(); return; }
+      if (stageViewMode === "live") {
+        clearPlaySequence();
+        liveStage.play();
+        syncAltAudioState();
+        syncDemoProxyAt(liveStage.currentMs / 1000, true);
+        return;
+      }
       const spkVid = document.getElementById("stage-speaker-video");
       const playBtn = document.getElementById("btn-global-play");
       isGlobalPlaying = true;
@@ -2979,6 +2994,7 @@
           playWithSpeakerOrTimers(state.currentScreenObj, svgEl, null, true);
         }
       }
+      syncAltAudioState();
     }
 
     function pauseGlobalPlayback() {
@@ -2992,12 +3008,153 @@
       if (compVid && !compVid.paused) {
         try { compVid.pause(); } catch {}
       }
+      const alt = document.getElementById("review-audio-alt");
+      if (alt && !alt.paused) {
+        try { alt.pause(); } catch {}
+      }
+      const demoVid = document.getElementById("demo-proxy-video");
+      if (demoVid && !demoVid.paused) {
+        try { demoVid.pause(); } catch {}
+      }
       if (stageViewMode === "live") liveStage.pause();
       clearPlaySequence();
+      syncAltAudioState();
     }
 
     const globalPlayBtn = document.getElementById("btn-global-play");
     if (globalPlayBtn) globalPlayBtn.addEventListener("click", toggleGlobalPlayback);
+
+    let audioMode = "mix";
+    document.body.dataset.audioMode = "mix";
+    let resolvedMixAudioUrl = null;
+    let resolvedDryAudioUrl = null;
+    async function ensureAudioTrackUrls() {
+      const tracks = window.__REVIEW_DATA__?.media?.audioTracks || {};
+      if (tracks.mix && !resolvedMixAudioUrl) {
+        try { resolvedMixAudioUrl = review ? await assetUrl(tracks.mix) : tracks.mix; } catch {}
+      }
+      if (tracks.dry && !resolvedDryAudioUrl) {
+        try { resolvedDryAudioUrl = review ? await assetUrl(tracks.dry) : tracks.dry; } catch {}
+      }
+      return { mixUrl: resolvedMixAudioUrl, dryUrl: resolvedDryAudioUrl };
+    }
+    function syncAltAudioState() {
+      const alt = document.getElementById("review-audio-alt");
+      const compVid = document.getElementById("composite-video-player");
+      const spkVid = document.getElementById("stage-speaker-video");
+      const hasComp = stageViewMode === "composite" && compVid && compVid.getAttribute("src");
+      const clock = hasComp
+        ? { time: compVid.currentTime || 0, rate: compVid.playbackRate || 1, paused: !!compVid.paused }
+        : (stageViewMode === "live"
+          ? { time: (liveStage.currentMs || 0) / 1000, rate: playbackRate || 1, paused: !isGlobalPlaying }
+          : ((spkVid && !spkVid.hidden && spkVid.getAttribute("src"))
+            ? { time: spkVid.currentTime || 0, rate: spkVid.playbackRate || 1, paused: !!spkVid.paused }
+            : null));
+      const targetUrl = audioMode === "dry" ? resolvedDryAudioUrl : resolvedMixAudioUrl;
+      if (audioMode === "dry" || targetUrl) {
+        if (compVid) compVid.muted = true;
+        if (spkVid) spkVid.muted = true;
+        liveStage.mute(true);
+        if (alt && targetUrl) {
+          if (alt.getAttribute("src") !== targetUrl) alt.src = targetUrl;
+          if (clock) {
+            alt.playbackRate = clock.rate || 1;
+            if (Math.abs((alt.currentTime || 0) - clock.time) > 0.12) {
+              try { alt.currentTime = clock.time; } catch {}
+            }
+            if (!clock.paused && alt.paused) alt.play().catch(() => {});
+            else if (clock.paused && !alt.paused) alt.pause();
+          }
+        } else if (alt && !alt.paused) {
+          alt.pause();
+        }
+      } else {
+        if (compVid) compVid.muted = false;
+        if (spkVid) spkVid.muted = false;
+        liveStage.mute(false);
+        if (alt && !alt.paused) alt.pause();
+      }
+    }
+    const demoProxyUrls = new Map();
+    async function syncDemoProxyAt(curSec, playing) {
+      const demoVid = document.getElementById("demo-proxy-video");
+      const compVid = document.getElementById("composite-video-player");
+      if (!demoVid) return;
+      const list = window.__REVIEW_DATA__?.media?.demoProxies || [];
+      const allowOverlay = stageViewMode !== "verbatim" &&
+        (stageViewMode !== "composite" || !compVid?.getAttribute("src") || window.__REVIEW_DATA__?.media?.layersBaked === false);
+      const t = Number(curSec) || 0;
+      const entry = allowOverlay ? list.find(d => t >= ((d.startMs || 0) / 1000) && t < ((d.endMs || 0) / 1000)) : null;
+      if (!entry) {
+        if (!demoVid.paused) { try { demoVid.pause(); } catch {} }
+        demoVid.hidden = true;
+        return;
+      }
+      const rel = entry.url || entry.proxy;
+      if (!rel) { demoVid.hidden = true; return; }
+      if (!demoProxyUrls.has(rel)) {
+        try { demoProxyUrls.set(rel, review ? await assetUrl(rel) : rel); } catch { demoProxyUrls.set(rel, rel); }
+      }
+      const url = demoProxyUrls.get(rel);
+      if (url && demoVid.getAttribute("src") !== url) demoVid.src = url;
+      const geo = window.__REVIEW_DATA__?.geometry || {};
+      const cw = Number(geo.width) || 1920;
+      const ch = Number(geo.height) || 1080;
+      const box = entry.box || geo.stage || { x: 500, y: 0, w: 1420, h: 920 };
+      demoVid.style.left = ((Number(box.x) || 0) / cw * 100) + "%";
+      demoVid.style.top = ((Number(box.y) || 0) / ch * 100) + "%";
+      demoVid.style.width = ((Number(box.w) || cw) / cw * 100) + "%";
+      demoVid.style.height = ((Number(box.h) || ch) / ch * 100) + "%";
+      demoVid.hidden = false;
+      const speed = Number(entry.speed) || 1;
+      const localSec = Math.max(0, (t - (Number(entry.startMs) || 0) / 1000) * speed);
+      demoVid.playbackRate = speed * (playbackRate || 1);
+      if (Math.abs((demoVid.currentTime || 0) - localSec) > 0.16) {
+        try { demoVid.currentTime = localSec; } catch {}
+      }
+      if (playing && demoVid.paused) demoVid.play().catch(() => {});
+      else if (!playing && !demoVid.paused) demoVid.pause();
+    }
+    (function initMainSplitHandle() {
+      const split = document.getElementById("main-split-handle");
+      const layout = document.querySelector(".layout");
+      if (!split || !layout) return;
+      let dragging = false;
+      split.addEventListener("pointerdown", (e) => {
+        dragging = true;
+        document.body.classList.add("col-resizing");
+        try { split.setPointerCapture(e.pointerId); } catch {}
+        e.preventDefault();
+      });
+      window.addEventListener("pointermove", (e) => {
+        if (!dragging) return;
+        const rect = layout.getBoundingClientRect();
+        const nextW = Math.round(Math.max(260, Math.min(560, rect.right - e.clientX)));
+        document.body.style.setProperty("--panel-w", nextW + "px");
+      });
+      window.addEventListener("pointerup", () => {
+        if (!dragging) return;
+        dragging = false;
+        document.body.classList.remove("col-resizing");
+      });
+    })();
+    async function setAudioMode(mode) {
+      audioMode = mode === "dry" ? "dry" : "mix";
+      document.body.dataset.audioMode = audioMode;
+      const btn = document.getElementById("btn-audio-ab");
+      if (btn) {
+        btn.textContent = audioMode === "dry" ? "纯干声" : "播客音色";
+        btn.classList.toggle("active", audioMode === "mix");
+      }
+      await ensureAudioTrackUrls();
+      syncAltAudioState();
+    }
+    const audioAbBtn = document.getElementById("btn-audio-ab");
+    if (audioAbBtn) {
+      audioAbBtn.addEventListener("click", () => {
+        setAudioMode(audioMode === "mix" ? "dry" : "mix");
+      });
+    }
 
     const verbatimBtn = document.getElementById("view-verbatim-btn");
     if (verbatimBtn) {
@@ -3654,8 +3811,8 @@
             noteStaleFree("无法核对当前时间轴；显示的是构建时快照。", { withReload: true });
           }
         } else {
-          document.getElementById("project-name").textContent = "读不到 timeline.json";
-          label(`读不到时间轴（${error.message}）——不是当前项目的审阅页，或宿主没起好。把这一行发回对话让模型看一眼`, "error");
+          document.getElementById("project-name").textContent = "加载失败";
+          label("加载失败", "error");
           return null;
         }
       }
@@ -3677,11 +3834,6 @@
         loadedReviewSnapshot = rev.snapshot || null;
         if (rev.mode) {
           document.body.classList.add(`mode-${rev.mode}`);
-          const badge = document.getElementById("mode-badge");
-          if (badge) {
-            const names = { composite: "复合双通道", speaker_only: "纯口播剪辑", animation_only: "纯演示动画" };
-            badge.textContent = names[rev.mode] || rev.mode;
-          }
         }
         if (rev.svgs) {
           window.__INLINE_SVGS__ = Object.assign(window.__INLINE_SVGS__ || {}, rev.svgs);
@@ -3789,13 +3941,22 @@
       if (compVid) {
         // 成片通道的字幕也按播放时间更新。此前只有 SVG/活舞台走 updateStageSubtitle，
         // 切到成片后字幕停在旧句子或干脆不显示 —— 用户看到的"字幕不跟视频动"。
-        compVid.addEventListener("timeupdate", () => updateStageSubtitle(null, compVid.currentTime));
-        compVid.addEventListener("seeked", () => updateStageSubtitle(null, compVid.currentTime));
+        compVid.addEventListener("timeupdate", () => {
+          updateStageSubtitle(null, compVid.currentTime);
+          syncDemoProxyAt(compVid.currentTime, !compVid.paused);
+        });
+        compVid.addEventListener("seeked", () => {
+          updateStageSubtitle(null, compVid.currentTime);
+          syncDemoProxyAt(compVid.currentTime, !compVid.paused);
+        });
         compVid.addEventListener("loadedmetadata", fitLayerStack);
         compVid.addEventListener("loadeddata", fitLayerStack);
         compVid.addEventListener("timeupdate", syncLayers);
         compVid.addEventListener("seeked", syncLayers);
-        compVid.addEventListener("pause", syncLayers);
+        compVid.addEventListener("pause", () => { syncLayers(); syncDemoProxyAt(compVid.currentTime, false); });
+        for (const ev of ["play", "pause", "seeked", "ratechange"]) {
+          compVid.addEventListener(ev, syncAltAudioState);
+        }
         window.addEventListener("resize", fitLayerStack);
         (function layerLoop() {
           if (compVid && !compVid.paused) syncLayers();
@@ -3803,6 +3964,12 @@
         })();
         initLayers().catch(() => {});
       }
+      if (spkVid) {
+        for (const ev of ["play", "pause", "seeked", "ratechange"]) {
+          spkVid.addEventListener(ev, syncAltAudioState);
+        }
+      }
+      ensureAudioTrackUrls().then(syncAltAudioState).catch(() => {});
 
       // 尝试读取已有的 choreography.json（或内联演示数据）
       if (window.__INLINE_CHOREO__ && window.__INLINE_CHOREO__.screens) {
@@ -4062,22 +4229,22 @@
         const landsIn = fbMode === "overall" ? "feedback/overall.jsonl" : `feedback/${record.chapterId}.jsonl`;
         const now = new Date();
         const hhmmss = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-        let wakeNote = "；模型未核对通知，若迟迟没反应请回对话说一声";
+        let wakeNote = " · 未核对";
         try {
           const wakeOpts = { unit: fbMode === "overall" ? "整片" : record.stepId };
           const result = await review.wake(wakeOpts);
           if (result && (result.verified || result.Delivered)) {
-            wakeNote = "；宿主已在会话日志里核对进入队列";
+            wakeNote = " · 已送达";
           }
         } catch (err) {
-          wakeNote = `；通知没送出去（${err.message}），请回对话说一声`;
+          wakeNote = " · 未送达";
         }
         label(`已写入 · ${hhmmss} · 本批 ${records.length} 条${wakeNote}`, "ok");
-        if (staleNoted) noteStaleFree("这一条是在时间轴已变的提示下提交的（见上）。", { withReload: true });
+        if (staleNoted) noteStaleFree("内容已更新，请刷新。", { withReload: true });
         document.getElementById("fb-text").value = "";
         await clearDraft();
       } catch (e) {
-        label(`保存失败：${e.message}——文字仍在输入框，未丢失。再点一次「保存反馈」；还不行就把这一行发回对话`, "error");
+        label(`保存失败：${e.message}`, "error");
       } finally {
         saving = false;
         saveBtn.disabled = !review;
@@ -4128,14 +4295,14 @@
 
     (async () => {
       if (!window.ReviewBridge) {
-        label("没有加载到审阅桥：这个页面必须由审阅宿主打开（DSH 侧栏，或 planners-review-core 的 serve-review.mjs）。把这一行发回对话", "error");
+        label("离线", "error");
         return;
       }
       try {
         review = await ReviewBridge.connect();
         window.__vcReview = review;
       } catch (error) {
-        label(`连不上审阅宿主（${error.message}）——反馈存不进文件。把这一行发回对话`, "error");
+        label("离线", "error");
         return;
       }
 
@@ -4148,7 +4315,7 @@
       submissionsRel = await resolveSubmissionsRel();
       setMode("overall");
       document.getElementById("fb-save").disabled = false;
-      label("已连接 · 草稿可恢复", "ok");
+      label("已连接", "ok");
       if (typeof review.on === "function") {
         review.on("changed", () => { onHostChanged(); });
       }
@@ -4156,6 +4323,7 @@
       renderHistoryList();
       await restoreDraft();
       await loadTimeline();
+      ensureAudioTrackUrls().catch(() => {});
       finishDraftRestore();
       if (state.pendingDraftStep) {
         const target = [...document.querySelectorAll(".step")].find(el => el.dataset.stepId === state.pendingDraftStep);
@@ -4167,8 +4335,7 @@
       // 初始化失败必须看得见。它原先是一条静默的未处理 rejection：分屏清单少几屏、
       // 舞台停在静态页、看门狗也不响 —— 全都看不出原因（第 33 条的同一条命）。
       try {
-        noteStaleFree("审阅页初始化中途失败：" + (err && err.message ? err.message : String(err))
-          + " —— 清单与舞台可能不完整；把这句话发回对话，别对着半张页面提意见。");
+        noteStaleFree("初始化失败：" + (err && err.message ? err.message : String(err)));
       } catch (e) { /* 连提示都写不出去也不能再抛 */ }
       if (window.console) console.error("review-init-failed", err);
     });
@@ -4177,6 +4344,8 @@
 
 <style id="density-style">
   body.density-on{
+    --d-left:minmax(0,1.75fr);
+    --d-right:minmax(280px,1fr);
     --d-text:var(--dsw-alias-label-primary);
     --d-bg:var(--dsw-alias-bg-base);
     --d-panel:var(--dsw-alias-bg-layer-1);
@@ -4189,11 +4358,11 @@
     --d-strong-bg:var(--dsw-alias-button-contrast-fill);
     --d-strong-fg:var(--dsw-alias-label-primary-inverted);
   }
-  body.density-on .layout{grid-template-columns:minmax(0,1.75fr) 10px minmax(380px,1fr) !important;height:calc(100vh - 46px)}
+  body.density-on .layout{grid-template-columns:var(--d-left) 10px var(--d-right);height:calc(100vh - 46px)}
   body.density-on .side-left,body.density-on .side-right{display:none !important}
   body.density-on .center-stage{padding:10px 12px 8px;display:flex;flex-direction:column;gap:8px;min-width:0}
   body.density-on .canvas-toolbar,body.density-on #advanced-toggle{display:none !important}
-  body.density-on .player-box{flex:0 0 auto;width:100%;height:auto;aspect-ratio:16/9;max-height:calc(100vh - 212px);margin:0 auto;overflow:hidden;background:#000;border-radius:6px;position:relative}
+  body.density-on .player-box{flex:0 0 auto;width:min(100%,calc((100vh - 230px) * 16 / 9));max-width:100%;height:auto;aspect-ratio:16/9;max-height:none;margin:0 auto;overflow:hidden;background:#000;border-radius:6px;position:relative}
   body.density-on #choreo-deck{display:none !important}
 
   /* 视频下方：横向 Beat 分段控件 */
@@ -4344,13 +4513,13 @@
   #preview-fallback{position:absolute;left:12px;right:12px;bottom:12px;padding:10px 12px;background:var(--dsw-alias-bg-overlay);color:var(--dsw-alias-label-primary);border-radius:6px;font-family:var(--font-sans);font-size:11px;line-height:1.6;display:flex;flex-direction:column;gap:6px;z-index:5}
   #preview-fallback .pf-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
   #preview-fallback button{border:1px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-primary);font-family:var(--font-mono);font-size:9px;padding:4px 7px;cursor:pointer;border-radius:3px}
-  #preview-fallback .pf-diag{font-family:var(--font-mono);font-size:8px;color:var(--dsw-alias-label-tertiary);white-space:pre-wrap}
 
   @media (max-width: 980px){
-    body.density-on .layout{grid-template-columns:1fr !important;height:auto;min-height:calc(100vh - 46px)}
+    body.density-on{height:auto;overflow-x:hidden;overflow-y:auto}
+    body.density-on .layout{grid-template-columns:1fr !important;height:auto;min-height:calc(100vh - 46px);overflow:visible}
     body.density-on #split-handle{display:none}
     body.density-on #feedback-panel{min-height:58vh;padding:8px 0 0}
-    body.density-on .player-box{max-height:none}
+    body.density-on .player-box{width:min(100%,calc((100vh - 230px) * 16 / 9));max-height:none}
   }
 </style>
 <script>
@@ -4374,55 +4543,55 @@
   const switcher = document.createElement("div");
   switcher.id = "beat-switcher";
   switcher.setAttribute("role", "tablist");
-  switcher.setAttribute("aria-label", "Beat 切换");
+  switcher.setAttribute("aria-label", "段落切换");
   playerBox.after(switcher);
 
-  // 右侧：整栏反馈，三个 tab
+  // 右侧：整栏反馈
   const feedback = document.createElement("aside");
   feedback.id = "feedback-panel";
   feedback.innerHTML = `
     <div class="fp-tabs" role="tablist" aria-label="反馈区域">
-      <button type="button" role="tab" data-fp="line" class="active" aria-selected="true">逐句调整</button>
-      <button type="button" role="tab" data-fp="hist" aria-selected="false">历史反馈</button>
+      <button type="button" role="tab" data-fp="line" class="active" aria-selected="true">逐句</button>
+      <button type="button" role="tab" data-fp="hist" aria-selected="false">历史</button>
     </div>
     <div class="fp-body">
       <div class="fp-panel" id="fb-panel" role="tabpanel">
         <div class="vfb-head">
           <div>
-            <div class="fbh" id="vfb-head">整 beat 反馈</div>
+            <div class="fbh" id="vfb-head">本段</div>
             <div class="fbs" id="vfb-sub">—</div>
           </div>
-          <span id="vfb-state" class="save-pill" data-state="idle" aria-live="polite">未填写</span>
+          <span id="vfb-state" class="save-pill" data-state="idle" aria-live="polite">未填</span>
         </div>
-        <select id="vfb-kind" aria-label="反馈类型">
+        <select id="vfb-kind" aria-label="类型">
           <option value="visual">画面与版式</option>
           <option value="animation">动画与镜头</option>
           <option value="timing">节奏与卡点</option>
           <option value="copy">文字</option>
           <option value="asset">素材</option>
         </select>
-        <textarea id="vfb-text" aria-label="整 beat 反馈内容" placeholder="这个 beat 整体哪里不对？只针对这一 beat，不针对某一屏。"></textarea>
+        <textarea id="vfb-text" aria-label="本段意见" placeholder="写下本段修改意见"></textarea>
         <div class="vfb-actions">
-          <button type="button" id="vfb-save">保存整 beat 反馈</button>
-          <div id="vfb-status" aria-live="polite">提交后会进当前 beat 的反馈文件，并唤醒模型。</div>
+          <button type="button" id="vfb-save">保存</button>
+          <div id="vfb-status" aria-live="polite"></div>
         </div>
         <div class="vfb-history" id="vfb-history" data-open="true">
           <div class="vfb-hist-head">
             <button type="button" id="vfb-hist-toggle" aria-expanded="true" aria-controls="vfb-hist-list">
-              <span class="caret" aria-hidden="true">▾</span><span>本 beat 最近反馈</span><span class="hist-count" id="vfb-hist-count">—</span>
+              <span class="caret" aria-hidden="true">▾</span><span>最近</span><span class="hist-count" id="vfb-hist-count">—</span>
             </button>
-            <button type="button" id="vfb-hist-refresh" title="重新读取反馈记录">刷新</button>
+            <button type="button" id="vfb-hist-refresh">刷新</button>
           </div>
           <div class="hist-list" id="vfb-hist-list" role="log" aria-live="polite">
-            <div class="hist-empty">正在读取反馈记录…</div>
+            <div class="hist-empty">暂无记录</div>
           </div>
         </div>
       </div>
       <div class="fp-panel" id="density-panel" role="tabpanel" hidden>
         <div class="dens-head">
           <div class="dens-tools">
-            <label><input type="checkbox" id="dens-follow" checked> 跟随播放</label>
-            <label><input type="checkbox" id="dens-only"> 只看非自动</label>
+            <label><input type="checkbox" id="dens-follow" checked> 跟随</label>
+            <label><input type="checkbox" id="dens-only"> 仅已改</label>
             <span id="dens-count">—</span>
           </div>
         </div>
@@ -4430,36 +4599,36 @@
           <div class="dens-selrow">
             <span id="dens-sel-count">已选 0 句</span>
             <span class="spacer"></span>
-            <button type="button" id="dens-sel-all">全选本 beat</button>
+            <button type="button" id="dens-sel-all">全选</button>
             <button type="button" id="dens-sel-clear">清除</button>
           </div>
-          <div class="dens-states" role="group" aria-label="逐句画面密度">
-            <button type="button" data-set="auto" title="自动：按画面内容自动判断">自动</button>
-            <button type="button" data-set="off" title="无画面：只留字幕，不加任何画面">无画面</button>
-            <button type="button" data-set="still" title="仅配图：一张静态图，不做动效">仅配图</button>
-            <button type="button" data-set="light" title="轻动效：轻微推进、位移或淡入">轻动效</button>
-            <button type="button" data-set="full" title="完整动效：整段动画与镜头调度">完整动效</button>
+          <div class="dens-states" role="group" aria-label="画面密度">
+            <button type="button" data-set="auto">自动</button>
+            <button type="button" data-set="off">无画面</button>
+            <button type="button" data-set="still">仅配图</button>
+            <button type="button" data-set="light">轻动效</button>
+            <button type="button" data-set="full">完整动效</button>
           </div>
           <div class="dens-bulk">
             <span class="spacer"></span>
-            <button type="button" id="dens-beat-all" title="把本 beat 所有句设为「无画面」">整 beat</button>
-            <button type="button" id="dens-undo" title="撤销上一次批量设置">撤销</button>
+            <button type="button" id="dens-beat-all">整段</button>
+            <button type="button" id="dens-undo">撤销</button>
           </div>
         </div>
         <div class="dens-body" id="dens-body"></div>
         <div class="dens-foot">
-          <div class="dens-sel" id="dens-sel">单击一句；Shift 连选；Cmd/Ctrl 加选；按住拖过多行。</div>
+          <div class="dens-sel" id="dens-sel"></div>
           <div class="dens-batch">
-            <input id="dens-note" placeholder="备注（单选时可填）" />
-            <button type="button" id="dens-submit" title="写入提交并唤醒模型">提交密度</button>
+            <input id="dens-note" placeholder="备注" />
+            <button type="button" id="dens-submit">提交</button>
           </div>
-          <div id="dens-status" aria-live="polite">看片拖选一段，点上方状态；不用逐句点。</div>
+          <div id="dens-status" aria-live="polite"></div>
         </div>
       </div>
       <div class="fp-panel" id="hist-panel" role="tabpanel" hidden>
-        <div class="fbs" id="hist-head">本 beat 历史反馈</div>
-        <div class="hist-tools"><span id="hist-count">—</span><button type="button" id="hist-refresh" title="重新读取反馈记录">刷新</button></div>
-        <div class="hist-list" id="hist-list" role="log" aria-live="polite"><div class="hist-empty">正在读取反馈记录…</div></div>
+        <div class="fbs" id="hist-head">历史</div>
+        <div class="hist-tools"><span id="hist-count">—</span><button type="button" id="hist-refresh">刷新</button></div>
+        <div class="hist-list" id="hist-list" role="log" aria-live="polite"><div class="hist-empty">暂无记录</div></div>
       </div>
     </div>`;
   layout.appendChild(feedback);
@@ -4669,17 +4838,16 @@
       row.addEventListener("mouseenter", () => { if (dragging && anchor != null) selectRange(anchor, idx); });
       body.appendChild(row);
     });
-    if (!rows.length) body.innerHTML = '<div class="hist-empty">本 beat 没有非自动行。</div>';
+    if (!rows.length) body.innerHTML = '<div class="hist-empty">暂无条目</div>';
   }
 
   function renderSelection() {
     const n = selected.size;
     const el = document.getElementById("dens-sel");
     document.getElementById("dens-sel-count").textContent = "已选 " + n + " 句";
-    if (!n) { el.textContent = "单击一句；Shift 连选；Cmd/Ctrl 加选；按住拖过多行。"; note.value = ""; note.disabled = true; return; }
+    if (!n) { el.textContent = ""; note.value = ""; note.disabled = true; return; }
     const ids = [...selected]; const first = lineById(ids[0]), last = lineById(ids[ids.length - 1]);
-    el.textContent = fmtShort(first ? first.line.startMs : 0) + "–" + fmtShort(last ? last.line.endMs : 0)
-      + " · " + ids.slice(0, 3).join(", ") + (n > 3 ? " …" : "");
+    el.textContent = fmtShort(first ? first.line.startMs : 0) + "–" + fmtShort(last ? last.line.endMs : 0);
     note.disabled = n !== 1;
     note.value = n === 1 && first ? (first.line.note || "") : "";
     body.querySelectorAll(".dline").forEach(row => row.classList.toggle("sel", selected.has(row.dataset.id)));
@@ -4698,10 +4866,10 @@
     render();
   }
   function applyTo(targets, s) {
-    if (!targets.length) { setStatus("先选几行，或点「整 beat」。", "err"); return; }
+    if (!targets.length) { setStatus("请先选择", "err"); return; }
     undo = targets.map(l => ({ id: l.id, state: l.state }));
     targets.forEach(l => { l.state = s; });
-    setStatus("已把 " + targets.length + " 句设为「" + LABEL[s] + "」。", "ok");
+    setStatus("已设为「" + LABEL[s] + "」", "ok");
     render();
   }
   feedback.querySelectorAll(".dens-selbar [data-set]").forEach(btn => {
@@ -4748,7 +4916,7 @@
   function renderFbHead() {
     const beat = state[current];
     const changed = beat.lines.filter(l => l.state !== "auto").length;
-    document.getElementById("vfb-head").textContent = "整 beat 反馈 · " + beat.id;
+    document.getElementById("vfb-head").textContent = "本段 · " + beat.id;
     document.getElementById("vfb-sub").textContent = beat.title + " · " + fmtShort(beat.startMs) + "–" + fmtShort(beat.endMs)
       + " · " + beat.lines.length + " 句 / 已改 " + changed;
   }
@@ -5104,7 +5272,7 @@
     tag.className = "tag";
     tag.textContent = entry.pending ? "待收件" : "已收件";
     const kind = document.createElement("span");
-    kind.textContent = entry.densityLines.length ? "逐句" : (TYPE_LABEL[rec.type] || rec.type || "整 beat");
+    kind.textContent = entry.densityLines.length ? "逐句" : (TYPE_LABEL[rec.type] || rec.type || "本段");
     meta.appendChild(when);
     meta.appendChild(tag);
     meta.appendChild(kind);
@@ -5122,7 +5290,7 @@
         bodyEl.appendChild(n);
       });
     } else {
-      bodyEl.textContent = rec.text || "（这条记录没有文字）";
+      bodyEl.textContent = rec.text || "—";
     }
     el.appendChild(meta);
     el.appendChild(bodyEl);
@@ -5132,8 +5300,8 @@
   function setEmptyState() {
     vfbHistList.innerHTML = "";
     histList.innerHTML = "";
-    const a = document.createElement("div"); a.className = "hist-empty"; a.textContent = "这个 beat 还没有反馈。保存后会显示在这里。";
-    const b = document.createElement("div"); b.className = "hist-empty"; b.textContent = "还没有历史反馈。整 beat 反馈或逐句密度提交后会出现在这里。";
+    const a = document.createElement("div"); a.className = "hist-empty"; a.textContent = "暂无记录";
+    const b = document.createElement("div"); b.className = "hist-empty"; b.textContent = "暂无记录";
     vfbHistList.appendChild(a);
     histList.appendChild(b);
     vfbHistCount.textContent = "0 条";
@@ -5284,20 +5452,10 @@
       if (!box || document.getElementById("preview-fallback")) return;
       const el = document.createElement("div");
       el.id = "preview-fallback";
-      const comp = RD.media && RD.media.liveStage && RD.media.liveStage.composition;
-      let sandbox = "n/a";
-      try { sandbox = window.frameElement ? String(window.frameElement.getAttribute("sandbox")) : "none"; } catch (e) { sandbox = "blocked"; }
-      el.innerHTML = '<div class="pf-row"><b>工程预览没有就绪</b>'
-        + '<button type="button" id="pf-composite">切到成片预览</button>'
-        + '<button type="button" id="pf-local">浏览器打开工程预览</button>'
-        + '<button type="button" id="pf-retry">重试</button></div>'
-        + '<div class="pf-diag">player=' + (customElements.get("hyperframes-player") ? "defined" : "missing")
-        + ' · html=' + (comp && comp.html ? Math.round(comp.html.length / 1024) + "KB" : "none")
-        + ' · ready=' + !!(live && live.ready)
-        + ' · stage=' + (document.body.dataset.stage || "")
-        + ' · sandbox=' + sandbox
-        + ' · srcdoc=' + (live ? ((live.getAttribute("srcdoc") || "").length / 1024).toFixed(0) + "KB" : "none")
-        + ' · note=' + ((document.getElementById("live-stage-note") && document.getElementById("live-stage-note").textContent) || "").slice(0, 40) + '</div>';
+      el.innerHTML = '<div class="pf-row"><b>预览暂未就绪</b>'
+        + '<button type="button" id="pf-composite">切换成片</button>'
+        + '<button type="button" id="pf-local">新窗打开</button>'
+        + '<button type="button" id="pf-retry">重试</button></div>';
       box.appendChild(el);
       const c = document.getElementById("pf-composite");
       const l = document.getElementById("pf-local");

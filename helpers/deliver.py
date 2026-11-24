@@ -43,10 +43,10 @@ import tempfile
 from pathlib import Path
 
 HELPERS = Path(__file__).resolve().parent
+INTERNAL = HELPERS / "_internal"
 sys.path.insert(0, str(HELPERS))
+sys.path.insert(0, str(INTERNAL))
 
-DEFAULT_PERSON_SLOT = {"x": 0, "y": 0, "w": 500, "h": 1080}
-DEFAULT_CAPTION_SAFE = {"x": 0, "y": 880, "w": 1920, "h": 200}
 BLACK_LUMA = 6.0          # 低于它视为全黑
 BAND_LUMA = 24.0          # 字幕区里出现高于它的内容 → 会被字幕压住
 
@@ -104,24 +104,6 @@ def _frame_luma(path: Path, at: float, crop: tuple[int, int, int, int] | None = 
     return sum(data) / len(data)
 
 
-def _geometry(project: Path) -> dict:
-    cfg = {}
-    path = project / "recompose.json"
-    if path.is_file():
-        try:
-            cfg = json.loads(path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            cfg = {}
-    canvas = cfg.get("canvas") or {}
-    return {
-        "width": int(canvas.get("w") or 1920),
-        "height": int(canvas.get("h") or 1080),
-        "fps": int(canvas.get("fps") or 30),
-        "person": cfg.get("personSlot") or dict(DEFAULT_PERSON_SLOT),
-        "caption": cfg.get("captionSafe") or dict(DEFAULT_CAPTION_SAFE),
-    }
-
-
 def _pick(project: Path, explicit: Path | None, candidates: list[Path]) -> Path | None:
     if explicit:
         return explicit if explicit.is_file() else None
@@ -139,7 +121,7 @@ def _render_env(composition: Path) -> tuple[bool, int, str]:
     低于门槛 —— 于是照文档「缺一不渲」会让人根本交不出片。所以：font/node/npx/composition
     这些真问题拦；只有 workers 一条红时按建议值渲染并记 note。
     """
-    proc = _run([sys.executable, str(HELPERS / "check_render_env.py"), str(composition), "--json"])
+    proc = _run([sys.executable, str(INTERNAL / "check_render_env.py"), str(composition), "--json"])
     try:
         data = json.loads((proc.stdout or "").strip() or "{}")
     except json.JSONDecodeError:
@@ -151,7 +133,7 @@ def _render_env(composition: Path) -> tuple[bool, int, str]:
         return True, workers, f"check_render_env 退 0（workers={workers}）"
     if data.get('ok') is True:
         return False, workers, f'check_render_env 退出 {proc.returncode}，报告与退出码矛盾'
-    plain = _run([sys.executable, str(HELPERS / "check_render_env.py"), str(composition)])
+    plain = _run([sys.executable, str(INTERNAL / "check_render_env.py"), str(composition)])
     lines = [ln.strip() for ln in (plain.stdout or "").splitlines() if ln.strip().startswith("x")]
     blocked = [ln for ln in lines if "workers:" not in ln]
     if blocked or not lines:
@@ -168,8 +150,18 @@ def _preflight(project: Path, check, note) -> tuple[bool, int]:
     ffmpeg_ok = env.get("ffmpeg", {}).get("present") and bool(shutil.which("ffprobe"))
     if not check("编码能力", bool(ffmpeg_ok), "probe_env：需要 ffmpeg/ffprobe"):
         return False, 1
+    has_visual_plan = (project / "visual-plan.json").is_file()
+    if has_visual_plan:
+        proc = _run([sys.executable, str(HELPERS / "film.py"), "verify", str(project), "--json"])
+        if not check("视觉分拍表", proc.returncode == 0, (proc.stdout + proc.stderr)[-2000:]):
+            return False, 1
     composition = project / "composition"
-    if not (composition / "index.html").is_file():
+    has_comp = (composition / "index.html").is_file()
+    if not has_comp:
+        if has_visual_plan:
+            qproc = _run([sys.executable, str(INTERNAL / "check_visual_quality.py"), str(project), "--json"])
+            if not check("构建期画面体检", qproc.returncode == 0, (qproc.stdout + qproc.stderr)[-2000:]):
+                return False, 1
         note("已有独立画面素材：没有 composition 源，不适用 film/动效检查；来源仍须经 render_gate")
         return True, 1
     env_ok, workers, detail = _render_env(composition)
@@ -181,23 +173,199 @@ def _preflight(project: Path, check, note) -> tuple[bool, int]:
     timeline = timeline_file(project / "edit")
     data = json.loads(timeline.read_text(encoding="utf-8")) if timeline else {}
     references = any(s.get("sourcePageKey") for ch in data.get("chapters", []) for s in ch.get("steps", []))
-    if references or (project / "pages").exists() or (project / ".pages").exists():
+    if not has_visual_plan and (references or (project / "pages").exists() or (project / ".pages").exists()):
         proc = _run([sys.executable, str(HELPERS / "film.py"), "verify", str(project), "--json"])
         if not check("原页拆解", proc.returncode == 0, (proc.stdout + proc.stderr)[-2000:]):
             return False, workers
     proc = _run(["hyperframes", "check", str(composition), "--json"])
     if not check("HyperFrames check", proc.returncode == 0, (proc.stdout + proc.stderr)[-2000:]):
         return False, workers
+    qproc = _run([sys.executable, str(INTERNAL / "check_visual_quality.py"), str(project), "--json"])
+    if not check("构建期画面体检", qproc.returncode == 0, (qproc.stdout + qproc.stderr)[-2000:]):
+        return False, workers
     scripts = [composition / "index.html", *composition.rglob("*.js")]
     has_gsap = any("gsap" in p.read_text(encoding="utf-8", errors="ignore")
                    for p in scripts if not any(x in p.parts for x in ("node_modules", "_render", ".hyperframes")))
     if has_gsap:
-        proc = _run([sys.executable, str(HELPERS / "check_motion_targets.py"), str(project),
+        proc = _run([sys.executable, str(INTERNAL / "check_motion_targets.py"), str(project),
                      "--strict-transform", "--json"])
         if not check("动效目标", proc.returncode == 0 and "SKIP" not in proc.stdout,
                      (proc.stdout + proc.stderr)[-2000:]):
             return False, workers
     return True, workers
+
+
+def _load_demo_segments(project: Path) -> list[dict]:
+    plan_path = project / "visual-plan.json"
+    if not plan_path.is_file():
+        return []
+    try:
+        doc = json.loads(plan_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    out = []
+    for idx, seg in enumerate(doc.get("segments") or []):
+        if seg.get("tier") != "demo-footage":
+            continue
+        demo = seg.get("demo")
+        if not isinstance(demo, dict) or not demo.get("source"):
+            continue
+        raw_src = Path(str(demo["source"])).expanduser()
+        src = (raw_src if raw_src.is_absolute() else (project / raw_src)).resolve()
+        if not src.is_file():
+            continue
+        t0 = float(seg.get("startMs", 0)) / 1000.0
+        t1 = float(seg.get("endMs", 0)) / 1000.0
+        in_sec = float(demo.get("inSec", 0.0))
+        out_sec = float(demo.get("outSec", in_sec + max(0.05, t1 - t0)))
+        speed = float(demo.get("speed", 1.0))
+        if t1 <= t0 or out_sec <= in_sec or speed <= 0:
+            continue
+        box = None
+        raw_box = demo.get("box")
+        if isinstance(raw_box, dict) and all(k in raw_box for k in ("x", "y", "w", "h")):
+            try:
+                bx, by, bw, bh = int(raw_box["x"]), int(raw_box["y"]), int(raw_box["w"]), int(raw_box["h"])
+                if bw >= 2 and bh >= 2:
+                    box = {"x": bx, "y": by, "w": bw, "h": bh}
+            except (TypeError, ValueError):
+                box = None
+        overlay = None
+        if demo.get("overlay"):
+            raw_ov = Path(str(demo["overlay"])).expanduser()
+            ov_path = (raw_ov if raw_ov.is_absolute() else (project / raw_ov)).resolve()
+            if ov_path.is_file():
+                overlay = ov_path
+        out.append({
+            "id": str(seg.get("id") or f"demo-{idx + 1:02d}"),
+            "source": src,
+            "t0": t0,
+            "t1": t1,
+            "inSec": in_sec,
+            "outSec": out_sec,
+            "srcDur": out_sec - in_sec,
+            "speed": speed,
+            "box": box,
+            "overlay": overlay,
+        })
+    return out
+
+
+def _splice_demo_segments(project: Path, visual_path: Path, demo_segs: list[dict], geo: dict,
+                          out: Path, name: str, person_path: Path | None,
+                          vis_dur: float) -> tuple[Path, Path | None, dict]:
+    """Splice HD demo recordings cleanly into video-only visual track with screen-text encoding."""
+    fps = int(round(float(geo["fps"])))
+    if person_path is None:
+        default_box = {"x": 0, "y": 0, "w": int(geo["width"]), "h": int(geo["caption"]["y"])}
+    else:
+        default_box = geo["stage"]
+
+    visual_track = out / f"{name}_画面成片.mp4"
+    inputs = ["-i", str(visual_path)]
+    filters = [f"[0:v]fps={fps},format=yuv420p,setsar=1[v0]"]
+    prev = "v0"
+    next_input_idx = 1
+    for k, seg in enumerate(demo_segs):
+        tbox = seg.get("box") or default_box
+        sx, sy = max(0, int(tbox["x"])), max(0, int(tbox["y"]))
+        sw = max(2, int(tbox["w"]) - (int(tbox["w"]) % 2))
+        sh = max(2, int(tbox["h"]) - (int(tbox["h"]) % 2))
+
+        idx = next_input_idx
+        next_input_idx += 1
+        inputs.extend(["-ss", f"{seg['inSec']:.3f}", "-t", f"{seg['srcDur']:.3f}", "-i", str(seg["source"])])
+        clip_out = max(0.05, seg["t1"] - seg["t0"])
+        filters.append(
+            f"[{idx}:v]fps={fps},"
+            f"scale={sw}:{sh}:force_original_aspect_ratio=decrease:flags=lanczos,"
+            f"pad={sw}:{sh}:(ow-iw)/2:(oh-ih)/2:color=#11131a,"
+            f"setpts=(PTS-STARTPTS)/{seg['speed']:.6f},"
+            f"trim=start=0:duration={clip_out:.3f},"
+            f"setpts=PTS+({seg['t0']:.3f})/TB,setsar=1[demo_base{k}]"
+        )
+        demo_label = f"demo_base{k}"
+        if seg.get("overlay"):
+            ov_path: Path = seg["overlay"]
+            ov_idx = next_input_idx
+            next_input_idx += 1
+            if ov_path.suffix.lower() in {".png", ".webp", ".jpg", ".jpeg"}:
+                inputs.extend(["-loop", "1", "-t", f"{clip_out:.3f}", "-i", str(ov_path)])
+            else:
+                if ov_path.suffix.lower() == ".webm":
+                    inputs.extend(["-c:v", "libvpx-vp9"])
+                inputs.extend(["-t", f"{clip_out:.3f}", "-i", str(ov_path)])
+            filters.append(
+                f"[{ov_idx}:v]fps={fps},format=rgba,"
+                f"scale={sw}:{sh}:force_original_aspect_ratio=decrease:flags=lanczos,"
+                f"pad={sw}:{sh}:(ow-iw)/2:(oh-ih)/2:color=0x00000000,"
+                f"setpts=PTS-STARTPTS+({seg['t0']:.3f})/TB,setsar=1[ov{k}]"
+            )
+            filters.append(f"[{demo_label}][ov{k}]overlay=0:0:eof_action=pass:repeatlast=0:format=auto[demo{k}]")
+            demo_label = f"demo{k}"
+
+        nxt = f"v{k + 1}"
+        filters.append(
+            f"[{prev}][{demo_label}]overlay={sx}:{sy}:"
+            f"enable='between(t,{seg['t0']:.3f},{seg['t1']:.3f})':eof_action=pass:shortest=0[{nxt}]"
+        )
+        prev = nxt
+
+    encoder_flags = ["-c:v", "libx264", "-preset", "medium", "-crf", "16",
+                     "-x264-params", "deblock=-1,-1:aq-mode=2", "-pix_fmt", "yuv420p", "-r", str(fps)]
+    with tempfile.NamedTemporaryFile(dir="/tmp", prefix="vc_visual_", suffix=".mp4", delete=False) as tf:
+        tmp_visual = Path(tf.name)
+    cmd = [
+        "ffmpeg", "-y", "-v", "error", *inputs,
+        "-filter_complex", ";".join(filters),
+        "-map", f"[{prev}]", "-an",
+        *encoder_flags,
+        "-t", f"{vis_dur:.3f}", "-movflags", "+faststart",
+        str(tmp_visual),
+    ]
+    try:
+        proc = _run(cmd)
+        if proc.returncode != 0 or not tmp_visual.is_file() or tmp_visual.stat().st_size == 0:
+            raise RuntimeError((proc.stderr or proc.stdout or "demo splice ffmpeg failed")[-400:])
+        shutil.move(str(tmp_visual), str(visual_track))
+    finally:
+        if tmp_visual.exists():
+            tmp_visual.unlink(missing_ok=True)
+
+    person_track = None
+    if person_path is not None and person_path.is_file():
+        slot = geo["person"]
+        pw, ph = int(slot["w"]), int(slot["h"])
+        person_track = out / f"{name}_人物轨.mp4"
+        with tempfile.NamedTemporaryFile(dir="/tmp", prefix="vc_person_", suffix=".mp4", delete=False) as tfp:
+            tmp_person = Path(tfp.name)
+        p_cmd = [
+            "ffmpeg", "-y", "-v", "error", "-i", str(person_path),
+            "-vf", f"scale={pw}:{ph}:force_original_aspect_ratio=increase,crop={pw}:{ph},setsar=1",
+            "-map", "0:v", "-map", "0:a?",
+            "-c:v", "libx264", "-preset", "medium", "-crf", "17", "-pix_fmt", "yuv420p",
+            "-r", str(fps), "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
+            "-t", f"{vis_dur:.3f}", "-movflags", "+faststart", str(tmp_person),
+        ]
+        try:
+            p_proc = _run(p_cmd)
+            if p_proc.returncode != 0 or not tmp_person.is_file() or tmp_person.stat().st_size == 0:
+                raise RuntimeError((p_proc.stderr or p_proc.stdout or "person track export failed")[-400:])
+            shutil.move(str(tmp_person), str(person_track))
+        finally:
+            if tmp_person.exists():
+                tmp_person.unlink(missing_ok=True)
+
+    info = {
+        "count": len(demo_segs),
+        "visual_track": str(visual_track),
+        "person_track": str(person_track) if person_track else None,
+        "screen_text_protection": True,
+        "encoder_flags": "crf=16 deblock=-1,-1 aq-mode=2 flags=lanczos",
+        "segments": [{"id": s["id"], "t0": s["t0"], "t1": s["t1"], "source": str(s["source"])}
+                     for s in demo_segs],
+    }
+    return visual_track, person_track, info
 
 
 def _render_is_stale(project: Path, visual: Path) -> bool:
@@ -234,7 +402,7 @@ def _delivery_verdict(edit_dir: Path, target: Path, media: Path | None = None,
             return result
     try:
         extra = (['--media', str(media)] if media else []) + (['--srt', str(srt)] if srt else [])
-        proc = subprocess.run([sys.executable, str(HELPERS / "verify_delivery.py"),
+        proc = subprocess.run([sys.executable, str(INTERNAL / "verify_delivery.py"),
                                str(edit_dir), "--video", str(target), "--json", *extra],
                               capture_output=True, text=True)
         result.update(status="failed", code=proc.returncode)
@@ -277,7 +445,8 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
             srt: Path | None, out_dir: Path | None, burn: bool, skip_gate: bool,
             as_json: bool, no_person: bool = False, render: bool = False,
             visuals_confirm_current: bool = False) -> int:
-    geo = _geometry(project)
+    from _geometry import resolve_project_frame
+    geo = resolve_project_frame(project)
     edit_dir = project / "edit"
     out = (out_dir or project / "成品")
     out.mkdir(parents=True, exist_ok=True)
@@ -316,7 +485,7 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
 
     # 0) 渲染闸门
     if not skip_gate:
-        code, = (_run([sys.executable, str(HELPERS / "render_gate.py"), str(project)]).returncode,)
+        code, = (_run([sys.executable, str(INTERNAL / "render_gate.py"), str(project)]).returncode,)
         if code != 0:
             if not check("渲染闸门", False, "没有人审覆盖当前快照（先 review.py 交给人审；夹具用 --skip-gate）"):
                 return stop()
@@ -418,7 +587,7 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
     # 画面层真的等于 composition 吗？渲染通道会静默丢内容（GOTCHAS #79），
     # 运动/黑帧/分辨率都量不出来：抽 12 个时间点和 composition 的快照逐帧比结构。
     if (project / "composition" / "hyperframes.json").is_file():
-        fid = _run([sys.executable, str(HELPERS / "check_render_fidelity.py"), str(project),
+        fid = _run([sys.executable, str(INTERNAL / "check_render_fidelity.py"), str(project),
                     "--video", str(visual_path), "--samples", "12", "--json"])
         fid_report: dict = {}
         try:
@@ -441,6 +610,26 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
             note(f"画面一致性检查未能执行：{(fid.stderr or '')[-200:].strip() or '未知原因'}")
     else:
         note("composition 不是 HyperFrames 工程（无 hyperframes.json）：跳过画面一致性检查")
+
+    # 2b) 若 visual-plan.json 存在实机演示录屏段，由 ffmpeg 从高清原录屏裁切并开启屏幕文字清晰编码，与动效底片无损同轨拼合，人物轨保持独立
+    demo_segs = _load_demo_segments(project)
+    if demo_segs:
+        vis_dur_base = _duration(visual_path)
+        if vis_dur_base <= 0:
+            vis_dur_base = max(s["t1"] for s in demo_segs)
+        try:
+            spliced_visual, _, splice_info = _splice_demo_segments(
+                project, visual_path, demo_segs, geo, out, name,
+                person_path=None if no_person else person_path,
+                vis_dur=vis_dur_base,
+            )
+        except RuntimeError as exc:
+            check("实机演示同轨拼合", False, str(exc))
+            return stop()
+        visual_path = spliced_visual
+        report["demo_splice"] = splice_info
+        check("实机演示同轨拼合", True,
+              f"{splice_info['count']} 段高清原录屏已并入 {Path(splice_info['visual_track']).name}（屏幕清晰文字编码）")
 
     # 3) 合成：人物 cover 贴回 + 声音（无人物轨时画面层全幅交付）
     slot = geo["person"]

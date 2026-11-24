@@ -12,6 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "helpers"))
+sys.path.insert(0, str(ROOT / "helpers" / "_internal"))
 
 import _timecode  # noqa: E402
 

@@ -166,7 +166,7 @@ If you can't tell which agent you're in, ask the user once: "which agent am I ru
 
 ### 5. Transcription: an online service is the default
 
-Word-level timing is the spine of cutting, captions, and delivery, so the default backend is an **online transcription service**: 豆包流式语音识别 2.0 (SeedASR SAUC, `volc.seedasr.sauc.duration`), driven by `helpers/transcribe_seedasr.py`. It returns per-word millisecond timestamps and does not invent words in silence. Read `GOTCHAS.md` #1 before choosing anything else.
+Word-level timing is the spine of cutting, captions, and delivery, so the default backend is an **online transcription service**: 豆包流式语音识别 2.0 (SeedASR SAUC, `volc.seedasr.sauc.duration`), driven by `helpers/_internal/transcribe_seedasr.py`. It returns per-word millisecond timestamps and does not invent words in silence. Read `GOTCHAS.md` #1 before choosing anything else.
 
 | # | backend | credentials / runtime | role |
 |---|---|---|---|
@@ -234,7 +234,7 @@ To enable the local mlx fallback (only when the user wants an offline path):
 Run one real thing. Prefer the lightest verification that still proves the pipeline is wired up:
 
 ```bash
-"$CATEGORY_PY" "$CRAFT_SRC"/helpers/timeline_view.py --help >/dev/null && echo "helpers OK"
+"$CATEGORY_PY" "$CRAFT_SRC"/helpers/deliver.py --help >/dev/null && echo "helpers OK"
 ffprobe -version | head -1
 ```
 
@@ -271,14 +271,14 @@ Tell the user, in one short message:
   the run had to borrow it via `NODE_PATH`. Install it in whatever copy you
   actually run from.
 - The preferred SeedASR backend needs a speech-console `DOUBAO_APP_ID` + `DOUBAO_ACCESS_TOKEN` pair in `.env` (an Ark LLM key is a different account and will not work; the full check list is step 5).
-- HyperFrames, Remotion, and Manim are optional animation engines. Don't install or prefer one globally during setup; pick the engine per animation slot in `SKILL.md`. HyperFrames can run through `npx --yes hyperframes ...` **from inside the composition directory** — it reads `index.html` from the current directory, and `hyperframes init` would replace the generated skeleton rather than fix anything. Remotion can be scaffolded with `npx create-video@latest` or installed inside the slot before rendering.
+- HyperFrames (`npx --yes hyperframes ...`) is the default animation engine for compositions; run it **from inside the composition directory** — it reads `index.html` from the current directory, and `hyperframes init` would replace the generated skeleton rather than fix anything.
 - **HyperFrames needs a writable font cache.** It downloads fonts under the home directory; in a sandbox or on a read-only home the render dies partway with `EPERM: operation not permitted, mkdir '~/.cache/hyperframes/fonts/...'` and only suggests `--docker`. Point it somewhere writable:
 
   ```bash
   export HYPERFRAMES_FONT_CACHE_DIR="$PWD/.hyperframes-cache"
   ```
 
-  `HYPERFRAMES_FONT_CACHE_DIR` is not in `--help` and **`hyperframes doctor` does not check it**. Run `python3 helpers/check_render_env.py <project>/composition` **before every render** — it fails early on this and on a Node older than 22. It cannot be an npm `prerender` hook: `package.json` is written by `npx hyperframes init`, not by this Skill.
+  `HYPERFRAMES_FONT_CACHE_DIR` is not in `--help` and **`hyperframes doctor` does not check it**. Run `python3 helpers/_internal/check_render_env.py <project>/composition` **before every render** — it fails early on this and on a Node older than 22. It cannot be an npm `prerender` hook: `package.json` is written by `npx hyperframes init`, not by this Skill.
 - Never run transcription as part of install verification unless the user explicitly asks — SeedASR and Scribe both bill per call.
 - If the user is on Linux without a package manager Claude recognizes, print the manual `ffmpeg` install URL and wait rather than guessing.
 

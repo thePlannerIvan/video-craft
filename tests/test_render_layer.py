@@ -28,11 +28,13 @@ from pathlib import Path
 
 HELPERS = Path(__file__).parents[1] / "helpers"
 sys.path.insert(0, str(HELPERS))
+sys.path.insert(0, str(HELPERS / "_internal"))
+sys.path.insert(0, str(HELPERS / "_internal"))
 sys.path.insert(0, str(Path(__file__).parents[1] / "visual" / "scripts"))
 
 
 def _load(name: str):
-    spec = importlib.util.spec_from_file_location(f"craft_{name}", HELPERS / f"{name}.py")
+    spec = importlib.util.spec_from_file_location(f"craft_{name}", (HELPERS / f"{name}.py" if (HELPERS / f"{name}.py").is_file() else HELPERS / "_internal" / f"{name}.py"))
     mod = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
@@ -59,7 +61,7 @@ class RenderLayerContractTests(unittest.TestCase):
         self.assertEqual(set(render_layer.FORMATS), {"mov", "webm"})
         (self.dir / "index.html").write_text("<html></html>", encoding="utf-8")
         proc = subprocess.run(
-            [sys.executable, str(HELPERS / "render_layer.py"), str(self.dir),
+            [sys.executable, str(HELPERS / "_internal" / "render_layer.py"), str(self.dir),
              "-o", str(self.dir / "out"), "--formats", "mp4"],
             capture_output=True, text=True)
         self.assertNotEqual(proc.returncode, 0)

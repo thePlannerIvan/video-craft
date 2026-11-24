@@ -25,6 +25,8 @@ from pathlib import Path
 HELPERS = Path(__file__).parents[1] / "helpers"
 TEMPLATE = Path(__file__).parents[1] / "visual" / "assets" / "review-page-template.html"
 sys.path.insert(0, str(HELPERS))
+sys.path.insert(0, str(HELPERS / "_internal"))
+sys.path.insert(0, str(HELPERS / "_internal"))
 
 import review_inbox          # noqa: E402
 import review_surface        # noqa: E402
@@ -362,6 +364,177 @@ class ReviewBrowserTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertTrue(any(path in e[2] and e[0] == "←" and e[1] == 200 for e in self.exchanges),
                                 f"{path} 没有被成功取到：{self.exchanges}")
+
+    def test_zero_engineering_jargon_in_review_ui(self):
+        from playwright.sync_api import sync_playwright
+
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch()
+            try:
+                page = browser.new_page(viewport={"width": 1440, "height": 900})
+                page.route("**/localhost:5176/**", lambda route: route.abort())
+                page.route("**/cdn.jsdelivr.net/**", lambda route: route.abort())
+                page.goto(self.host["url"], wait_until="domcontentloaded")
+                page.wait_for_selector(".step", timeout=15000)
+                visible = page.inner_text("body")
+                forbidden = [
+                    "VIDEO CRAFT", "复合双通道", "审阅宿主", "serve-review.mjs",
+                    "feedback/overall.jsonl", "choreography.json", "HyperFrames",
+                    "工程态", "反馈给 Agent", "整 beat", "本 beat",
+                ]
+                for term in forbidden:
+                    self.assertNotIn(term, visible, f"画面审阅页可见文本出现禁用工程术语/说明：{term}")
+            finally:
+                browser.close()
+
+    def test_responsive_16_9_stage_across_wide_half_and_narrow_viewports(self):
+        from playwright.sync_api import sync_playwright
+
+        def overlap_2d(a, b):
+            return (
+                a["x"] < b["x"] + b["width"] - 1
+                and b["x"] < a["x"] + a["width"] - 1
+                and a["y"] < b["y"] + b["height"] - 1
+                and b["y"] < a["y"] + a["height"] - 1
+            )
+
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch()
+            try:
+                page = browser.new_page()
+                page.route("**/localhost:5176/**", lambda route: route.abort())
+                page.route("**/cdn.jsdelivr.net/**", lambda route: route.abort())
+                page.goto(self.host["url"], wait_until="domcontentloaded")
+                page.wait_for_selector(".step", timeout=15000)
+
+                for vw, vh in ((1440, 900), (860, 800), (460, 800)):
+                    with self.subTest(viewport=(vw, vh)):
+                        page.set_viewport_size({"width": vw, "height": vh})
+                        page.wait_for_timeout(80)
+                        metrics = page.evaluate("""() => {
+                            const rect = sel => {
+                                const el = document.querySelector(sel);
+                                if (!el) return null;
+                                const r = el.getBoundingClientRect();
+                                return { x: r.x, y: r.y, width: r.width, height: r.height };
+                            };
+                            return {
+                                scrollW: document.documentElement.scrollWidth,
+                                innerW: window.innerWidth,
+                                scrollH: document.documentElement.scrollHeight,
+                                innerH: window.innerHeight,
+                                player: rect(".player-box"),
+                                toolbar: rect(".canvas-toolbar"),
+                                transport: rect("#global-transport-bar"),
+                                feedback: rect(".feedback"),
+                            };
+                        }""")
+                        self.assertLessEqual(
+                            metrics["scrollW"], metrics["innerW"] + 1,
+                            f"水平溢出 ({vw}x{vh}): {metrics['scrollW']} > {metrics['innerW']}",
+                        )
+                        p = metrics["player"]
+                        self.assertIsNotNone(p)
+                        self.assertGreater(p["width"], 200)
+                        self.assertLess(abs(p["width"] / p["height"] - (16.0 / 9.0)), 0.05, p)
+                        self.assertGreaterEqual(p["x"], -1.0, p)
+                        self.assertLessEqual(p["x"] + p["width"], vw + 1.0, p)
+                        for other_name in ("toolbar", "transport", "feedback"):
+                            other = metrics[other_name]
+                            self.assertIsNotNone(other)
+                            self.assertFalse(
+                                overlap_2d(p, other),
+                                f"{vw}x{vh} 下舞台与 {other_name} 重叠: player={p} other={other}",
+                            )
+                        if vw == 1440:
+                            handle = page.locator("#main-split-handle")
+                            self.assertTrue(handle.is_visible())
+                            hbox = handle.bounding_box()
+                            before_w = page.evaluate("() => document.querySelector('.side-right').getBoundingClientRect().width")
+                            page.mouse.move(hbox["x"] + hbox["width"] / 2, hbox["y"] + hbox["height"] / 2)
+                            page.mouse.down()
+                            page.mouse.move(hbox["x"] - 80, hbox["y"] + hbox["height"] / 2, steps=5)
+                            page.mouse.up()
+                            after_w = page.evaluate("() => document.querySelector('.side-right').getBoundingClientRect().width")
+                            self.assertGreater(after_w, before_w + 40, f"Draggable splitter failed: {before_w} -> {after_w}")
+                        if vw == 460:
+                            self.assertGreater(metrics["scrollH"], metrics["innerH"], "窄屏下应可纵向滚动")
+                            page.locator("#fb-save").scroll_into_view_if_needed()
+                            self.assertTrue(page.locator("#fb-save").is_visible())
+            finally:
+                browser.close()
+
+    def test_audio_preset_and_dry_voice_ab_toggle(self):
+        import struct
+        import wave
+        import build_review
+        from playwright.sync_api import sync_playwright
+
+        with tempfile.TemporaryDirectory() as td:
+            proj = Path(td)
+            (proj / "edit").mkdir()
+            (proj / "timeline").mkdir()
+            (proj / "timeline" / "timeline.json").write_text(json.dumps(TIMELINE, ensure_ascii=False), encoding="utf-8")
+            (proj / "recompose.json").write_text(json.dumps({
+                "canvas": {"w": 1920, "h": 1080, "fps": 30},
+                "personSlot": {"x": 0, "y": 0, "w": 500, "h": 1080},
+                "captionSafe": {"x": 0, "y": 880, "w": 1920, "h": 200},
+            }), encoding="utf-8")
+            for wav_name in ("audio_mix.wav", "voice_dry.wav"):
+                with wave.open(str(proj / "edit" / wav_name), "wb") as wf:
+                    wf.setnchannels(1)
+                    wf.setsampwidth(2)
+                    wf.setframerate(16000)
+                    wf.writeframes(struct.pack("<" + "h" * 1600, *([0] * 1600)))
+
+            data = build_review.build_review_data(proj, proj / "edit")
+            self.assertEqual(data["media"]["audioTracks"]["mix"], "edit/audio_mix.wav")
+            self.assertEqual(data["media"]["audioTracks"]["dry"], "edit/voice_dry.wav")
+            self.assertEqual(data["media"]["audioTracks"]["preset"], "podcast-warm")
+            build_review.write_review_files(proj, data)
+            host = review_surface.open_review(proj, open_browser=False)
+            self.addCleanup(review_host.stop_host, host)
+
+            with sync_playwright() as pw:
+                browser = pw.chromium.launch()
+                try:
+                    page = browser.new_page(viewport={"width": 1280, "height": 800})
+                    page.route("**/localhost:5176/**", lambda route: route.abort())
+                    page.route("**/cdn.jsdelivr.net/**", lambda route: route.abort())
+                    page.goto(host["url"], wait_until="domcontentloaded")
+                    page.wait_for_function("() => !document.getElementById('fb-save').disabled", timeout=15000)
+
+                    btn = page.locator("#btn-audio-ab")
+                    self.assertEqual(btn.inner_text().strip(), "播客音色")
+                    self.assertEqual(page.evaluate("() => document.body.dataset.audioMode"), "mix")
+                    page.wait_for_function(
+                        "() => !!document.getElementById('review-audio-alt').getAttribute('src')",
+                        timeout=10000,
+                    )
+                    mix_src = page.evaluate("() => document.getElementById('review-audio-alt').getAttribute('src')")
+
+                    btn.click()
+                    page.wait_for_function(
+                        """(prev) => document.body.dataset.audioMode === 'dry'
+                            && !!document.getElementById('review-audio-alt').getAttribute('src')
+                            && document.getElementById('review-audio-alt').getAttribute('src') !== prev""",
+                        arg=mix_src,
+                        timeout=10000,
+                    )
+                    dry_src = page.evaluate("() => document.getElementById('review-audio-alt').getAttribute('src')")
+                    self.assertNotEqual(dry_src, mix_src)
+                    self.assertEqual(btn.inner_text().strip(), "纯干声")
+
+                    btn.click()
+                    page.wait_for_function(
+                        """(exp) => document.body.dataset.audioMode === 'mix'
+                            && document.getElementById('review-audio-alt').getAttribute('src') === exp""",
+                        arg=mix_src,
+                        timeout=10000,
+                    )
+                    self.assertEqual(btn.inner_text().strip(), "播客音色")
+                finally:
+                    browser.close()
 
 
 if __name__ == "__main__":

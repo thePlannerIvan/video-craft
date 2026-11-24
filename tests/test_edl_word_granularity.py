@@ -28,6 +28,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 HELPERS = ROOT / "helpers"
 sys.path.insert(0, str(HELPERS))
+sys.path.insert(0, str(HELPERS / "_internal"))
+sys.path.insert(0, str(HELPERS / "_internal"))
 
 SENTENCE = "今天我们讲两个方法。"
 
@@ -54,7 +56,7 @@ def write_fixture(edit: Path, refined: bool = False):
     (edit / "asr.json").write_text(json.dumps({"tokens": asr}, ensure_ascii=False),
                                    encoding="utf-8")
     if refined:
-        run([sys.executable, str(HELPERS / "refine_transcript.py"), str(edit),
+        run([sys.executable, str(HELPERS / "_internal" / "refine_transcript.py"), str(edit),
              "--source", "a", "--asr", str(edit / "asr.json"), "--force"])
 
 
@@ -69,7 +71,7 @@ def run(cmd, env=None):
 
 
 def build_page(edit: Path):
-    result = run([sys.executable, str(HELPERS / "edl_preview_build.py"), str(edit)])
+    result = run([sys.executable, str(HELPERS / "_internal" / "edl_preview_build.py"), str(edit)])
     return result, (edit / "edl_preview.html").read_text(encoding="utf-8")
 
 
@@ -101,7 +103,7 @@ class RefineTranscriptTest(unittest.TestCase):
             write_fixture(edit)
             (edit / "asr.json").write_text(json.dumps({"tokens": []}), encoding="utf-8")
             result = subprocess.run(
-                [sys.executable, str(HELPERS / "refine_transcript.py"), str(edit),
+                [sys.executable, str(HELPERS / "_internal" / "refine_transcript.py"), str(edit),
                  "--source", "a", "--asr", str(edit / "asr.json"), "--force"],
                 capture_output=True, text=True)
             self.assertNotEqual(result.returncode, 0)
@@ -119,7 +121,7 @@ class RefineTranscriptTest(unittest.TestCase):
                 {"text": "不", "start": 1.4, "end": 1.6},
                 {"text": "同", "start": 1.6, "end": 1.8},
             ]}, ensure_ascii=False), encoding="utf-8")
-            run([sys.executable, str(HELPERS / "refine_transcript.py"), str(edit),
+            run([sys.executable, str(HELPERS / "_internal" / "refine_transcript.py"), str(edit),
                  "--source", "a", "--asr", str(edit / "asr.json"), "--force"])
             doc = json.loads((edit / "transcripts" / "a.json").read_text(encoding="utf-8"))
             words = [w for w in doc["words"] if w.get("type", "word") != "spacing"]
@@ -225,7 +227,7 @@ class ApplySelectionTest(unittest.TestCase):
                 "words": [{"src": "a", "start": round(target["start"] + 0.01, 3),
                            "end": round(target["end"] - 0.01, 3)}],
             }, ensure_ascii=False), encoding="utf-8")
-            run([sys.executable, str(HELPERS / "apply_selection.py"), str(edit)])
+            run([sys.executable, str(HELPERS / "_internal" / "apply_selection.py"), str(edit)])
             edl = json.loads((edit / "edl.json").read_text(encoding="utf-8"))
             removed = 3.0 - sum(r["end"] - r["start"] for r in edl["ranges"])
             self.assertAlmostEqual(removed, target["end"] - target["start"], places=2)
@@ -241,7 +243,7 @@ class ApplySelectionTest(unittest.TestCase):
             (edit / "selections.json").write_text(json.dumps({
                 "words": [{"src": "a", "start": target["start"], "end": target["end"]}],
             }, ensure_ascii=False), encoding="utf-8")
-            run([sys.executable, str(HELPERS / "apply_selection.py"), str(edit)])
+            run([sys.executable, str(HELPERS / "_internal" / "apply_selection.py"), str(edit)])
             edl = json.loads((edit / "edl.json").read_text(encoding="utf-8"))
             removed = 3.0 - sum(r["end"] - r["start"] for r in edl["ranges"])
             self.assertAlmostEqual(removed, target["end"] - target["start"], places=2)

@@ -1,8 +1,8 @@
-# 全局判准（两条片型共用）
+# 全局判准（全生产模式共用）
 
-> 第 1 步读全篇。若本机已挂载私有参考库（`python3 helpers/resolve_vault.py` 返回 `available: true`），优先读取其返回的 `author_spec_path`；未挂载时以本开源基准为准。准入、淘汰与谁批准在 [preferences.md](preferences.md)。
-> 风格规则在 [style-spec.md](style-spec.md)（或私有库 `styles/<style_id>/craft.md`）。**片型有两条**：`graphic` 造画面（recompose）、`montage` 选画面（[montage-route.md](montage-route.md)）；版式/画框（[frame-spec.md](frame-spec.md)）与片型正交。本文件不按片型分家，只对只适用某一类的条目写 `适用范围`，没写的就是两条都成立；原页拆解与重做见 [film.md](film.md)。
-> 上限：≤ 8 条、≤ 110 行，由 `helpers/spec_lint.py` 强制。
+> 第 1 步读全篇。若本机已挂载私有参考库（`python3 helpers/_internal/resolve_vault.py` 返回 `available: true`），优先读取其返回的 `author_spec_path`；未挂载时以本开源基准为准。准入、淘汰与谁批准在 [preferences.md](preferences.md)。
+> 风格规则在 [style-spec.md](style-spec.md)（或私有库 `styles/<style_id>/craft.md`）。生产模式分 `keyframe-svg`（关键帧/图形动画与实机演示，见 [visual-grammar.md](visual-grammar.md)）与 `footage-montage`（实拍与档案混剪，见 [montage-route.md](montage-route.md)）；版式/画框（[intake-and-frames.md](intake-and-frames.md)）与生产模式正交。本文件只对适用范围不同的条目标注具体模式。
+> 上限：≤ 8 条、≤ 110 行，由 `helpers/_internal/spec_lint.py` 强制。
 
 ## 写法
 
@@ -26,20 +26,20 @@
 - 做法：每个动效写明起止词；时间从词级时间戳派生，不用比例估算。
 - 证据：工程图演示片 beat-06、beat-08；实物测评片 huazi；概念拆解片 concept
 - 执行：judgment:逐条动效对照词级时间戳，看起止词是否显式写出、时间是否由词派生
-- 适用范围：graphic。montage 没有逐元素动效；镜头起点同样按词锚换算，见 montage-route.md。
+- 适用范围：`keyframe-svg`。`footage-montage` 没有逐元素动效；镜头起点同样按词锚换算，见 `montage-route.md`。
 
 ## G04 画面不出现口播整句
 
 - 做法：画面文字只保留节点名、概念词、数字、模型标签；不出现口播整句，不出现字幕式整行文字。
 - 证据：商业报告片 V1 ch03、V2 ch02；画面工作台 overall
-- 执行：check:helpers/check_screen_text.py
+- 执行：check:helpers/check_visual.py
 
 ## G05 每个运动有可识别路径与起终点
 
 - 做法：运动沿旋转中心、流程轴、曲线或推拉方向发生；每个动效能说出起点与终点，不做无来由的飞入。
 - 证据：概念拆解片 concept 三屏；画面工作台 overall
 - 执行：judgment:审阅时说出每个运动的起点与终点
-- 适用范围：graphic（运动是画出来的）；montage 的运动来自素材本身。
+- 适用范围：`keyframe-svg`（运动是画出来的）；`footage-montage` 的运动来自素材本身。
 
 ## G06 先定一屏的单一关系，再给动作
 
@@ -58,4 +58,4 @@
 - 做法：先判断原片这一页适不适合作为视频动画呈现。适合：按原构图搬（模型图、层级、排布不重画），只删页脚、页码与重复解释句。不适合：重排或重做，并在拆解表写明理由。拆解每片重做，不维护跨项目元素库。
 - 证据：商业报告片 V1 ch03、ch04、V2 ch01、V3 ch01（照搬原构图）；V1 ch02（原页过密时简化并抻开）
 - 执行：judgment:逐屏判断是否照搬原构图，重排的能说出理由
-- 适用范围：graphic（原页拆解重做）；montage 没有原页，对应判据是素材准入（media-sourcing.md）。
+- 适用范围：`keyframe-svg`（以原构图作造型参考）；`footage-montage` 对应判据是素材准入（`montage-route.md`）。

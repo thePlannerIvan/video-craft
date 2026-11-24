@@ -24,12 +24,14 @@ from pathlib import Path
 
 HELPERS = Path(__file__).parents[1] / "helpers"
 sys.path.insert(0, str(HELPERS))
+sys.path.insert(0, str(HELPERS / "_internal"))
+sys.path.insert(0, str(HELPERS / "_internal"))
 
 HAVE_FFMPEG = shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None
 
 
 def _load_render():
-    spec = importlib.util.spec_from_file_location("craft_render", HELPERS / "render.py")
+    spec = importlib.util.spec_from_file_location("craft_render", HELPERS / "_internal" / "render.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -108,7 +110,7 @@ class NarrationBedTests(unittest.TestCase):
     def render(self, edl_path: Path, out: Path) -> None:
         render = _load_render()
         subprocess.run(
-            [sys.executable, str(HELPERS / "render.py"), str(edl_path),
+            [sys.executable, str(HELPERS / "_internal" / "render.py"), str(edl_path),
              "-o", str(out), "--no-loudnorm"],
             check=True, capture_output=True,
             env={**__import__("os").environ, "PYTHONPATH": str(HELPERS)})

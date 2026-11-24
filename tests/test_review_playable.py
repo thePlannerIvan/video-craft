@@ -18,6 +18,8 @@ from pathlib import Path
 
 HELPERS = Path(__file__).parents[1] / "helpers"
 sys.path.insert(0, str(HELPERS))
+sys.path.insert(0, str(HELPERS / "_internal"))
+sys.path.insert(0, str(HELPERS / "_internal"))
 
 import check_review_playable as crp  # noqa: E402
 

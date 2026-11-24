@@ -43,6 +43,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent / "_internal"))
 
 CAPTIONS_NAME = "captions.json"
 WORDS_NAME = "caption_words.json"

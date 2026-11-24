@@ -10,6 +10,7 @@ from pathlib import Path
 SKILL = Path(__file__).resolve().parents[1]
 SCRIPTS = SKILL / 'visual/scripts'
 sys.path.insert(0, str(SKILL / "helpers"))
+sys.path.insert(0, str(SKILL / "helpers" / "_internal"))
 sys.path.insert(0, str(SCRIPTS))
 from snapshot_input import SnapshotError, resolve_snapshot, sha256, asset_records, invalidation
 import import_svg_page as pages
@@ -25,7 +26,7 @@ def load(path, name):
 
 
 generator = load(SCRIPTS / 'generate-composition.py', 'snapshot_generator')
-review = load(SKILL / 'helpers/build_review.py', 'snapshot_review')
+review = load(SKILL / 'helpers/_internal/build_review.py', 'snapshot_review')
 
 # workbench_store.py 住在隔壁 Skill 里，并且自己 `from canvas_frame import …`：
 # 按路径加载它，就必须把**它自己的** scripts/ 放上 sys.path，否则连 unittest 都收不到

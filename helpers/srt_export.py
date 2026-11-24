@@ -29,9 +29,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent / "_internal"))
 import _edl  # noqa: E402
-
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _words import CAPTION_MAX_CONTENT as MAX_CONTENT_CHARS  # noqa: E402
 from _words import content_len as _content_len  # noqa: E402
 from _words import normalize as _normalize_shared  # noqa: E402
@@ -45,7 +44,7 @@ LINES_NAME = "semantic_lines.txt"
 CAPTIONS_NAME = "captions.json"
 SRT_NAME = "subtitles.srt"
 
-# 剪映/PR 导入空隙（references/caption-modes.md 的硬规则，2026-10-16 才落地成代码）：
+# 剪映/PR 导入空隙（references/captions-and-audio.md 的硬规则，2026-10-16 才落地成代码）：
 # cue 首尾相接（前句 end == 后句 start）导入剪映会挤坏。导出时给每个 cue（最后一个除外）
 # 的 end 缩短 0.04s，保证空隙 ≥0.03s；显示时长不足 0.30s 的保留保底。
 # 这条规则此前**只有文档没有实现**，每次交付都得手写一份后处理脚本（实测一份 SRT 有
@@ -564,7 +563,7 @@ def apply_import_gaps(cues: list[dict]) -> int:
     `check_article_srt` 会逐条核对，就地改 end 会把那份契约弄假。
     换句话说：流水线产物忠实，交付副本可导入，两者各有各的判据。
 
-    规则（references/caption-modes.md「剪映/PR 导入空隙」）：
+    规则（references/captions-and-audio.md「字幕交付形态与剪映/PR 空隙规则」）：
       ① 每个 cue（最后一个除外）的 end 先减 `SRT_GAP_TRIM_S`；
       ② 仍与下一 cue 相距 < `SRT_MIN_GAP_S` 时，压到 `下一 cue.start - SRT_MIN_GAP_S`；
       ③ 显示时长不足 `SRT_MIN_CUE_S` 的保留保底，但不越过 ② 的上限。

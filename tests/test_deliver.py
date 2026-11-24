@@ -22,6 +22,8 @@ from pathlib import Path
 
 HELPERS = Path(__file__).parents[1] / "helpers"
 sys.path.insert(0, str(HELPERS))
+sys.path.insert(0, str(HELPERS / "_internal"))
+sys.path.insert(0, str(HELPERS / "_internal"))
 
 import deliver  # noqa: E402
 
@@ -347,6 +349,93 @@ class DeliverIntegration(unittest.TestCase):
                             before = deliver._frame_luma(video, .1, (1920, 200, 0, 880))
                             self.assertGreater(values[-1], before + .3)
                     self.assertGreater(values[1], values[0] + .3, values)
+
+    def test_mixed_motion_and_demo_footage_splices_hd_demo_and_keeps_person_separate(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td) / "demo_splice"
+            assets = tmp / "composition/assets"
+            rec_dir = tmp / "recordings"
+            (tmp / "composition/_render").mkdir(parents=True, exist_ok=True)
+            assets.mkdir(parents=True, exist_ok=True)
+            rec_dir.mkdir(parents=True, exist_ok=True)
+
+            # 3s motion base: dark 0x050607 canvas with cream motion band in upper-right only (y=100..420)
+            subprocess.run([
+                "ffmpeg", "-y", "-v", "error", "-f", "lavfi",
+                "-i", "color=c=0x050607:s=1920x1080:r=30:d=3",
+                "-vf", "drawbox=x=700:y=100:w=900:h=320:color=0xF2EBDD@1:t=fill",
+                "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                str(tmp / "composition/_render/visuals.mp4"),
+            ], check=True)
+            # 2s HD demo recording stored outside composition/assets/ (bright sky blue)
+            subprocess.run([
+                "ffmpeg", "-y", "-v", "error", "-f", "lavfi",
+                "-i", "color=c=0x7DD3FC:s=1920x1080:r=30:d=2",
+                "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                str(rec_dir / "hd_demo.mp4"),
+            ], check=True)
+            subprocess.run([
+                "ffmpeg", "-y", "-v", "error", "-f", "lavfi",
+                "-i", "testsrc2=s=720x1280:r=30:d=3", "-c:v", "libx264",
+                "-pix_fmt", "yuv420p", str(assets / "person.mp4"),
+            ], check=True)
+            subprocess.run([
+                "ffmpeg", "-y", "-v", "error", "-f", "lavfi",
+                "-i", "sine=frequency=440:duration=3", "-c:a", "aac",
+                str(assets / "audio.m4a"),
+            ], check=True)
+            (tmp / "recompose.json").write_text(json.dumps({
+                "canvas": {"w": 1920, "h": 1080, "fps": 30},
+                "personSlot": {"x": 0, "y": 0, "w": 500, "h": 1080},
+                "captionSafe": {"x": 0, "y": 880, "w": 1920, "h": 200},
+            }), encoding="utf-8")
+            (tmp / "visual-plan.json").write_text(json.dumps({
+                "version": 2,
+                "segments": [
+                    {"id": "seg-01", "beatId": "b1", "tier": "talk-only", "startMs": 0, "endMs": 900},
+                    {"id": "seg-02", "beatId": "b2", "tier": "logic-diagram", "startMs": 900, "endMs": 1500,
+                     "hero": "逻辑圈", "anchors": ["洞察"]},
+                    {"id": "seg-03", "beatId": "b3", "tier": "demo-footage", "startMs": 1500, "endMs": 2700,
+                     "demo": {"source": "recordings/hd_demo.mp4", "inSec": 0.2, "outSec": 1.4, "speed": 1.0}},
+                    {"id": "seg-04", "beatId": "b4", "tier": "talk-only", "startMs": 2700, "endMs": 3000},
+                ],
+            }), encoding="utf-8")
+            from _edl import edl_digest
+            edit = tmp / "edit"
+            edit.mkdir(exist_ok=True)
+            edl = edit / "edl.json"
+            edl.write_text(json.dumps({"ranges": [{"start": 0, "end": 3}]}))
+            (edit / "segment_durations.json").write_text(json.dumps({
+                "final": {"durations": [3.0], "total_s": 3.0, "edl_sha256": edl_digest(edl)},
+            }))
+            deliver._record_visual_source(tmp, tmp / "composition/_render/visuals.mp4", "manual-confirmation")
+
+            with redirect_stdout(io.StringIO()):
+                code = deliver.deliver(tmp, None, None, None, None, tmp / "成品", False, True, True)
+            report = json.loads((tmp / "成品" / f"{tmp.name}_核验报告.json").read_text(encoding="utf-8"))
+            self.assertEqual(code, 0, report)
+            self.assertTrue(report["ok"], report)
+            self.assertEqual(report["demo_splice"]["count"], 1)
+            self.assertTrue(report["demo_splice"]["screen_text_protection"])
+
+            visual_track = tmp / "成品" / f"{tmp.name}_画面成片.mp4"
+            person_track = tmp / "成品" / f"{tmp.name}_人物轨.mp4"
+            final_video = tmp / "成品" / f"{tmp.name}_成片.mp4"
+            self.assertTrue(visual_track.is_file())
+            self.assertTrue(person_track.is_file())
+            self.assertTrue(final_video.is_file())
+
+            vt_v, vt_a = deliver._streams(visual_track)
+            self.assertEqual((vt_v.get("width"), vt_v.get("height")), (1920, 1080))
+            self.assertEqual(vt_a, {})
+            self.assertAlmostEqual(deliver._duration(visual_track), 3.0, delta=0.15)
+            # Lower stage band (y=600..800, x=1000..1200) is dark before demo, bright sky-blue during [1.5..2.7s]
+            before_luma = deliver._frame_luma(visual_track, 0.4, (200, 160, 1000, 620))
+            demo_luma = deliver._frame_luma(visual_track, 2.1, (200, 160, 1000, 620))
+            after_luma = deliver._frame_luma(visual_track, 2.85, (200, 160, 1000, 620))
+            self.assertLess(before_luma, 20.0)
+            self.assertGreater(demo_luma, 100.0)
+            self.assertLess(after_luma, 20.0)
 
 
 if __name__ == "__main__":

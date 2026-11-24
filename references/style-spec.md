@@ -1,9 +1,9 @@
 # 风格规范（动效）
 
-> 第 2 步定风格，第 7 步读对应那一节。若本机已挂载私有参考库（`python3 helpers/resolve_vault.py --style <style_id>` 返回 `available: true`），优先读取其返回的 `craft_rules_path` 与 `patterns/`；未挂载时以本开源基准为准。
+> 第 2 步定风格，第 7 步读对应那一节。若本机已挂载私有参考库（`python3 helpers/_internal/resolve_vault.py --style <style_id>` 返回 `available: true`），优先读取其返回的 `craft_rules_path` 与 `patterns/`；未挂载时以本开源基准为准。
 > **本文件只管怎么动**：强调手段、运动方式、禁止项。静态画面语法归上游画面工作台或私有库 `styles/<style_id>/page.md`。
-> 跨风格规则见 [author-spec.md](author-spec.md)。**本文件只作用于 graphic 片型**；`montage` 片型（如 `lifestyle-cult` 街头文化与商业档案蒙太奇）不经过静态 SVG，动效与快切判据见 [montage-route.md](montage-route.md) 及私有库 `styles/lifestyle-cult/craft.md`。版式/画框（[frame-spec.md](frame-spec.md)）与片型正交。
-> 上限：每种风格 ≤ 5 条，由 `helpers/spec_lint.py` 强制。元素级的特殊处理不进本文件（见文末）。
+> 跨风格规则见 [author-spec.md](author-spec.md)。**本文件适用于 `keyframe-svg` 生产模式**；`footage-montage`（如 `lifestyle-cult` 街头文化与商业档案蒙太奇）不经过静态 SVG，动效与快切判据见 [montage-route.md](montage-route.md) 及私有库 `styles/lifestyle-cult/craft.md`。版式/画框（[intake-and-frames.md](intake-and-frames.md)）与生产模式正交。
+> 上限：每种风格 ≤ 5 条，由 `helpers/_internal/spec_lint.py` 强制。元素级的特殊处理不进本文件（见文末）。
 > 与外部通用动效原则（`hyperframes-creative` 等）冲突时，本节优先：那是通用建议，这里记的是作者判准。
 
 ## 风格清单
@@ -15,7 +15,7 @@
 | `collage` | 拼贴 | 纸色与炭墨、终端命令条、拍立得/印章/胶带/红圈 | 档案拼贴片 |
 | `concept-film` | 概念电影 | 一个镜头一个关系、抽象转空间动作、空间连续、真实与抽象并用 | 算法与空间概念片 |
 
-> 证据说明：四种 graphic 风格均来自实际成片或参考片；当挂载私有库 `~/.config/planners/video-vault` 时，可通过 `resolve_vault.py` 加载每种风格的完整演进记录、三联帧与动效代码片段（含第五种 `montage` 风格 `lifestyle-cult`）。
+> 证据说明：四种视觉风格均来自实际成片或参考片；当挂载私有库 `~/.config/planners/video-vault` 时，可通过 `resolve_vault.py` 加载每种风格的完整演进记录、三联帧与动效代码片段（含实拍混剪风格 `lifestyle-cult`）。
 
 ## line-art · 线稿 / 工程图
 

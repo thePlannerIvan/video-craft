@@ -3,7 +3,7 @@
 
 真正的代码在 `_legacy_page/generate-composition.py`。这里把它当作**模块**加载
 （所以 `verify()` 等函数仍可被 import 与单测调用），同时保留 CLI 入口；
-新项目不要再用它 —— 画面走 `helpers/film.py`，见 `references/legacy-page-route.md`。
+新项目不要再用它 —— 画面走 `helpers/film.py` 与 `recompose`，见 `references/visual-grammar.md`。
 """
 import importlib.util
 import sys
@@ -29,6 +29,6 @@ globals().update({k: v for k, v in vars(_MOD).items() if not k.startswith("__")}
 if __name__ == "__main__":
     sys.stderr.write(
         "generate-composition.py 属于已归档的 page 十步路线，不能再用。\n"
-        "  画面：helpers/film.py 拆原页 + 手写 composition（references/film.md）。\n"
-        "  复活旧项目：references/legacy-page-route.md。\n")
+        "  画面：helpers/film.py 拆原页 + 手写 composition（references/visual-grammar.md）。\n"
+        "  现行路线见 references/stages.md。\n")
     raise SystemExit(2)

@@ -7,6 +7,8 @@ beat / 处置不合法，任何一种都要挡住 composition。
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -14,6 +16,8 @@ from pathlib import Path
 
 HELPERS = Path(__file__).parents[1] / "helpers"
 sys.path.insert(0, str(HELPERS))
+sys.path.insert(0, str(HELPERS / "_internal"))
+sys.path.insert(0, str(HELPERS / "_internal"))
 
 import film  # noqa: E402
 
@@ -114,6 +118,85 @@ class Gate(unittest.TestCase):
                 "用四个词逼问品牌定位。")
             md.write_text(text, encoding="utf-8")
             self.assertEqual(film.cmd_verify(tmp, as_json=True), 0)
+
+
+class FourTierVisualPlan(unittest.TestCase):
+    def test_v2_four_tier_plan_passes_without_legacy_pages(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            rec_dir = tmp / "recordings"
+            rec_dir.mkdir(parents=True)
+            demo_src = rec_dir / "screen.mp4"
+            demo_src.write_bytes(b"hd-demo")
+            (tmp / "visual-plan.json").write_text(json.dumps({
+                "version": 2,
+                "reference": {"styleNote": "配色参考", "keyframeSvgs": ["ref/slide_01.svg"]},
+                "segments": [
+                    {"id": "seg-01", "beatId": "b1", "tier": "talk-only", "startMs": 0, "endMs": 2000},
+                    {"id": "seg-02", "beatId": "b2", "tier": "logic-diagram", "startMs": 2000, "endMs": 6000,
+                     "hero": "三圆交集", "anchors": ["非遗", "传习", "商业"]},
+                    {"id": "seg-03", "beatId": "b3", "tier": "theory-board", "startMs": 6000, "endMs": 10000,
+                     "hero": "四步法则", "anchors": ["看人", "演逻辑", "拆模型", "看实操"], "focusMode": "spotlight"},
+                    {"id": "seg-04", "beatId": "b4", "tier": "demo-footage", "startMs": 10000, "endMs": 14000,
+                     "demo": {"source": "recordings/screen.mp4", "inSec": 1.0, "outSec": 5.0, "speed": 1.0}},
+                ],
+            }, ensure_ascii=False), encoding="utf-8")
+            self.assertFalse((tmp / "pages").exists())
+            self.assertEqual(film.cmd_verify(tmp, as_json=True), 0)
+
+    def test_v2_rejects_demo_source_inside_composition_assets(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            assets = tmp / "composition" / "assets"
+            assets.mkdir(parents=True)
+            bad = assets / "big_recording.mp4"
+            bad.write_bytes(b"hd")
+            (tmp / "visual-plan.json").write_text(json.dumps({
+                "version": 2,
+                "segments": [
+                    {"id": "seg-demo", "beatId": "b1", "tier": "demo-footage", "startMs": 0, "endMs": 3000,
+                     "demo": {"source": "composition/assets/big_recording.mp4", "inSec": 0.0, "outSec": 3.0}},
+                ],
+            }), encoding="utf-8")
+            self.assertEqual(film.cmd_verify(tmp, as_json=True), 1)
+
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "需要 ffmpeg/ffprobe")
+    def test_v2_proxy_generates_lightweight_review_proxy_without_touching_composition(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            (tmp / "recordings").mkdir(parents=True)
+            comp_assets = tmp / "composition" / "assets"
+            comp_assets.mkdir(parents=True)
+            hd_src = tmp / "recordings" / "hd_demo.mp4"
+            subprocess.run([
+                "ffmpeg", "-y", "-v", "error",
+                "-f", "lavfi", "-i", "color=c=0x1E293B:s=1280x720:r=30:d=2",
+                "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
+                "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac",
+                str(hd_src),
+            ], check=True)
+            (tmp / "visual-plan.json").write_text(json.dumps({
+                "version": 2,
+                "segments": [
+                    {"id": "seg-demo", "beatId": "b1", "tier": "demo-footage", "startMs": 0, "endMs": 1300,
+                     "demo": {"source": "recordings/hd_demo.mp4", "inSec": 0.2, "outSec": 1.5}},
+                ],
+            }), encoding="utf-8")
+            self.assertEqual(film.cmd_proxy(tmp, max_width=640, crf=30, as_json=True), 0)
+            plan = json.loads((tmp / "visual-plan.json").read_text(encoding="utf-8"))
+            proxy_rel = plan["segments"][0]["demo"]["proxy"]
+            self.assertEqual(proxy_rel, "review/demo_proxies/seg-demo.mp4")
+            proxy_path = tmp / proxy_rel
+            self.assertTrue(proxy_path.is_file())
+            self.assertEqual(list(comp_assets.iterdir()), [])
+            info = json.loads(subprocess.check_output([
+                "ffprobe", "-v", "error", "-print_format", "json", "-show_streams", str(proxy_path),
+            ], text=True))
+            v_streams = [s for s in info["streams"] if s["codec_type"] == "video"]
+            a_streams = [s for s in info["streams"] if s["codec_type"] == "audio"]
+            self.assertEqual(len(v_streams), 1)
+            self.assertLessEqual(v_streams[0]["width"], 640)
+            self.assertEqual(len(a_streams), 0)
 
 
 if __name__ == "__main__":

@@ -26,10 +26,12 @@ from pathlib import Path
 
 HELPERS = Path(__file__).parents[1] / "helpers"
 sys.path.insert(0, str(HELPERS))
+sys.path.insert(0, str(HELPERS / "_internal"))
+sys.path.insert(0, str(HELPERS / "_internal"))
 
 
 def load(name: str):
-    spec = importlib.util.spec_from_file_location(f"video_use_{name}", HELPERS / f"{name}.py")
+    spec = importlib.util.spec_from_file_location(f"video_use_{name}", (HELPERS / f"{name}.py" if (HELPERS / f"{name}.py").is_file() else HELPERS / "_internal" / f"{name}.py"))
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     module.__dict__.setdefault("__name__", spec.name)

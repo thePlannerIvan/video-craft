@@ -10,7 +10,7 @@ from unittest.mock import patch
 from pathlib import Path
 
 
-HELPER = Path(__file__).parents[1] / 'helpers' / 'import_srt_timeline.py'
+HELPER = Path(__file__).parents[1] / 'helpers' / '_internal' / 'import_srt_timeline.py'
 SPEC = importlib.util.spec_from_file_location('import_srt_timeline_under_test', HELPER)
 MODULE = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None

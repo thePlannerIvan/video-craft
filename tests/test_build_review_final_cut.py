@@ -24,7 +24,7 @@ from pathlib import Path
 
 SKILL = Path(__file__).resolve().parents[1]
 HELPERS = SKILL / "helpers"
-BUILD_REVIEW = HELPERS / "build_review.py"
+BUILD_REVIEW = HELPERS / "_internal" / "build_review.py"
 FFMPEG = shutil.which("ffmpeg") is not None
 
 

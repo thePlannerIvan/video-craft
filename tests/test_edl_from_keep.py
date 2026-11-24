@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
-HELPER = ROOT / "helpers" / "edl_from_keep.py"
+HELPER = ROOT / "helpers" / "_internal" / "edl_from_keep.py"
 FFMPEG = shutil.which("ffmpeg") is not None
 
 

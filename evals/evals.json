@@ -2,16 +2,16 @@
   {
     "id": "video-story-knowledge-handoff",
     "route": "recompose",
-    "prompt": "这是录好的音频、句子级 SRT、最终口播和 video-idea-system 的 visual-plan.json。内容契约只写了画面必须呈现的信息，请完成动画视频。",
+    "prompt": "这是录好的音频、句子级 SRT、最终口播和上游交接包（video-manager 上下文包或旧项目的 visual-plan.json）。内容契约只写了画面必须呈现的信息，请完成动画视频。",
     "must_do": [
-      "核对内容采用版和已批准参考页；缺页面决定时回 PPT Hell，不代替上游重新设计静态页",
+      "核对内容采用版和已批准参考页；缺页面决定时回 PPT Hell 或上游制片总控，不代替上游重新设计静态页",
       "外部 SRT 先对齐 Speech Beat，人工处理 low/unmatched，再用现有音频 --media 登记 srt-import 来源",
       "film 拆原页并映射 Beat，模型按已定内容设计动作、强调与时间绑定",
       "每个视觉 Step 保留单一 sourceBlueprintId，来源边界不跨 Beat",
       "review 构建工程态审阅并检查运行时画面/声音，不先渲整片"
     ],
     "must_not_do": [
-      "向 video-idea-system 索要构图、State、动画方式或时间码",
+      "向下游反推或向上游脚本工具索要构图、State、动画方式或时间码",
       "把 must_show 直接改成逐句字幕卡",
       "静默接受低置信 Beat 对齐",
       "把多个上游蓝图合并成跨 Beat 的总模型",

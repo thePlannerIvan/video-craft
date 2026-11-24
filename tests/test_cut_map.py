@@ -18,6 +18,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "helpers"))
+sys.path.insert(0, str(ROOT / "helpers" / "_internal"))
 
 import _cutmap  # noqa: E402
 
@@ -231,7 +232,7 @@ class GateIntegrationTests(unittest.TestCase):
 
     def _verify(self) -> subprocess.CompletedProcess:
         return subprocess.run(
-            [sys.executable, str(ROOT / "helpers/verify_delivery.py"),
+            [sys.executable, str(ROOT / "helpers/_internal/verify_delivery.py"),
              str(self.project / "edit"), "--video", str(self.film)],
             capture_output=True, text=True)
 

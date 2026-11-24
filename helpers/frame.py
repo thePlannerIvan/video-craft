@@ -50,7 +50,8 @@ from pathlib import Path
 
 from PIL import Image, ImageChops, ImageDraw, ImageFont
 
-from _geometry import fit_in_band
+sys.path.insert(0, str(Path(__file__).resolve().parent / "_internal"))
+from _geometry import fit_in_band, resolve_project_frame
 
 # 字体回退顺序：只用系统字体，且必须真的取到；退回 PIL 默认字体是静默降级。
 FONT_CANDIDATES = (
@@ -711,9 +712,28 @@ def _cmd_preview(args) -> int:
     return 0
 
 
+def _cmd_resolve(args) -> int:
+    token_doc = None
+    if args.tokens:
+        tok_path = Path(args.tokens).expanduser()
+        if not tok_path.is_file():
+            raise FrameError(f"读不到 token 文件 {tok_path}")
+        try:
+            loaded = json.loads(tok_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise FrameError(f"token 解析失败 {tok_path}：{exc}") from exc
+        if not isinstance(loaded, dict):
+            raise FrameError(f"token 顶层必须是对象：{tok_path}")
+        token_doc = loaded
+    proj = Path(args.project).expanduser().resolve() if args.project else None
+    geo = resolve_project_frame(proj, frame_tokens=token_doc)
+    print(json.dumps(geo, ensure_ascii=False, indent=2))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="frame.py", description="参考页 → token → 画框三件套 + 真实素材预览")
+        prog="frame.py", description="参考页 → token → 画框三件套 + 真实素材预览 + 几何真源解析")
     sub = parser.add_subparsers(dest="command", required=True)
     build = sub.add_parser("build", help="写 base.png / overlay.png / spec.md")
     build.add_argument("project", help="<project> 目录")
@@ -727,6 +747,11 @@ def main(argv: list[str] | None = None) -> int:
     preview.add_argument("--tall", required=True, help="4:3 素材帧（图片）")
     preview.add_argument("--out", help="默认 <project>/material/frame/preview.jpg")
     preview.set_defaults(func=_cmd_preview)
+    resolve = sub.add_parser("resolve", help="按单一真源解析画布、人物孔位与字幕安全区")
+    resolve.add_argument("project", nargs="?", default=None, help="<project> 目录（可选）")
+    resolve.add_argument("--tokens", default=None, help="显式画框 token / frame.json")
+    resolve.add_argument("--json", action="store_true", help="输出 JSON（默认即 JSON）")
+    resolve.set_defaults(func=_cmd_resolve)
 
     args = parser.parse_args(argv)
     try:

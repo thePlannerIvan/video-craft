@@ -12,16 +12,22 @@ from __future__ import annotations
 
 import ast
 import importlib.util
+import json
+import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 HELPERS = Path(__file__).parents[1] / "helpers"
-sys.path.insert(0, str(HELPERS))   # frame.py 顶层 `from _geometry import …`
+sys.path.insert(0, str(HELPERS))
+sys.path.insert(0, str(HELPERS / "_internal"))
+sys.path.insert(0, str(HELPERS / "_internal"))   # frame.py 顶层 `from _geometry import …`
 
 
 def _load(name: str):
-    spec = importlib.util.spec_from_file_location(f"craft_{name}", HELPERS / f"{name}.py")
+    spec = importlib.util.spec_from_file_location(f"craft_{name}", (HELPERS / f"{name}.py" if (HELPERS / f"{name}.py").is_file() else HELPERS / "_internal" / f"{name}.py"))
     mod = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
@@ -30,6 +36,9 @@ def _load(name: str):
 
 geometry = _load("_geometry")
 frame = _load("frame")
+deliver = _load("deliver")
+recompose_plan = _load("recompose_plan")
+build_review = _load("build_review")
 
 TOKEN = {"canvas": {"width": 1080, "height": 1920, "fps": 30},
          "band": {"top": 320, "bottom": 1440}}
@@ -77,6 +86,74 @@ class SharedWithRenderTests(unittest.TestCase):
             self.assertEqual((fw, fh), geometry.fit_in_band(sw, sh, 1080, 1120))
             self.assertEqual(x, (1080 - fw) // 2)
             self.assertEqual(y, 320 + (1120 - fh) // 2)
+
+
+class FrameSingleSourceOfTruthTests(unittest.TestCase):
+    def test_circle_stage_and_intersection_helpers(self) -> None:
+        rect = geometry.normalize_box({"cx": 540, "cy": 170, "r": 128}, {"x": 0, "y": 0, "w": 1, "h": 1})
+        self.assertEqual(rect, {"x": 412, "y": 42, "w": 256, "h": 256})
+        right_stage = geometry.compute_stage_box(
+            {"w": 1920, "h": 1080},
+            {"x": 1300, "y": 0, "w": 620, "h": 1080},
+            {"x": 0, "y": 885, "w": 1920, "h": 195},
+        )
+        self.assertEqual(right_stage, {"x": 0, "y": 0, "w": 1300, "h": 885})
+        self.assertTrue(geometry.box_intersects({"x": 100, "y": 850, "w": 200, "h": 60},
+                                                {"x": 0, "y": 885, "w": 1920, "h": 195}))
+        self.assertFalse(geometry.box_intersects({"x": 620, "y": 0, "w": 300, "h": 885},
+                                                 {"x": 0, "y": 0, "w": 620, "h": 1080}))
+
+    def test_frame_json_propagates_to_cli_recompose_deliver_and_review(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            proj = Path(td)
+            (proj / "edit").mkdir()
+            (proj / "timeline").mkdir()
+            (proj / "composition").mkdir()
+            (proj / "review").mkdir()
+            (proj / "composition" / "index.html").write_text("<!doctype html><div></div>", encoding="utf-8")
+            (proj / "edit" / "subtitles.srt").write_text(
+                "1\n00:00:00,000 --> 00:00:02,000\n测试字幕\n", encoding="utf-8")
+            (proj / "timeline" / "timeline.json").write_text(json.dumps({
+                "source": "edl",
+                "totalDurationMs": 2000,
+                "chapters": [{"id": "b1", "title": "A", "steps": [
+                    {"id": "s1", "chapterId": "b1", "chapterTitle": "A", "startMs": 0, "endMs": 2000}]}],
+            }), encoding="utf-8")
+            (proj / "frame.json").write_text(json.dumps({
+                "canvas": {"w": 1920, "h": 1080, "fps": 30},
+                "personSlot": {"x": 1300, "y": 0, "w": 620, "h": 1080},
+                "captionSafe": {"x": 0, "y": 900, "w": 1920, "h": 180},
+            }), encoding="utf-8")
+
+            cli = subprocess.run(
+                [sys.executable, str(HELPERS / "frame.py"), "resolve", str(proj), "--json"],
+                capture_output=True, text=True, check=True,
+            )
+            cli_geo = json.loads(cli.stdout)
+            self.assertEqual(cli_geo["source"], "frame.json")
+            self.assertEqual(cli_geo["stage"], {"x": 0, "y": 0, "w": 1300, "h": 900})
+
+            recompose_plan.init_project(proj, SimpleNamespace(
+                draft="recompose/draft.mp4", composition="composition",
+                person_slot=None, caption_safe=None, canvas=None, fps=None,
+                board="", force=False,
+            ))
+            rec = json.loads((proj / "recompose.json").read_text(encoding="utf-8"))
+            self.assertEqual(rec["personSlot"], cli_geo["personSlot"])
+            self.assertEqual(rec["captionSafe"], cli_geo["captionSafe"])
+
+            # Mutating authoritative frame.json propagates everywhere without recompose.json edits
+            (proj / "frame.json").write_text(json.dumps({
+                "canvas": {"w": 1920, "h": 1080, "fps": 30},
+                "personSlot": {"x": 0, "y": 0, "w": 560, "h": 1080},
+                "captionSafe": {"x": 0, "y": 910, "w": 1920, "h": 170},
+            }), encoding="utf-8")
+            deliv = geometry.resolve_project_frame(proj)
+            rev = build_review.build_review_data(proj, proj / "edit")
+            self.assertEqual(deliv["person"], {"x": 0, "y": 0, "w": 560, "h": 1080})
+            self.assertEqual(deliv["caption"], {"x": 0, "y": 910, "w": 1920, "h": 170})
+            self.assertEqual(rev["frameGeometry"]["personSlot"], deliv["person"])
+            self.assertEqual(rev["frameGeometry"]["stage"], {"x": 560, "y": 0, "w": 1360, "h": 910})
 
 
 if __name__ == "__main__":

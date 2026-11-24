@@ -26,6 +26,8 @@ from pathlib import Path
 
 HELPERS = Path(__file__).parents[1] / "helpers"
 sys.path.insert(0, str(HELPERS))
+sys.path.insert(0, str(HELPERS / "_internal"))
+sys.path.insert(0, str(HELPERS / "_internal"))
 
 FFMPEG = shutil.which("ffmpeg") is not None
 SR = 16_000
@@ -33,7 +35,7 @@ FILM_S = 4.0
 
 
 def _load(name: str):
-    spec = importlib.util.spec_from_file_location(f"craft_{name}", HELPERS / f"{name}.py")
+    spec = importlib.util.spec_from_file_location(f"craft_{name}", (HELPERS / f"{name}.py" if (HELPERS / f"{name}.py").is_file() else HELPERS / "_internal" / f"{name}.py"))
     mod = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)

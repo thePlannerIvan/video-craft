@@ -38,7 +38,7 @@ TEMPLATE = Path(__file__).parents[1] / "visual" / "assets" / "review-page-templa
 
 
 def load(name: str):
-    spec = importlib.util.spec_from_file_location(f"video_craft_{name}", HELPERS / f"{name}.py")
+    spec = importlib.util.spec_from_file_location(f"video_craft_{name}", (HELPERS / f"{name}.py" if (HELPERS / f"{name}.py").is_file() else HELPERS / "_internal" / f"{name}.py"))
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(module)
@@ -700,7 +700,8 @@ class ReviewPageTemplateTests(unittest.TestCase):
 
     def test_page_waits_for_the_host_before_enabling_save(self):
         self.assertIn('id="fb-save" disabled', self.html)
-        self.assertIn("没有加载到审阅桥", self.html)
+        self.assertIn('if (!window.ReviewBridge)', self.html)
+        self.assertIn('label("离线", "error")', self.html)
 
     def test_page_does_not_claim_the_host_verified_the_wake(self):
         """没有插件时没有人可唤 —— 状态条不许把它说成「模型已经知道」。"""
@@ -867,13 +868,10 @@ class ReviewPageTemplateTests(unittest.TestCase):
         self.assertIn('if (!draft) return;', self.html)
 
     def test_the_page_does_not_send_people_left_for_something_on_the_right(self):
-        """提示不依赖会随窄栏布局变化的左右方位。"""
-        start = html_start = self.html.index('class="hint"')
-        hint = self.html[start:self.html.index("</div>", start)]
-        self.assertIn("暂停", hint)
-        self.assertIn("批注", hint)
-        self.assertNotIn("左侧对应", hint)
-        self.assertNotIn("右侧列表", hint)
+        """提示与极简无废话界面均不得出现依赖窄栏左右方位的指引文案。"""
+        self.assertNotIn('class="hint"', self.html)
+        self.assertNotIn("左侧对应", self.html)
+        self.assertNotIn("右侧列表", self.html)
 
     def test_page_reads_the_submission_path_from_the_surface(self):
         """提交文件由 surface 声明，页面读回来 —— 不在页面里再抄一份会漂移的路径。"""

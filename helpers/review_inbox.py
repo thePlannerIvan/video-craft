@@ -32,6 +32,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent / "_internal"))
 from visual_review_feedback import (          # noqa: E402
     OVERALL_FILE, STORYBOARD_FILE, SURFACE_REL, normalize_record, record_filename, save_feedback,
 )
@@ -232,7 +233,7 @@ def import_submissions(project: Path, dry_run: bool = False) -> dict:
         receipt["next_action_zh"] = ("有记录被拒：作者的意见没进文件。先按上面每条的 reason 处理，"
                                      "再重跑收件。")
     elif receipt["imported"]:
-        receipt["next_action_zh"] = "收件完成：按 references/review-ui.md 的 agent 协议处理 feedback/*.jsonl。"
+        receipt["next_action_zh"] = "收件完成：按 references/review-and-delivery.md 的 agent 协议处理 feedback/*.jsonl。"
     else:
         receipt["next_action_zh"] = "没有新记录。要么作者还没提交，要么这一批已经收过了。"
     return receipt

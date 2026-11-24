@@ -41,7 +41,9 @@ from pathlib import Path
 HELPERS = Path(__file__).parents[1] / "helpers"
 VIDEO_CRAFT = Path(__file__).parents[1]
 sys.path.insert(0, str(HELPERS))
-sys.path.insert(0, str(HELPERS / "lib"))
+sys.path.insert(0, str(HELPERS / "_internal"))
+sys.path.insert(0, str(HELPERS / "_internal"))
+sys.path.insert(0, str(HELPERS / "_internal" / "lib"))
 
 from lib.planners_modules import resolve_module  # noqa: E402
 sys.path.insert(0, str(resolve_module('planners-review-core') / 'scripts' / 'lib'))
@@ -191,7 +193,7 @@ class EdlRealProjectCase(unittest.TestCase):
         cls.tmp = Path(tempfile.mkdtemp(prefix="edl-review-real-")).resolve()
         cls.edit = make_work_copy(cls.real, cls.tmp)
         for script in ("edl_preview_build.py",):
-            done = subprocess.run([sys.executable, str(HELPERS / script), str(cls.edit)],
+            done = subprocess.run([sys.executable, str((HELPERS / script) if (HELPERS / script).is_file() else (HELPERS / "_internal" / script)), str(cls.edit)],
                                   capture_output=True, text=True)
             if done.returncode != 0:
                 raise AssertionError(f"{script} 失败：{done.stdout}{done.stderr}")
@@ -296,7 +298,7 @@ class EdlPageContractCase(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        source = (HELPERS / "edl_preview_build.py").read_text(encoding="utf-8")
+        source = (HELPERS / "_internal" / "edl_preview_build.py").read_text(encoding="utf-8")
         cls.html = source[source.index('HTML = """'):source.index('"""\n\ndata = {')]
 
     def test_the_injection_point_is_a_bare_marker_appearing_exactly_once(self):
@@ -366,7 +368,7 @@ class EdlBrowserCase(unittest.TestCase):
             raise unittest.SkipTest("找不到带 edl.json 的真项目")
         cls.tmp = Path(tempfile.mkdtemp(prefix="edl-review-browser-")).resolve()
         cls.edit = make_work_copy(found[0], cls.tmp)
-        subprocess.run([sys.executable, str(HELPERS / "edl_preview_build.py"), str(cls.edit)],
+        subprocess.run([sys.executable, str(HELPERS / "_internal" / "edl_preview_build.py"), str(cls.edit)],
                        capture_output=True, text=True, check=True)
         cls.info = edl_review_surface.open_review(cls.edit, open_browser=False)
         # **整类共用一个浏览器**：原来每个用例各起一次（4 次），而这个 fixture 还压着一个
@@ -405,7 +407,7 @@ class EdlBrowserCase(unittest.TestCase):
         self.assertTrue(page.locator("#w-save").is_visible())
         self.assertTrue(page.locator("#page-reload").is_visible(), "R11：刷新入口必须一直可见")
         self.assertTrue(page.locator("#ov-text").is_visible(), "R10：整体入口必须一直可见")
-        self.assertIn("已连接审阅宿主", page.inner_text("#net"))
+        self.assertIn("已连接", page.inner_text("#net"))
 
     def test_the_page_still_renders_when_the_handshake_never_returns(self):
         """**验证第 13 条（反面对照）**：`connect()` 换成**永不返回** → 页面仍须完整画出来。
@@ -418,7 +420,7 @@ class EdlBrowserCase(unittest.TestCase):
         page = self.open_page(stub_bridge=stub)
         words = page.locator(WORDS).count()
         self.assertGreater(words, 500, f"握手永不返回时只剩 {words} 个词 —— 渲染被挂在握手上了")
-        self.assertIn("正在连接审阅宿主", page.inner_text("#net"), "连接状态就该停在「正在连接」那一档")
+        self.assertIn("连接中", page.inner_text("#net"), "连接状态就该停在「连接中」那一档")
 
     def test_drag_select_then_save_writes_the_file_and_rings_the_bell(self):
         """真交互：拖选一个词 → 保存 → `selections.json` 整份覆盖 + wake 落日志。"""
@@ -465,9 +467,167 @@ class EdlBrowserCase(unittest.TestCase):
         page.fill("#ov-text", "整段节奏偏慢，这一版剪点我想重挑")
         page.click("#ov-send")
         page.wait_for_function(
-            "() => /已发回对话/.test(document.getElementById('ov-state').textContent)", timeout=15000)
+            "() => /已发送/.test(document.getElementById('ov-state').textContent)", timeout=15000)
         after = target.read_bytes() if target.is_file() else None
         self.assertEqual(before, after, "整体意见**不许**动 selections.json")
         wake_log = (self.edit / review_host.WAKE_LOG_NAME).read_text(encoding="utf-8")
         self.assertIn("整段节奏偏慢", wake_log)
         self.assertIn("整段", wake_log)
+
+
+@unittest.skipIf(os.environ.get("VIDEO_CRAFT_BROWSER_TESTS") == "0",
+                 "set VIDEO_CRAFT_BROWSER_TESTS=0 to skip the browser cases")
+@unittest.skipUnless(have_playwright(), "needs playwright")
+class EdlMinimalUiAndDragCase(unittest.TestCase):
+    """合成多段可滚动逐字稿 + Playwright：极简零黑话 UI、跨行/视口外连续拖拽、Shift+Click 与边缘自动滚动。"""
+
+    @classmethod
+    def setUpClass(cls):
+        from playwright.sync_api import sync_playwright
+        cls.tmp = Path(tempfile.mkdtemp(prefix="edl-review-minimal-")).resolve()
+        cls.edit = cls.tmp / "edit"
+        (cls.edit / "transcripts").mkdir(parents=True)
+        (cls.tmp / "a.mp4").write_bytes(b"")
+
+        ranges = []
+        words = []
+        for si in range(25):
+            base_t = si * 7.0
+            ranges.append({
+                "source": "a",
+                "start": round(base_t, 3),
+                "end": round(base_t + 6.5, 3),
+                "beat": f"段落{si + 1}",
+                "quote": f"第{si + 1}段开场陈述",
+                "reason": "保留",
+            })
+            cur_t = base_t + 0.1
+            for wi in range(14):
+                w_start = round(cur_t, 3)
+                w_end = round(cur_t + 0.28, 3)
+                words.append({"text": f"词{si}_{wi}", "start": w_start, "end": w_end})
+                # Insert a 0.35s gap mid-segment so continuous drag bridges gaps as well as line wraps
+                cur_t = w_end + (0.35 if wi == 6 else 0.05)
+
+        (cls.edit / "edl.json").write_text(
+            json.dumps({"sources": {"a": "../a.mp4"}, "ranges": ranges}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        (cls.edit / "transcripts" / "a.json").write_text(
+            json.dumps({"words": words}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        subprocess.run(
+            [sys.executable, str(HELPERS / "_internal" / "edl_preview_build.py"), str(cls.edit)],
+            capture_output=True, text=True, check=True,
+        )
+        cls.info = edl_review_surface.open_review(cls.edit, open_browser=False)
+        cls.pw = sync_playwright().start()
+        cls.browser = cls.pw.chromium.launch()
+
+    @classmethod
+    def tearDownClass(cls):
+        try:
+            cls.browser.close()
+        finally:
+            cls.pw.stop()
+            review_host.stop_host(cls.info)
+            shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def open_page(self):
+        page = self.browser.new_page(viewport={"width": 1280, "height": 720})
+        self.addCleanup(page.close)
+        page.goto(self.info["url"], wait_until="load")
+        page.wait_for_selector(WORDS, timeout=20000)
+        return page
+
+    def test_zero_engineering_jargon_in_visible_ui(self):
+        page = self.open_page()
+        for dead_sel in ("#hint", "#w-hint", "#info", ".timeline-head"):
+            self.assertEqual(page.locator(dead_sel).count(), 0, f"应已移除冗余说明区 {dead_sel}")
+        visible = page.inner_text("body")
+        forbidden = [
+            "edl.json", "selections.json", "helpers/", "token", "Beat",
+            "审阅宿主", "快照", "粗剪审阅工作台", "源素材区间", "按住拖开", "单击词",
+        ]
+        for term in forbidden:
+            self.assertNotIn(term, visible, f"可见 UI 不得出现工程术语/解释废话: {term}")
+        self.assertTrue(page.locator("#w-save").is_visible())
+        self.assertTrue(page.locator("#ov-send").is_visible())
+
+    def test_continuous_drag_across_gaps_lines_and_outside_viewport(self):
+        page = self.open_page()
+        b1 = page.locator("#w2").bounding_box()
+        b2 = page.locator("#w32").bounding_box()
+        self.assertIsNotNone(b1)
+        self.assertIsNotNone(b2)
+        self.assertGreater(b2["y"], b1["y"] + 40, "起止词应跨过多行")
+
+        page.mouse.move(b1["x"] + b1["width"] / 2, b1["y"] + b1["height"] / 2)
+        page.mouse.down()
+        # Move out of viewport left & right mid-drag before landing on #w32
+        page.mouse.move(-20, b1["y"] + 24, steps=4)
+        page.mouse.move(1400, b2["y"] + b2["height"] / 2, steps=4)
+        page.mouse.move(b2["x"] + b2["width"] / 2, b2["y"] + b2["height"] / 2, steps=4)
+        page.mouse.up()
+        # Leaving viewport afterwards must never clear the selection
+        page.mouse.move(-30, -30)
+
+        del_gs = page.evaluate(
+            "() => [...document.querySelectorAll('#w-root .wseg .w.del')].map(el => +el.dataset.g)"
+        )
+        self.assertEqual(del_gs, list(range(2, 33)))
+
+    def test_shift_click_selects_continuous_range(self):
+        page = self.open_page()
+        page.locator("#w4").click()
+        page.locator("#w12").click(modifiers=["Shift"])
+        del_gs = page.evaluate(
+            "() => [...document.querySelectorAll('#w-root .wseg .w.del')].map(el => +el.dataset.g)"
+        )
+        self.assertEqual(del_gs, list(range(4, 13)))
+
+    def test_drag_near_bottom_edge_auto_scrolls_and_extends_selection(self):
+        page = self.open_page()
+        metrics = page.evaluate("""() => {
+            const r = document.getElementById('w-root');
+            const wr = r.getBoundingClientRect();
+            let bottomVis = -1;
+            for (const el of r.querySelectorAll('.wseg .w')) {
+                const er = el.getBoundingClientRect();
+                if (er.top >= wr.top && er.bottom <= wr.bottom) {
+                    bottomVis = Math.max(bottomVis, +el.dataset.g);
+                }
+            }
+            return {
+                sh: r.scrollHeight, ch: r.clientHeight, st: r.scrollTop,
+                left: wr.left, right: wr.right, top: wr.top, bottom: wr.bottom,
+                bottomVis
+            };
+        }""")
+        self.assertGreater(metrics["sh"], metrics["ch"] + 200, "#w-root 必须出现纵向溢出才可测边缘滚动")
+        self.assertEqual(metrics["st"], 0)
+        b_start = page.locator("#w3").bounding_box()
+        self.assertIsNotNone(b_start)
+
+        page.mouse.move(b_start["x"] + b_start["width"] / 2, b_start["y"] + b_start["height"] / 2)
+        page.mouse.down()
+        edge_x = metrics["left"] + 100
+        edge_y = metrics["bottom"] - 14
+        page.mouse.move(edge_x, edge_y, steps=8)
+        for step in range(10):
+            time.sleep(0.05)
+            page.mouse.move(edge_x + (step % 2), edge_y)
+        page.mouse.up()
+
+        after = page.evaluate("""() => {
+            const r = document.getElementById('w-root');
+            const delGs = [...r.querySelectorAll('.wseg .w.del')].map(el => +el.dataset.g);
+            return { st: r.scrollTop, delGs };
+        }""")
+        self.assertGreater(after["st"], 40, f"停留在底部边缘区未触发自动滚动: scrollTop={after['st']}")
+        self.assertTrue(after["delGs"], "自动滚动松手后未保留选区")
+        self.assertGreater(
+            max(after["delGs"]), metrics["bottomVis"],
+            f"自动滚动后选区未向下扩展超出初始可视末尾词 {metrics['bottomVis']}: got max={max(after['delGs'])}",
+        )

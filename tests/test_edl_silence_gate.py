@@ -29,6 +29,8 @@ from pathlib import Path
 
 HELPERS = Path(__file__).parents[1] / "helpers"
 sys.path.insert(0, str(HELPERS))
+sys.path.insert(0, str(HELPERS / "_internal"))
+sys.path.insert(0, str(HELPERS / "_internal"))
 
 FFMPEG = shutil.which("ffmpeg") is not None
 SR = 16_000
@@ -41,7 +43,7 @@ SILENCE_B = (3.5, 4.0)
 
 
 def _load(name: str):
-    spec = importlib.util.spec_from_file_location(f"craft_{name}", HELPERS / f"{name}.py")
+    spec = importlib.util.spec_from_file_location(f"craft_{name}", (HELPERS / f"{name}.py" if (HELPERS / f"{name}.py").is_file() else HELPERS / "_internal" / f"{name}.py"))
     mod = importlib.util.module_from_spec(spec)
     # Register before exec: a module that uses @dataclass needs its own name
     # resolvable in sys.modules, and importlib does not do that for us.

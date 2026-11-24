@@ -32,6 +32,7 @@ TESTS = Path(__file__).resolve().parent
 SKILL = TESTS.parent
 HARNESS = TESTS / "studio_hook_harness.mjs"
 sys.path.insert(0, str(SKILL / "helpers"))
+sys.path.insert(0, str(SKILL / "helpers" / "_internal"))
 
 import studio_notes  # noqa: E402
 

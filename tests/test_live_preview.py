@@ -4,6 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'helpers'))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'helpers' / '_internal'))
 from live_preview import compile_preview
 
 URL = 'http://127.0.0.1:4317/api/projects/composition/preview/comp/index.html'

@@ -30,8 +30,8 @@ from pathlib import Path
 
 HELPERS = Path(__file__).parents[1] / "helpers"
 MONTAGE = HELPERS / "montage.py"
-CHECK = HELPERS / "check_montage.py"
-SCAN = HELPERS / "scan_materials.py"
+CHECK = HELPERS / "_internal" / "check_montage.py"
+SCAN = HELPERS / "_internal" / "scan_materials.py"
 SNAPSHOT = "abc123def456"
 
 
@@ -434,7 +434,7 @@ class MontageTests(unittest.TestCase):
         picture = root / 'edit/_engineering/picture.mp4'
         (root / "review").mkdir()
         (root / 'review/media.json').write_text(json.dumps({'compositeVideo': 'edit/_engineering/picture.mp4'}))
-        subprocess.run([sys.executable, str(HELPERS / 'build_review.py'), str(root)], check=True)
+        subprocess.run([sys.executable, str(HELPERS / '_internal' / 'build_review.py'), str(root)], check=True)
         snapshot = json.loads((root / 'review/review_data.json').read_text())['snapshot']
         (root / "review" / "review-submissions.json").write_text(json.dumps({
             "records": [{"snapshot": snapshot, "text": "这一版可以"}],

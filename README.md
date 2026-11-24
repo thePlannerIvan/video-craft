@@ -17,12 +17,12 @@
 **Video Craft** 把“时间脊柱、视觉层和最终核验”合成一条防错工作流，默认先把片子推到**随时可重播、可划词返修的侧边栏审阅页**，等你点头发话出片，再经严格检查写进成品：
 
 ```text
-4 种常见起点：原始录屏/录音 · 已定内容包+静态 SVG (keyframe-svg) · 实拍/档案混剪 (footage-montage) · 参考片提炼风格
-  → 1. 接入风格配置（读私有 ~/.config/planners/video-vault 或自动退回开源内置规范）并选定片型路线
-  → 2. 词级转录 + 网页逐字剪辑审阅（直接删口误/气口，重算真实音频时间轴）
-  → 3. 合成视觉层（图形拆解重构 recompose / 素材体检+镜头表混剪 montage / 或纯黑底直压不重编码）
-  → 4. 出工程审阅态（edit/_engineering/）：逐句校对与视觉审阅页播放确认
-  → 5. 作者下明确出片指令 → render_gate + 成片真实核验 → 写入 成品/
+3 种常见起点：原始录屏/录音 (pure-talking) · 图形演进/实机演示与静态参考 (keyframe-svg) · 实拍/档案混剪 (footage-montage)
+  → 1. 接入风格配置（读私有 ~/.config/planners/video-vault 或自动退回开源内置规范）并选定生产模式
+  → 2. 词级转录 + 网页逐字剪辑审阅（直接删口误/气口，C 档浑厚人声预设与极克制本地 SFX）
+  → 3. 合成视觉层（四档视觉语法 composition / 实机演示代理或高清拼接 / 素材体检+镜头表）
+  → 4. 出工程审阅态（edit/_engineering/）：逐句校对与极简自适应审阅页确认（支持干声 A/B）
+  → 5. 作者下明确出片指令 → render_gate + 统一画面体检与真实核验 → 写入 成品/
 ```
 
 **重要原则——不要把“渲染预览”和“正式交付”混为一谈**：
@@ -34,12 +34,10 @@
 ## 你手头的材料，它会怎么接
 
 | 你交给它的输入 | 自动走哪条路线 | 你每一轮能拿到什么 |
-| --- | --- | --- |
-| 刚录完的粗音视频（需要删口癖、定节奏） | 在线词级转录 → 逐字剪辑面 → 时间与画面 | 可在网页直接删句剪接的逐字审阅页与对齐字幕 |
-| `video-idea-system` + `planners-ppt-hell` 的静态 SVG 关键帧 | `recompose`（原页拆解并编写动效贴合实测声音） | 可播放的逐句动效工程审阅页与调整待办 |
-| 实拍/档案素材 + 口播（或上游 `footage-montage` 直通包） | `montage`（素材登记体检 → 镜头表 → 画框/大字报） | 拒绝胡编素材的镜头表、两关渲染体检与可播审阅 |
-| 严密数学原理 / 算法推演动画需求 | 按需调用内置子技能 `skills/manim-video/` | Manim 数学动画片段合成进时间轴 |
-| 一条参考视频或已完工老片 | 风格提取与进化（`helpers/extract_style.py`） | 沉淀三段式风格规则、三联帧与 2s 预览卡片 |
+|---|---|---|
+| 刚录完的粗音视频（需要删口癖、定节奏） | `pure-talking`（词级转录 → 极简逐字剪辑 → 语义字幕） | 流畅全局拖拽删句的逐字审阅页与对齐字幕 |
+| 上游定稿包 / 静态参考 / 实机演示录屏 | `keyframe-svg`（`visual-plan.json` 四档分拍 → 动效与实机同轨） | 留白/演进/理论亮显/演示代理同轴可播的自适应审阅页 |
+| 实拍/档案素材 + 口播（或上游 `footage-montage` 直通包） | `footage-montage`（素材登记体检 → 镜头表 → 画框/大字报） | 拒绝胡编素材的镜头表、两关渲染体检与可播审阅 |
 
 ---
 
@@ -54,7 +52,7 @@
 
 | 你的需要 | 选哪个 Skill | 理由 |
 | --- | --- | --- |
-| 还没想好讲什么、口播稿还没定、缺画面/素材想法 | 先用 [`video-idea-system`](https://github.com/thePlannerIvan/video-idea-system) | 先把核心洞察、可录稿和内容契约谈出来并念过确认 |
+| 还没想好讲什么、口播稿还没定、或需要风格维护 | 先用 [`video-manager`](https://github.com/thePlannerIvan/video-manager) | 统筹选题调研、口播定稿、风格库治理与片级上下文打包 |
 | 只需把逐页文案排成静态图 / 可编辑 PowerPoint | 用 [`planners-ppt-hell`](https://github.com/thePlannerIvan/planners-ppt-hell) | 专做静态 SVG 关键帧和 `.pptx` 导出 |
 | 已经有录音/视频/素材或内容包，要剪辑、加动效字幕、审阅出片 | **本 Skill (`video-craft`)** | 接手全部制作、工程态返修与成品交付核验 |
 
@@ -93,39 +91,39 @@ npx skills add https://github.com/thePlannerIvan/video-craft --skill video-craft
 
 ### 公共模组解析顺序与测试命令
 
-适配器（`helpers/lib/planners_modules.py`）按 `$PLANNERS_MODULES_HOME` → `<skills-root>` → `02-skills-library/<分类>` → 用户级目录（`$PLANNERS_MODULES_INSTALL_DIR` → `$PLANNERS_MODULES_HOME` → `~/.planners-modules/`）查找 `planners-review-core`。设 `PLANNERS_NO_AUTO_INSTALL=1` 可禁止联网；`PLANNERS_MODULES_REF` 可锁定分支/tag。
+适配器（`helpers/_internal/lib/planners_modules.py`）按 `$PLANNERS_MODULES_HOME` → `<skills-root>` → `02-skills-library/<分类>` → 用户级目录（`$PLANNERS_MODULES_INSTALL_DIR` → `$PLANNERS_MODULES_HOME` → `~/.planners-modules/`）查找 `planners-review-core`。设 `PLANNERS_NO_AUTO_INSTALL=1` 可禁止联网；`PLANNERS_MODULES_REF` 可锁定分支/tag。
 
 ```bash
 # 自检公共模组绑定
-python3 helpers/lib/planners_modules.py --check
+python3 helpers/_internal/lib/planners_modules.py --check
 
 # 运行单元与覆盖层 FFmpeg 实测（注意保留 ffmpeg 所在 PATH）
 cd tests
-PYTHONPATH=..:../helpers PATH=/opt/homebrew/bin:$PATH \
+PYTHONPATH=..:../helpers:../helpers/_internal PATH=/opt/homebrew/bin:$PATH \
   python3 -m unittest discover -s . -p "test_*.py"
 
 # 验收用例结构与路线矩阵检查（从 Skill 根执行）
 python3 evals/run_evals.py
 
-# 公共模组自动安装器不变量测试
-python3 helpers/lib/planners_modules_install_test.py
+# 公共模组自动安装器不变量测试（需在 02-skills-library 根目录环境运行）
+python3 helpers/_internal/lib/planners_modules_install_test.py
 ```
 
 ### 历史演进与血统
 
-- **2026-09-15 合并与事故防线**：由 `video-use`（时间脊柱/合成器/字幕链/交付）与 `web-video-presentation`（视觉层/alpha 编码/视觉审阅）合并脱离上游；因一次本机 libvpx 未编入 alpha 导致渲染 6 分钟全黑的教训，新增了 `check_overlay.py` 入口门禁。历史记录留在 [upstream-diff.md](upstream-diff.md) 与 `archive/`。
+- **2026-09-15 合并与事故防线**：由 `video-use`（时间脊柱/合成器/字幕链/交付）与 `web-video-presentation`（视觉层/alpha 编码/视觉审阅）合并脱离上游；因一次本机 libvpx 未编入 alpha 导致渲染 6 分钟全黑的教训，新增了 `check_overlay.py` 入口门禁。历史记录留在 [upstream-diff.md](upstream-diff.md)。
 
 ### 目录结构
 
 ```text
 video-craft/
 ├── SKILL.md                 接手入口路由、主路线与完成判据
+├── GLOSSARY.md              领域术语词汇表
 ├── install.md               首次安装 FFmpeg / Python / Node / 凭据清单
-├── helpers/                 转录、剪辑 EDL、overlay 校验、montage/recompose、风格提取与合成器
-├── references/              11 步阶段契约 stages.md、tools.md、architecture.md 等规范
-├── skills/manim-video/      数学与严密技术动画内置子技能
+├── helpers/                 12 个顶层公开入口 + _internal/（转录、EDL、视觉检查、审阅与合成）
+├── references/              14 份阶段契约与工程手册
 ├── tests/                   unittest 回归（含 FFmpeg 真建文件检查）
-└── evals/                   四路线覆盖矩阵校验 run_evals.py
+└── evals/                   路线覆盖矩阵校验 run_evals.py
 ```
 
 </details>
@@ -140,6 +138,6 @@ video-craft/
 
 ## 相关项目
 
-- [Video Idea System](https://github.com/thePlannerIvan/video-idea-system) —— 上游口播稿、内容契约与念稿拍板
+- [Video Manager](https://github.com/thePlannerIvan/video-manager) —— 上游制片总控、口播共创与风格库治理
 - [Planner's PPT Hell](https://github.com/thePlannerIvan/planners-ppt-hell) —— 静态 SVG 关键帧绘制
 - [Planners Review Core](https://github.com/thePlannerIvan/planners-review-core) —— 审阅页宿主与桥接缝

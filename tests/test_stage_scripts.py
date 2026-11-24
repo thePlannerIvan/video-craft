@@ -21,13 +21,15 @@ PYTHON = sys.executable
 
 
 def run(script: str, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run([PYTHON, str(ROOT / "helpers" / script), *args],
+    return subprocess.run([PYTHON, str((ROOT / "helpers" / script) if (ROOT / "helpers" / script).is_file() else (ROOT / "helpers" / "_internal" / script)), *args],
                           capture_output=True, text=True)
 
 
 class StageShells(unittest.TestCase):
     def test_apply_retry_does_not_repeat_edl_edit_and_rebuilds_preview(self):
-        sys.path.insert(0, str(ROOT / 'helpers')); import stage_cut
+        sys.path.insert(0, str(ROOT / 'helpers'))
+        sys.path.insert(0, str(ROOT / 'helpers' / '_internal'))
+        import stage_cut
         edit = self.project / 'edit'; (edit / 'transcripts').mkdir()
         (edit / 'transcripts/A.json').write_text(json.dumps({'words':[
             {'type':'word', 'text':str(i), 'start':i, 'end':i+.5} for i in range(4)]}))
@@ -94,6 +96,7 @@ class StageShells(unittest.TestCase):
 
     def test_verify_forwards_no_audio_and_run_rejects_it(self):
         sys.path.insert(0, str(ROOT / "helpers"))
+        sys.path.insert(0, str(ROOT / "helpers" / "_internal"))
         import stage_deliver
         calls = []
         with patch.object(stage_deliver.Stage, "run", side_effect=lambda *args: calls.append(args) or 0), redirect_stdout(io.StringIO()):
@@ -104,7 +107,9 @@ class StageShells(unittest.TestCase):
         self.assertIn("verify", json.loads(proc.stdout)["error"])
 
     def test_prepare_without_edl_does_not_send_user_to_review(self):
-        sys.path.insert(0, str(ROOT / "helpers")); import stage_cut
+        sys.path.insert(0, str(ROOT / "helpers"))
+        sys.path.insert(0, str(ROOT / "helpers" / "_internal"))
+        import stage_cut
         (self.project / "edit/transcripts").mkdir()
         (self.project / "edit/transcripts/A.json").write_text('{}')
         output = io.StringIO()

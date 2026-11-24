@@ -172,7 +172,7 @@ class RenderRefusesBadOverlayTests(unittest.TestCase):
     def _import_render(self):
         import importlib.util
         spec = importlib.util.spec_from_file_location(
-            "craft_render", Path(__file__).parents[1] / "helpers" / "render.py")
+            "craft_render", Path(__file__).parents[1] / "helpers" / "_internal" / "render.py")
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
         return mod

@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 
-MODULE_PATH = Path(__file__).parents[1] / "helpers" / "render.py"
+MODULE_PATH = Path(__file__).parents[1] / "helpers" / "_internal" / "render.py"
 SPEC = importlib.util.spec_from_file_location("video_use_render", MODULE_PATH)
 assert SPEC and SPEC.loader
 render = importlib.util.module_from_spec(SPEC)

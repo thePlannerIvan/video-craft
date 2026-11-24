@@ -1,6 +1,6 @@
 # Visual timeline (EDL-derived)
 
-> 本文涉及 page 路线的段落已归档（见 [legacy-page-route.md](legacy-page-route.md)）；现行 recompose 路线见 [film.md](film.md) 与 [recompose-mode.md](recompose-mode.md)。命令集中在 [tools.md](tools.md)。
+> 现行 `keyframe-svg` 路线见 [visual-grammar.md](visual-grammar.md)；命令集中在 [tools.md](tools.md)。
 
 
 ## 时间来源与证据等级（权威定义）
@@ -48,7 +48,7 @@ Optional:
 - `<project>/timeline/grouping.json`（调用时显式指定；旧项目可能保存在 edit/timeline） — the per-beat visual decision (`visualModel` /
   `modelStructure` / `screenIntent` / `onScreenTextRule`) that Step 2 turns into
   `timeline.json`. This is **not** the upstream `deliverable/visual-plan.json`,
-  which is the content contract (`video-story-handoff.md`).
+  which is the content contract ([intake-and-frames.md](intake-and-frames.md)).
 - `edit/assets/` — images, screenshots, frames, logos, charts.
 
 **Never edit a cue's time.** Times are derived facts with the declared evidence level above.
@@ -108,7 +108,7 @@ Do **not** put `startMs`, `endMs` or `durationMs` in `grouping.json` — the der
 computes them. `srtIndices` is still accepted as an input alias from older files;
 the output always uses `cueIndices`.
 
-When a visual plan exists, first run the measured alignment in `video-story-handoff.md` and pass `--alignment` when deriving. Keep one `sourceBlueprintId` per step. One blueprint may
+When a visual plan exists, first run the measured alignment in [intake-and-frames.md](intake-and-frames.md) and pass `--alignment` when deriving. Keep one `sourceBlueprintId` per step. One blueprint may
 span several steps inside its beat, but a step may not combine two blueprints or
 cross into another blueprint's beat.
 
@@ -132,14 +132,13 @@ cue), the creative fields from `grouping.json`, and the EDL binding
 recompose 路线没有生成器：`composition/src/scenes/*.js` 由 Agent 按 `film.py` 的拆解手写，
 每个 clip 的 `data-start` / `data-duration` 从 `timeline.json` 取。**不要手改这两个属性**——
 改分组、重派生时间轴，再让场景从新 timeline 读数。
-（page 路线的 `generate-composition.py` 已归档，见 [legacy-page-route.md](legacy-page-route.md)。）
 
-## Checkpoint
+## checkpoint
 
 After grouping and timeline exist, review representative work when the visual decision needs confirmation:
 **at the pixels** rather than in prose: build 2–3 representative steps into the
 composition and open them with `review.py`, and let the
-user settle **the layout and the rhythm** in one pass. For frame-by-frame media preparation, follow frame-animation-pipeline.md and label previews as engineering assets.
+user settle **the layout and the rhythm** in one pass. For frame-by-frame media preparation, follow [visual-checks.md](visual-checks.md) and label previews as engineering assets.
 画面风格在画面侧（`planners-ppt-hell`）已经定了，这里不重新选风格。 A written storyboard asks the user to imagine the thing they
 are being asked to approve.
 
@@ -154,8 +153,7 @@ Before building the rest, confirm:
 
 ## Provenance
 
-Retired on 2026-09-15: `visual/scripts/parse-srt.py` (now `archive/parse-srt.py`)
-and its `timecode-map.json` step. The replacement was accepted on a byte-identical
+Retired on 2026-09-15: `visual/scripts/parse-srt.py` and its `timecode-map.json` step. The replacement was accepted on a byte-identical
 composition skeleton — same grouping in, `cmp`-identical
 `composition/index.html` out (31384 bytes on the 野人先生 project; 510 of 510 shared
 scalars equal, the only differences being the deliberate `source: srt → edl`
@@ -198,3 +196,18 @@ rename and the added EDL-side fields).
 蒙太奇路线里 [helpers/montage.py](../helpers/montage.py) 的 `plan` 是这套换算的机器实现：
 把「段 + 词」展开成 `cutStart`，并校验 `in + dur ≤ 素材时长`。手工换算只用于核对
 `plan` 的输出，不用于产出数据；产出以 `plan` 退 0 的 `montage-plan.json` 为准。
+
+
+## 渲染前置：时间、画面与审阅（原 `timing-lock`）
+
+作者明确出片后、启动生产编码前核对下述七条。`deliver.py` 自动执行适用机械检查；人工判断仍按本节完成，合成完成线见 [review-and-delivery.md](review-and-delivery.md)。
+
+1. 读取当前 timeline 的来源与绑定。EDL 项目区分 `projected` 与 `measured`，交付必须完成同版实测核验；外部 SRT 保持 `srt-import` 并核真实音频；未录音 `planned` 不进入成片。
+2. 有参考页动画时 `film.py verify` 通过；拆解表与 Beat 映射完整。纯剪辑不伪造参考页来通过此检查。
+3. composition 通过 `hyperframes check`；手写 GSAP 还跑 `helpers/_internal/check_motion_targets.py`（selector 与静态 transform）。两者检查不同问题。
+4. 读取项目实际声音路径，核音轨、时长与字幕覆盖；不强制输入必须叫 `input/audio.mp3`。明确有声/无声、人物/无人物、外挂/烧录合同。
+5. `review` 运行时检查通过；人工提交对应当前快照；模型读取反馈，未决项已经处理或由作者明确接受；作者指令覆盖当前出片版本。`render_gate` 放行不能替代这三个人工判断。
+6. `probe_env.py` 报能力；`check_render_env.py` 给预算。环境硬错误阻断；内存预算例外按 [review-and-delivery.md](review-and-delivery.md) 记录，不自行扩大并发。
+7. 画面层渲染与渲染后一致性照 [review-and-delivery.md](review-and-delivery.md) Step 0–1 执行：`--workers 1`、渲染前停预览服务、画面成片导出后跑 `helpers/_internal/check_render_fidelity.py`。
+
+时间发生变化：改来源或分组 → 重派生 `timeline` → 更新场景绑定 → 重建审阅 → 新版本人审。允许模型编写消费 timeline 的场景代码；不允许手调最终数字掩盖源不一致。

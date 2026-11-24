@@ -1,8 +1,8 @@
 # 蒙太奇路线：现成素材 + 口播
 
-> 什么时候读：**片型 = montage**（画面是现成的档案影像 / 实拍 / 照片，不是画出来的页）。
-> 画面是生成出来的（PPT 页、图形、字卡、动效）走 [recompose-mode.md](recompose-mode.md)，不读本页。
-> 版式/画框（竖屏上下留白、字幕安全区、人物位）见 [frame-spec.md](frame-spec.md)。
+> 什么时候读：**生产模式 = `footage-montage`**（画面是现成的档案影像 / 实拍 / 照片，不是画出来的页）。
+> 画面是生成出来的（PPT 页、图形、字卡、动效）走 [visual-grammar.md](visual-grammar.md)，不读本页。
+> 版式/画框（竖屏上下留白、字幕安全区、人物位）见 [intake-and-frames.md](intake-and-frames.md)。
 
 ## 这条路线解决什么
 
@@ -16,7 +16,7 @@
 ## 1. 素材清单
 
 ```bash
-python3 "<craft>/helpers/scan_materials.py" "<project>/material/clips"
+python3 "<craft>/helpers/_internal/scan_materials.py" "<project>/material/clips"
 ```
 
 产出两份清单 + 帧带：
@@ -31,7 +31,7 @@ python3 "<craft>/helpers/scan_materials.py" "<project>/material/clips"
 `montage.py plan` 只放行「在清单里、`summary` 非空、`usable != false`」的素材，缺一条就退 1
 并指出哪一镜、清单第几行。重扫不会清掉已填的字段（清单只增不删）。
 
-判据的权威版本在 [media-sourcing.md](media-sourcing.md)（水印分级、时代与画质、出处与授权、失败处理）。
+判据的权威版本在本页下文 [「素材来源与准入判据」](#素材来源与准入判据)（水印分级、时代与画质、出处与授权、失败处理）。
 本节只留三条摘要：可用段落要写成「几秒到几秒是同一内容」；整屏水印/台标/烧录字幕/时间码不可用，
 小角标登记后可用；写不出一句话画面的素材不要进镜头表。
 
@@ -77,7 +77,7 @@ python3 "<craft>/helpers/montage.py" plan "<project>" --shots "<镜头表.json>"
 入点，换个数字还是同一张。
 
 EDL 里有 `speed != 1` 或 `mute` 的段，`plan` 直接拒：**montage 的剪后时间按原速累加**，
-变速段请回 [recompose-mode.md](recompose-mode.md) 或改 EDL，不在这里静默算错。
+变速段请回 [visual-grammar.md](visual-grammar.md) 或改 EDL，不在这里静默算错。
 
 `plan` 的产出 `edit/montage-plan.json` 是渲染的唯一输入：渲染只认绝对时间，不再做换算。
 
@@ -130,9 +130,9 @@ python3 "<craft>/helpers/montage.py" render "<project>" --concat        # 全渲
 ## 4. 体检（这一步不能省）
 
 ```bash
-python3 "<craft>/helpers/check_montage.py" "<project>" \
+python3 "<craft>/helpers/_internal/check_montage.py" "<project>" \
     --shots-dir /tmp/montage_<hash> --base "<project>/material/frame/base.png"
-python3 "<craft>/helpers/check_montage.py" "<project>" --video "<成片>"
+python3 "<craft>/helpers/_internal/check_montage.py" "<project>" --video "<成片>"
 ```
 
 - **逐镜**：文件齐、时长对、不是黑帧、不是「只有底图」。给了 `--base` 时直接比底图；
@@ -146,8 +146,8 @@ python3 "<craft>/helpers/check_montage.py" "<project>" --video "<成片>"
 ## 5. 交付
 
 **三件套**：画面成片、口播成片（竖屏人物轨 + 口播音轨）、外挂 `edit/subtitles.srt`。
-三件的规格、命名、核验与边界都在 [delivery.md](delivery.md) 的「蒙太奇项目的三件套」一节，
-字幕链见 [caption-article-first.md](caption-article-first.md)。
+三件的规格、命名、核验与边界都在 [review-and-delivery.md](review-and-delivery.md) 的「蒙太奇项目的三件套」一节，
+字幕链见 [captions-and-audio.md](captions-and-audio.md)。
 
 三件套的前置条件，缺一件都不要说「交付好了」：
 
@@ -163,9 +163,9 @@ python3 "<craft>/helpers/check_montage.py" "<project>" --video "<成片>"
    默认落 `edit/_engineering/voice_cut.mp4`（无声时也要先出画面轨核对人物位）。
    母版默认取 `edit/edl.json` 的 `sources`；那份常是 proxy，**交付用母版不用 proxy**，
    要显式 `--master` 指母版。画框尺寸取 `montage-plan.json` 的 `frame`，没有则 1080×1920/30。
-3. `check_montage.py` 退 0（逐镜 + 成片都过）。
+3. `helpers/_internal/check_montage.py` 退 0（逐镜 + 成片都过）。
 
-审阅：成片态审阅面看画面与声音，`check_review_playable.py` 通过才算能看；见 [review-ui.md](review-ui.md)。
+审阅：成片态审阅面看画面与声音，`helpers/_internal/check_review_playable.py` 通过才算能看；见 [review-and-delivery.md](review-and-delivery.md)。
 
 ## 常见失败与去处
 
@@ -179,5 +179,45 @@ python3 "<craft>/helpers/check_montage.py" "<project>" --video "<成片>"
 | 同一张照片用了两次 | 照片没有入点，换个数还是那张 | `plan` 现在照片第二次出现即判重 |
 | plan 报「没有登记进素材清单」 | `material-inventory.json` 缺这条素材 | 回第 1 步跑 `scan_materials.py`，补 `summary`，别手写镜头表绕开 |
 | plan 报「清单行没填 summary / usable=false」 | 清单还是骨架，或素材已判不可用 | 填「画面一句话」；不可用的换素材 |
-| plan 报「speed / mute 不支持」 | EDL 里有变速段或静音段 | 改 EDL 回原速，或这条段回 [recompose-mode.md](recompose-mode.md) |
+| plan 报「speed / mute 不支持」 | EDL 里有变速段或静音段 | 改 EDL 回原速，或这条段回 [visual-grammar.md](visual-grammar.md) |
 | 素材带水印 | 清单没标水印 | 回第 1 步补清单，不靠肉眼在成片里找 |
+
+## 素材来源与准入判据
+
+> 什么时候用：排镜头**之前**决定每条候选素材（档案影像 / 实拍 / 照片 / 截图）能不能进镜头表。画框与素材带铺法见 [intake-and-frames.md](intake-and-frames.md)。
+
+### 来源与授权
+
+第三方平台上传的档案影像**属于他人上传**，不是公共素材库。登记时记原本是谁发的（机构官方号 / 搬运号 / 二创片），不写转发链：
+- **出处列必须写 URL + 平台/账号 + 授权状态**，如 `youtube.com/watch?v=…（VH1 官方号；授权待确认）`（仅写平台名不算）。
+- **Skill 不替作者做版权判断**，只把出处 + 风险写进清单，由作者决定可发布 / 仅内部审看 / 待确认；对外版必须逐条核对。
+- 没有 URL 的素材不进镜头表（和写不出一句话同级）。
+
+### 水印分级
+
+判据一句话：**能否在不损失构图的前提下裁掉 / 移到画框外**——不能即不可用。
+
+| 等级 | 判据 | 典型来源 | 处理 |
+|---|---|---|---|
+| 不可用 | 覆盖大到裁完构图废掉；落在画面中央 / 字幕安全区 / 花字位；或本身即平台 UI / 促销卡 / 烧录字幕 | 整屏水印、频道台标、烧录对白字幕、烧录时间码、带赞评转的社媒截图、促销卡 | **弃用**。不靠后期裁切/糊掉/加暗角救 |
+| 可用但必须登记 | 贴在角落、面积小、在留白处且不动主体 | 档案小角标（British Pathé / AP 等） | 清单记位置（如「右上 AP」）；交付说明写「含档案台标」；画框同角不再放字 |
+
+边界：**按版本判断（不按机构名）**；**小 ≠ 可用**（压住字幕/花字位即不可用）；成片留用合规角标必须写进交付说明。
+
+### 时代与画质
+
+- **时代**：车/服饰/街景/黑白褪色须与口播年代一致；通用画面应在 `note` 写明「X 年代通用画面」，解说不声称“就是那台”。
+- **分辨率**：横屏 **≥360p（640×360）** 才铺满 1080 宽带；低于 360p 只做小窗/局部档案特写。
+- **宽高比**：`4:3` 与 `16:9` 混用须有统一版式（[intake-and-frames.md](intake-and-frames.md)），**同段不交替切比例**。
+
+### 入点与可用时长
+
+每条素材登记**入点 + 可用秒数**（片源选取 2–7 秒）：
+- **入点 +7 秒内不能有切镜 / 水印漂入 / 片头卡**（扣掉转场与片头卡）；
+- **可用窗口 < 2 秒不进镜头表**；同一文件多个可用段分别登记，不落淡入淡出边缘。
+
+### 登记格式与失败处理
+
+骨架由 `helpers/_internal/scan_materials.py` 生成六列，后四列须填实：可用段落（`47.0–58.5（11.5s）`）、画面一句话（主体+景别+色调+有无字，写不出一句话的不进镜头表）、水印/台标（位置+等级+结论，严禁留空）、出处（URL+账号+授权）。
+- **缺干净源如实报缺口**：说明哪句、缺啥、为何不合，只给「换画面 / 改讲述」选项；绝不用错年代/车型或 AI 生成片段顶档案证据（非 `original` 须标明身份，见 [intake-and-frames.md](intake-and-frames.md)）。
+- **总判据**：进镜头表前必须答全四件——**出处与风险、水印等级、入点 + 可用秒数、一句话画面**。

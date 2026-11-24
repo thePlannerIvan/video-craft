@@ -8,7 +8,7 @@ The AGPL-3.0 license covers the source code and documentation. It does not grant
 
 - Refer to this repository as the upstream source.
 - Say that your project is a fork of Video Craft.
-- Keep attribution notices required by the license — including the MIT notice for `browser-use/video-use`, which is preserved at `archive/video-use/LICENSE`.
+- Keep attribution notices required by the license — including the MIT notices for `browser-use/video-use` and `ConardLi/garden-skills` in `THIRD_PARTY_NOTICES.md`.
 - Use the project name in factual descriptions, reviews, tutorials, and compatibility notes.
 
 ## Not Allowed

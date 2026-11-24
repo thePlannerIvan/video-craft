@@ -71,6 +71,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent / "_internal"))
 from _geometry import fit_in_band
 
 PLAN_NAME = "montage-plan.json"
@@ -615,9 +616,11 @@ def is_engineering_output(out: Path, edit: Path) -> bool:
 
 def require_delivery_gate(root: Path, out: Path) -> dict:
     """交付件先过 render_gate：import 它，不另写一套判据（I3）。"""
-    helpers = str(Path(__file__).resolve().parent)
-    if helpers not in sys.path:
-        sys.path.insert(0, helpers)
+    helpers_dir = str(Path(__file__).resolve().parent)
+    internal_dir = str(Path(__file__).resolve().parent / "_internal")
+    for d in (internal_dir, helpers_dir):
+        if d not in sys.path:
+            sys.path.insert(0, d)
     import render_gate
     report = render_gate.evaluate(root, out, False)
     if not report.get("ok"):

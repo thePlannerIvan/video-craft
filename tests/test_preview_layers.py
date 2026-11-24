@@ -25,6 +25,7 @@ from PIL import Image
 
 HELPERS = Path(__file__).parents[1] / "helpers"
 sys.path.insert(0, str(HELPERS))
+sys.path.insert(0, str(HELPERS / "_internal"))
 sys.path.insert(0, str(Path(__file__).parents[1] / "visual" / "scripts"))
 
 FFMPEG = shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None
@@ -38,7 +39,7 @@ def _load(name: str, folder: Path):
     return mod
 
 
-preview_layers = _load("preview_layers", HELPERS)
+preview_layers = _load("preview_layers", HELPERS / "_internal")
 
 
 @unittest.skipUnless(FFMPEG, "ffmpeg required")
@@ -90,7 +91,7 @@ class PreviewLayerTests(unittest.TestCase):
                           "duration": 1.0, "kind": "alpha"}],
         }), encoding="utf-8")
         proc = subprocess.run(
-            [sys.executable, str(HELPERS / "preview_layers.py"), str(self.dir)],
+            [sys.executable, str(HELPERS / "_internal" / "preview_layers.py"), str(self.dir)],
             capture_output=True, text=True)
         self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
         self.assertIn("缺文件", proc.stdout)

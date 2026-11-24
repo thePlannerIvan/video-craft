@@ -24,7 +24,7 @@ import unittest
 from pathlib import Path
 
 HELPERS = Path(__file__).resolve().parents[1] / "helpers"
-CHECKER = HELPERS / "check_review_template.py"
+CHECKER = HELPERS / "_internal" / "check_review_template.py"
 
 spec = importlib.util.spec_from_file_location("check_review_template", CHECKER)
 check_review_template = importlib.util.module_from_spec(spec)

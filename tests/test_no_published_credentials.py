@@ -16,10 +16,8 @@ These tests freeze both halves of the fix:
 3. `SKILL.md` states the preferred **online** service and where the environment
    lives, so a reader never has to infer it from install.md's footnotes.
 4. `.env` / `.env.local` exist at the skill root only. An archived or per-branch
-   copy is how four real keys (DOUBAO_APP_ID, DOUBAO_ACCESS_TOKEN, ARK_API_KEY,
-   ELEVENLABS_API_KEY) reached the Codex / Claude / Antigravity copies on
-   2026-11-08: `publish_skills.py` excludes `.venv` but not `.env`, so
-   `archive/video-use/.env` shipped verbatim to every runtime.
+   copy previously allowed real keys to reach runtime copies before the v2
+   cleanup removed nested archives.
 """
 from __future__ import annotations
 
@@ -118,12 +116,12 @@ class NoShippedCredentials(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / ".env").write_text("ARK_API_KEY=root-is-fine\n", encoding="utf-8")
-            (root / "archive" / "video-use").mkdir(parents=True)
-            (root / "archive" / "video-use" / ".env").write_text("ARK_API_KEY=oops\n", encoding="utf-8")
+            (root / "nested" / "sub").mkdir(parents=True)
+            (root / "nested" / "sub" / ".env").write_text("ARK_API_KEY=oops\n", encoding="utf-8")
             (root / "node_modules" / "pkg").mkdir(parents=True)
             (root / "node_modules" / "pkg" / ".env").write_text("deps are not ours\n", encoding="utf-8")
-            self.assertEqual(stray_env_files(root), [str(Path("archive") / "video-use" / ".env")])
-            (root / "archive" / "video-use" / ".env").unlink()
+            self.assertEqual(stray_env_files(root), [str(Path("nested") / "sub" / ".env")])
+            (root / "nested" / "sub" / ".env").unlink()
             self.assertEqual(stray_env_files(root), [])
 
 

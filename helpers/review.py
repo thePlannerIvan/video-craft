@@ -30,7 +30,9 @@ import sys
 from pathlib import Path
 
 HELPERS = Path(__file__).resolve().parent
+INTERNAL = HELPERS / "_internal"
 sys.path.insert(0, str(HELPERS))
+sys.path.insert(0, str(INTERNAL))
 
 
 def _free_port() -> int:
@@ -154,18 +156,31 @@ def review(project: Path, open_surface: bool = True, live: bool = True,
     info = {}
     # 成片态没有 composition，活舞台那三步只会报「没有 composition」：直接跳过，不假装在审工程态。
     live = bool(live) and build_mode == "recompose"
-    # 1) 静态契约：这份 composition 能不能进活舞台
+    # 1) 静态契约 + 统一画面质量体检：这份 composition/分拍能不能进活舞台
     if live:
-        code, out = _run([str(HELPERS / "check_live_stage.py"), str(project)])
+        code, out = _run([str(INTERNAL / "check_live_stage.py"), str(project)])
         if not step("活舞台契约（静态）", code == 0, out.strip().splitlines()[-1] if out.strip() else "",
                     "composition/src：会执行逻辑的脚本必须在外部文件；注册名 = data-composition-id"):
             if not as_json:
                 print("\n".join(out.strip().splitlines()[-8:]))
             return stop()
+        qcode, qout = _run([str(INTERNAL / "check_visual_quality.py"), str(project), "--json"])
+        qinfo = _json_tail(qout)
+        qerrs = qinfo.get("errors") or []
+        qwarns = qinfo.get("warnings") or []
+        qdetail = ("；".join(str(e.get("detail") or e.get("rule") or "") for e in qerrs[:3])
+                   or (qout.strip().splitlines()[-1] if qout.strip() else ""))
+        qok = qcode == 0 and (qinfo.get("ok") is not False)
+        qsummary = qdetail if not qok else f"ok (warnings={len(qwarns)})"
+        if not step("构建期画面体检", qok, qsummary,
+                    "helpers/check_visual.py --only quality：修复字号/超长静止/安全区越界/滤镜坐标系/字体或 demo 异常"):
+            if not as_json and qout.strip():
+                print("\n".join(qout.strip().splitlines()[-8:]))
+            return stop()
         # 端口是这轮最大的静默陷阱：三条片同 id `composition`，谁占住默认端口谁被端出来。
         # 所以默认自动挑空闲端口；并且起服务后**核对端出来的确实是本工程**。
         use_port = port or _free_port()
-        stage_args = [str(HELPERS / "live_stage.py"), str(project), "--json", "--port", str(use_port)]
+        stage_args = [str(INTERNAL / "live_stage.py"), str(project), "--json", "--port", str(use_port)]
         code, out = _run(stage_args)
         info = _json_tail(out)
         if not step("编译服务", code == 0 and info.get("ok", False),
@@ -183,7 +198,7 @@ def review(project: Path, open_surface: bool = True, live: bool = True,
             return stop()
 
     # 2) 构建审阅页
-    build_args = [str(HELPERS / "build_review.py"), str(project), "--mode", "auto", "--slices", "off"]
+    build_args = [str(INTERNAL / "build_review.py"), str(project), "--mode", "auto", "--slices", "off"]
     if build_mode == "final-cut":
         build_args.append("--final-cut")
     code, out = _run(build_args)
@@ -212,7 +227,7 @@ def review(project: Path, open_surface: bool = True, live: bool = True,
             return stop()
 
     # 3) surface：有插件交给 review_open，没有就起本地宿主
-    code, out = _run([str(HELPERS / "review_surface.py"), str(project), "--surface-only"])
+    code, out = _run([str(INTERNAL / "review_surface.py"), str(project), "--surface-only"])
     surface = (project / "review" / "review-surface.json")
     if not step("surface 契约", code == 0 and surface.is_file(), str(surface),
                 "review_surface.py 的校验报错"):
@@ -221,7 +236,7 @@ def review(project: Path, open_surface: bool = True, live: bool = True,
         return stop()
 
     # 4) 运行时判据：这页到底能不能给人看
-    code, out = _run([str(HELPERS / "check_review_playable.py"), str(project), "--quiet"])
+    code, out = _run([str(INTERNAL / "check_review_playable.py"), str(project), "--quiet"])
     detail = ""
     verdict = _json_tail(out)
     playable = (code == 0 and verdict.get('ok') is True
@@ -247,7 +262,7 @@ def review(project: Path, open_surface: bool = True, live: bool = True,
             notify(surface)
             host = "DSH 侧栏（review_open）"
         except Exception:
-            code, out = _run([str(HELPERS / "review_surface.py"),
+            code, out = _run([str(INTERNAL / "review_surface.py"),
                               str(project), "--no-open", "--port", "0"])
             info = _json_tail(out)
             host = info.get("url") or info.get("path") or "本地宿主"

@@ -31,10 +31,12 @@ HELPERS = ROOT / "helpers"
 # page 十步路线已存档：真正的生成器在 _legacy_page/，原路径只剩 CLI 转发 shim
 GENERATOR = ROOT / "visual" / "scripts" / "_legacy_page" / "generate-composition.py"
 sys.path.insert(0, str(HELPERS))
+sys.path.insert(0, str(HELPERS / "_internal"))
+sys.path.insert(0, str(HELPERS / "_internal"))
 
 
 def _load(name: str):
-    spec = importlib.util.spec_from_file_location(f"craft_{name}", HELPERS / f"{name}.py")
+    spec = importlib.util.spec_from_file_location(f"craft_{name}", (HELPERS / f"{name}.py" if (HELPERS / f"{name}.py").is_file() else HELPERS / "_internal" / f"{name}.py"))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

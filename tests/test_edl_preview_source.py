@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-BUILDER = Path(__file__).resolve().parents[1] / 'helpers/edl_preview_build.py'
+BUILDER = Path(__file__).resolve().parents[1] / 'helpers/_internal/edl_preview_build.py'
 
 class SourcePreviewTest(unittest.TestCase):
     def test_stale_render_is_only_used_when_explicit(self):

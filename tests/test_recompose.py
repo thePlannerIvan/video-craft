@@ -11,6 +11,8 @@ from types import SimpleNamespace
 
 HELPERS = Path(__file__).resolve().parents[1] / "helpers"
 sys.path.insert(0, str(HELPERS))
+sys.path.insert(0, str(HELPERS / "_internal"))
+sys.path.insert(0, str(HELPERS / "_internal"))
 
 import recompose_plan  # noqa: E402
 import review_inbox  # noqa: E402

@@ -1,46 +1,42 @@
 #!/usr/bin/env python3
-"""`画面` —— 一个深模块：**先读懂原页，再写 composition**。
+"""`画面` —— 四档视觉分拍网关与实机代理工具（兼旧项目 `pages/` 只读兼容）。
 
-它替换掉的是一整条历史路线
---------------------------
-旧 Skill 里有两条动画路线（保真页面 page / 重排 recompose，另有一段"能力包组合"），
-入口判断给的是三个名字 + 十几组能力，没有一句"你的输入是这个就走这条命令"。结果是
-实现方**跳过了所有路线，自己手写一套 composition**，把原页"重画"成抽象几何 ——
-2026-10-21 的三条片上，用户的原话是"太简单、缺画面、不如我 PPT 清楚"。
+四档视觉语法（`visual-plan.json`）
+---------------------------------
+- `talk-only`     只看人留白档（故事引入、观点铺垫、金句与节奏过渡）
+- `logic-diagram` 逻辑演进档（默认主力：集合/因果/定位/对比，每屏 1–2 主图 + 锚点词）
+- `theory-board`  理论拆解档（多维模型/清单：支持讲到哪条点亮哪条、其余降暗）
+- `demo-footage`  实机演示录屏档（审阅挂 `proxy`，交付直读高清原录屏并做屏幕文字保护）
 
-所以这里只留一个方向，而且把**原页拆解**做成硬闸门：
-
-    outline  —— 从原页（PPT 导出的 SVG）抽出元素清单，写成 `pages/<page>.md` 骨架
-    verify   —— 拆解表必须填满（每个元素的处置 + 对应哪句口播），然后 composition 才准进门
-    pages    —— 看 beat ↔ 原页的映射，缺哪一页
-
-接口只有这三个动词。原页是唯一事实来源；拆解表是动手前必须交的作业。
-
-为什么"拆解"不能省
-------------------
-用户说的不是"画风不喜欢"，是"你没理解我在讲什么"。原页里每个框、每个数字、每根线
-都已经携带信息；**只有先把它们逐条登记、并指认它对应哪一句口播，动画才知道该讲什么**。
-跳过这一步，能画出来的就只有抽象几何。
+旧 `pages/` 逐元素拆解仅作历史项目只读兼容，不再作为新建项目的强制门槛；静态参考图只作配色、比例与造型风格参考。
 
 用法
 ----
-    python3 helpers/film.py outline <project> --page page_04 --source <svg路径>
-    python3 helpers/film.py pages  <project> --map <beatId>=<pageKey>[,<beatId>=<pageKey>...]
-    python3 helpers/film.py verify <project> [--json]
+    python3 helpers/film.py init   <project>              # 从 timeline/grouping 初始化四档 visual-plan.json
+    python3 helpers/film.py verify <project> [--json]     # 校验 visual-plan.json（无之则按旧 pages/ 回退）
+    python3 helpers/film.py proxy  <project> [--json]     # 为 demo-footage 段生成审阅用低码率代理片
+    python3 helpers/film.py outline / pages ...           # 旧静态参考页兼容子命令
 
-退出码：0 = 通过；1 = 有缺口（会逐条列出该补什么）；2 = 前置缺失。
+退出码：0 = 通过；1 = 有缺口（逐条列出）；2 = 前置缺失。
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
 PAGES_REL = "pages"
 MAP_NAME = "map.json"
+PLAN_NAME = "visual-plan.json"
+VISUAL_TIERS = ("talk-only", "logic-diagram", "theory-board", "demo-footage")
+DEMO_PROXY_REL = "review/demo_proxies"
 SVG_NS = "{http://www.w3.org/2000/svg}"
 
 # 原页里这些内容是"版面记号"，不是内容 —— 默认判为删，并写清理由
@@ -274,12 +270,306 @@ def _table_rows(md: str) -> list[list[str]]:
     return rows
 
 
+def _seed_segments(project: Path) -> list[dict]:
+    """Derive initial visual-plan segments from timeline.json or recompose/lines.json."""
+    tl_path = project / "timeline" / "timeline.json"
+    if tl_path.is_file():
+        try:
+            tl = json.loads(tl_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            tl = {}
+        chapters = tl.get("chapters") or []
+        if chapters:
+            segs = []
+            cursor = 0
+            for idx, ch in enumerate(chapters, 1):
+                steps = ch.get("steps") or []
+                if steps:
+                    st0 = min(int(s.get("startMs", cursor)) for s in steps)
+                    st1 = max(int(s.get("startMs", st0)) + int(s.get("durationMs", 3000)) for s in steps)
+                else:
+                    st0 = int(ch.get("startMs", cursor))
+                    dur = int(ch.get("durationMs", 4000))
+                    st1 = int(ch.get("endMs", st0 + dur))
+                st1 = max(st0 + 1000, st1)
+                cursor = st1
+                cid = str(ch.get("id") or f"seg-{idx:02d}")
+                title = str(ch.get("title") or cid).strip()
+                segs.append({
+                    "id": f"seg-{idx:02d}",
+                    "beatId": cid,
+                    "tier": "logic-diagram",
+                    "startMs": st0,
+                    "endMs": st1,
+                    "hero": title,
+                    "anchors": [title[:12]],
+                })
+            if segs:
+                return segs
+    beats = _beats_of(project)
+    if beats:
+        segs = []
+        cursor = 0
+        for idx, b in enumerate(beats, 1):
+            bid = str(b.get("id") or f"beat-{idx:02d}")
+            title = str(b.get("title") or bid).strip()
+            st0 = int(b.get("startMs", cursor))
+            st1 = max(st0 + 1000, int(b.get("endMs", st0 + int(b.get("durationMs", 4000)))))
+            cursor = st1
+            segs.append({
+                "id": f"seg-{idx:02d}",
+                "beatId": bid,
+                "tier": "logic-diagram",
+                "startMs": st0,
+                "endMs": st1,
+                "hero": title,
+                "anchors": [title[:12]],
+            })
+        return segs
+    return [{
+        "id": "seg-01",
+        "beatId": "seg-01",
+        "tier": "logic-diagram",
+        "startMs": 0,
+        "endMs": 5000,
+        "hero": "主视觉对象",
+        "anchors": ["核心关键词"],
+    }]
+
+
+def cmd_init(project: Path, overwrite: bool = False, as_json: bool = False) -> int:
+    target = project / PLAN_NAME
+    if target.exists() and not overwrite:
+        if as_json:
+            print(json.dumps({"ok": True, "path": str(target), "created": False}, ensure_ascii=False, indent=1))
+        else:
+            print(f"○ {target} 已存在（重写加 --overwrite）")
+        return 0
+    doc = {
+        "version": 2,
+        "reference": {
+            "styleNote": "可选：静态参考图仅提取配色、比例与造型",
+            "keyframeSvgs": [],
+        },
+        "segments": _seed_segments(project),
+    }
+    target.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if as_json:
+        print(json.dumps({"ok": True, "path": str(target), "created": True, "segments": len(doc["segments"])},
+                         ensure_ascii=False, indent=1))
+    else:
+        print(f"✓ 视觉分拍表已初始化：{target}（{len(doc['segments'])} 段，无需 pages/ 原页拆解）")
+    return 0
+
+
+def _resolve_plan_source(project: Path, raw: str) -> Path:
+    p = Path(raw).expanduser()
+    return (p if p.is_absolute() else (project / p)).resolve()
+
+
+def _is_inside_composition_assets(src: Path, project: Path) -> bool:
+    comp_assets = (project / "composition" / "assets").resolve()
+    return src == comp_assets or src.is_relative_to(comp_assets)
+
+
+def cmd_proxy(project: Path, max_width: int = 960, crf: int = 28, as_json: bool = False) -> int:
+    plan_path = project / PLAN_NAME
+    if not plan_path.is_file():
+        print(json.dumps({"ok": False, "error": f"缺 {PLAN_NAME}；先跑 film.py init"}, ensure_ascii=False, indent=1))
+        return 2
+    try:
+        doc = json.loads(plan_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(json.dumps({"ok": False, "error": f"{PLAN_NAME} 解析失败：{exc}"}, ensure_ascii=False, indent=1))
+        return 2
+
+    proxy_dir = project / DEMO_PROXY_REL
+    generated = []
+    for idx, seg in enumerate(doc.get("segments") or []):
+        if seg.get("tier") != "demo-footage":
+            continue
+        seg_id = str(seg.get("id") or f"demo-{idx + 1:02d}")
+        safe_id = re.sub(r"[^A-Za-z0-9._-]+", "_", seg_id)
+        demo = seg.get("demo")
+        if not isinstance(demo, dict) or not demo.get("source"):
+            print(json.dumps({"ok": False, "error": f"{seg_id} 缺少 demo.source"}, ensure_ascii=False, indent=1))
+            return 1
+        src = _resolve_plan_source(project, str(demo["source"]))
+        if _is_inside_composition_assets(src, project):
+            print(json.dumps({"ok": False, "error": f"{seg_id} 原录屏禁止放入 composition/assets/: {src}"},
+                             ensure_ascii=False, indent=1))
+            return 1
+        if not src.is_file():
+            print(json.dumps({"ok": False, "error": f"{seg_id} 找不到原录屏：{src}"}, ensure_ascii=False, indent=1))
+            return 1
+        in_sec = float(demo.get("inSec", 0.0))
+        out_sec = float(demo.get("outSec", 0.0))
+        if in_sec < 0 or out_sec <= in_sec:
+            print(json.dumps({"ok": False, "error": f"{seg_id} 入出点非法：inSec={in_sec}, outSec={out_sec}"},
+                             ensure_ascii=False, indent=1))
+            return 1
+        proxy_dir.mkdir(parents=True, exist_ok=True)
+        out_file = proxy_dir / f"{safe_id}.mp4"
+        dur = out_sec - in_sec
+        with tempfile.NamedTemporaryFile(dir="/tmp", prefix="vc_proxy_", suffix=".mp4", delete=False) as tf:
+            tmp_out = Path(tf.name)
+        cmd = [
+            "ffmpeg", "-y", "-v", "error",
+            "-ss", f"{in_sec:.3f}", "-t", f"{dur:.3f}", "-i", str(src),
+            "-vf", f"scale='min({int(max_width)},iw)':-2",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", str(int(crf)),
+            "-pix_fmt", "yuv420p", "-an", "-movflags", "+faststart",
+            str(tmp_out),
+        ]
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True)
+            if proc.returncode != 0 or not tmp_out.is_file() or tmp_out.stat().st_size == 0:
+                print(json.dumps({"ok": False, "error": f"{seg_id} 生成代理片失败：{proc.stderr[-300:]}"},
+                                 ensure_ascii=False, indent=1))
+                return 1
+            shutil.move(str(tmp_out), str(out_file))
+        finally:
+            if tmp_out.exists():
+                tmp_out.unlink(missing_ok=True)
+        rel_proxy = os.path.relpath(out_file.resolve(), project.resolve()).replace(os.sep, "/")
+        demo["proxy"] = rel_proxy
+        generated.append({"id": seg_id, "source": str(src), "proxy": rel_proxy})
+
+    plan_path.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    result = {"ok": True, "count": len(generated), "proxies": generated}
+    if as_json:
+        print(json.dumps(result, ensure_ascii=False, indent=1))
+    else:
+        print(f"✓ 已生成 {len(generated)} 个实机演示轻量代理片 → {proxy_dir}")
+    return 0
+
+
+def _verify_visual_plan(project: Path, plan_path: Path, as_json: bool) -> int:
+    problems: list[str] = []
+    notes: list[str] = []
+    try:
+        doc = json.loads(plan_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(json.dumps({"ok": False, "mode": "v2-visual-plan", "problems": [f"{PLAN_NAME} 无效：{exc}"]},
+                         ensure_ascii=False, indent=1))
+        return 1
+    if not isinstance(doc, dict):
+        problems.append(f"{PLAN_NAME} 顶层必须是 JSON 对象")
+        segments = []
+    else:
+        segments = doc.get("segments")
+        if not isinstance(segments, list) or not segments:
+            problems.append(f"{PLAN_NAME} 必须包含非空 segments 数组")
+            segments = []
+
+    tier_counts: dict[str, int] = {t: 0 for t in VISUAL_TIERS}
+    prev_end = 0.0
+    for idx, seg in enumerate(segments):
+        if not isinstance(seg, dict):
+            problems.append(f"segments[{idx}] 必须是对象")
+            continue
+        sid = str(seg.get("id") or f"segments[{idx}]")
+        tier = seg.get("tier")
+        if tier not in VISUAL_TIERS:
+            problems.append(f"{sid}: 非法视觉档位 {tier!r}（仅允许 {VISUAL_TIERS}）")
+            continue
+        tier_counts[tier] += 1
+        try:
+            st0 = float(seg["startMs"])
+            st1 = float(seg["endMs"])
+        except (KeyError, TypeError, ValueError):
+            problems.append(f"{sid}: 缺少合法的 startMs / endMs")
+            continue
+        if st0 < 0 or st1 <= st0:
+            problems.append(f"{sid}: 时间区间非法 ({st0}..{st1})")
+        if st0 < prev_end - 1e-6:
+            problems.append(f"{sid}: 与上一段重叠 (startMs={st0} < prevEndMs={prev_end})")
+        prev_end = max(prev_end, st1)
+
+        if tier == "logic-diagram":
+            hero = seg.get("hero")
+            anchors = seg.get("anchors")
+            if not isinstance(hero, str) or not hero.strip():
+                problems.append(f"{sid} (logic-diagram): 缺少 hero 主视觉主角描述")
+            if not isinstance(anchors, list) or not (1 <= len(anchors) <= 6) or not all(
+                isinstance(a, str) and a.strip() for a in anchors
+            ):
+                problems.append(f"{sid} (logic-diagram): anchors 必须为 1–6 个简洁核心大字锚点")
+        elif tier == "theory-board":
+            hero = seg.get("hero")
+            anchors = seg.get("anchors")
+            if not isinstance(hero, str) or not hero.strip():
+                problems.append(f"{sid} (theory-board): 缺少 hero 框架名称")
+            if not isinstance(anchors, list) or not anchors or not all(
+                isinstance(a, str) and a.strip() for a in anchors
+            ):
+                problems.append(f"{sid} (theory-board): 缺少非空 anchors 条目列表")
+            focus_mode = seg.get("focusMode")
+            if focus_mode is not None and focus_mode not in ("spotlight", "active-highlight"):
+                problems.append(f"{sid} (theory-board): focusMode 必须为 spotlight/active-highlight（当前讲解项高亮、其余压暗）")
+            elif focus_mode is None:
+                notes.append(f"{sid} (theory-board): 需确保当前口播条目高亮放大、其余非焦点条目降暗退后")
+        elif tier == "demo-footage":
+            demo = seg.get("demo")
+            if not isinstance(demo, dict):
+                problems.append(f"{sid} (demo-footage): 缺少 demo 配置对象")
+                continue
+            raw_src = demo.get("source")
+            if not isinstance(raw_src, str) or not raw_src.strip():
+                problems.append(f"{sid} (demo-footage): 缺少 demo.source 原录屏路径")
+                continue
+            src = _resolve_plan_source(project, raw_src)
+            if _is_inside_composition_assets(src, project):
+                problems.append(f"{sid} (demo-footage): 原录屏禁止放入 composition/assets/（请用代理或由 deliver 交付直拼）：{raw_src}")
+            elif not src.is_file():
+                problems.append(f"{sid} (demo-footage): 找不到原录屏文件：{src}")
+            try:
+                in_sec = float(demo["inSec"])
+                out_sec = float(demo["outSec"])
+            except (KeyError, TypeError, ValueError):
+                problems.append(f"{sid} (demo-footage): 缺少合法的 inSec / outSec")
+                continue
+            if in_sec < 0 or out_sec <= in_sec:
+                problems.append(f"{sid} (demo-footage): demo 入出点非法 ({in_sec}..{out_sec})")
+            try:
+                speed = float(demo.get("speed", 1.0))
+                if speed <= 0:
+                    problems.append(f"{sid} (demo-footage): speed 必须大于 0")
+            except (TypeError, ValueError):
+                problems.append(f"{sid} (demo-footage): speed 必须为正数")
+
+    result = {
+        "ok": not problems,
+        "mode": "v2-visual-plan",
+        "segments": len(segments),
+        "tiers": tier_counts,
+        "problems": problems,
+        "notes": notes,
+        "next": ("视觉分拍表校验通过 → 编写或渲染 composition/（demo-footage 预览走 proxy、交付直拼原片）"
+                 if not problems else "按 problems 修复 visual-plan.json 后重验"),
+    }
+    if as_json:
+        print(json.dumps(result, ensure_ascii=False, indent=1))
+    else:
+        if result["ok"]:
+            print(f"✓ 视觉分拍表校验通过（{len(segments)} 段：{tier_counts}）")
+        else:
+            print(f"✗ 视觉分拍表未通过（{len(problems)} 处）：")
+            for item in problems:
+                print(f"  - {item}")
+    return 0 if result["ok"] else 1
+
+
 def cmd_verify(project: Path, as_json: bool) -> int:
+    plan_path = project / PLAN_NAME
+    if plan_path.is_file():
+        return _verify_visual_plan(project, plan_path, as_json)
+
     problems: list[str] = []
     pages_dir = project / PAGES_REL
     if not pages_dir.is_dir():
-        print(json.dumps({"ok": False, "error": f"没有 {PAGES_REL}/：先跑 film.py outline 拆原页"},
-                         ensure_ascii=False, indent=1))
+        msg = f"没有 {PLAN_NAME} 或 {PAGES_REL}/：先跑 film.py init {project}"
+        print(json.dumps({"ok": False, "error": msg}, ensure_ascii=False, indent=1))
         return 1
 
     beats = _beats_of(project)
@@ -366,7 +656,18 @@ def main(argv=None) -> int:
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    p_outline = sub.add_parser("outline", help="从原页 SVG 抽元素，写 pages/<page>.md 骨架")
+    p_init = sub.add_parser("init", help="初始化四档视觉语法分拍表 visual-plan.json")
+    p_init.add_argument("project", type=Path)
+    p_init.add_argument("--overwrite", action="store_true")
+    p_init.add_argument("--json", action="store_true")
+
+    p_proxy = sub.add_parser("proxy", help="为 visual-plan.json 中实机演示段生成审阅轻代理")
+    p_proxy.add_argument("project", type=Path)
+    p_proxy.add_argument("--max-width", type=int, default=960)
+    p_proxy.add_argument("--crf", type=int, default=28)
+    p_proxy.add_argument("--json", action="store_true")
+
+    p_outline = sub.add_parser("outline", help="（兼容旧工程）从原页 SVG 抽元素，写 pages/<page>.md 骨架")
     p_outline.add_argument("project", type=Path)
     p_outline.add_argument("--page", required=True, help="页 key（如 page_04）")
     p_outline.add_argument("--source", type=Path, help="原页 SVG 的绝对路径")
@@ -374,16 +675,20 @@ def main(argv=None) -> int:
     p_outline.add_argument("--keep-chrome", action="store_true",
                            help="保留眉标/角标（如 collage/line-art 的档案编号）")
 
-    p_pages = sub.add_parser("pages", help="beat ↔ 原页 映射；写映射")
+    p_pages = sub.add_parser("pages", help="（兼容旧工程）beat ↔ 原页 映射；写映射")
     p_pages.add_argument("project", type=Path)
     p_pages.add_argument("--map", default="", help="beatId=pageKey[,beatId=pageKey...]")
 
-    p_verify = sub.add_parser("verify", help="闸门：拆解填满了吗")
+    p_verify = sub.add_parser("verify", help="闸门：校验 visual-plan.json（或旧版 pages/）")
     p_verify.add_argument("project", type=Path)
     p_verify.add_argument("--json", action="store_true")
 
     args = parser.parse_args(argv)
     project = args.project.expanduser().resolve()
+    if args.cmd == "init":
+        return cmd_init(project, args.overwrite, args.json)
+    if args.cmd == "proxy":
+        return cmd_proxy(project, args.max_width, args.crf, args.json)
     if args.cmd == "outline":
         return cmd_outline(project, args.page, args.source, args.overwrite, args.keep_chrome)
     if args.cmd == "pages":

@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "license": "CC0-1.0",
+  "items": [
+    {
+      "id": "chapter-soft-whoosh",
+      "file": "chapter-soft-whoosh.wav",
+      "kind": "chapter",
+      "duration_s": 0.35,
+      "license": "CC0-1.0 (original procedural synthesis)",
+      "description": "柔和空气转场风声（切章轻提示）"
+    },
+    {
+      "id": "chapter-warm-swell",
+      "file": "chapter-warm-swell.wav",
+      "kind": "chapter",
+      "duration_s": 0.4,
+      "license": "CC0-1.0 (original procedural synthesis)",
+      "description": "温暖五度暗垫涌起（切章转场）"
+    },
+    {
+      "id": "chapter-page-turn",
+      "file": "chapter-page-turn.wav",
+      "kind": "chapter",
+      "duration_s": 0.25,
+      "license": "CC0-1.0 (original procedural synthesis)",
+      "description": "轻微翻页纸感声（段落切换）"
+    },
+    {
+      "id": "reveal-soft-pop",
+      "file": "reveal-soft-pop.wav",
+      "kind": "reveal",
+      "duration_s": 0.16,
+      "license": "CC0-1.0 (original procedural synthesis)",
+      "description": "轻柔木质微气泡（核心概念出现）"
+    },
+    {
+      "id": "reveal-glass-tick",
+      "file": "reveal-glass-tick.wav",
+      "kind": "reveal",
+      "duration_s": 0.2,
+      "license": "CC0-1.0 (original procedural synthesis)",
+      "description": "克制清脆轻敲音（锚点亮起）"
+    },
+    {
+      "id": "reveal-warm-chime",
+      "file": "reveal-warm-chime.wav",
+      "kind": "reveal",
+      "duration_s": 0.34,
+      "license": "CC0-1.0 (original procedural synthesis)",
+      "description": "柔和五度短音律（关键概念揭示）"
+    },
+    {
+      "id": "turn-sub-drop",
+      "file": "turn-sub-drop.wav",
+      "kind": "turn",
+      "duration_s": 0.3,
+      "license": "CC0-1.0 (original procedural synthesis)",
+      "description": "轻量低频下沉落点（关键反转）"
+    },
+    {
+      "id": "turn-crisp-click",
+      "file": "turn-crisp-click.wav",
+      "kind": "turn",
+      "duration_s": 0.1,
+      "license": "CC0-1.0 (original procedural synthesis)",
+      "description": "干脆克制机械轻叩（转折切换）"
+    }
+  ]
+}

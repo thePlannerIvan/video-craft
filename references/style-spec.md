@@ -2,7 +2,7 @@
 
 > 第 2 步定风格，第 7 步读对应那一节。若本机已挂载私有参考库（`python3 helpers/_internal/resolve_vault.py --style <style_id>` 返回 `available: true`），优先读取其返回的 `craft_rules_path` 与 `patterns/`；未挂载时以本开源基准为准。
 > **本文件只管怎么动**：强调手段、运动方式、禁止项。静态画面语法归上游画面工作台或私有库 `styles/<style_id>/page.md`。
-> 跨风格规则见 [author-spec.md](author-spec.md)。**本文件适用于 `keyframe-svg` 生产模式**；`footage-montage`（如 `lifestyle-cult` 街头文化与商业档案蒙太奇）不经过静态 SVG，动效与快切判据见 [montage-route.md](montage-route.md) 及私有库 `styles/lifestyle-cult/craft.md`。版式/画框（[intake-and-frames.md](intake-and-frames.md)）与生产模式正交。
+> 跨风格规则见 [author-spec.md](author-spec.md)。**本文件仅约束对应风格的视觉与动效语言**，与能力组合（`footage` / `motion` / `screen-demo`）及画框（[intake-and-frames.md](intake-and-frames.md)）完全正交；实拍混剪规则亦参见 [montage-route.md](montage-route.md) 及私有库 `styles/lifestyle-cult/craft.md`。
 > 上限：每种风格 ≤ 5 条，由 `helpers/_internal/spec_lint.py` 强制。元素级的特殊处理不进本文件（见文末）。
 > 与外部通用动效原则（`hyperframes-creative` 等）冲突时，本节优先：那是通用建议，这里记的是作者判准。
 

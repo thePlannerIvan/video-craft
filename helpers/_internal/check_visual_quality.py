@@ -19,7 +19,9 @@ Exit codes: 0 = pass, 1 = error findings, 2 = missing project/usage error.
 from __future__ import annotations
 
 import argparse
+import ast
 import json
+import operator
 import re
 import subprocess
 import sys
@@ -156,9 +158,65 @@ def _check_demo_segments(project: Path, plan: dict, geo: dict, errors: list[dict
             })
 
 
+_VOID_HTML_TAGS = {
+    "area", "base", "br", "col", "embed", "hr", "img", "input",
+    "link", "meta", "param", "source", "track", "wbr",
+}
+_DATA_ROLE_RE = re.compile(r'\bdata-role\s*=\s*(?:"([^"]*)"|\'([^\']*)\')', re.I)
+
+
+def _role_spans(raw: str, roles: tuple[str, ...] = ("background", "caption", "person")) -> list[tuple[int, int]]:
+    """Return [(start, end), ...] for elements (and their descendants) matching `data-role`."""
+    want = {r.lower() for r in roles}
+    spans: list[tuple[int, int]] = []
+    stack: list[tuple[str, int | None]] = []
+    for m in re.finditer(r"<(/?)([a-zA-Z][\w:-]*)\b([^>]*)>", raw):
+        closing, tag, attrs = m.group(1), m.group(2).lower(), m.group(3)
+        if not closing:
+            rm = _DATA_ROLE_RE.search(attrs)
+            role = (rm.group(1) if rm and rm.group(1) is not None else (rm.group(2) if rm else "")).strip().lower()
+            start_pos = m.start() if role in want else None
+            self_close = attrs.rstrip().endswith("/") or tag in _VOID_HTML_TAGS
+            if self_close:
+                if start_pos is not None:
+                    spans.append((start_pos, m.end()))
+            else:
+                stack.append((tag, start_pos))
+        else:
+            for idx in range(len(stack) - 1, -1, -1):
+                if stack[idx][0] == tag:
+                    for _, s_pos in stack[idx:]:
+                        if s_pos is not None:
+                            spans.append((s_pos, m.end()))
+                    del stack[idx:]
+                    break
+    for _, s_pos in stack:
+        if s_pos is not None:
+            spans.append((s_pos, len(raw)))
+    return spans
+
+
+def _in_spans(pos: int, spans: list[tuple[int, int]]) -> bool:
+    return any(s0 <= pos < s1 for s0, s1 in spans)
+
+
 def _is_exempt_text_context(ctx: str) -> bool:
     low = ctx.lower()
-    return any(tok in low for tok in ("caption", "subtitle", 'data-role="caption"', "data-tier=\"talk-only\"", "data-tier=\"demo-footage\""))
+    return any(
+        tok in low
+        for tok in (
+            "caption",
+            "subtitle",
+            'data-role="caption"',
+            "data-role='caption'",
+            'data-role="background"',
+            "data-role='background'",
+            'data-role="person"',
+            "data-role='person'",
+            'data-tier="talk-only"',
+            'data-tier="demo-footage"',
+        )
+    )
 
 
 def _check_min_font_size(files: list[Path], geo: dict, errors: list[dict]) -> None:
@@ -195,9 +253,10 @@ def _check_min_font_size(files: list[Path], geo: dict, errors: list[dict]) -> No
                         })
 
         if suf in {".html", ".htm", ".svg"}:
+            exempt_spans = _role_spans(raw)
             for tag_m in re.finditer(r"<([a-zA-Z][\w:-]*)\b([^>]*)>", raw):
                 tag, attrs = tag_m.group(1), tag_m.group(2)
-                if _is_exempt_text_context(tag + " " + attrs):
+                if _in_spans(tag_m.start(), exempt_spans) or _is_exempt_text_context(tag + " " + attrs):
                     continue
                 style_m = re.search(r'\bstyle\s*=\s*(?:"([^"]*)"|\'([^\']*)\')', attrs, re.I)
                 if style_m:
@@ -377,13 +436,27 @@ def _check_safe_zones(files: list[Path], geo: dict, errors: list[dict]) -> None:
         if path.suffix.lower() not in {".html", ".htm", ".svg"}:
             continue
         raw = _strip_comments(path.read_text(encoding="utf-8", errors="ignore"), path.suffix.lower())
+        exempt_spans = _role_spans(raw)
         svg_spans = _svg_offsets(raw)
         for m in re.finditer(r"<(rect|circle|image|text|div|section|g)\b([^>]*)>", raw, re.I):
             tag = m.group(1).lower()
             attrs = m.group(2)
             low_attrs = attrs.lower()
-            if any(k in low_attrs for k in ('data-role="caption"', 'data-role="person"', 'data-role="background"',
-                                            "caption", "subtitle", "person-slot", 'id="root"')):
+            if _in_spans(m.start(), exempt_spans) or any(
+                k in low_attrs
+                for k in (
+                    'data-role="caption"',
+                    "data-role='caption'",
+                    'data-role="person"',
+                    "data-role='person'",
+                    'data-role="background"',
+                    "data-role='background'",
+                    "caption",
+                    "subtitle",
+                    "person-slot",
+                    'id="root"',
+                )
+            ):
                 continue
             ox, oy = 0, 0
             if tag in ("rect", "circle", "image", "text"):
@@ -443,6 +516,357 @@ def _check_safe_zones(files: list[Path], geo: dict, errors: list[dict]) -> None:
             if caption["h"] > 0 and box_intersects(box, caption):
                 errors.append({"rule": "Q3_SAFEZONE", "file": str(path),
                                "detail": f"{path.name} {ident} ({box}) 侵入字幕区 captionSafe {caption}"})
+
+
+_SAFE_BIN_OPS = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+}
+_SAFE_UNARY_OPS = {ast.UAdd: operator.pos, ast.USub: operator.neg}
+
+
+def _eval_num_expr(expr: str, env: dict[str, float]) -> float | None:
+    expr = expr.strip()
+    if not expr:
+        return None
+    norm = expr.replace("canvas.width", "__CW__").replace("canvas.height", "__CH__")
+    try:
+        tree = ast.parse(norm, mode="eval")
+    except SyntaxError:
+        return None
+
+    def _eval(node: ast.AST) -> float | None:
+        if isinstance(node, ast.Expression):
+            return _eval(node.body)
+        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)) and not isinstance(node.value, bool):
+            return float(node.value)
+        if isinstance(node, ast.Name):
+            return env.get(node.id)
+        if isinstance(node, ast.UnaryOp) and type(node.op) in _SAFE_UNARY_OPS:
+            val = _eval(node.operand)
+            return _SAFE_UNARY_OPS[type(node.op)](val) if val is not None else None
+        if isinstance(node, ast.BinOp) and type(node.op) in _SAFE_BIN_OPS:
+            left, right = _eval(node.left), _eval(node.right)
+            if left is None or right is None:
+                return None
+            if isinstance(node.op, ast.Div) and abs(right) < 1e-12:
+                return None
+            return float(_SAFE_BIN_OPS[type(node.op)](left, right))
+        return None
+
+    return _eval(tree)
+
+
+def _estimate_text_width(text: str, font_px: float) -> float:
+    return sum(font_px * (0.85 if ord(ch) > 127 else 0.50) for ch in text)
+
+
+def _span_for_align(x: float, width: float, align: str) -> tuple[float, float]:
+    a = align.lower()
+    if a in ("end", "right"):
+        return x - width, x
+    if a in ("middle", "center"):
+        return x - width / 2.0, x + width / 2.0
+    return x, x + width
+
+
+def _balanced_parens(text: str, open_idx: int) -> tuple[str, int] | None:
+    depth = 1
+    i = open_idx + 1
+    in_quote: str | None = None
+    while i < len(text) and depth > 0:
+        ch = text[i]
+        if in_quote is not None:
+            if ch == "\\" and i + 1 < len(text):
+                i += 2
+                continue
+            if ch == in_quote:
+                in_quote = None
+        else:
+            if ch in ('"', "'", "`"):
+                in_quote = ch
+            elif ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+        i += 1
+    return (text[open_idx + 1:i - 1], i) if depth == 0 else None
+
+
+def _split_js_args(args_str: str) -> list[str]:
+    out: list[str] = []
+    depth = 0
+    in_quote: str | None = None
+    start = 0
+    i = 0
+    while i < len(args_str):
+        ch = args_str[i]
+        if in_quote is not None:
+            if ch == "\\" and i + 1 < len(args_str):
+                i += 2
+                continue
+            if ch == in_quote:
+                in_quote = None
+        else:
+            if ch in ('"', "'", "`"):
+                in_quote = ch
+            elif ch in "([{":
+                depth += 1
+            elif ch in ")]}":
+                depth = max(0, depth - 1)
+            elif ch == "," and depth == 0:
+                part = args_str[start:i].strip()
+                if part:
+                    out.append(part)
+                start = i + 1
+        i += 1
+    tail = args_str[start:].strip()
+    if tail:
+        out.append(tail)
+    return out
+
+
+def _unquote_js_string(expr: str) -> str | None:
+    m = re.match(r'^("(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\')$', expr.strip())
+    if not m:
+        return None
+    try:
+        return str(ast.literal_eval(m.group(1)))
+    except Exception:
+        return m.group(1)[1:-1]
+
+
+def _svg_scales(raw: str) -> list[tuple[int, int, float, float]]:
+    """Return [(span_start, span_end, sx, sy), ...] from <svg viewBox width height>."""
+    out: list[tuple[int, int, float, float]] = []
+    for sm in re.finditer(r"<svg\b([^>]*)>(.*?)</svg>", raw, re.S | re.I):
+        attrs = sm.group(1)
+        vb_m = re.search(r'\bviewBox\s*=\s*["\']\s*[-.\d]+\s+[-.\d]+\s+([\d.]+)\s+([\d.]+)\s*["\']', attrs, re.I)
+        w = _num_attr(attrs, "width")
+        h = _num_attr(attrs, "height")
+        if vb_m and w and h:
+            vb_w, vb_h = float(vb_m.group(1)), float(vb_m.group(2))
+            if vb_w > 0 and vb_h > 0:
+                out.append((sm.start(), sm.end(), w / vb_w, h / vb_h))
+    return out
+
+
+def _check_anchor_label_bounds(files: list[Path], geo: dict, errors: list[dict]) -> None:
+    """Catch SVG <text> and Canvas fillText/strokeText/drawLeader coordinates outside canvas bounds."""
+    cw, ch = float(geo["width"]), float(geo["height"])
+
+    # 1) SVG <text> anchor coordinates + horizontal text extent
+    for path in files:
+        suf = path.suffix.lower()
+        if suf not in {".html", ".htm", ".svg"}:
+            continue
+        raw = _strip_comments(path.read_text(encoding="utf-8", errors="ignore"), suf)
+        exempt_spans = _role_spans(raw)
+        svg_spans = _svg_offsets(raw)
+        svg_scales = _svg_scales(raw)
+        for m in re.finditer(r"<text\b([^>]*)>(.*?)</text>|<text\b([^>]*)/>", raw, re.S | re.I):
+            attrs = m.group(1) if m.group(1) is not None else (m.group(3) or "")
+            inner = m.group(2) or ""
+            if _in_spans(m.start(), exempt_spans) or _is_exempt_text_context(attrs):
+                continue
+            x = _num_attr(attrs, "x")
+            y = _num_attr(attrs, "y")
+            if x is None or y is None:
+                continue
+            ox, oy = 0.0, 0.0
+            for s0, s1, dx, dy in svg_spans:
+                if s0 <= m.start() < s1:
+                    ox, oy = float(dx), float(dy)
+                    break
+            sx, sy = 1.0, 1.0
+            for s0, s1, rx, ry in svg_scales:
+                if s0 <= m.start() < s1:
+                    sx, sy = rx, ry
+                    break
+            gx, gy = x * sx + ox, y * sy + oy
+            label_text = re.sub(r"<[^>]+>", "", inner).strip()
+            if gx < -1.0 or gx > cw + 1.0 or gy < -1.0 or gy > ch + 1.0:
+                errors.append({
+                    "rule": "Q3_ANCHOR_BOUNDS",
+                    "file": str(path),
+                    "detail": f"{path.name} <text x={gx:.0f} y={gy:.0f}> 坐标超出画布安全边界 [0..{int(cw)}, 0..{int(ch)}]",
+                })
+                continue
+            if label_text:
+                fs = _num_attr(attrs, "font-size")
+                if fs is None:
+                    stm = re.search(r"\bfont-size\s*:\s*([\d.]+)\s*px", attrs, re.I)
+                    fs = float(stm.group(1)) if stm else 36.0
+                anchor_m = re.search(r'\btext-anchor\s*[:=]\s*["\']?(start|middle|end)\b', attrs, re.I)
+                anchor = anchor_m.group(1).lower() if anchor_m else "start"
+                left_x, right_x = _span_for_align(gx, _estimate_text_width(label_text, fs * sx), anchor)
+                if left_x < -1.0 or right_x > cw + 1.0:
+                    errors.append({
+                        "rule": "Q3_ANCHOR_BOUNDS",
+                        "file": str(path),
+                        "detail": (
+                            f"{path.name} <text x={gx:.0f} y={gy:.0f} text-anchor={anchor}> "
+                            f"标签 \"{label_text[:16]}\" 水平范围 [{left_x:.0f}..{right_x:.0f}] 越出画布宽 [0..{int(cw)}]"
+                        ),
+                    })
+
+    # 2) Canvas / JS fillText, strokeText, and drawLeader calls
+    for path in files:
+        suf = path.suffix.lower()
+        if suf not in CODE_SUFFIXES:
+            continue
+        raw_text = path.read_text(encoding="utf-8", errors="ignore")
+        js_blocks: list[str] = []
+        if suf in {".js", ".mjs"}:
+            js_blocks.append(_strip_comments(raw_text, suf))
+        else:
+            for sm in re.finditer(r"<script\b([^>]*)>(.*?)</script\s*>", raw_text, re.S | re.I):
+                s_attrs = sm.group(1)
+                if re.search(r"\bsrc\s*=", s_attrs, re.I):
+                    continue
+                tm = re.search(r'\btype\s*=\s*["\']([^"\']+)["\']', s_attrs, re.I)
+                stype = (tm.group(1).strip().lower() if tm else "")
+                if stype and stype not in {"text/javascript", "application/javascript", "module"}:
+                    continue
+                js_blocks.append(_strip_comments(sm.group(2), ".js"))
+
+        for code in js_blocks:
+            env: dict[str, float] = {"__CW__": cw, "__CH__": ch}
+            for cm in re.finditer(r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([^;\n]+);", code):
+                val = _eval_num_expr(cm.group(2), env)
+                if val is not None:
+                    env[cm.group(1)] = val
+
+            def _preceding_canvas_state(pos: int) -> tuple[str, float]:
+                ctx_win = code[max(0, pos - 500):pos]
+                aligns = re.findall(r"\btextAlign\s*=\s*[\"'](left|right|center|start|end)[\"']", ctx_win)
+                fonts = re.findall(r"\bfont\s*=\s*[\"'][^\"']*?(\d+(?:\.\d+)?)\s*px", ctx_win)
+                return (aligns[-1].lower() if aligns else "start", float(fonts[-1]) if fonts else 32.0)
+
+            for fm in re.finditer(r"\.\s*(?:fillText|strokeText)\s*\(", code):
+                parsed = _balanced_parens(code, fm.end() - 1)
+                if not parsed:
+                    continue
+                args = _split_js_args(parsed[0])
+                if len(args) < 3:
+                    continue
+                x = _eval_num_expr(args[1], env)
+                y = _eval_num_expr(args[2], env)
+                if x is None or y is None:
+                    continue
+                align, font_px = _preceding_canvas_state(fm.start())
+                if x < -1.0 or x > cw + 1.0 or y < -1.0 or y > ch + 1.0:
+                    errors.append({
+                        "rule": "Q3_ANCHOR_BOUNDS",
+                        "file": str(path),
+                        "detail": f"{path.name} fillText(..., {x:.0f}, {y:.0f}) 坐标超出画布 [0..{int(cw)}, 0..{int(ch)}]",
+                    })
+                    continue
+                label = _unquote_js_string(args[0])
+                if label:
+                    lx0, lx1 = _span_for_align(x, _estimate_text_width(label, font_px), align)
+                    if lx0 < -1.0 or lx1 > cw + 1.0:
+                        errors.append({
+                            "rule": "Q3_ANCHOR_BOUNDS",
+                            "file": str(path),
+                            "detail": (
+                                f"{path.name} fillText(\"{label[:16]}\", {x:.0f}, {y:.0f}) "
+                                f"[{lx0:.0f}..{lx1:.0f}] 越出画布宽 [0..{int(cw)}]"
+                            ),
+                        })
+
+            for dm in re.finditer(r"(?<!function\s)\bdrawLeader\s*\(", code):
+                parsed = _balanced_parens(code, dm.end() - 1)
+                if not parsed:
+                    continue
+                args = _split_js_args(parsed[0])
+                align, font_px = _preceding_canvas_state(dm.start())
+                obj_arg = next((a for a in args if a.startswith("{") and a.endswith("}")), None)
+                if obj_arg is not None:
+                    x_vals: list[tuple[str, float]] = []
+                    y_vals: list[tuple[str, float]] = []
+                    for key in ("x", "x1", "x2", "ax", "lx", "tx", "labelX", "targetX"):
+                        km = re.search(rf"\b{key}\s*:\s*([^,}}]+)", obj_arg)
+                        if km:
+                            v = _eval_num_expr(km.group(1), env)
+                            if v is not None:
+                                x_vals.append((key, v))
+                    for key in ("y", "y1", "y2", "ay", "ly", "ty", "labelY", "targetY"):
+                        km = re.search(rf"\b{key}\s*:\s*([^,}}]+)", obj_arg)
+                        if km:
+                            v = _eval_num_expr(km.group(1), env)
+                            if v is not None:
+                                y_vals.append((key, v))
+                    for key, xv in x_vals:
+                        if xv < -1.0 or xv > cw + 1.0:
+                            errors.append({
+                                "rule": "Q3_ANCHOR_BOUNDS",
+                                "file": str(path),
+                                "detail": f"{path.name} drawLeader({key}={xv:.0f}) X 坐标超出画布 [0..{int(cw)}]",
+                            })
+                    for key, yv in y_vals:
+                        if yv < -1.0 or yv > ch + 1.0:
+                            errors.append({
+                                "rule": "Q3_ANCHOR_BOUNDS",
+                                "file": str(path),
+                                "detail": f"{path.name} drawLeader({key}={yv:.0f}) Y 坐标超出画布 [0..{int(ch)}]",
+                            })
+                    lm = re.search(r'\b(?:label|text)\s*:\s*("(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\')', obj_arg)
+                    am = re.search(r'\b(?:align|textAlign)\s*:\s*["\'](left|right|center|start|end)["\']', obj_arg)
+                    if lm and x_vals:
+                        lbl = _unquote_js_string(lm.group(1)) or ""
+                        lbl_align = am.group(1).lower() if am else align
+                        anchor_x = next(
+                            (v for k, v in x_vals if k in ("lx", "labelX", "tx", "x2")),
+                            x_vals[-1][1],
+                        )
+                        if 0.0 <= anchor_x <= cw and lbl:
+                            lx0, lx1 = _span_for_align(anchor_x, _estimate_text_width(lbl, font_px), lbl_align)
+                            if lx0 < -1.0 or lx1 > cw + 1.0:
+                                errors.append({
+                                    "rule": "Q3_ANCHOR_BOUNDS",
+                                    "file": str(path),
+                                    "detail": f"{path.name} drawLeader 标签 \"{lbl[:16]}\" [{lx0:.0f}..{lx1:.0f}] 越出画布宽 [0..{int(cw)}]",
+                                })
+                    continue
+
+                # Positional drawLeader(ctx?, x1, y1, x2?, y2?, label?, align?)
+                nums: list[float] = []
+                labels: list[str] = []
+                arg_align = align
+                for a in args:
+                    s = _unquote_js_string(a)
+                    if s is not None:
+                        if s.lower() in ("left", "right", "center", "start", "end"):
+                            arg_align = s.lower()
+                        elif s.strip():
+                            labels.append(s)
+                    else:
+                        v = _eval_num_expr(a, env)
+                        if v is not None:
+                            nums.append(v)
+                pairs = [(nums[i], nums[i + 1]) for i in range(0, len(nums) - 1, 2)]
+                oob = False
+                for px, py in pairs:
+                    if px < -1.0 or px > cw + 1.0 or py < -1.0 or py > ch + 1.0:
+                        errors.append({
+                            "rule": "Q3_ANCHOR_BOUNDS",
+                            "file": str(path),
+                            "detail": f"{path.name} drawLeader(..., {px:.0f}, {py:.0f}) 坐标超出画布 [0..{int(cw)}, 0..{int(ch)}]",
+                        })
+                        oob = True
+                if not oob and pairs and labels:
+                    lx = pairs[-1][0]
+                    lbl = labels[0]
+                    lx0, lx1 = _span_for_align(lx, _estimate_text_width(lbl, font_px), arg_align)
+                    if lx0 < -1.0 or lx1 > cw + 1.0:
+                        errors.append({
+                            "rule": "Q3_ANCHOR_BOUNDS",
+                            "file": str(path),
+                            "detail": f"{path.name} drawLeader 标签 \"{lbl[:16]}\" [{lx0:.0f}..{lx1:.0f}] 越出画布宽 [0..{int(cw)}]",
+                        })
 
 
 def _check_axis_filters(files: list[Path], errors: list[dict]) -> None:
@@ -608,15 +1032,69 @@ def _check_cross_chapter_cleanup(files: list[Path], comp_dir: Path, errors: list
         })
 
 
-def run_checks(project: Path, comp_name: str | None = None, max_static_s: float = 8.0) -> dict:
-    geo = resolve_project_frame(project)
+MOTION_SHOT_KINDS = ("motion", "model", "card-deck", "xhs")
+DEMO_SHOT_KINDS = ("screen-demo", "demo-footage")
+
+
+def _load_plan_or_storyboard(project: Path) -> dict | None:
+    """Load `storyboard.json` (preferred) or legacy `visual-plan.json` into normalized segments."""
+    for rel in ("storyboard.json", "edit/storyboard.json"):
+        sb_path = project / rel
+        if not sb_path.is_file():
+            continue
+        try:
+            sb = json.loads(sb_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            sb = None
+        if isinstance(sb, dict):
+            segs = []
+            for idx, shot in enumerate(sb.get("shots") or []):
+                if not isinstance(shot, dict):
+                    continue
+                kind = str(shot.get("kind") or "talk-only")
+                if kind in DEMO_SHOT_KINDS:
+                    tier = "demo-footage"
+                elif kind in MOTION_SHOT_KINDS or shot.get("engine") == "hyperframes":
+                    tier = "logic-diagram"
+                else:
+                    tier = "talk-only"
+                demo = shot.get("demo")
+                if tier == "demo-footage" and not isinstance(demo, dict):
+                    raw_src = shot.get("clip") or shot.get("source") or shot.get("material")
+                    if raw_src:
+                        demo = {
+                            "source": raw_src,
+                            "inSec": shot.get("clipIn") if shot.get("clipIn") is not None else shot.get("inSec", 0.0),
+                            "outSec": shot.get("clipOut") if shot.get("clipOut") is not None else shot.get("outSec", 0.0),
+                        }
+                        if isinstance(shot.get("box"), dict):
+                            demo["box"] = shot["box"]
+                seg: dict = {
+                    "id": str(shot.get("id") or f"shot-{idx + 1}"),
+                    "tier": tier,
+                    "kind": kind,
+                    "startMs": int(round(float(shot.get("startSec", 0.0)) * 1000)),
+                    "endMs": int(round(float(shot.get("endSec", 0.0)) * 1000)),
+                }
+                if isinstance(demo, dict):
+                    seg["demo"] = demo
+                segs.append(seg)
+            return {"version": sb.get("version", "storyboard/3"), "segments": segs}
+
     plan_path = project / "visual-plan.json"
-    plan = None
     if plan_path.is_file():
         try:
             plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            if isinstance(plan, dict):
+                return plan
         except (OSError, json.JSONDecodeError):
-            plan = None
+            return None
+    return None
+
+
+def run_checks(project: Path, comp_name: str | None = None, max_static_s: float = 8.0) -> dict:
+    geo = resolve_project_frame(project)
+    plan = _load_plan_or_storyboard(project)
     comp_dir = project / (comp_name or "composition")
     files = _collect_files(comp_dir)
 
@@ -635,6 +1113,7 @@ def run_checks(project: Path, comp_name: str | None = None, max_static_s: float 
             _check_min_font_size(files, geo, errors)
         _check_static_duration(files, plan, comp_dir, max_static_s, errors, warnings)
         _check_safe_zones(files, geo, errors)
+        _check_anchor_label_bounds(files, geo, errors)
         _check_axis_filters(files, errors)
         _check_fonts(files, errors)
         _check_cross_chapter_cleanup(files, comp_dir, errors)

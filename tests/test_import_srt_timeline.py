@@ -132,6 +132,12 @@ class AlignmentPathTests(unittest.TestCase):
                 script.resolve(),
             )
 
+    def test_align_visual_plan_cli_help_runs_cleanly_from_subprocess(self):
+        align_script = Path(__file__).parents[1] / 'visual' / 'scripts' / 'align-visual-plan.py'
+        proc = subprocess.run([sys.executable, str(align_script), '--help'], capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn('--plan', proc.stdout)
+
 
 if __name__ == '__main__':
     unittest.main()

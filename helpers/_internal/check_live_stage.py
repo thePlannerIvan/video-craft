@@ -30,6 +30,7 @@
 from __future__ import annotations
 
 import argparse
+from html.parser import HTMLParser
 import json
 import re
 import sys
@@ -238,6 +239,273 @@ def _registered_names(comp: Path, html: str) -> tuple[dict[str, list[str]], list
     return names, dynamic
 
 
+_VOID_HTML_TAGS = {
+    "area", "base", "br", "col", "embed", "hr", "img", "input",
+    "link", "meta", "param", "source", "track", "wbr",
+}
+STYLE_TAG_RE = re.compile(r"<style\b[^>]*>(.*?)</style\s*>", re.S | re.I)
+CSS_RULE_RE = re.compile(r"([^{};@]+)\{([^{}]*)\}", re.S)
+VISIBILITY_HIDDEN_RE = re.compile(r"\bvisibility\s*:\s*hidden\b", re.I)
+GSAP_CALL_RE = re.compile(r"\.\s*(?:to|fromTo|from|set)\s*\(")
+AUTOALPHA_RE = re.compile(r"\bautoAlpha\s*:")
+
+
+class _VideoClipChainParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.stack: list[dict] = []
+        self.chains: list[list[dict]] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        t = tag.lower()
+        attr_map = {k.lower(): (v or "") for k, v in attrs}
+        classes = {c for c in attr_map.get("class", "").split() if c}
+        node = {
+            "tag": t,
+            "id": attr_map.get("id", "").strip(),
+            "classes": classes,
+            "style": attr_map.get("style", ""),
+        }
+        if t == "video" and "clip" in classes:
+            ancestors = [n for n in reversed(self.stack) if n["tag"] not in {"html", "head"}]
+            self.chains.append([node, *ancestors])
+        if t not in _VOID_HTML_TAGS:
+            self.stack.append(node)
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.handle_starttag(tag, attrs)
+        t = tag.lower()
+        if t not in _VOID_HTML_TAGS and self.stack and self.stack[-1]["tag"] == t:
+            self.stack.pop()
+
+    def handle_endtag(self, tag: str) -> None:
+        t = tag.lower()
+        for idx in range(len(self.stack) - 1, -1, -1):
+            if self.stack[idx]["tag"] == t:
+                del self.stack[idx:]
+                break
+
+
+def _video_clip_chains(html: str) -> list[list[dict]]:
+    parser = _VideoClipChainParser()
+    parser.feed(html)
+    parser.close()
+    return parser.chains
+
+
+def _simple_selector_matches(seg: str, node: dict) -> bool:
+    seg = re.sub(r"\[[^\]]*\]", "", seg)
+    seg = re.sub(r"::?(?:[\w-]+(?:\([^)]*\))?)", "", seg).strip()
+    if not seg or seg == "*":
+        return False
+    tag_m = re.match(r"^([a-zA-Z][\w-]*)", seg)
+    tag = tag_m.group(1).lower() if tag_m else None
+    ids = re.findall(r"#([A-Za-z_][\w-]*)", seg)
+    classes = re.findall(r"\.([A-Za-z_][\w-]*)", seg)
+    if not tag and not ids and not classes:
+        return False
+    if tag and node["tag"] != tag:
+        return False
+    if any(node["id"] != i for i in ids):
+        return False
+    if any(c not in node["classes"] for c in classes):
+        return False
+    return True
+
+
+def _selector_matches_chain_node(selector: str, node_idx: int, chain: list[dict]) -> bool:
+    parts = [p for p in re.split(r"[\s>+~]+", selector.strip()) if p]
+    if not parts or not _simple_selector_matches(parts[-1], chain[node_idx]):
+        return False
+    if len(parts) == 1:
+        return True
+    cur = node_idx + 1
+    for part in reversed(parts[:-1]):
+        matched = False
+        while cur < len(chain):
+            if _simple_selector_matches(part, chain[cur]):
+                matched = True
+                cur += 1
+                break
+            cur += 1
+        if not matched:
+            return False
+    return True
+
+
+def _css_files(comp: Path) -> list[Path]:
+    out = []
+    for path in sorted(comp.rglob("*.css")):
+        rel = path.relative_to(comp)
+        if any(part in SKIP_DIRS for part in rel.parts) or rel.name.endswith(".min.css"):
+            continue
+        try:
+            if path.stat().st_size <= MAX_JS_BYTES:
+                out.append(path)
+        except OSError:
+            continue
+    return out
+
+
+def _strip_js_comments(text: str) -> str:
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+    return re.sub(r"(?m)//.*$", "", text)
+
+
+def _balanced_parens(text: str, open_idx: int) -> tuple[str, int] | None:
+    depth = 1
+    i = open_idx + 1
+    in_quote: str | None = None
+    while i < len(text) and depth > 0:
+        ch = text[i]
+        if in_quote is not None:
+            if ch == "\\" and i + 1 < len(text):
+                i += 2
+                continue
+            if ch == in_quote:
+                in_quote = None
+        else:
+            if ch in ('"', "'", "`"):
+                in_quote = ch
+            elif ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+        i += 1
+    return (text[open_idx + 1:i - 1], i) if depth == 0 else None
+
+
+def _split_first_arg(args_str: str) -> str:
+    depth = 0
+    in_quote: str | None = None
+    for i, ch in enumerate(args_str):
+        if in_quote is not None:
+            if ch == "\\" and i + 1 < len(args_str):
+                continue
+            if ch == in_quote:
+                in_quote = None
+        else:
+            if ch in ('"', "'", "`"):
+                in_quote = ch
+            elif ch in "([{":
+                depth += 1
+            elif ch in ")]}":
+                depth = max(0, depth - 1)
+            elif ch == "," and depth == 0:
+                return args_str[:i].strip()
+    return args_str.strip()
+
+
+def _autoalpha_targets(comp: Path, html: str) -> list[tuple[str, str]]:
+    sources: list[tuple[str, str]] = []
+    for script in _inline_scripts(html):
+        if script["executable"]:
+            sources.append(("index.html 内联脚本", script["body"]))
+    for path in _js_files(comp):
+        try:
+            sources.append((str(path.relative_to(comp)), path.read_text(encoding="utf-8", errors="replace")))
+        except OSError:
+            continue
+
+    hits: list[tuple[str, str]] = []
+    for where, raw in sources:
+        code = _strip_js_comments(raw)
+        bindings: dict[str, list[str]] = {}
+        for m in re.finditer(
+            r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*document\."
+            r"(?:querySelector(?:All)?|getElementById)\(\s*(['\"])([^'\"]+)\2\s*\)",
+            code,
+        ):
+            var_name, raw_sel = m.group(1), m.group(3).strip()
+            if "getElementById" in m.group(0):
+                raw_sel = f"#{raw_sel}"
+            bindings[var_name] = [s.strip() for s in raw_sel.split(",") if s.strip()]
+
+        for m in GSAP_CALL_RE.finditer(code):
+            parsed = _balanced_parens(code, m.end() - 1)
+            if not parsed:
+                continue
+            args_str, _ = parsed
+            if not AUTOALPHA_RE.search(args_str):
+                continue
+            first = _split_first_arg(args_str)
+            str_m = re.match(r"^(['\"])(.+)\1$", first)
+            if str_m:
+                for sel in str_m.group(2).split(","):
+                    if sel.strip():
+                        hits.append((sel.strip(), where))
+            elif first.startswith("[") and first.endswith("]"):
+                for item in re.findall(r"(['\"])([^'\"]+)\1", first):
+                    for sel in item[1].split(","):
+                        if sel.strip():
+                            hits.append((sel.strip(), where))
+            elif first in bindings:
+                for sel in bindings[first]:
+                    hits.append((sel, where))
+    return hits
+
+
+def _check_video_visibility_autoalpha(comp: Path, html: str, report: Report) -> None:
+    chains = _video_clip_chains(html)
+    if not chains:
+        return
+
+    css_sources: list[tuple[str, str]] = [
+        ("index.html <style>", m.group(1)) for m in STYLE_TAG_RE.finditer(html)
+    ]
+    for css_path in _css_files(comp):
+        try:
+            css_sources.append(
+                (str(css_path.relative_to(comp)), css_path.read_text(encoding="utf-8", errors="replace"))
+            )
+        except OSError:
+            continue
+
+    hidden_rules: list[tuple[str, str]] = []
+    for where, css_text in css_sources:
+        cleaned = re.sub(r"/\*.*?\*/", "", css_text, flags=re.S)
+        for rm in CSS_RULE_RE.finditer(cleaned):
+            if VISIBILITY_HIDDEN_RE.search(rm.group(2)):
+                for sel in rm.group(1).split(","):
+                    s = sel.strip()
+                    if s:
+                        hidden_rules.append((s, where))
+
+    aa_targets = _autoalpha_targets(comp, html)
+    if not aa_targets:
+        report.add("video-visibility-autoalpha", True, "<video class=\"clip\"> 未使用 visibility: hidden + autoAlpha 冲突样式")
+        return
+
+    conflicts: list[str] = []
+    for chain in chains:
+        vis_hits: list[str] = []
+        for idx, node in enumerate(chain):
+            if VISIBILITY_HIDDEN_RE.search(node.get("style") or ""):
+                vis_hits.append(f"<{node['tag']}> inline style visibility:hidden")
+            for sel, where in hidden_rules:
+                if _selector_matches_chain_node(sel, idx, chain):
+                    vis_hits.append(f"{sel} ({where})")
+        if not vis_hits:
+            continue
+        aa_hits: list[str] = []
+        for sel, where in aa_targets:
+            if any(_selector_matches_chain_node(sel, idx, chain) for idx in range(len(chain))):
+                aa_hits.append(f"{sel} ({where})")
+        if aa_hits:
+            conflicts.append(f"{vis_hits[0]} × autoAlpha@{aa_hits[0]}")
+
+    if conflicts:
+        report.add(
+            "video-visibility-autoalpha",
+            False,
+            f"<video class=\"clip\"> 槽位存在 visibility: hidden 与 GSAP autoAlpha 冲突：{'; '.join(conflicts[:3])}",
+            hint="不要在 <video class=\"clip\"> 或其祖先容器上把 CSS visibility: hidden 与 GSAP autoAlpha 混用"
+                 "（会导致活舞台或渲染黑屏）；改用 display: none / display: block 控制显隐。",
+        )
+    else:
+        report.add("video-visibility-autoalpha", True, "<video class=\"clip\"> 未使用 visibility: hidden + autoAlpha 冲突样式")
+
+
 def inspect(project: Path, explicit: str | None = None) -> Report:
     root, comp = resolve_composition(Path(project), explicit)
     report = Report(root, comp)
@@ -395,7 +663,10 @@ def inspect(project: Path, explicit: str | None = None) -> Report:
     else:
         report.add("external-scripts", True, "所有本地 <script src> 都读得到")
 
-    # 6) 媒体预算（warning：build_review 会换成审阅副本，但换不动的会拖慢整页）
+    # 6) <video class="clip"> 黑屏陷阱：visibility: hidden 与 GSAP autoAlpha 混用
+    _check_video_visibility_autoalpha(comp, html, report)
+
+    # 7) 媒体预算（warning：build_review 会换成审阅副本，但换不动的会拖慢整页）
     big = []
     for path in sorted(comp.rglob("*")):
         if not path.is_file() or path.suffix.lower() not in MEDIA_SUFFIXES:

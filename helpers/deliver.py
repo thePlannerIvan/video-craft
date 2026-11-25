@@ -41,6 +41,10 @@ sys.path.insert(0, str(INTERNAL))
 
 BLACK_LUMA = 6.0          # 低于它视为全黑
 BAND_LUMA = 24.0          # 字幕区里出现高于它的内容 → 会被字幕压住
+_LEGACY_PAGE_SUFFIXES = {".md", ".svg", ".json"}
+_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"}
+_MOTION_KINDS = {"motion", "model", "card-deck", "xhs"}
+_FOOTAGE_KINDS = {"footage", "video"}
 
 
 def _run(cmd: list[str]) -> subprocess.CompletedProcess:
@@ -141,6 +145,30 @@ def _render_env(composition: Path) -> tuple[bool, int, str]:
     return True, workers, (f"内存偏紧（可用 {avail} GB < 门槛），按建议 --workers {workers} 渲染")
 
 
+def _has_legacy_pages(project: Path) -> bool:
+    """Return True only when legacy pages/ or .pages actually contains page definitions."""
+    pages_dir = project / "pages"
+    if pages_dir.is_dir():
+        for entry in pages_dir.rglob("*"):
+            if entry.is_file() and not entry.name.startswith(".") and entry.suffix.lower() in _LEGACY_PAGE_SUFFIXES:
+                return True
+    dot_pages = project / ".pages"
+    if dot_pages.is_file():
+        return bool(dot_pages.read_text(encoding="utf-8", errors="ignore").strip())
+    if dot_pages.is_dir():
+        for entry in dot_pages.rglob("*"):
+            if entry.is_file() and not entry.name.startswith(".") and entry.suffix.lower() in _LEGACY_PAGE_SUFFIXES:
+                return True
+    return False
+
+
+def _find_storyboard(project: Path) -> Path | None:
+    for cand in (project / "storyboard.json", project / "edit" / "storyboard.json"):
+        if cand.is_file():
+            return cand
+    return None
+
+
 def _preflight(project: Path, check, note) -> tuple[bool, int]:
     """Mechanical timing-lock checks, before any production encoder starts."""
     import probe_env
@@ -148,15 +176,36 @@ def _preflight(project: Path, check, note) -> tuple[bool, int]:
     ffmpeg_ok = env.get("ffmpeg", {}).get("present") and bool(shutil.which("ffprobe"))
     if not check("编码能力", bool(ffmpeg_ok), "probe_env：需要 ffmpeg/ffprobe"):
         return False, 1
+    sb_path = _find_storyboard(project)
+    has_storyboard = sb_path is not None
     has_visual_plan = (project / "visual-plan.json").is_file()
-    if has_visual_plan:
+    if has_storyboard or has_visual_plan:
         proc = _run([sys.executable, str(HELPERS / "film.py"), "verify", str(project), "--json"])
-        if not check("视觉分拍表", proc.returncode == 0, (proc.stdout + proc.stderr)[-2000:]):
+        label = "统一分镜" if has_storyboard else "视觉分拍表"
+        if not check(label, proc.returncode == 0, (proc.stdout + proc.stderr)[-2000:]):
             return False, 1
+    if has_storyboard and sb_path is not None and not _has_legacy_pages(project):
+        try:
+            sb_doc = json.loads(sb_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            sb_doc = {}
+        shots = sb_doc.get("shots") or [] if isinstance(sb_doc, dict) else []
+        caps = sb_doc.get("capabilities") or [] if isinstance(sb_doc, dict) else []
+        has_motion_shot = "motion" in caps or any(
+            isinstance(s, dict) and (
+                s.get("kind") in ("motion", "model", "card-deck", "xhs")
+                or s.get("engine") == "hyperframes"
+            )
+            for s in shots
+        )
+        if has_motion_shot:
+            ld_proc = _run([sys.executable, str(HELPERS / "film.py"), "lookdev", str(project), "--verify", "--json"])
+            if not check("Look-Dev 样镜定调", ld_proc.returncode == 0, (ld_proc.stdout + ld_proc.stderr)[-2000:]):
+                return False, 1
     composition = project / "composition"
     has_comp = (composition / "index.html").is_file()
     if not has_comp:
-        if has_visual_plan:
+        if has_visual_plan or has_storyboard:
             qproc = _run([sys.executable, str(INTERNAL / "check_visual_quality.py"), str(project), "--json"])
             if not check("构建期画面体检", qproc.returncode == 0, (qproc.stdout + qproc.stderr)[-2000:]):
                 return False, 1
@@ -171,7 +220,7 @@ def _preflight(project: Path, check, note) -> tuple[bool, int]:
     timeline = timeline_file(project / "edit")
     data = json.loads(timeline.read_text(encoding="utf-8")) if timeline else {}
     references = any(s.get("sourcePageKey") for ch in data.get("chapters", []) for s in ch.get("steps", []))
-    if not has_visual_plan and (references or (project / "pages").exists() or (project / ".pages").exists()):
+    if not has_storyboard and not has_visual_plan and (references or _has_legacy_pages(project)):
         proc = _run([sys.executable, str(HELPERS / "film.py"), "verify", str(project), "--json"])
         if not check("原页拆解", proc.returncode == 0, (proc.stdout + proc.stderr)[-2000:]):
             return False, workers
@@ -368,6 +417,375 @@ def _splice_demo_segments(project: Path, visual_path: Path, demo_segs: list[dict
     return visual_track, person_track, info
 
 
+def _load_storyboard(project: Path) -> tuple[Path | None, dict | None]:
+    sb_path = _find_storyboard(project)
+    if sb_path is None:
+        return None, None
+    try:
+        doc = json.loads(sb_path.read_text(encoding="utf-8"))
+        return (sb_path, doc) if isinstance(doc, dict) else (sb_path, None)
+    except (OSError, json.JSONDecodeError):
+        return sb_path, None
+
+
+def _shot_engine(shot: dict) -> str:
+    raw = shot.get("engine")
+    if raw in ("ffmpeg-cut", "hyperframes"):
+        return str(raw)
+    if shot.get("overlay") is True:
+        return "hyperframes"
+    return "hyperframes" if shot.get("kind") in _MOTION_KINDS else "ffmpeg-cut"
+
+
+def _resolve_storyboard_asset(project: Path, sb_dir: Path, raw: str) -> Path:
+    p = Path(str(raw)).expanduser()
+    if p.is_absolute():
+        return p.resolve()
+    for base in (
+        project,
+        sb_dir,
+        project / "material",
+        project / "material" / "clips",
+        project / "materials",
+        project / "materials" / "clips",
+        project / "素材",
+        project / "素材" / "clips",
+        project / "assets",
+        project / "composition" / "assets",
+    ):
+        cand = (base / p).resolve()
+        if cand.exists():
+            return cand
+    return (project / p).resolve()
+
+
+def _find_shot_rendered_clip(project: Path, sb_dir: Path, shot: dict) -> Path | None:
+    for key in ("renderedClip", "renderPath", "video", "clip"):
+        raw = shot.get(key)
+        if isinstance(raw, str) and raw.strip():
+            cand = _resolve_storyboard_asset(project, sb_dir, raw.strip())
+            if cand.is_file():
+                return cand
+    sid = str(shot.get("id") or "").strip()
+    if sid:
+        cand = project / "composition" / "_render" / f"{sid}.mp4"
+        if cand.is_file():
+            return cand
+    return None
+
+
+def _storyboard_needs_visual_base(project: Path, sb_path: Path, sb_doc: dict) -> bool:
+    sb_dir = sb_path.parent
+    for shot in sb_doc.get("shots") or []:
+        if not isinstance(shot, dict):
+            continue
+        if _shot_engine(shot) == "hyperframes" and _find_shot_rendered_clip(project, sb_dir, shot) is None:
+            return True
+    return False
+
+
+def _parse_box(raw_box: object, fallback: dict[str, int]) -> dict[str, int]:
+    if isinstance(raw_box, dict) and all(k in raw_box for k in ("x", "y", "w", "h")):
+        try:
+            bx = max(0, int(raw_box["x"]))
+            by = max(0, int(raw_box["y"]))
+            bw = max(2, int(raw_box["w"]) - (int(raw_box["w"]) % 2))
+            bh = max(2, int(raw_box["h"]) - (int(raw_box["h"]) % 2))
+            return {"x": bx, "y": by, "w": bw, "h": bh}
+        except (TypeError, ValueError):
+            pass
+    sx = max(0, int(fallback["x"]))
+    sy = max(0, int(fallback["y"]))
+    sw = max(2, int(fallback["w"]) - (int(fallback["w"]) % 2))
+    sh = max(2, int(fallback["h"]) - (int(fallback["h"]) % 2))
+    return {"x": sx, "y": sy, "w": sw, "h": sh}
+
+
+def _storyboard_timeline_spans(sb_doc: dict, visual_dur: float) -> list[dict]:
+    """Normalize storyboard shots into contiguous non-overlapping timeline spans."""
+    shots = sorted(
+        (s for s in (sb_doc.get("shots") or []) if isinstance(s, dict)),
+        key=lambda s: float(s.get("startSec", 0.0)),
+    )
+    total_dur = max(
+        float(sb_doc.get("totalSec") or 0.0),
+        max((float(s.get("endSec", 0.0)) for s in shots), default=0.0),
+        visual_dur,
+    )
+    spans: list[dict] = []
+    cursor = 0.0
+    gap_idx = 0
+    for shot in shots:
+        t0 = max(cursor, float(shot.get("startSec", 0.0)))
+        t1 = float(shot.get("endSec", 0.0))
+        if t1 <= t0:
+            continue
+        if t0 - cursor > 0.002:
+            gap_idx += 1
+            spans.append({"id": f"gap-{gap_idx:02d}", "kind": "talk-only", "engine": "ffmpeg-cut",
+                          "t0": cursor, "t1": t0, "shot": {}})
+        spans.append({"id": str(shot.get("id") or f"seg-{len(spans) + 1:02d}"),
+                      "kind": str(shot.get("kind") or "talk-only"),
+                      "engine": _shot_engine(shot), "t0": t0, "t1": t1, "shot": shot})
+        cursor = t1
+    if total_dur - cursor > 0.002:
+        gap_idx += 1
+        spans.append({"id": f"gap-{gap_idx:02d}", "kind": "talk-only", "engine": "ffmpeg-cut",
+                      "t0": cursor, "t1": total_dur, "shot": {}})
+    return spans
+
+
+def _encode_storyboard_segment(project: Path, sb_dir: Path, span: dict, n_frames: int,
+                               geo: dict, default_box: dict[str, int],
+                               visual_path: Path | None, visual_dur: float,
+                               base_img: Path | None, overlay_img: Path | None,
+                               seg_out: Path) -> None:
+    """Cut/render one timeline span to uniform H.264 segment MP4 for lossless concat."""
+    fps = int(round(float(geo["fps"])))
+    cw, ch = int(geo["width"]), int(geo["height"])
+    shot = span["shot"]
+    kind = span["kind"]
+    engine = span["engine"]
+    t0, t1 = span["t0"], span["t1"]
+    seg_dur = t1 - t0
+
+    enc_flags = [
+        "-c:v", "libx264", "-preset", "medium", "-crf", "16",
+        "-x264-params", "deblock=-1,-1:aq-mode=2",
+        "-pix_fmt", "yuv420p", "-r", str(fps), "-video_track_timescale", "90000",
+    ]
+    if kind == "screen-demo":
+        enc_flags.extend(["-tune", "stillimage"])
+
+    # Determine source + filter graph
+    inputs: list[str] = []
+    filters: list[str] = []
+
+    if engine == "hyperframes":
+        per_shot = _find_shot_rendered_clip(project, sb_dir, shot)
+        if per_shot is not None:
+            src_in = float(shot.get("clipIn") or shot.get("inSec") or 0.0)
+            inputs.extend(["-ss", f"{src_in:.3f}", "-i", str(per_shot)])
+        elif visual_path is not None and visual_path.is_file():
+            inputs.extend(["-ss", f"{t0:.3f}", "-i", str(visual_path)])
+        else:
+            raise RuntimeError(f"{span['id']} ({kind}) 缺少 HyperFrames 渲染画面")
+        filters.append(
+            f"[0:v]fps={fps},scale={cw}:{ch}:force_original_aspect_ratio=decrease:flags=lanczos,"
+            f"pad={cw}:{ch}:(ow-iw)/2:(oh-ih)/2:color=#11131a,"
+            f"tpad=stop_mode=clone:stop_duration=2,setsar=1[vout]"
+        )
+    elif kind in _FOOTAGE_KINDS or kind == "screen-demo":
+        demo = shot.get("demo") if isinstance(shot.get("demo"), dict) else {}
+        raw_src = demo.get("source") or shot.get("clip") or shot.get("material") or shot.get("source")
+        if not isinstance(raw_src, str) or not raw_src.strip():
+            raise RuntimeError(f"{span['id']} ({kind}) 缺少源素材路径")
+        src = _resolve_storyboard_asset(project, sb_dir, raw_src.strip())
+        if not src.is_file():
+            raise RuntimeError(f"{span['id']} ({kind}) 找不到源素材：{src}")
+
+        box = _parse_box(demo.get("box") or shot.get("box"), default_box)
+        sx, sy, sw, sh = box["x"], box["y"], box["w"], box["h"]
+        is_image = src.suffix.lower() in _IMAGE_SUFFIXES or shot.get("mediaKind") == "photo"
+        speed = float(demo.get("speed") or shot.get("speed") or 1.0)
+        if speed <= 0:
+            speed = 1.0
+
+        # Input 0: background canvas (base.png if present else #11131a)
+        if base_img is not None:
+            inputs.extend(["-loop", "1", "-t", f"{seg_dur + 1.0:.3f}", "-i", str(base_img)])
+            filters.append(f"[0:v]fps={fps},scale={cw}:{ch},setsar=1[bg]")
+        else:
+            inputs.extend(["-f", "lavfi", "-i", f"color=c=0x11131a:s={cw}x{ch}:r={fps}:d={seg_dur + 1.0:.3f}"])
+            filters.append("[0:v]setsar=1[bg]")
+
+        # Input 1: HD footage / screen-demo / photo
+        if is_image:
+            inputs.extend(["-loop", "1", "-t", f"{seg_dur + 1.0:.3f}", "-i", str(src)])
+            src_filter = (
+                f"[1:v]fps={fps},scale={sw}:{sh}:force_original_aspect_ratio=decrease:flags=lanczos,"
+                f"pad={sw}:{sh}:(ow-iw)/2:(oh-ih)/2:color=#11131a,setsar=1[fg0]"
+            )
+        else:
+            raw_in = demo.get("inSec") if demo.get("inSec") is not None else (
+                shot.get("clipIn") if shot.get("clipIn") is not None else shot.get("in", shot.get("inSec", 0.0))
+            )
+            in_sec = max(0.0, float(raw_in or 0.0))
+            raw_out = demo.get("outSec") if demo.get("outSec") is not None else (
+                shot.get("clipOut") if shot.get("clipOut") is not None else shot.get("out", shot.get("outSec"))
+            )
+            src_dur = max(0.05, float(raw_out) - in_sec) if raw_out is not None else max(0.05, seg_dur * speed)
+            inputs.extend(["-ss", f"{in_sec:.3f}", "-t", f"{src_dur + 0.5:.3f}", "-i", str(src)])
+            src_filter = (
+                f"[1:v]fps={fps},scale={sw}:{sh}:force_original_aspect_ratio=decrease:flags=lanczos,"
+                f"pad={sw}:{sh}:(ow-iw)/2:(oh-ih)/2:color=#11131a,"
+                f"setpts=(PTS-STARTPTS)/{speed:.6f},"
+                f"tpad=stop_mode=clone:stop_duration=2,setsar=1[fg0]"
+            )
+        filters.append(src_filter)
+        fg_label = "fg0"
+        next_idx = 2
+
+        ov_raw = demo.get("overlay") or (shot.get("overlay") if isinstance(shot.get("overlay"), str) else None)
+        if ov_raw:
+            ov_path = _resolve_storyboard_asset(project, sb_dir, str(ov_raw))
+            if ov_path.is_file():
+                if ov_path.suffix.lower() in _IMAGE_SUFFIXES:
+                    inputs.extend(["-loop", "1", "-t", f"{seg_dur + 1.0:.3f}", "-i", str(ov_path)])
+                else:
+                    if ov_path.suffix.lower() == ".webm":
+                        inputs.extend(["-c:v", "libvpx-vp9"])
+                    inputs.extend(["-t", f"{seg_dur + 1.0:.3f}", "-i", str(ov_path)])
+                filters.append(
+                    f"[{next_idx}:v]fps={fps},format=rgba,"
+                    f"scale={sw}:{sh}:force_original_aspect_ratio=decrease:flags=lanczos,"
+                    f"pad={sw}:{sh}:(ow-iw)/2:(oh-ih)/2:color=0x00000000,setsar=1[ov0]"
+                )
+                filters.append(f"[{fg_label}][ov0]overlay=0:0:eof_action=pass:format=auto[fg1]")
+                fg_label = "fg1"
+                next_idx += 1
+
+        filters.append(f"[bg][{fg_label}]overlay={sx}:{sy}:eof_action=pass[comp0]")
+        out_label = "comp0"
+        if overlay_img is not None:
+            inputs.extend(["-loop", "1", "-t", f"{seg_dur + 1.0:.3f}", "-i", str(overlay_img)])
+            filters.append(f"[{next_idx}:v]fps={fps},format=rgba,scale={cw}:{ch},setsar=1[fov]")
+            filters.append(f"[{out_label}][fov]overlay=0:0:eof_action=pass:format=auto[vout]")
+        else:
+            filters.append(f"[{out_label}]null[vout]")
+    else:
+        # talk-only / gap
+        if visual_path is not None and visual_path.is_file() and visual_dur >= t1 - 0.1:
+            inputs.extend(["-ss", f"{t0:.3f}", "-i", str(visual_path)])
+            filters.append(
+                f"[0:v]fps={fps},scale={cw}:{ch}:force_original_aspect_ratio=decrease:flags=lanczos,"
+                f"pad={cw}:{ch}:(ow-iw)/2:(oh-ih)/2:color=#11131a,"
+                f"tpad=stop_mode=clone:stop_duration=2,setsar=1[vout]"
+            )
+        elif base_img is not None:
+            inputs.extend(["-loop", "1", "-t", f"{seg_dur + 1.0:.3f}", "-i", str(base_img)])
+            filters.append(f"[0:v]fps={fps},scale={cw}:{ch},setsar=1[vout]")
+        else:
+            inputs.extend(["-f", "lavfi", "-i", f"color=c=0x11131a:s={cw}x{ch}:r={fps}:d={seg_dur + 1.0:.3f}"])
+            filters.append("[0:v]setsar=1[vout]")
+
+    cmd = [
+        "ffmpeg", "-y", "-v", "error",
+        *inputs,
+        "-filter_complex", ";".join(filters),
+        "-map", "[vout]", "-an",
+        "-frames:v", str(n_frames),
+        *enc_flags,
+        str(seg_out),
+    ]
+    proc = _run(cmd)
+    if proc.returncode != 0 or not seg_out.is_file() or seg_out.stat().st_size == 0:
+        raise RuntimeError(f"分段 {span['id']} 编码失败：{(proc.stderr or proc.stdout)[-400:]}")
+
+
+def _splice_storyboard_segments(project: Path, sb_path: Path, sb_doc: dict,
+                                visual_path: Path | None, geo: dict,
+                                out: Path, name: str, person_path: Path | None,
+                                *, visual_dest: Path | None = None) -> tuple[Path, dict]:
+    """Assemble visual track by routing ffmpeg-cut segments directly and splicing HyperFrames segments."""
+    fps = int(round(float(geo["fps"])))
+    cw, ch = int(geo["width"]), int(geo["height"])
+    cap_y = int(geo["caption"]["y"]) if (int(geo["caption"]["h"]) > 0 and int(geo["caption"]["y"]) >= ch // 2) else ch
+    full_stage_box = {"x": 0, "y": 0, "w": cw, "h": cap_y}
+    if person_path is None:
+        default_box = full_stage_box
+    else:
+        st = geo["stage"]
+        default_box = st if (int(st.get("w", 0)) >= 2 and int(st.get("h", 0)) >= 2) else full_stage_box
+
+    base_img = project / "material" / "frame" / "base.png"
+    overlay_img = project / "material" / "frame" / "overlay.png"
+    base_img = base_img if base_img.is_file() else None
+    overlay_img = overlay_img if overlay_img.is_file() else None
+
+    visual_dur = _duration(visual_path) if (visual_path is not None and visual_path.is_file()) else 0.0
+    spans = _storyboard_timeline_spans(sb_doc, visual_dur)
+    if not spans:
+        raise RuntimeError("storyboard.json 没有可用片段")
+
+    visual_track = visual_dest or (out / f"{name}_画面成片.mp4")
+    visual_track.parent.mkdir(parents=True, exist_ok=True)
+    sb_dir = sb_path.parent
+
+    engine_counts = {"ffmpeg-cut": 0, "hyperframes": 0}
+    has_screen_demo = any(sp["kind"] == "screen-demo" for sp in spans)
+    seg_records: list[dict] = []
+
+    with tempfile.TemporaryDirectory(prefix="vc-sb-segs-", dir="/tmp") as td:
+        td_path = Path(td)
+        seg_files: list[Path] = []
+        for idx, sp in enumerate(spans):
+            f0 = int(round(sp["t0"] * fps))
+            f1 = int(round(sp["t1"] * fps))
+            n_frames = max(1, f1 - f0)
+            seg_file = td_path / f"seg_{idx:03d}.mp4"
+            _encode_storyboard_segment(
+                project, sb_dir, sp, n_frames, geo, default_box,
+                visual_path, visual_dur, base_img, overlay_img, seg_file,
+            )
+            seg_files.append(seg_file)
+            engine_counts[sp["engine"]] = engine_counts.get(sp["engine"], 0) + 1
+            seg_records.append({
+                "id": sp["id"], "kind": sp["kind"], "engine": sp["engine"],
+                "t0": round(sp["t0"], 3), "t1": round(sp["t1"], 3), "frames": n_frames,
+            })
+
+        list_file = td_path / "concat.txt"
+        list_file.write_text(
+            "\n".join(f"file '{str(p).replace(chr(39), chr(39) + chr(92) + chr(39) + chr(39))}'" for p in seg_files) + "\n",
+            encoding="utf-8",
+        )
+        tmp_out = td_path / "visual_assembled.mp4"
+        concat_proc = _run([
+            "ffmpeg", "-y", "-v", "error",
+            "-f", "concat", "-safe", "0", "-i", str(list_file),
+            "-c", "copy", "-movflags", "+faststart", str(tmp_out),
+        ])
+        if concat_proc.returncode != 0 or not tmp_out.is_file() or tmp_out.stat().st_size == 0:
+            raise RuntimeError(f"分段拼合失败：{(concat_proc.stderr or concat_proc.stdout)[-400:]}")
+        shutil.move(str(tmp_out), str(visual_track))
+
+    info = {
+        "count": len(spans),
+        "engine_counts": engine_counts,
+        "screen_text_protection": has_screen_demo,
+        "visual_track": str(visual_track),
+        "total_frames": sum(r["frames"] for r in seg_records),
+        "segments": seg_records,
+    }
+    return visual_track, info
+
+
+def _export_soundscape_wav(src: Path, dest: Path) -> bool:
+    """Co-export 48kHz stereo 16-bit PCM WAV via /tmp staging then atomic move."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    _, a = _streams(src)
+    is_pcm16_48k_stereo = (
+        src.suffix.lower() == ".wav"
+        and a.get("codec_name") == "pcm_s16le"
+        and int(float(a.get("sample_rate") or 0)) == 48000
+        and a.get("channels") == 2
+    )
+    with tempfile.TemporaryDirectory(prefix="vc-sd-wav-", dir="/tmp") as td:
+        tmp_wav = Path(td) / dest.name
+        if is_pcm16_48k_stereo:
+            shutil.copy2(src, tmp_wav)
+        else:
+            proc = _run([
+                "ffmpeg", "-y", "-v", "error", "-i", str(src),
+                "-vn", "-ar", "48000", "-ac", "2", "-c:a", "pcm_s16le", str(tmp_wav),
+            ])
+            if proc.returncode != 0 or not tmp_wav.is_file():
+                return False
+        shutil.move(str(tmp_wav), str(dest))
+    return dest.is_file() and dest.stat().st_size > 0
+
+
 def _render_is_stale(project: Path, visual: Path) -> bool:
     """Missing provenance is unproven, even when file timestamps look current."""
     from state_fingerprint import entry, source_entries
@@ -397,23 +815,50 @@ def _parse_fps(video_stream: dict) -> float:
         return 0.0
 
 
+def _has_empty_capabilities(text: str) -> bool:
+    """Return True if metadata declares `capabilities` with zero visual overlays (base-only)."""
+    import re
+    lines = text.splitlines()
+    for idx, raw in enumerate(lines):
+        m = re.match(r"^\s*capabilities\s*:\s*(.*)$", raw)
+        if not m:
+            continue
+        rest = m.group(1).strip()
+        if rest in ("[]", "none", "None", "~", "null"):
+            return True
+        if rest:
+            return False
+        # Block list: look ahead for `- <cap>` entries
+        for follow in lines[idx + 1:]:
+            s = follow.strip()
+            if not s or s.startswith("#"):
+                continue
+            if s.startswith("- "):
+                return False
+            if follow.startswith((" ", "\t")):
+                continue
+            break
+        return True
+    return False
+
+
 def _is_pure_talking_project(project: Path) -> bool:
-    """Detect explicitly declared pure-talking projects without a visual layer."""
+    """Detect base-only (no visual capabilities) or legacy pure-talking projects."""
+    import re
     has_visual_infra = (
         (project / "composition").is_dir()
         or (project / "recompose.json").is_file()
         or (project / "visual-plan.json").is_file()
-        or (project / "pages").exists()
-        or (project / ".pages").exists()
+        or _find_storyboard(project) is not None
+        or _has_legacy_pages(project)
     )
     if has_visual_infra:
         return False
-    import re
-    for rel in ("edit/project.md", "production-plan.md"):
+    for rel in ("project.yaml", "edit/project.md", "production-plan.md"):
         doc_path = project / rel
         if doc_path.is_file():
             text = doc_path.read_text(encoding="utf-8", errors="ignore")
-            if re.search(r"\bpure-talking\b", text):
+            if _has_empty_capabilities(text) or re.search(r"\bpure-talking\b", text):
                 return True
     return False
 
@@ -432,6 +877,9 @@ def _stage_ffmpeg_replace(cmd_prefix: list[str], dest: Path) -> subprocess.Compl
 def _check_caption_safe(visual_file: Path, dur_v: float, geo: dict, check) -> None:
     band = geo["caption"]
     crop = (int(band["w"]), int(band["h"]), int(band["x"]), int(band["y"]))
+    if crop[0] <= 0 or crop[1] <= 0:
+        check("字幕安全区无内容", True, "无字幕安全区")
+        return
     intrusions = []
     for at in (dur_v * 0.25, dur_v * 0.5, dur_v * 0.75):
         luma = _frame_luma(visual_file, at, crop)
@@ -705,7 +1153,8 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
             visuals_confirm_current: bool = False,
             mode: str = "split", composite: bool = False,
             approve_in_chat: bool = False,
-            approval_note: str | None = None) -> int:
+            approval_note: str | None = None,
+            visual_audio: Path | None = None) -> int:
     from _geometry import resolve_project_frame
     geo = resolve_project_frame(project)
     edit_dir = project / "edit"
@@ -786,6 +1235,16 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
                                         project / "edit/_engineering/review_audio.m4a"])
     srt_path = _pick(project, srt, [project / "edit/subtitles.srt",
                                     project / "成品" / f"{name}_字幕.srt"])
+    if visual_audio is not None:
+        va_resolved = visual_audio.expanduser().resolve()
+        if not check("画面声景", va_resolved.is_file(), str(va_resolved)):
+            return stop()
+        visual_audio_path: Path | None = va_resolved
+    else:
+        visual_audio_path = _pick(project, None, [
+            project / "edit/_engineering/soundscape.wav",
+            project / "edit/soundscape.wav",
+        ])
     if burn:
         import probe_env
         if not check("烧录字幕能力", bool(srt_path) and probe_env.ffmpeg_capabilities()["filters"].get("subtitles", False),
@@ -862,7 +1321,13 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
             as_json=as_json, note=note, headline=f"人物成片：{person_out}",
         )
 
-    # 2) 画面层：已有就用，没有就渲
+    # 2) 画面层：已有就用，没有就渲（storyboard.json 若无待渲 HyperFrames 段且无底片时可直拼）
+    sb_path, sb_doc = _load_storyboard(project)
+    needs_visual_base = (
+        sb_doc is None
+        or sb_path is None
+        or _storyboard_needs_visual_base(project, sb_path, sb_doc)
+    )
     visual_path = _pick(project, visuals, [project / "composition/_render/visuals.mp4"])
     if visual_path is not None and visuals_confirm_current:
         _record_visual_source(project, visual_path, 'manual-confirmation')
@@ -876,7 +1341,7 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
             return stop()
         note(f"画面层比 composition 源旧（{visual_path.name}），按 --render 重新渲染")
         visual_path = None
-    if visual_path is None:
+    if visual_path is None and needs_visual_base:
         if not render:
             detail = ("没有画面层。工程态审阅不需要它；要出成片请显式加 --render，并先过 render_gate")
             check("画面层", False, detail)
@@ -899,74 +1364,118 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
             check('画面层来源', False, '渲染期间来源改变；核对当前版本后重新渲染')
             return stop()
         _record_visual_source(project, visual_path, 'composition-render', rendering_sources)
-    v_video, _ = _streams(visual_path)
-    if not check("画面层可读", bool(v_video), f"{visual_path.name} {v_video.get('width')}×{v_video.get('height')}"):
-        return stop()
+    if visual_path is not None:
+        v_video, _ = _streams(visual_path)
+        if not check("画面层可读", bool(v_video), f"{visual_path.name} {v_video.get('width')}×{v_video.get('height')}"):
+            return stop()
 
-    # 画面层真的等于 composition 吗？渲染通道会静默丢内容（GOTCHAS #79），
-    # 运动/黑帧/分辨率都量不出来：抽 12 个时间点和 composition 的快照逐帧比结构。
-    if (project / "composition" / "hyperframes.json").is_file():
-        fid = _run([sys.executable, str(INTERNAL / "check_render_fidelity.py"), str(project),
-                    "--video", str(visual_path), "--samples", "12", "--json"])
-        fid_report: dict = {}
-        try:
-            fid_report = json.loads(fid.stdout)
-        except json.JSONDecodeError:
-            fid_report = {}
-        failed_t = fid_report.get("failed") or []
-        if fid.returncode == 0 and fid_report.get("ok"):
-            check("画面层与 composition 一致", True,
-                  f"{len(fid_report.get('samples') or [])} 个采样一致")
-        elif fid.returncode == 1:
-            if not check("画面层与 composition 一致", False,
-                         f"{len(failed_t)} 个采样对不上：{failed_t[:6]}"
-                         f"（--workers 1 重渲后仍不一致，才是 composition 的问题）"):
-                return stop()
+        # 画面层真的等于 composition 吗？渲染通道会静默丢内容（GOTCHAS #79），
+        # 运动/黑帧/分辨率都量不出来：抽 12 个时间点和 composition 的快照逐帧比结构。
+        if (project / "composition" / "hyperframes.json").is_file():
+            fid = _run([sys.executable, str(INTERNAL / "check_render_fidelity.py"), str(project),
+                        "--video", str(visual_path), "--samples", "12", "--json"])
+            fid_report: dict = {}
+            try:
+                fid_report = json.loads(fid.stdout)
+            except json.JSONDecodeError:
+                fid_report = {}
+            failed_t = fid_report.get("failed") or []
+            if fid.returncode == 0 and fid_report.get("ok"):
+                check("画面层与 composition 一致", True,
+                      f"{len(fid_report.get('samples') or [])} 个采样一致")
+            elif fid.returncode == 1:
+                if not check("画面层与 composition 一致", False,
+                             f"{len(failed_t)} 个采样对不上：{failed_t[:6]}"
+                             f"（--workers 1 重渲后仍不一致，才是 composition 的问题）"):
+                    return stop()
+            else:
+                # 检查跑不起来（没有可用的 snapshot 通道）与「跑通了但内容不一致」不是一件事
+                note(f"画面一致性检查未能执行：{(fid.stderr or '')[-200:].strip() or '未知原因'}")
         else:
-            # 检查跑不起来（没有可用的 snapshot 通道）与「跑通了但内容不一致」不是一件事
-            note(f"画面一致性检查未能执行：{(fid.stderr or '')[-200:].strip() or '未知原因'}")
+            note("composition 不是 HyperFrames 工程（无 hyperframes.json）：跳过画面一致性检查")
     else:
-        note("composition 不是 HyperFrames 工程（无 hyperframes.json）：跳过画面一致性检查")
+        note("storyboard.json 按段直拼模式：无需整片 HyperFrames visuals.mp4 底片")
 
     raw_visual_path = visual_path
     demo_tmp_dir = None
     try:
-        # 2b) 若 visual-plan.json 存在实机演示录屏段，由 ffmpeg 从高清原录屏裁切并开启屏幕文字清晰编码，与动效底片无损同轨拼合，人物轨保持独立
-        demo_segs = _load_demo_segments(project)
-        if demo_segs:
-            vis_dur_base = _duration(visual_path)
-            if vis_dur_base <= 0:
-                vis_dur_base = max(s["t1"] for s in demo_segs)
-            if effective_mode == "split":
+        # 2b) 按段分流拼合：优先使用统一执行分镜 storyboard.json，否则回退旧 visual-plan.json 实机演示拼合
+        if sb_doc is not None and sb_path is not None:
+            if effective_mode == "split" and visual_audio_path is None:
                 splice_dest = out / f"{name}_画面成片.mp4"
             else:
-                demo_tmp_dir = tempfile.TemporaryDirectory(prefix="craft-demo-visual-")
+                demo_tmp_dir = tempfile.TemporaryDirectory(prefix="craft-sb-visual-")
                 splice_dest = Path(demo_tmp_dir.name) / f"{name}_画面成片.mp4"
             try:
-                spliced_visual, _, splice_info = _splice_demo_segments(
-                    project, visual_path, demo_segs, geo, out, name,
+                spliced_visual, splice_info = _splice_storyboard_segments(
+                    project, sb_path, sb_doc, visual_path, geo, out, name,
                     person_path=None if no_person else person_path,
-                    vis_dur=vis_dur_base,
                     visual_dest=splice_dest,
-                    emit_person_track=False,
                 )
             except RuntimeError as exc:
-                check("实机演示同轨拼合", False, str(exc))
+                check("分镜分段拼合", False, str(exc))
                 return stop()
             visual_path = spliced_visual
-            report["demo_splice"] = splice_info
-            check("实机演示同轨拼合", True,
-                  f"{splice_info['count']} 段高清原录屏已并入 {Path(splice_info['visual_track']).name}（屏幕清晰文字编码）")
+            report["segment_splice"] = splice_info
+            check("分镜分段拼合", True,
+                  f"{splice_info['count']} 段按引擎分流拼合（ffmpeg-cut={splice_info['engine_counts']['ffmpeg-cut']}, "
+                  f"hyperframes={splice_info['engine_counts']['hyperframes']}）")
+        else:
+            demo_segs = _load_demo_segments(project)
+            if demo_segs:
+                vis_dur_base = _duration(visual_path)
+                if vis_dur_base <= 0:
+                    vis_dur_base = max(s["t1"] for s in demo_segs)
+                if effective_mode == "split" and visual_audio_path is None:
+                    splice_dest = out / f"{name}_画面成片.mp4"
+                else:
+                    demo_tmp_dir = tempfile.TemporaryDirectory(prefix="craft-demo-visual-")
+                    splice_dest = Path(demo_tmp_dir.name) / f"{name}_画面成片.mp4"
+                try:
+                    spliced_visual, _, splice_info = _splice_demo_segments(
+                        project, visual_path, demo_segs, geo, out, name,
+                        person_path=None if no_person else person_path,
+                        vis_dur=vis_dur_base,
+                        visual_dest=splice_dest,
+                        emit_person_track=False,
+                    )
+                except RuntimeError as exc:
+                    check("实机演示同轨拼合", False, str(exc))
+                    return stop()
+                visual_path = spliced_visual
+                report["demo_splice"] = splice_info
+                check("实机演示同轨拼合", True,
+                      f"{splice_info['count']} 段高清原录屏已并入 {Path(splice_info['visual_track']).name}（屏幕清晰文字编码）")
 
         if effective_mode == "split":
-            # 3A) 默认分轨三件套交付：高码率人物成片（含声） + 无声画面成片 + 导入空隙保护字幕
+            # 3A) 默认分轨三件套交付：高码率人物成片（含声） + 画面成片（有声景时 -c:v copy 封装 + 同出 wav；无声景保持 0 音轨） + 导入空隙保护字幕
             person_out = out / f"{name}_人物成片.mp4"
             visual_out = out / f"{name}_画面成片.mp4"
             vis_dur = _duration(visual_path)
             if not _mux_person_track(person_path, audio_path, person_out, vis_dur, check):
                 return stop()
 
-            if visual_path.resolve() != visual_out.resolve():
+            soundscape_out: Path | None = None
+            if visual_audio_path is not None:
+                v_cmd = [
+                    "ffmpeg", "-y", "-v", "error",
+                    "-i", str(visual_path),
+                    "-i", str(visual_audio_path),
+                    "-map", "0:v:0", "-map", "1:a:0",
+                    "-c:v", "copy",
+                    "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2",
+                    "-movflags", "+faststart",
+                ]
+                if vis_dur > 0:
+                    v_cmd += ["-t", f"{vis_dur:.3f}"]
+                proc_v = _stage_ffmpeg_replace(v_cmd, visual_out)
+                if not check("画面成片封装", proc_v.returncode == 0 and visual_out.is_file(),
+                             (proc_v.stderr or "ok")[-300:] if proc_v.returncode != 0 else f"{visual_out.name}（-c:v copy + 声景）"):
+                    return stop()
+                soundscape_out = out / f"{name}_画面音效轨.wav"
+                if not check("画面音效轨导出", _export_soundscape_wav(visual_audio_path, soundscape_out), soundscape_out.name):
+                    return stop()
+            elif visual_path.resolve() != visual_out.resolve():
                 v_cmd = [
                     "ffmpeg", "-y", "-v", "error",
                     "-i", str(visual_path),
@@ -981,7 +1490,14 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
                 check("画面成片封装", visual_out.is_file(), visual_out.name)
 
             # 4A) 核验分轨产物
-            vv, va, dur_v = _check_video_specs(visual_out, geo, check, require_audio=False, silent_visual=True)
+            if visual_audio_path is not None:
+                vv, va, dur_v = _check_video_specs(visual_out, geo, check, require_audio=True, silent_visual=False)
+                va_sr = int(float(va.get("sample_rate") or 0)) if va else 0
+                va_ch = va.get("channels") if va else None
+                check("画面声景音轨", bool(va) and va_sr == 48000 and va_ch == 2,
+                      f"{va.get('codec_name', '无')} {va_sr}Hz {va_ch or 0}ch")
+            else:
+                vv, va, dur_v = _check_video_specs(visual_out, geo, check, require_audio=False, silent_visual=True)
             dur_p = _duration(person_out)
             pv, pa = _streams(person_out)
             check("人物成片可读", bool(pv), f"{pv.get('width')}×{pv.get('height')} {pv.get('codec_name', '')}")
@@ -994,17 +1510,25 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
             _check_visual_non_black(visual_out, dur_v, geo, check)
             _check_caption_safe(visual_out, dur_v, geo, check)
             _export_delivered_srt(srt_path, srt_out, edit_dir, project, dur_p, burn, check, note)
+            split_deliverables: dict[str, str | None] = {
+                "person": str(person_out),
+                "visuals": str(visual_out),
+                "subtitles": str(srt_out) if srt_out.is_file() else None,
+            }
+            split_specs: dict[str, Path] = {"person": person_out, "visuals": visual_out}
+            split_inputs: dict[str, Path | None] = {
+                "visuals": raw_visual_path, "audio": audio_path, "person": person_path, "srt": srt_path,
+            }
+            if soundscape_out is not None:
+                split_deliverables["visual_audio"] = str(soundscape_out)
+                split_inputs["visual_audio"] = visual_audio_path
             return _finalize_report(
                 project, edit_dir, out, name, report,
                 delivery_mode="split",
                 primary_video=person_out,
-                deliverables={
-                    "person": str(person_out),
-                    "visuals": str(visual_out),
-                    "subtitles": str(srt_out) if srt_out.is_file() else None,
-                },
-                spec_targets={"person": person_out, "visuals": visual_out},
-                inputs={"visuals": raw_visual_path, "audio": audio_path, "person": person_path, "srt": srt_path},
+                deliverables=split_deliverables,
+                spec_targets=split_specs,
+                inputs=split_inputs,
                 srt_out=srt_out, audio_path=audio_path, srt_path=srt_path,
                 as_json=as_json, note=note, headline=f"分轨交付：{person_out.name} + {visual_out.name}",
             )
@@ -1022,18 +1546,43 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
         subtitle_tmp, subtitle_filter = _subtitle_staging(srt_path, burn)
         if person_path is None:
             note("无人物轨：画面层全幅交付，personSlot 区域保持画面层原样")
-            cmd_prefix = ["ffmpeg", "-y", "-v", "error", "-i", str(visual_path), "-i", str(audio_path),
-                          "-map", "0:v", "-map", "1:a"]
-            if subtitle_filter:
-                cmd_prefix += ["-vf", subtitle_filter]
-            cmd_prefix += tail
+            if visual_audio_path is not None:
+                note("无人物合流模式已混入画面声景轨（-14 LUFS 限幅保护）")
+                fc = (f"[0:v]{subtitle_filter}[v];" if subtitle_filter else "") + (
+                    "[1:a]aformat=sample_rates=48000:channel_layouts=stereo[va];"
+                    "[2:a]aformat=sample_rates=48000:channel_layouts=stereo[sa];"
+                    "[va][sa]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,"
+                    "alimiter=limit=0.891[aout]"
+                )
+                cmd_prefix = ["ffmpeg", "-y", "-v", "error", "-i", str(visual_path),
+                              "-i", str(audio_path), "-i", str(visual_audio_path),
+                              "-filter_complex", fc,
+                              "-map", "[v]" if subtitle_filter else "0:v", "-map", "[aout]"] + tail
+            else:
+                cmd_prefix = ["ffmpeg", "-y", "-v", "error", "-i", str(visual_path), "-i", str(audio_path),
+                              "-map", "0:v", "-map", "1:a"]
+                if subtitle_filter:
+                    cmd_prefix += ["-vf", subtitle_filter]
+                cmd_prefix += tail
         else:
             vf = (f"[1:v]scale={pw}:{ph}:force_original_aspect_ratio=increase,"
                   f"crop={pw}:{ph},setsar=1[person];"
                   f"[0:v][person]overlay={px}:{py}:format=auto[composed]")
             vf += f";[composed]{subtitle_filter or 'null'}[v]"
-            cmd_prefix = ["ffmpeg", "-y", "-v", "error", "-i", str(visual_path), "-i", str(person_path),
-                          "-i", str(audio_path), "-filter_complex", vf, "-map", "[v]", "-map", "2:a"] + tail
+            if visual_audio_path is not None:
+                note("合流模式已混入画面声景轨（-14 LUFS 限幅保护）")
+                vf += (
+                    ";[2:a]aformat=sample_rates=48000:channel_layouts=stereo[va];"
+                    "[3:a]aformat=sample_rates=48000:channel_layouts=stereo[sa];"
+                    "[va][sa]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,"
+                    "alimiter=limit=0.891[aout]"
+                )
+                cmd_prefix = ["ffmpeg", "-y", "-v", "error", "-i", str(visual_path), "-i", str(person_path),
+                              "-i", str(audio_path), "-i", str(visual_audio_path),
+                              "-filter_complex", vf, "-map", "[v]", "-map", "[aout]"] + tail
+            else:
+                cmd_prefix = ["ffmpeg", "-y", "-v", "error", "-i", str(visual_path), "-i", str(person_path),
+                              "-i", str(audio_path), "-filter_complex", vf, "-map", "[v]", "-map", "2:a"] + tail
         try:
             proc = _stage_ffmpeg_replace(cmd_prefix, target)
         finally:
@@ -1051,13 +1600,18 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
         _check_caption_safe(visual_path, dur_v, geo, check)
         _export_delivered_srt(srt_path, srt_out, edit_dir, project, dur, burn, check, note)
 
+        comp_inputs: dict[str, Path | None] = {
+            "visuals": raw_visual_path, "audio": audio_path, "person": person_path, "srt": srt_path,
+        }
+        if visual_audio_path is not None:
+            comp_inputs["visual_audio"] = visual_audio_path
         return _finalize_report(
             project, edit_dir, out, name, report,
             delivery_mode=effective_mode,
             primary_video=target,
             deliverables={"video": str(target), "subtitles": str(srt_out) if srt_out.is_file() else None},
             spec_targets={"video": target},
-            inputs={"visuals": raw_visual_path, "audio": audio_path, "person": person_path, "srt": srt_path},
+            inputs=comp_inputs,
             srt_out=srt_out, audio_path=audio_path, srt_path=srt_path,
             as_json=as_json, note=note, headline=f"成片：{target}",
         )
@@ -1075,6 +1629,8 @@ def main(argv=None) -> int:
                         help='明确人工确认现有画面层属于当前来源；旧缓存/外部画面补记来源，不代替审阅闸门')
     parser.add_argument("--person", type=Path, help="人物素材")
     parser.add_argument("--audio", type=Path, help="声音")
+    parser.add_argument("--visual-audio", type=Path, default=None,
+                        help="画面声景音轨 WAV（分轨模式下无损封装进画面成片并同出 画面音效轨.wav；默认自动探测 edit/_engineering/soundscape.wav）")
     parser.add_argument("--srt", type=Path, help="字幕（默认外挂）")
     parser.add_argument("--out", type=Path, help="输出目录（默认 <project>/成品）")
     parser.add_argument("--burn-subtitles", dest="burn", action="store_true",
@@ -1104,7 +1660,8 @@ def main(argv=None) -> int:
                    args.srt, args.out, args.burn, args.skip_gate, args.json, args.no_person,
                    args.render, args.visuals_confirm_current,
                    mode=args.mode, composite=args.composite,
-                   approve_in_chat=args.approve_in_chat, approval_note=args.approval_note)
+                   approve_in_chat=args.approve_in_chat, approval_note=args.approval_note,
+                   visual_audio=args.visual_audio)
 
 
 if __name__ == "__main__":

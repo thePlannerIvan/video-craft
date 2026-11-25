@@ -190,5 +190,52 @@
       "源已改变时继续用旧快照审阅",
       "直接渲染整片并写进成品/"
     ]
+  },
+  {
+    "id": "v3-composable-capabilities-storyboard",
+    "route": "capabilities",
+    "prompt": "这条 9:16 竖屏片要同时混剪实拍广告切片、随口播演化的 3D 思维模型和实机演示录屏，没有现成静态参考页。怎么组织分镜、定调和分段交付？",
+    "must_do": [
+      "按正交能力组合（剪口播底座 + footage + motion + screen-demo）与 frame.py resolve 画框几何组织工程，不把风格锁死为单一路线",
+      "先跑 film.py init 生成唯一执行分镜 storyboard.json（version: storyboard/3），再用 film.py verify 校验 5s 复用防重与清单",
+      "无静态参考页而开启 motion 时，全片编码前先过 film.py lookdev（Look-Dev 定调门禁 --verify / --approve）",
+      "实机录屏 screen-demo 审阅期用 film.py proxy 挂代理进活舞台，交付由 deliver.py 按段直切高清母版并拼入 画面成片.mp4"
+    ],
+    "must_not_do": [
+      "套用已退役的互斥生产模式或把风格当成模式锁",
+      "把高清实机录屏直接塞进 composition/assets/ 进浏览器逐帧重录",
+      "在 Look-Dev 拍板前展开全片动效编码或回退为逐页 PPT 文字框拼接"
+    ]
+  },
+  {
+    "id": "v3-voice-polish-default-debreath",
+    "route": "audio",
+    "prompt": "口播录音停顿之间有不少重吸气声，我想先听单轨播客润色效果再进混音。要额外再跑一次音频降噪脚本吗？",
+    "must_do": [
+      "直接使用顶层入口 audio_mix.py 默认 podcast-warm 预设执行 Voice Polish（已默认启用 --debreath 停顿除重吸气声与清辅音保护）",
+      "用 audio_diag.py 对比处理前后停顿换气计数与电平，确认输出零采样漂移且受保护语音 RMS 变化 <= 0.1 dB",
+      "Voice Polish 产出 -14.0 LUFS 纯净人声轨并仅随 人物成片.mp4 交付，不向人声轨混入动效音效"
+    ],
+    "must_not_do": [
+      "在 Voice Polish 默认人声轨中混入画面动效音效",
+      "把同一段人声送进两次压缩导致齿音与底噪放大",
+      "静默裁切清辅音字头或引入时间轴漂移"
+    ]
+  },
+  {
+    "id": "v3-visual-soundscape-and-loudness-gate",
+    "route": "audio",
+    "prompt": "动效卡片和混剪画面已经排进 storyboard.json，审阅页要能试听动效音效并切换画面原声底噪，成品又要带独立声景轨。",
+    "must_do": [
+      "运行 sound_design.py build 消费 storyboard.json 与人声母带生成 48kHz 立体声 Visual Soundscape（--preview-variants 同步产出无底噪对比轨）",
+      "自动筛分 footage 原声（纯配乐挖空人声频段、疑带轻对白仅留低频暖垫、清晰对白或杂噪静音）并以人声作侧链 -5 dB 闪避",
+      "通过 sound_design.py 确定性响度门禁（独立声景 -37.0..-30.0 LUFS 且 TP <= -13.5 dBTP，合播 -14.2..-13.4 LUFS 且 TP <= -1.0 dBTP）",
+      "review.py 注入审阅页声景试听与画面底噪开关，deliver.py 默认以 -c:v copy 无损封装进 画面成片.mp4 并同出 画面音效轨.wav"
+    ],
+    "must_not_do": [
+      "绕过响度与削波门禁或强行压低 画面成片.mp4 为强制零音轨",
+      "跨项目目录临时借用未入库音效替代内置 assets/sfx/ 资产",
+      "把未筛分的广告原声人声对白直接叠进主口播"
+    ]
   }
 ]

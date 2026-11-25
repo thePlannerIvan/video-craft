@@ -26,35 +26,37 @@ description: 承接上游制片总控内容包、静态参考页或已有音视�
 
 运行环境要求 `ffmpeg` / Python 3.9+ / Node 22+，且在**实际运行的副本**执行 `cd <skill> && npm install ws`。缺凭据时如实停下询问，严禁伪造词级时间。
 
-## 三条生产路线 + 一个共用底座
+## 能力组合与画框正交架构
 
-第 1–2 步先运行 `python3 "<craft>/helpers/_internal/resolve_vault.py" --style <style_id>` 解析外挂风格手册（未挂载时自动回退内置 [author-spec.md](references/author-spec.md) 与 [style-spec.md](references/style-spec.md)，准入见 [preferences.md](references/preferences.md)），并锁定本项目的 **`production_mode`（三选一）**：
+第 1–2 步先运行 `python3 "<craft>/helpers/_internal/resolve_vault.py" --style <style_id>` 解析外挂风格手册（未挂载时自动回退内置 [author-spec.md](references/author-spec.md) 与 [style-spec.md](references/style-spec.md)，准入见 [preferences.md](references/preferences.md)）。**`style` 只约束审美语言与偏好画框，不锁死能力组合**。
 
-| 模式 (`production_mode`) | 适用场景 | 画面主线 | 进入时先读 |
+围绕固定底座与正交层组织每条工程：
+
+| 层次 | 能力 / 组件 | 核心责任与执行主线 | 进入时先读 |
 |---|---|---|---|
-| `pure-talking` | 纯口播精剪 + 字幕 | 不捏造视觉页与动画；直走剪辑 → 字幕 → 审阅/口播成片 | [stages.md](references/stages.md)、[captions-and-audio.md](references/captions-and-audio.md) |
-| `footage-montage` | 档案/实拍/照片蒙太奇 | 跳过 PPT Hell；素材清单 → 镜头表 → 分块渲染 → 两关体检 | [montage-route.md](references/montage-route.md)、[intake-and-frames.md](references/intake-and-frames.md) |
-| `keyframe-svg` | 图形演进/理论拆解/实机演示 | `film.py init` 四档分拍 → 手写 composition / 演示段 → 统一画面体检 | [visual-grammar.md](references/visual-grammar.md)、[visual-checks.md](references/visual-checks.md) |
+| **固定底座** | `剪口播` | `stage_cut.py` 词级逐字精剪 + `audio_mix.py` **Voice Polish**（默认 `podcast-warm` 含 `--debreath` 停顿除重吸气声，`-14.0 LUFS` 仅随 `人物成片.mp4` 交付）+ `srt_export.py` 语义字幕 + `timeline_derive.py` 唯一时间脊柱 | [stages.md](references/stages.md)、[captions-and-audio.md](references/captions-and-audio.md) |
+| **可选叠加 (0–3)** | `footage`（剪视频） | 素材盘点防重（`5s` 入点间距与照片去重）→ 分镜切片；审阅挂代理、交付 FFmpeg 直切，`sound_design.py` 筛分闪避原声生成可选底噪 | [montage-route.md](references/montage-route.md)、[intake-and-frames.md](references/intake-and-frames.md) |
+| **可选叠加 (0–3)** | `motion`（做动效） | 无静态参考页时先过 `film.py lookdev` **Look-Dev Gate** 定调，采用随口播演化的思维模型动效与 3D 卡片组（`storyboard.json` + HyperFrames），同步 `sound_design.py` **Visual Soundscape** 起伏声景 | [visual-grammar.md](references/visual-grammar.md)、[visual-checks.md](references/visual-checks.md) |
+| **可选叠加 (0–3)** | `screen-demo`（实机录屏） | 审阅 `film.py proxy` 轻代理进活舞台，交付按 `storyboard.json` 由 FFmpeg 直切高清原录屏（开启清晰文字保护）并拼入 `画面成片.mp4` | [visual-grammar.md](references/visual-grammar.md)、[visual-checks.md](references/visual-checks.md) |
+| **正交横切层** | `画框`（`frame.py`） | `helpers/frame.py resolve` 提供唯一横/竖屏及人物孔位几何真源，与能力组合及风格完全正交 | [intake-and-frames.md](references/intake-and-frames.md) |
 
-> 版式/画框（`helpers/frame.py`）是横切层，与 `footage-montage` / `keyframe-svg` 正交，规格见 [intake-and-frames.md](references/intake-and-frames.md)。
-
-### 共用底座步骤（完整契约见 [stages.md](references/stages.md)）
+### 共用流程与按段分流步骤（完整契约见 [stages.md](references/stages.md)）
 
 | 阶段 | 步骤 | 顶层公开入口（`helpers/`） | 进入时读（`references/`） |
 |---|---|---|---|
-| 接入与定方案 | 1–2 | `frame.py`（需要画框时）；`helpers/_internal/check_script_hash.py` | [intake-and-frames.md](references/intake-and-frames.md)、[author-spec.md](references/author-spec.md)、[style-spec.md](references/style-spec.md)、[preferences.md](references/preferences.md) |
-| 声音与逐字剪辑 | 3–4 | `stage_cut.py`、`audio_fix.py`、`audio_mix.py` | [captions-and-audio.md](references/captions-and-audio.md)、[review-and-delivery.md](references/review-and-delivery.md) |
+| 接入与定方案 | 1–2 | `frame.py`（画框几何真源）；`helpers/_internal/check_script_hash.py` | [intake-and-frames.md](references/intake-and-frames.md)、[author-spec.md](references/author-spec.md)、[style-spec.md](references/style-spec.md)、[preferences.md](references/preferences.md) |
+| 声音与逐字剪辑 | 3–4 | `stage_cut.py`、`audio_mix.py`（**Voice Polish**；兼容入口 `audio_fix.py`） | [captions-and-audio.md](references/captions-and-audio.md)、[review-and-delivery.md](references/review-and-delivery.md) |
 | 语义字幕与时间脊柱 | 5–6 | `srt_export.py`、`timeline_derive.py` | [captions-and-audio.md](references/captions-and-audio.md)、[visual-timeline.md](references/visual-timeline.md) |
-| 画面制作 | 7 | `film.py` + `check_visual.py`（或 `montage.py`） | [visual-grammar.md](references/visual-grammar.md) / [montage-route.md](references/montage-route.md)、[visual-checks.md](references/visual-checks.md) |
-| 工程审阅与返修 | 8–9 | `review.py`、`review_inbox.py` | [review-and-delivery.md](references/review-and-delivery.md) |
-| 严格核验与交付 | 10 | `deliver.py`（或 `montage.py --deliver`） | [review-and-delivery.md](references/review-and-delivery.md)、[visual-timeline.md](references/visual-timeline.md) |
+| 执行分镜、画面与声景 | 7 | `film.py`（`storyboard.json` / `lookdev` / `summary` / `proxy`）、`montage.py`、`sound_design.py`（**Visual Soundscape**）、`check_visual.py` | [visual-grammar.md](references/visual-grammar.md)、[montage-route.md](references/montage-route.md)、[visual-checks.md](references/visual-checks.md) |
+| 工程审阅与返修 | 8–9 | `review.py`（含声景与底噪开关试听）、`review_inbox.py` | [review-and-delivery.md](references/review-and-delivery.md) |
+| 按段分流核验与交付 | 10 | `deliver.py`（`storyboard.json` 按段拼合 + 声景无损封装，或纯混剪 `montage.py --deliver`） | [review-and-delivery.md](references/review-and-delivery.md)、[visual-timeline.md](references/visual-timeline.md) |
 
-全部 **12 个顶层公开入口**与底层 `_internal` 诊断调用清单集中在 [tools.md](references/tools.md)；模块边界、失效范围与历史迁移索引维护在 [architecture.md](references/architecture.md) 与 [gotchas-index.md](references/gotchas-index.md)。
+全部 **12 个核心公开入口**（另保留兼容入口 `audio_fix.py`）与底层 `_internal` 诊断调用清单集中在 [tools.md](references/tools.md)；模块边界、失效范围与历史迁移索引维护在 [architecture.md](references/architecture.md) 与 [gotchas-index.md](references/gotchas-index.md)。
 
 ## 每轮终点：审阅页，不是成片
 
 - `edit/_engineering/**` = **审阅素材**（工程态，可重渲、不算交付）；
-- `成品/**` = **交付件**（必须同时满足「作者明确出片指令」+「审阅快照零漂移且存在网页提交或对话授权 `--approve-in-chat`」；有真人口播与画面层时默认分轨导出 `人物成片 + 无声画面成片 + 空隙字幕`，单视频合流用 `--composite`）。
+- `成品/**` = **交付件**（必须同时满足「作者明确出片指令」+「审阅快照零漂移且存在网页提交或对话授权 `--approve-in-chat`」；有真人口播与画面层时默认分轨导出：`人物成片.mp4` 仅载 Voice Polish 人声、`画面成片.mp4` 在存在 Visual Soundscape 时无损封装声景并同出 `画面音效轨.wav`（无声景需求时保持 0 音轨）、外加空隙修正字幕；单视频合流用 `--composite`）。
 
 | 常见来料起点 | 首选动作 | 本轮可交付证据 |
 |---|---|---|

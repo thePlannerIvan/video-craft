@@ -1,30 +1,30 @@
 # 制作阶段契约（`stages.md`）
 
-这里定义三个生产路线与共用底座的阶段顺序、完成条件和返回条件。入口 [SKILL.md](../SKILL.md) 负责模式分流；[tools.md](tools.md) 负责命令调用；CLI `--help` 解释具体参数。
+> 能力组合矩阵见唯一入口 [SKILL.md](../SKILL.md)；命令语法见 [tools.md](tools.md)（参数细则以 `<命令> --help` 为准）。本页定义底座与各能力叠加时的阶段顺序、完成条件和返回条件。
 
-## 三条路线 + 一个共用底座
+## 固定底座 + 按能力按段分流
 
 ```text
-[1–2 接入与定方案] → [3–4 转写与逐字剪辑 (stage_cut)] → [5–6 语义字幕与时间脊柱 (srt_export / timeline_derive)]
-                                                                 │
-      ┌────────────────────────────┬─────────────────────────────┴───────────────────────────┐
-      ▼ `pure-talking`             ▼ `footage-montage`                                        ▼ `keyframe-svg`
-   [直接进入审阅/交付]         [scan_materials → montage → check_montage]              [film → composition → check_visual]
-      └────────────────────────────┴─────────────────────────────┬───────────────────────────┘
-                                                                 ▼
-                             [8–9 工程审阅与收件返修 (review / review_inbox)]
-                                                                 ▼ 作者明确出片指令
-                                         [10 严格核验与交付 (deliver / montage --deliver)]
+[1–2 接入与画框] → [3–4 转写、剪辑与 Voice Polish (stage_cut / audio_mix)] → [5–6 字幕与时间脊柱 (srt_export / timeline_derive)]
+                                                                                     │
+         ┌───────────────────────────────────────────────────────────────────────────┴───────────────────────────────────┐
+         ▼ 仅底座（无附加画面能力）                                                                                   ▼ 叠加 footage / motion / screen-demo
+   [直进工程审阅/交付]                                           [7 执行分镜 storyboard.json (film / montage) → Look-Dev (按需) → sound_design 声景 → check_visual / check_montage]
+         └───────────────────────────────────────────────────────────────────────────┬───────────────────────────────────┘
+                                                                                     ▼
+                                                [8–9 工程审阅与收件返修 (review / review_inbox，含声景与底噪开关)]
+                                                                                     ▼ 作者明确出片指令
+                                                [10 按段分流核验与双轨封装交付 (deliver / 纯混剪 montage --deliver)]
 ```
 
 | 阶段 | 步骤 | 模型负责 | 核心公开入口（`helpers/`） | 完成后去哪里 |
 |---|---|---|---|---|
-| 接入 | 1–2 | 版本取舍、缺口、`production_mode` 选择与本轮终点 | `_internal/resolve_vault.py`、`_internal/check_script_hash.py`、`frame.py` | 原始媒体去剪辑；未录音留 `planned`；外部 SRT 去导入 |
-| 剪辑 | 3–4 | 留哪句、气口取舍、错字与声音质量处理 | `stage_cut.py`、`audio_fix.py`、`audio_mix.py` | 剪点确认后去时间与字幕 |
-| 时间与字幕 | 5–6 | 语义断句、视觉分组；区分时间证据等级 | `srt_export.py`、`timeline_derive.py` | 去所属路线的第 7 步（`pure-talking` 跳过第 7 步） |
-| 画面 | 7 | `keyframe-svg`：原页拆解与手写 composition；`footage-montage`：素材清单与镜头表 | `film.py`、`check_visual.py`；或 `montage.py` | 去审阅 |
+| 接入 | 1–2 | 版本取舍、缺口、`capabilities` 与 `frame` 确认 | `_internal/resolve_vault.py`、`_internal/check_script_hash.py`、`frame.py` | 原始媒体去剪辑；未录音留 `planned`；外部 SRT 去导入 |
+| 剪辑与人声 | 3–4 | 留哪句、气口取舍、错字与 Voice Polish | `stage_cut.py`、`audio_mix.py`（兼容：`audio_fix.py`） | 剪点确认后去时间与字幕 |
+| 时间与字幕 | 5–6 | 语义断句、视觉分组；区分时间证据等级 | `srt_export.py`、`timeline_derive.py` | 无附加画面能力直进第 8 步；否则进第 7 步 |
+| 分镜、画面与声景 | 7 | `storyboard.json`、Look-Dev 样镜定调、`motion` / `footage` / `screen-demo` 与 Visual Soundscape | `film.py`、`montage.py`、`sound_design.py`、`check_visual.py` | 去审阅 |
 | 审阅与返修 | 8–9 | 解释反馈、改源、局部返修并重建快照 | `review.py`、`review_inbox.py` | 默认终点停在第 8 步工程审阅；作者出片才进第 10 步 |
-| 交付与收尾 | 10 | 确认交付形态、严格文件核验与来源指纹 | `deliver.py`（或 `montage.py --deliver`） | 实际文件核验通过后交付 |
+| 交付与收尾 | 10 | 确认交付形态、按段分流拼合、声景封装与来源指纹 | `deliver.py`（或纯混剪 `montage.py --deliver`） | 实际文件核验通过后交付 |
 
 > 检查与环境诊断属于各阶段内部自检动作，不另立制作阶段。
 
@@ -36,26 +36,26 @@
 - `edit/_engineering/**` = **审阅素材**（工程态，可随时重渲，**不算交付**）；
 - `成品/**` = **交付件**（只有「作者明确出片指令」+「当前审阅快照零漂移且存在网页提交或对话授权 `--approve-in-chat`（`render_gate.py` 放行）」同时成立才允许写入）。
 
-有视觉层才进入第 7 步；`pure-talking` 模式直接完成第 3–6 步与剪辑/口播成片交付，严禁为通过检查捏造 `film` / `recompose` 或静态参考页。
+仅在开启 `footage` / `motion` / `screen-demo` 任一画面能力时进入第 7 步；仅底座剪口播项目直接完成第 3–6 步与剪辑/口播成片交付。
 
 ## 1. 接手与版本核对
 
-**先读**：[intake-and-frames.md](intake-and-frames.md)、[preferences.md](preferences.md)、项目 `_idea/brief.md`（旧 `_idea/current.md`）、`edit/project.md`、`production-plan.md` 与 `feedback/`。调用 `_internal/resolve_vault.py --style <style_id>` 取 [author-spec.md](author-spec.md) 与风格规则（未挂载私有库自动回退开源内置）。
+**先读**：[intake-and-frames.md](intake-and-frames.md)、[preferences.md](preferences.md)、上游 `handoff-context.md`（或 `_idea/brief.md`）、`edit/project.md`、`production-plan.md` 与 `feedback/`。调用 `_internal/resolve_vault.py --style <style_id>` 取 [author-spec.md](author-spec.md) 与风格规则（未挂载私有库自动回退开源内置）。
 
 **核 `script_hash`**：调用 `_internal/check_script_hash.py`（规则见 [intake-and-frames.md](intake-and-frames.md)）。hash 不一致、snapshot 不完整或资产越界立即停下问作者，不静默继续。
 
-**输出与完成标准**：`edit/project.md` 明确本轮版本、输入绝对路径、`style_id`、`production_mode`（`pure-talking` / `footage-montage` / `keyframe-svg`）与职责边界。
+**输出与完成标准**：`edit/project.md` 明确本轮版本、输入绝对路径、`style_id`、`capabilities`、`frame` 与职责边界（存量老项目 `production_mode` 仅只读兼容）。
 
 ## 2. 确定制作方案
 
-在 `production-plan.md` 写明：制作模式（`production_mode`）、风格、声音来源与预设、画幅与版式（需要画框时读 [intake-and-frames.md](intake-and-frames.md) 并用 `helpers/frame.py build/preview`）、画面过程与强调（`keyframe-svg` 读 [visual-grammar.md](visual-grammar.md)；`footage-montage` 读 [montage-route.md](montage-route.md)）、字幕交付形态（[captions-and-audio.md](captions-and-audio.md) 的 `embed` / `srt-deliver` / `both`）与时间证据等级。
+在 `production-plan.md` 写明：能力组合（底座 `剪口播` + `footage` / `motion` / `screen-demo`）、风格、声音来源与预设、画幅与版式（由 `helpers/frame.py resolve` 解析唯一几何真源，构建/预览见 [intake-and-frames.md](intake-and-frames.md)）、画面过程与强调（开启 `motion` / `screen-demo` 读 [visual-grammar.md](visual-grammar.md)；开启 `footage` 读 [montage-route.md](montage-route.md)）、字幕交付形态（[captions-and-audio.md](captions-and-audio.md) 的 `embed` / `srt-deliver` / `both`）与时间证据等级。
 
-需要改内容主张或文字先回 `$video-idea-system`；需要重做静态参考页回 `$planners-ppt-hell`；需要复用策略方法按需调用 `$planners-method-wiki`（不提供本项目事实）。
+需要改内容主张或口播定稿回 `$video-manager`；仅在需要长篇静态图文时按需请 `$planners-ppt-hell` 介入；需要复用策略方法按需调用 `$planners-method-wiki`（不提供本项目事实）。
 
 ## 3. 声音与剪辑
 
 1. **首选在线词级转写**：通过 `helpers/stage_cut.py prepare --project "<project>" --source "<原片>"` 自动首选豆包 SeedASR 2.0（`_internal/transcribe_seedasr.py`，需 `.env` 豆包语音凭据与 `node ws`）；缺豆包凭据时若存在 Scribe 凭据则走 Scribe，否则明确报错提示，绝不静默降级至被禁用的 `--backend ark`（[captions-and-audio.md](captions-and-audio.md)）；离线兜底须显式 `--backend mlx`。
-2. **音质诊断与处理**：先按需 `_internal/audio_diag.py <媒体> --json`（短试听/盲听可用 `helpers/audio_fix.py --ab`）；最终全片音频由 `helpers/audio_mix.py` 直接吃原始干声并默认套用 `podcast-warm` 输出 `-14.0 LUFS / -1.5 dBTP`（不要先跑 `audio_fix.py` 再混音以防二次压限）。
+2. **音质诊断与 Voice Polish**：先按需 `_internal/audio_diag.py <媒体> --json`（含停顿重吸气声统计）；全片人声与短片段 A/B 盲听统一由 `helpers/audio_mix.py` 吃原始干声完成（默认 `podcast-warm` 含 `--debreath` 除吸气声，输出 `-14.0 LUFS / -1.5 dBTP`，支持 `--ab` 与 `--no-debreath` 对照，不再默认混入动效音效）；`audio_fix.py` 仅作独立单轨诊断兼容入口，避免二次压限。
 3. **建剪辑决定（EDL）**：取舍写进 `edl.json`，禁止直接修改原母版；用 `_internal/edl_from_keep.py` 吸附实测静音，用 `_internal/check_edl.py` 查边界与停顿。
 
 **完成标准**：EDL 可检查；`transcripts/<source>.json` 为真实词/字级 token（粗粒度先跑 `_internal/refine_transcript.py`）；未将预览渲染当作正式底片。
@@ -83,28 +83,29 @@
 - 外部已剪音频 + SRT：`helpers/_internal/import_srt_timeline.py <project> --srt <SRT> --alignment <alignment.json> --media <audio>`（标 `srt-import`）。
 - 绑定使用稳定 `unitId`（`visual:<sourcePageKey>` / `speech:<step-id>` / `visual:<tag>`），改变时间轴或 EDL 后必须重新构建 `review.py`。
 
-## 7. 画面制作（按 `production_mode` 分支）
+## 7. 执行分镜、画面制作与画面声景（按开启的能力组合）
 
-- **`pure-talking`**：跳过本步，直接进入第 8 步工程审阅（或直接确认口播成片/外挂 SRT）。
-- **`footage-montage`**：严格按 [montage-route.md](montage-route.md) 三步——`_internal/scan_materials.py`（补齐 `summary` / `usable` / 出处与水印等级）→ `helpers/montage.py plan/render` → `_internal/check_montage.py`（逐镜 + 成片黑帧两关）。默认输出进 `edit/_engineering/`。
-- **`keyframe-svg`**：严格按 [visual-grammar.md](visual-grammar.md) 先过 `helpers/film.py init` + `verify` 四档视觉分拍网关（`talk-only` / `logic-diagram` / `theory-board` / `demo-footage`；静态参考图仅作配色、比例与造型风格参考，旧 `pages/` 仅历史兼容），从统一画框 `helpers/frame.py resolve` 与 `timeline.json` 读几何与时序手写 Seek 安全 `composition/src/scenes/*.js`（`demo-footage` 审阅挂 `film.py proxy`，严禁大录屏进 `composition/assets/`），再用 `helpers/check_visual.py --only quality` 与 `_internal/check_live_stage.py` 自检。
+所有附加画面能力共享唯一机器真源 `storyboard.json`（用 `helpers/film.py verify` 校验与 `film.py summary` 派生人读概览），坐标统一从 `helpers/frame.py resolve` 读取：
+- **开启 `footage`（剪视频）**：按 [montage-route.md](montage-route.md) 完成 `_internal/scan_materials.py` 素材清单与 `5s` 入点防重校验；混入 `storyboard.json` 时审阅期挂轻代理，交付期由 `deliver.py` 直切高清母版（纯混剪独立成片可走 `helpers/montage.py plan/render` + `_internal/check_montage.py`）。
+- **开启 `motion` / `screen-demo`（做动效 / 实机录屏）**：按 [visual-grammar.md](visual-grammar.md) 先过 `helpers/film.py init` + `verify`（开启 `motion` 且无静态参考页时，全片编码前必先过 `helpers/film.py lookdev --verify` **Look-Dev Gate**，并采用随口播演化的思维模型动效）；从 `frame.py resolve` 与 `timeline.json` 写 Seek 安全 `composition/src/scenes/*.js`（`screen-demo` 审阅挂 `film.py proxy`），再用 `helpers/check_visual.py --only quality` 与 `_internal/check_live_stage.py` 自检（自动拦截 `<video>` 黑屏样式与 Canvas/SVG 出画越界）。
+- **Visual Soundscape（开启 `motion` 或 `footage` 时）**：调用 `helpers/sound_design.py build --storyboard <storyboard.json> --voice <人声WAV> --out <edit/_engineering/soundscape.wav> [--preview-variants]` 同步生成动效起伏音效与经自动筛分闪避的可选原声底噪，并通过内置响度门禁（`sound_design.py verify`）。
 
 ## 8. 工程态动效与成片审阅（默认终点）
 
-**唯一构建入口**：`python3 "<craft>/helpers/review.py" "<project>"`（`keyframe-svg` 走活舞台检查 + `live_stage` + `build_review` + `check_review_playable`；`footage-montage` 或 `--final-cut` 走成片态审阅；详规见 [review-and-delivery.md](review-and-delivery.md)）。
+**唯一构建入口**：`python3 "<craft>/helpers/review.py" "<project>"`（有活舞台走活舞台检查 + `live_stage` + `build_review` + `check_review_playable`；纯成片或 `--final-cut` 走成片态审阅；详规见 [review-and-delivery.md](review-and-delivery.md)）。
 
-通过 DSH `review_open`（传 `review-surface.json`）或 `_internal/review_surface.py <project>` 本地宿主交给人审。官方 HyperFrames player 拥有唯一播放头；超大资产由 `build_review.py` 自动在 `review/proxies/` 生成审阅副本并记录 `mediaNotes`。
+审阅页支持同步试听 `Visual Soundscape` 并一键切换 `画面底噪:开/关` 与 `播客音色 vs 纯干声`。通过 DSH `review_open`（传 `review-surface.json`）或 `_internal/review_surface.py <project>` 本地宿主交给人审。官方 HyperFrames player 拥有唯一播放头；超大资产由 `build_review.py` 自动在 `review/proxies/` 生成审阅副本并记录 `mediaNotes`。
 
 ## 9. 收件、返修与重建
 
 先跑 `python3 "<craft>/helpers/review_inbox.py" "<project>"` 核查回执（`imported/skipped/rejected`，有拒绝先修绑定）。
 - 逐字意见 → 更新 `selections.json` → `stage_cut.py apply` → 重建预览与字幕时间轴；
-- `density` / 画面反馈 → 读 `feedback/*.jsonl` 与 `recompose/lines.json` → 只改受影响的 `src/scenes/*.js` 或镜头表 → 重跑 **`review.py`** 使旧快照失效并重交审阅。
+- 画面、素材或声景反馈 → 读 `feedback/*.jsonl` → 只改受影响的 `storyboard.json`、`src/scenes/*.js`、镜头表或 `sound_design.py`（`--broll-bed on|off`）→ 重跑 **`review.py`** 使旧快照失效并重交审阅。
 
 ## 10. 核验与严格交付
 
 仅当**作者明确要求出片**且**当前审阅快照零漂移并已有网页提交或对话授权 `--approve-in-chat`**时执行：
 - 渲染前置按 [visual-timeline.md](visual-timeline.md)「渲染前置」与 [visual-checks.md](visual-checks.md) 执行（先过 `_internal/render_gate.py`；先 `probe_env.py` + `check_render_env.py`；停预览服务；`--workers 1`）；
-- **`keyframe-svg` / 交付**：`python3 "<craft>/helpers/deliver.py" "<project>" --render [--approve-in-chat]`（有真人口播默认分轨三件套：`人物成片 + 无声画面成片 + 空隙字幕`；单视频合流加 `--composite`；已有画面用 `--visuals <已渲染画面>`；无人物加 `--no-person`；渲染后必过 `check_render_fidelity.py` + `verify_delivery.py`）；
-- **`footage-montage` 三件套**：`montage.py render --concat --out <成品/...> --deliver` + `montage.py voice-cut --master <母版> --audio <口播音>` + `srt_export.py --build --check` + `check_montage.py --video`（细节与包装指纹见 [review-and-delivery.md](review-and-delivery.md)）；
-- **发送前指纹**：`state_fingerprint.py capture` → 发送前 `verify`；核验真实文件首中尾帧、响度（`-14.0 LUFS / -1.5 dBTP`）、音轨、字幕与交付说明。
+- **按段分流与双轨交付**：`python3 "<craft>/helpers/deliver.py" "<project>" --render [--approve-in-chat]`（HyperFrames 仅渲 `motion` / `card-deck` / 叠层段，FFmpeg 直切 `footage` 与 `screen-demo` 并按时间轴拼合；默认分轨输出 `人物成片.mp4`（仅 Voice Polish 人声）+ `画面成片.mp4`（存在声景时 `-c:v copy` 无损封装并同出独立 `画面音效轨.wav`，无声景需求时保持 `0` 音轨）+ 空隙字幕；单视频合流加 `--composite`；已有画面用 `--visuals <已渲染画面>`；无人物加 `--no-person`；渲染后必过 `check_render_fidelity.py` + `verify_delivery.py`）；
+- **纯混剪独立三件套**（无 `storyboard.json` 分段拼合时）：`montage.py render --concat --out <成品/...> --deliver` + `montage.py voice-cut --master <母版> --audio <口播音>` + `srt_export.py --build --check` + `check_montage.py --video`（细节与包装指纹见 [review-and-delivery.md](review-and-delivery.md)）；
+- **发送前指纹**：`state_fingerprint.py capture` → 发送前 `verify`；核验真实文件首中尾帧、响度（人声 `-14.0 LUFS / -1.5 dBTP`、声景与合播门禁）、音轨、字幕与交付说明。

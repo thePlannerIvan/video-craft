@@ -5,8 +5,8 @@
 - author-spec.md：跨风格都成立的全局判准（G 条目）
 - style-spec.md：某一种风格的动效规则（S 条目，按风格 slug 分节）
 
-规范是判准与准入层，不按路线分维：片型有两条（graphic 造画面 / montage 选画面），
-版式/画框（frame）与片型正交；只对某类片型成立的条目在正文里标注适用范围。
+规范是判准与准入层，不按互斥路线分维：以剪口播底座叠加正交能力组合（footage / motion / screen-demo），
+画框（frame）与能力组合正交；只对特定能力成立的条目在正文里标注适用范围。
 
 这条命令只挡机械项，不判断规则对不对——语义冲突仍然要人裁决。
 
@@ -47,7 +47,7 @@ MAX_ENTRY_BODY_LINES = 9
 
 STYLE_SLUGS = ("line-art", "business-report", "collage", "concept-film")
 
-# 单路线口径已作废：片型有 graphic / montage 两条，版式与片型正交。
+# 单路线口径已作废：采用正交能力组合与画框（frame），不再按互斥路线分维。
 # 这里只挡措辞，不让它重新长回来；文件范围是规范三件套（含准入契约 preferences.md）。
 ROUTE_TEXT_FILES = (AUTHOR_SPEC, STYLE_SPEC, "preferences.md")
 SINGLE_ROUTE_RES = (
@@ -118,7 +118,7 @@ def _entry_problems(entry_id: str, body: list[str], skill_root: Path) -> list[st
 
 
 def _route_wording_problems(spec_dir: Path) -> list[str]:
-    """挡掉「路线只有一条」类措辞：片型是 graphic / montage 两条，版式与片型正交。"""
+    """挡掉「路线只有一条」类措辞：应写成正交能力组合 + 画框（frame）。"""
     problems: list[str] = []
     for name in ROUTE_TEXT_FILES:
         path = spec_dir / name
@@ -128,7 +128,7 @@ def _route_wording_problems(spec_dir: Path) -> list[str]:
             if any(pattern.search(line) for pattern in SINGLE_ROUTE_RES):
                 problems.append(
                     f"{name}:{lineno} 出现单路线措辞（路线只有一条）；"
-                    "应写成两条片型 graphic / montage + 版式正交"
+                    "应写成正交能力组合 + 画框（frame）"
                 )
     return problems
 

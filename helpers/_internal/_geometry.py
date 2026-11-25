@@ -25,23 +25,24 @@ DEFAULT_LANDSCAPE_PERSON_SLOT = {"x": 0, "y": 0, "w": 620, "h": 1080}
 DEFAULT_LANDSCAPE_CAPTION_SAFE = {"x": 0, "y": 885, "w": 1920, "h": 195}
 
 
-def normalize_box(box: dict[str, Any] | None, fallback: dict[str, int]) -> dict[str, int]:
+def normalize_box(box: dict[str, Any] | None, fallback: dict[str, int | float]) -> dict[str, int]:
     """Normalize a rectangle {x,y,w,h} or circle {cx,cy,r} into integer {x,y,w,h}."""
-    if not isinstance(box, dict):
+    target = box if isinstance(box, dict) else fallback
+    if not isinstance(target, dict):
         return dict(fallback)
-    if all(k in box for k in ("x", "y", "w", "h")):
+    if all(k in target for k in ("x", "y", "w", "h")):
         try:
             return {
-                "x": int(round(float(box["x"]))),
-                "y": int(round(float(box["y"]))),
-                "w": max(0, int(round(float(box["w"])))),
-                "h": max(0, int(round(float(box["h"])))),
+                "x": int(round(float(target["x"]))),
+                "y": int(round(float(target["y"]))),
+                "w": max(0, int(round(float(target["w"])))),
+                "h": max(0, int(round(float(target["h"])))),
             }
         except (TypeError, ValueError):
-            return dict(fallback)
-    if all(k in box for k in ("cx", "cy", "r")):
+            return dict(fallback) if all(k in fallback for k in ("x", "y", "w", "h")) else {"x": 0, "y": 0, "w": 0, "h": 0}
+    if all(k in target for k in ("cx", "cy", "r")):
         try:
-            cx, cy, r = float(box["cx"]), float(box["cy"]), max(0.0, float(box["r"]))
+            cx, cy, r = float(target["cx"]), float(target["cy"]), max(0.0, float(target["r"]))
             return {
                 "x": int(round(cx - r)),
                 "y": int(round(cy - r)),
@@ -49,8 +50,8 @@ def normalize_box(box: dict[str, Any] | None, fallback: dict[str, int]) -> dict[
                 "h": int(round(2 * r)),
             }
         except (TypeError, ValueError):
-            return dict(fallback)
-    return dict(fallback)
+            return dict(fallback) if all(k in fallback for k in ("x", "y", "w", "h")) else {"x": 0, "y": 0, "w": 0, "h": 0}
+    return dict(fallback) if all(k in fallback for k in ("x", "y", "w", "h")) else {"x": 0, "y": 0, "w": 0, "h": 0}
 
 
 def box_intersects(a: dict[str, Any], b: dict[str, Any]) -> bool:
@@ -108,7 +109,8 @@ def resolve_project_frame(project: Path | str | None = None, *, frame_tokens: di
       2. `<project>/frame.json`
       3. `<project>/material/frame/tokens.json`
       4. `<project>/recompose.json`
-      5. Canonical defaults (1920x1080@30, personSlot 0,0,620,1080, captionSafe 0,885,1920,195)
+      5. `<project>/storyboard.json` or `<project>/edit/storyboard.json`
+      6. Canonical defaults (1920x1080@30, personSlot 0,0,620,1080, captionSafe 0,885,1920,195)
     """
     raw: dict[str, Any] | None = None
     source = "default"
@@ -118,7 +120,8 @@ def resolve_project_frame(project: Path | str | None = None, *, frame_tokens: di
         source = "explicit"
     elif project is not None:
         proj = Path(project)
-        for rel in ("frame.json", "material/frame/tokens.json", "recompose.json"):
+        for rel in ("frame.json", "material/frame/tokens.json", "recompose.json",
+                    "storyboard.json", "edit/storyboard.json"):
             candidate = proj / rel
             loaded = _read_json_dict(candidate)
             if loaded is not None:
@@ -133,8 +136,15 @@ def resolve_project_frame(project: Path | str | None = None, *, frame_tokens: di
     fps = int(c_raw.get("fps") or DEFAULT_LANDSCAPE_CANVAS["fps"])
     canvas = {"w": w, "h": h, "fps": fps}
 
+    is_vertical_zine = raw.get("framePreset") == "vertical-zine-head" and h > w
     person_fallback = dict(DEFAULT_LANDSCAPE_PERSON_SLOT)
-    if w != DEFAULT_LANDSCAPE_CANVAS["w"] or h != DEFAULT_LANDSCAPE_CANVAS["h"]:
+    if is_vertical_zine:
+        person_fallback = {
+            "cx": int(round(w * 540 / 1080)),
+            "cy": int(round(h * 170 / 1920)),
+            "r": int(round(min(w, h) * 128 / 1080)),
+        }
+    elif w != DEFAULT_LANDSCAPE_CANVAS["w"] or h != DEFAULT_LANDSCAPE_CANVAS["h"]:
         scaled_pw = min(w, max(0, int(round(w * DEFAULT_LANDSCAPE_PERSON_SLOT["w"] / DEFAULT_LANDSCAPE_CANVAS["w"]))))
         person_fallback = {"x": 0, "y": 0, "w": scaled_pw, "h": h}
 
@@ -143,6 +153,9 @@ def resolve_project_frame(project: Path | str | None = None, *, frame_tokens: di
         cap_fallback = {"x": 0, "y": max(0, h - int(round(h * 195 / 1080))), "w": w, "h": min(h, int(round(h * 195 / 1080)))}
     elif "bottom" in band:
         b_bottom = max(0, min(h, int(band["bottom"])))
+        cap_fallback = {"x": 0, "y": b_bottom, "w": w, "h": max(0, h - b_bottom)}
+    elif is_vertical_zine:
+        b_bottom = max(0, min(h, int(round(h * 1440 / 1920))))
         cap_fallback = {"x": 0, "y": b_bottom, "w": w, "h": max(0, h - b_bottom)}
     elif w == DEFAULT_LANDSCAPE_CANVAS["w"] and h == DEFAULT_LANDSCAPE_CANVAS["h"]:
         cap_fallback = dict(DEFAULT_LANDSCAPE_CAPTION_SAFE)

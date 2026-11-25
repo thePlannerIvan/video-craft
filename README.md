@@ -17,12 +17,12 @@
 **Video Craft** 把“时间脊柱、视觉层和最终核验”合成一条防错工作流，默认先把片子推到**随时可重播、可划词返修的侧边栏审阅页**，等你点头发话出片，再经严格检查写进成品：
 
 ```text
-3 种常见起点：原始录屏/录音 (pure-talking) · 图形演进/实机演示与静态参考 (keyframe-svg) · 实拍/档案混剪 (footage-montage)
-  → 1. 接入风格配置（读私有 ~/.config/planners/video-vault 或自动退回开源内置规范）并选定生产模式
-  → 2. 词级转录 + 网页逐字剪辑审阅（直接删口误/气口，C 档浑厚人声预设与极克制本地 SFX）
-  → 3. 合成视觉层（四档视觉语法 composition / 实机演示代理或高清拼接 / 素材体检+镜头表）
-  → 4. 出工程审阅态（edit/_engineering/）：逐句校对与极简自适应审阅页确认（支持干声 A/B）
-  → 5. 作者下明确出片指令 → render_gate + 统一画面体检与真实核验 → 写入 成品/
+以「剪口播」为固定底座，自由叠加 0–3 项正交画面能力（footage 剪视频 · motion 做动效 · screen-demo 实机录屏）+ 正交画框（frame.py）
+  → 1. 接入风格配置（读私有 ~/.config/planners/video-vault 或自动退回开源内置规范）与 frame.py 画框几何真源
+  → 2. 词级转录 + 网页逐字剪辑审阅 + Voice Polish（podcast-warm 默认含停顿除重吸气声，-14.0 LUFS 归人物成片）
+  → 3. 统一执行分镜 storyboard.json + Look-Dev 轻量样镜定调（无静态参考且做动效时先定调）+ Visual Soundscape 画面声景
+  → 4. 出工程审阅态（edit/_engineering/）：活舞台/实拍代理同屏可播，支持人声干声 A/B 与画面底噪开关试听
+  → 5. 作者下明确出片指令 → render_gate + 按段分流拼合（动效走 HyperFrames、实拍与录屏 FFmpeg 直切）+ 双轨无损封装 → 写入 成品/
 ```
 
 **重要原则——不要把“渲染预览”和“正式交付”混为一谈**：
@@ -33,11 +33,11 @@
 
 ## 你手头的材料，它会怎么接
 
-| 你交给它的输入 | 自动走哪条路线 | 你每一轮能拿到什么 |
+| 你交给它的输入 | 组合的能力与主线 | 你每一轮能拿到什么 |
 |---|---|---|
-| 刚录完的粗音视频（需要删口癖、定节奏） | `pure-talking`（词级转录 → 极简逐字剪辑 → 语义字幕） | 流畅全局拖拽删句的逐字审阅页与对齐字幕 |
-| 上游定稿包 / 静态参考 / 实机演示录屏 | `keyframe-svg`（`visual-plan.json` 四档分拍 → 动效与实机同轨） | 留白/演进/理论亮显/演示代理同轴可播的自适应审阅页 |
-| 实拍/档案素材 + 口播（或上游 `footage-montage` 直通包） | `footage-montage`（素材登记体检 → 镜头表 → 画框/大字报） | 拒绝胡编素材的镜头表、两关渲染体检与可播审阅 |
+| 刚录完的粗音视频（需要删口癖、定节奏） | 底座 `剪口播`（词级转录 → 逐字剪辑 → Voice Polish → 语义字幕） | 流畅拖拽删句的逐字审阅页、纯净人物轨与对齐字幕 |
+| 实拍/档案素材 + 思维模型动效 + 录屏混合项目 | 底座 + `footage` / `motion` / `screen-demo` 任意叠加（`storyboard.json` + Look-Dev） | 统一分镜、代理同屏预览、声景起伏与底噪开关可试听的审阅页 |
+| 指定横/竖屏版式与人物孔位 | 正交层 `frame.py`（与能力组合及风格解耦） | `base.png` / `overlay.png` / `spec.md` 与 1:1 真实素材预览 |
 
 ---
 
@@ -120,7 +120,7 @@ video-craft/
 ├── SKILL.md                 接手入口路由、主路线与完成判据
 ├── GLOSSARY.md              领域术语词汇表
 ├── install.md               首次安装 FFmpeg / Python / Node / 凭据清单
-├── helpers/                 12 个顶层公开入口 + _internal/（转录、EDL、视觉检查、审阅与合成）
+├── helpers/                 12 个核心公开入口（另留兼容入口 audio_fix.py）+ _internal/
 ├── references/              14 份阶段契约与工程手册
 ├── tests/                   unittest 回归（含 FFmpeg 真建文件检查）
 └── evals/                   路线覆盖矩阵校验 run_evals.py

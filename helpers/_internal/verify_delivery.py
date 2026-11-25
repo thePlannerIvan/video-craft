@@ -159,7 +159,8 @@ def check_deliverable_specs(project: Path, deliver_dir: Path,
     for v in sorted(deliver_dir.rglob("*.mp4")):
         info = probe(v)
         a = next((x for x in info["streams"] if x["codec_type"] == "audio"), None) or {}
-        silent_split_visual = (not a) and v.name.endswith("_画面成片.mp4")
+        is_split_visual = v.name.endswith("_画面成片.mp4")
+        silent_split_visual = (not a) and is_split_visual
         fp = "" if not a else audio_fingerprint(v)[:16]
         entry_spec = {
             "duration_s": round(float(info["format"]["duration"]), 3),
@@ -169,6 +170,14 @@ def check_deliverable_specs(project: Path, deliver_dir: Path,
         }
         if silent_split_visual:
             entry_spec["silent_visual_track"] = True
+            specs[v.name] = entry_spec
+            continue
+        if is_split_visual and a:
+            entry_spec["visual_soundscape_track"] = True
+            if a.get("channels") != 2:
+                hard.append(f"{v.name} 画面声景音轨声道数 {a.get('channels')} != 2（需 48kHz 立体声）")
+            if int(float(a.get("sample_rate") or 0)) != 48000:
+                warn.append(f"{v.name} 画面声景音轨采样率 {a.get('sample_rate')} != 48000")
             specs[v.name] = entry_spec
             continue
         specs[v.name] = entry_spec
@@ -450,6 +459,11 @@ def main() -> int:
                       if (edit_dir / n).exists()]
         if external:
             candidates = [video] + ([external_srt] if external_srt and external_srt.is_file() else [])
+            if video.name.endswith("_人物成片.mp4"):
+                split_visual = out / video.name.replace("_人物成片.mp4", "_画面成片.mp4")
+                if split_visual.is_file():
+                    candidates.append(split_visual)
+                    extra_sources[split_visual.name] = split_visual
         by_hash = {digest(c)[0]: c for c in candidates}
         # 二次剪成片的工作区副本不在 edit/ 里：成片与剪后字幕由 cut-map 声明，
         # 交付目录按名字或内容哈希对回它们，而不是误报「找不到对应文件」。

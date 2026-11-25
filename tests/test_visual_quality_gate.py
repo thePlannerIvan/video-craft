@@ -304,6 +304,62 @@ tl.to("#ch02-stage", { opacity: 1 }, C(2));
             self.assertTrue(rep["ok"], rep)
             self.assertEqual(rep["errors"], [], rep)
 
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "需要 ffmpeg/ffprobe")
+    def test_storyboard_v3_routes_motion_tier_and_screen_demo_checks(self):
+        with tempfile.TemporaryDirectory() as td:
+            proj = _make_clean_project(Path(td), duration_s=10.0)
+            (proj / "composition" / "src" / "main.js").write_text("", encoding="utf-8")
+            html = proj / "composition" / "index.html"
+            html.write_text(html.read_text(encoding="utf-8").replace('font-size="44"', 'font-size="14"'), encoding="utf-8")
+            rec = proj / "recordings" / "demo.mp4"
+            rec.parent.mkdir(parents=True)
+            subprocess.run([
+                "ffmpeg", "-y", "-v", "error", "-f", "lavfi",
+                "-i", "color=c=0x38BDF8:s=1280x720:r=30:d=3",
+                "-c:v", "libx264", "-pix_fmt", "yuv420p", str(rec),
+            ], check=True)
+            (proj / "edit").mkdir(exist_ok=True)
+            # A) screen-demo + talk-only in edit/storyboard.json -> exempts 14px & static, validates demo bounds
+            sb_path = proj / "edit" / "storyboard.json"
+            sb_path.write_text(json.dumps({
+                "version": "storyboard/3",
+                "canvas": {"width": 1920, "height": 1080, "fps": 30},
+                "shots": [
+                    {"id": "T1", "kind": "talk-only", "engine": "ffmpeg-cut", "startSec": 0.0, "endSec": 5.0},
+                    {"id": "D1", "kind": "screen-demo", "engine": "ffmpeg-cut", "startSec": 5.0, "endSec": 10.0,
+                     "demo": {"source": "recordings/demo.mp4", "inSec": 0.2, "outSec": 2.5}},
+                ],
+            }), encoding="utf-8")
+            ok_rep = vq.run_checks(proj)
+            self.assertTrue(ok_rep["ok"], ok_rep)
+
+            # B) Out-of-bounds demo in storyboard.json -> fails DEMO_RANGE
+            sb_path.write_text(json.dumps({
+                "version": "storyboard/3",
+                "canvas": {"width": 1920, "height": 1080, "fps": 30},
+                "shots": [
+                    {"id": "D1", "kind": "screen-demo", "engine": "ffmpeg-cut", "startSec": 0.0, "endSec": 5.0,
+                     "demo": {"source": "recordings/demo.mp4", "inSec": 0.2, "outSec": 6.0}},
+                ],
+            }), encoding="utf-8")
+            bad_demo = vq.run_checks(proj)
+            self.assertFalse(bad_demo["ok"])
+            self.assertTrue(any(e["rule"] == "DEMO_RANGE" for e in bad_demo["errors"]), bad_demo)
+
+            # C) motion/model/card-deck shot activates Q1 & Q2 checks
+            sb_path.write_text(json.dumps({
+                "version": "storyboard/3",
+                "canvas": {"width": 1920, "height": 1080, "fps": 30},
+                "shots": [
+                    {"id": "M1", "kind": "model", "engine": "hyperframes", "startSec": 0.0, "endSec": 10.0},
+                ],
+            }), encoding="utf-8")
+            bad_motion = vq.run_checks(proj)
+            self.assertFalse(bad_motion["ok"])
+            rules = {e["rule"] for e in bad_motion["errors"]}
+            self.assertIn("Q1_FONT_SIZE", rules, bad_motion)
+            self.assertIn("Q2_STATIC_DURATION", rules, bad_motion)
+
 
 if __name__ == "__main__":
     unittest.main()

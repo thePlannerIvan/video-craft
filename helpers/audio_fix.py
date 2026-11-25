@@ -25,6 +25,13 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import Any
+
+_INTERNAL_DIR = str(Path(__file__).resolve().parent / "_internal")
+if _INTERNAL_DIR not in sys.path:
+    sys.path.insert(0, _INTERNAL_DIR)
+
+import _debreath
 
 GENTLE_EQ = (
     "highpass=f=80,"
@@ -183,55 +190,108 @@ def apply_voice_preset(
     preset: str = "podcast-warm",
     target_lufs: float = -14.0,
     deess: bool = False,
-) -> dict[str, float | str | bool]:
+    debreath: bool | None = None,
+) -> dict[str, Any]:
     """Process audio file with the chosen preset and return telemetry."""
     out.parent.mkdir(parents=True, exist_ok=True)
     in_lufs, _ = measure_program_stats(inp)
+    use_debreath = (preset == "podcast-warm") if debreath is None else bool(debreath)
+    debreath_stats: dict[str, Any] | None = None
 
     if preset == "raw":
-        run([
-            "ffmpeg", "-y", "-loglevel", "error", "-i", str(inp),
-            "-vn", "-ar", "48000", "-ac", "2", "-c:a", "pcm_s16le", "-bitexact", str(out),
-        ])
+        if use_debreath:
+            with tempfile.TemporaryDirectory() as td:
+                raw_wav = Path(td) / "raw.wav"
+                run([
+                    "ffmpeg", "-y", "-loglevel", "error", "-i", str(inp),
+                    "-vn", "-ar", "48000", "-ac", "2", "-c:a", "pcm_s16le", "-bitexact", str(raw_wav),
+                ])
+                debreath_stats = _debreath.debreath_wav(raw_wav, out)
+        else:
+            run([
+                "ffmpeg", "-y", "-loglevel", "error", "-i", str(inp),
+                "-vn", "-ar", "48000", "-ac", "2", "-c:a", "pcm_s16le", "-bitexact", str(out),
+            ])
         out_lufs, out_tp = measure_program_stats(out)
-        return {
+        res: dict[str, Any] = {
             "preset": "raw",
             "raw": True,
+            "debreath": use_debreath,
             "input_lufs": round(in_lufs, 2),
             "output_lufs": round(out_lufs, 2),
             "true_peak_dbtp": round(out_tp, 2),
             "output": str(out),
         }
+        if debreath_stats is not None:
+            res["debreath_valleys"] = debreath_stats["valleys_cleaned"]
+            res["debreath_speech_delta_db"] = debreath_stats["max_speech_delta_db"]
+        return res
 
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)
         if preset == "podcast-warm":
-            shaped = tmp / "shaped.wav"
-            run([
-                "ffmpeg", "-y", "-loglevel", "error", "-i", str(inp), "-vn",
-                "-filter_complex", PODCAST_WARM_FILTER, "-map", "[out]",
-                "-ar", "48000", "-ac", "2", "-c:a", "pcm_s16le", "-bitexact", str(shaped),
-            ])
-            _two_pass_loudnorm(shaped, out, target_lufs=target_lufs, tp=-1.5, lra=9.0,
-                               comment_tag="video-craft:podcast-warm")
+            if use_debreath:
+                raw_48k = tmp / "raw_48k.wav"
+                run([
+                    "ffmpeg", "-y", "-loglevel", "error", "-i", str(inp), "-vn",
+                    "-ar", "48000", "-ac", "2", "-c:a", "pcm_s16le", "-bitexact", str(raw_48k),
+                ])
+                shaped = tmp / "shaped.wav"
+                run([
+                    "ffmpeg", "-y", "-loglevel", "error", "-i", str(raw_48k),
+                    "-filter_complex", PODCAST_WARM_FILTER, "-map", "[out]",
+                    "-ar", "48000", "-ac", "2", "-c:a", "pcm_s16le", "-bitexact", str(shaped),
+                ])
+                normed = tmp / "normed.wav"
+                _two_pass_loudnorm(shaped, normed, target_lufs=target_lufs, tp=-1.5, lra=9.0)
+                debreathed = tmp / "debreathed.wav"
+                debreath_stats = _debreath.debreath_wav(normed, debreathed, mask_wav=raw_48k)
+                run([
+                    "ffmpeg", "-y", "-loglevel", "error", "-i", str(debreathed),
+                    "-c:a", "copy", "-metadata", "comment=video-craft:podcast-warm", "-bitexact", str(out),
+                ])
+            else:
+                shaped = tmp / "shaped.wav"
+                run([
+                    "ffmpeg", "-y", "-loglevel", "error", "-i", str(inp), "-vn",
+                    "-filter_complex", PODCAST_WARM_FILTER, "-map", "[out]",
+                    "-ar", "48000", "-ac", "2", "-c:a", "pcm_s16le", "-bitexact", str(shaped),
+                ])
+                _two_pass_loudnorm(shaped, out, target_lufs=target_lufs, tp=-1.5, lra=9.0,
+                                   comment_tag="video-craft:podcast-warm")
         elif preset == "gentle":
             wav = tmp / "in.wav"
             run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(inp), "-vn", "-ac", "1", "-bitexact", str(wav)])
             proc = tmp / "proc.wav"
             apply_chain(wav, proc, deess)
-            normalize_static(proc, out, target_lufs, comment_tag="video-craft:gentle")
+            if use_debreath:
+                normed = tmp / "normed.wav"
+                normalize_static(proc, normed, target_lufs)
+                debreathed = tmp / "debreathed.wav"
+                debreath_stats = _debreath.debreath_wav(normed, debreathed, mask_wav=wav)
+                run([
+                    "ffmpeg", "-y", "-loglevel", "error", "-i", str(debreathed),
+                    "-c:a", "copy", "-metadata", "comment=video-craft:gentle", "-bitexact", str(out),
+                ])
+            else:
+                normalize_static(proc, out, target_lufs, comment_tag="video-craft:gentle")
         else:
             raise ValueError(f"unknown preset: {preset}")
 
     out_lufs, out_tp = measure_program_stats(out)
-    return {
+    res = {
         "preset": preset,
         "raw": False,
+        "debreath": use_debreath,
         "input_lufs": round(in_lufs, 2),
         "output_lufs": round(out_lufs, 2),
         "true_peak_dbtp": round(out_tp, 2),
         "output": str(out),
     }
+    if debreath_stats is not None:
+        res["debreath_valleys"] = debreath_stats["valleys_cleaned"]
+        res["debreath_speech_delta_db"] = debreath_stats["max_speech_delta_db"]
+    return res
 
 
 def make_ab(
@@ -242,28 +302,48 @@ def make_ab(
     target_lufs: float,
     deess: bool,
     preset: str = "podcast-warm",
-) -> None:
+    debreath: bool | None = None,
+    quiet: bool = False,
+) -> dict[str, Any]:
+    effective = "podcast-warm" if preset in ("raw", "none") else preset
+    use_debreath = (effective == "podcast-warm") if debreath is None else bool(debreath)
+    ab_out.mkdir(parents=True, exist_ok=True)
+    raw_out = ab_out / f"{inp.stem}-原始-{int(dur)}s.wav"
+    proc_out = ab_out / f"{inp.stem}-处理-{int(dur)}s.wav"
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)
         orig_n = tmp / "orig_n.wav"
         proc_full = tmp / "proc_full.wav"
         _two_pass_loudnorm(inp, orig_n, target_lufs=target_lufs)
-        effective = "podcast-warm" if preset == "raw" else preset
-        apply_voice_preset(inp, proc_full, preset=effective, target_lufs=target_lufs, deess=deess)
-        for src, name in [(orig_n, "原始"), (proc_full, "处理")]:
+        stats = apply_voice_preset(
+            inp, proc_full, preset=effective, target_lufs=target_lufs, deess=deess, debreath=use_debreath,
+        )
+        for src, dst in [(orig_n, raw_out), (proc_full, proc_out)]:
             run([
                 "ffmpeg", "-y", "-loglevel", "error", "-ss", str(start), "-t", str(dur),
                 "-i", str(src), "-ar", "48000", "-ac", "2", "-c:a", "pcm_s16le", "-bitexact",
-                str(ab_out / f"{inp.stem}-{name}-{int(dur)}s.wav"),
+                str(dst),
             ])
-        print(f"A/B ({effective}) -> {ab_out}/ (loudness-matched {target_lufs} LUFS)")
+    if not quiet:
+        print(f"A/B ({effective}, debreath={use_debreath}) -> {ab_out}/ (loudness-matched {target_lufs} LUFS)")
+    return {
+        "mode": "ab",
+        "voice_preset": effective,
+        "debreath": bool(stats["debreath"]),
+        "start": start,
+        "duration": dur,
+        "target_lufs": target_lufs,
+        "ab_dir": str(ab_out),
+        "raw_output": str(raw_out),
+        "processed_output": str(proc_out),
+    }
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(
         description=(
             "Standalone voice acoustic diagnosis & short A/B auditioning (--ab; default C-preset "
-            "'podcast-warm'). For final project mixing, pass the raw cut track directly to "
+            "'podcast-warm' with pause de-breathing). For final project mixing, pass the raw cut track directly to "
             "helpers/audio_mix.py (which applies podcast-warm by default) instead of compressing "
             "twice; if passing an audio_fix.py output into audio_mix.py, pass --voice-preset none."
         )
@@ -275,6 +355,11 @@ def main() -> int:
                     help="Voice acoustic preset (default: podcast-warm; raw skips EQ/de-ess/comp/loudnorm)")
     ap.add_argument("--raw", "--raw-voice", dest="raw", action="store_true",
                     help="Bypass all EQ, compression, and loudnorm (--preset raw)")
+    db_group = ap.add_mutually_exclusive_group()
+    db_group.add_argument("--debreath", dest="debreath", action="store_const", const=True, default=None,
+                          help="Attenuate >=140ms pause breaths to -62 dBFS (default ON for podcast-warm)")
+    db_group.add_argument("--no-debreath", dest="debreath", action="store_const", const=False,
+                          help="Disable pause de-breathing (useful for A/B comparison)")
     ap.add_argument("--target-lufs", type=float, default=-14.0,
                     help="Integrated loudness target in LUFS (default: -14.0)")
     ap.add_argument("--deess", action="store_true", help="Enable sidechain de-ess for gentle preset")
@@ -292,14 +377,20 @@ def main() -> int:
     if args.ab:
         start, dur = (float(v) for v in args.ab.split(","))
         ab_out = (args.ab_out or inp.parent).resolve()
-        ab_out.mkdir(parents=True, exist_ok=True)
-        make_ab(inp, ab_out, start, dur, args.target_lufs, args.deess, preset=preset)
+        ab_info = make_ab(
+            inp, ab_out, start, dur, args.target_lufs, args.deess,
+            preset=preset, debreath=args.debreath, quiet=args.json,
+        )
+        if args.json:
+            print(json.dumps(ab_info, ensure_ascii=False, indent=2))
         return 0
 
     if not args.output:
         sys.exit("need -o out.wav (or --ab for an A/B sample)")
     out = args.output.resolve()
-    stats = apply_voice_preset(inp, out, preset=preset, target_lufs=args.target_lufs, deess=args.deess)
+    stats = apply_voice_preset(
+        inp, out, preset=preset, target_lufs=args.target_lufs, deess=args.deess, debreath=args.debreath,
+    )
     if args.json:
         print(json.dumps(stats, ensure_ascii=False, indent=2))
     else:

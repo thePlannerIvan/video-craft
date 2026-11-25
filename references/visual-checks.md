@@ -8,23 +8,24 @@
 
 日常自检与问题定位遵循「环境与静态先过，运行态与画面像素随后，局部失败修对应 owner，禁止拿一次静态绿灯代替全部核验」。具体分工：
 - **静态活舞台检查**（`helpers/_internal/check_live_stage.py`）：`build_review.py` 前必跑，防 srcdoc 0 秒黑屏。
-- **构建期画质与按档门禁**（`helpers/check_visual.py --only quality` / `_internal/check_visual_quality.py`）：预览与渲染前统一按 `visual-plan.json` 档位分流核查：
-  - `logic-diagram` / `theory-board`：拦 1080p 下 `<32px` 字号、连续静止 `>6–8s`、侵入人物位或字幕安全区、无 `filterUnits="userSpaceOnUse"` 的横竖矢量滤镜线、未注册外部字体与跨章残留元素；
+- **构建期画质与按档门禁**（`helpers/check_visual.py --only quality` / `_internal/check_visual_quality.py`）：预览与渲染前统一按 `storyboard.json`（兼容旧 `visual-plan.json`）分段类型与 `frame.py` 几何真源核查：
+  - `logic-diagram` / `theory-board` / `model`：拦短边 1080 基准下 `<32px` 字号、连续静止 `>6–8s`、侵入人物位或字幕安全区、Canvas/SVG 标签越界裁切（标 `data-role="background"` 的装饰层除外）、无 `filterUnits="userSpaceOnUse"` 的横竖矢量滤镜线、未注册外部字体与跨章残留元素；
   - `talk-only`：豁免字号与静止检查；
-  - `demo-footage`：豁免 `<32px` 界面小字与静止时长告警，改为强查原录屏在 `composition/assets/` 外存在、入出点未越界、无全黑帧且显示区不侵入人物位与字幕区。
+  - `demo-footage` / `screen-demo`：豁免 `<32px` 界面小字与静止时长告警，改为强查原录屏在 `composition/assets/` 外存在、入出点未越界、无全黑帧且显示区不侵入人物位与字幕区。
+- **活舞台 `<video>` 黑屏防坑**（`check_live_stage.py` & `check_visual_quality.py`）：自动拦截在 HyperFrames `<video>` 及其祖先容器上同时挂 `visibility: hidden` 样式与 GSAP `autoAlpha` 补间导致的黑屏失效。
 - **GSAP 锚点与静态 transform 冲突**（`helpers/_internal/check_motion_targets.py`）：手写时间轴交付前必跑。
 - **环境与并发预算**（`helpers/_internal/probe_env.py` + `helpers/_internal/check_render_env.py`）：任何 `hyperframes render` 前必跑。
-- **渲染后一致性/静止/屏幕文字/透明通道**：`helpers/_internal/check_render_fidelity.py`（快速转场窗内自动向前后各扩展 1 帧并以全分辨率亮像素核验，消减滑入转场误报）、`check_motion.py`、`check_screen_text.py`、`check_alpha.py`、`check_overlay.py`（蒙太奇路线用 `helpers/_internal/check_montage.py`）。
+- **渲染后一致性/静止/屏幕文字/透明通道**：`helpers/_internal/check_render_fidelity.py`（快速转场窗内自动向前后各扩展 1 帧并以全分辨率亮像素核验，消减滑入转场误报）、`check_motion.py`、`check_screen_text.py`、`check_alpha.py`、`check_overlay.py`（纯混剪路线用 `helpers/_internal/check_montage.py`）。
 
 ## 2. 活舞台五条硬契约（工程审阅能播的前提）
 
 `hyperframes check` 退 0 **不证明**审阅页能播：审阅页通过 `live_preview.py` 把编译结果装进官方 player 的 `srcdoc`；官方编译器会把 `index.html` 的内联 `<script>` 改写成 `type="text/hf-after-fonts"` 延迟块，在 `srcdoc` 中永远不执行，导致玩家拿到 0 秒、舞台全黑而人物正常（[GOTCHAS.md](../GOTCHAS.md) #74）。
 
 **五条硬契约（`check_live_stage.py` 检查，退出码 0 过 / 1 error / 2 缺 composition）**：
-1. **根元素**：`<div id="root" data-composition-id="main" data-start="0" data-width="1920" data-height="1080" data-duration="..." data-fps="30">`（id 唯一、像素宽高与时长齐备）。
+1. **根元素**：`<div id="root" data-composition-id="main" data-start="0" data-width="<画框宽>" data-height="<画框高>" data-duration="..." data-fps="30">`（宽高取自 `helpers/frame.py resolve`，id 唯一、像素宽高与时长齐备）。
 2. **时间轴注册名全等**：唯一暂停的 `HF.tl` 挂在 `window.__timelines[<id>]`，名字全等 `data-composition-id`。
 3. **执行逻辑全在外部 `src/*.js`**：`__CFG__`、`HF.build()`、`window.__timelines[...] = HF.tl` 与启动代码全部移出到 `<script src="src/...js">`；为满足 `hyperframes check` 的 `missing_timeline_registry`，`index.html` 末尾只留一行**纯容器初始化**：`<script>window.__timelines = window.__timelines || {};</script>`（右侧只能是 `{}` / `null` / 自引用兜底）。
-4. **兼容嵌入桥文件在场**：源工程保留 `assets/composition-embed-bridge.js` 满足静态兼容检查（`live_preview` 传输时自动过滤，播放器时钟仍完全归 HyperFrames 官方 player）。若使用 `--composition composition-v2`，项目里仍须有带 `index.html` 的 `composition/` 目录。
+4. **兼容嵌入桥文件在场**：源工程保留 `composition/assets/composition-embed-bridge.js` 满足静态兼容检查（`live_preview` 传输时自动过滤，播放器时钟仍完全归 HyperFrames 官方 player）。若使用 `--composition composition-v2`，项目里仍须有带 `index.html` 的 `composition/` 目录。
 5. **媒体资产预算**：`build_review.py` 自动将 `liveStage.composition.assets` 里超过 **`LIVE_STAGE_ASSET_MB = 4.0` MB** 的资产（合计上限 `12.0` MB）转为 `review/proxies/` 代理（保持时长，先降码率、再按 `0.75 / 0.5 / 0.35` 降分辨并记入 `mediaNotes`），同时对 `<video muted>` / `data-has-audio="false"` 去除重复音轨。人物母版走 `review/media.json`，不进 `composition/assets/`。
 
 ### 运行时播放判据：`check_review_playable.py`
@@ -51,7 +52,7 @@
 - **先测环境、严禁 `--workers auto`**：跑 `helpers/_internal/probe_env.py`（汇报能力、字体缓存、残留 `stray` 预览进程）与 `helpers/_internal/check_render_env.py <composition> --json`，取推荐 `workers`（画面层交付一律建议 **`--workers 1`**，防多 worker 截图通道后半段静默丢帧；停掉 `hyperframes preview` 再渲）。
 - **冷启动 `compile` 预热**：首次冷缓存 `compile` 可能耗约 25 分钟（暖缓存 `0.1s`），渲染整片前先渲 3–5s 短片段热缓存；沙盒下设 `HYPERFRAMES_FONT_CACHE_DIR="$PWD/.hf-fontcache"`；输出路径必须**不含空格**（先落 `/tmp` 再移入目标目录，防云同步盘故障与路径压缩丢件，[GOTCHAS.md](../GOTCHAS.md) #52 / #70）。
 - **禁用 `snapshot` 批抽帧**：`snapshot` 约 85 秒/帧，只用于少量关键帧核对；批量抽帧走 `render --format png-sequence`。
-- **音频与根目录相对路径**：旁白放入 `composition/assets/audio.m4a`，HTML 写 `assets/audio.m4a`（禁 `../` 否则 `hyperframes check` 报错），进 composition 前预先用 `audio_mix.py` / `audio_fix.py` 归一（HyperFrames 不会自动做响度）。
+- **音频与根目录相对路径**：旁白放入 `composition/assets/audio.m4a`，HTML 写以 `composition/` 为根的相对路径 `composition/assets/audio.m4a`（即 HTML 内引用 `audio.m4a` 所在 `assets/` 且禁 `../`，否则 `hyperframes check` 报错），进 composition 前预先用 `audio_mix.py` 归一（HyperFrames 不会自动做响度）。
 - **交付后必跑 `check_render_fidelity.py`**：按抽样时间点对比成片帧与 `composition` 快照（结构相关 ≥0.93 且墨量不坍塌）。
 
 ### 透明叠加层载体选择（Alpha Overlays）

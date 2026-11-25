@@ -1,6 +1,6 @@
 # Visual timeline (EDL-derived)
 
-> 现行 `keyframe-svg` 路线见 [visual-grammar.md](visual-grammar.md)；命令集中在 [tools.md](tools.md)。
+> 统一执行分镜与画面语法见 [visual-grammar.md](visual-grammar.md)；命令集中在 [tools.md](tools.md)。
 
 
 ## 时间来源与证据等级（权威定义）
@@ -129,18 +129,14 @@ cue), the creative fields from `grouping.json`, and the EDL binding
 
 ## Step 4 — hand-write the composition
 
-recompose 路线没有生成器：`composition/src/scenes/*.js` 由 Agent 按 `film.py` 的拆解手写，
+`motion` 动效没有代码生成器：`composition/src/scenes/*.js` 由 Agent 按 `storyboard.json`（无静态参考时先过 `film.py lookdev` 轻量样镜定调）手写，
 每个 clip 的 `data-start` / `data-duration` 从 `timeline.json` 取。**不要手改这两个属性**——
 改分组、重派生时间轴，再让场景从新 timeline 读数。
 
 ## checkpoint
 
-After grouping and timeline exist, review representative work when the visual decision needs confirmation:
-**at the pixels** rather than in prose: build 2–3 representative steps into the
-composition and open them with `review.py`, and let the
-user settle **the layout and the rhythm** in one pass. For frame-by-frame media preparation, follow [visual-checks.md](visual-checks.md) and label previews as engineering assets.
-画面风格在画面侧（`planners-ppt-hell`）已经定了，这里不重新选风格。 A written storyboard asks the user to imagine the thing they
-are being asked to approve.
+After grouping and timeline exist, when `motion` is enabled without static page references, pass the Look-Dev Gate (`film.py lookdev --verify`) with 1 representative mental-model sample first; when visual rhythm needs confirmation, review representative work **at the pixels** with `review.py` and let the user settle **the layout and the rhythm** in one pass. For frame-by-frame media preparation, follow [visual-checks.md](visual-checks.md) and label previews as engineering assets.
+风格规范已由上游 `video-manager` 与风格库定好，这里不重新选风格。 A written storyboard asks the user to imagine the thing they are being asked to approve.
 
 Before building the rest, confirm:
 

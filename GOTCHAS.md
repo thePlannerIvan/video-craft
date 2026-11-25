@@ -442,7 +442,7 @@ the picture.
 - **enforcement**：judgment:references/visual-grammar.md — 看什么：「Composition 写作硬规（HyperFrames）」与 timeline 来源：把 composition 里 `__SPANS__` 的区间和 `timeline/timeline.json` 同一屏的数对一遍，差 >0.1s 就是旧时间轴打的补丁。
 - **现象**：时间轴从「+3s 平移」改成「与 EDL 对齐」之后，composition 里的 `__CUES__`／`__SPANS__` 还是按旧版打的：`step-open` 的区间停在 14.42s，而时间轴已经说 11.42s。动画锚点整体偏 3 秒。**没有任何检查报错**，`build_review` 还给出一个看起来很一致的页面。
 - **原因**：这是第 56 条「工程态/交付态切分只做了一条轴」的第二条轴（**来源版本**）。时间轴一变，旧注入锚点就过期，而两者之间没有闸门。
-- **修正原则**：**画面轨的唯一源是 `composition/`**，而它的输入是时间轴 —— 时间轴一动就重派生并更新 `composition/` 与 `visual-plan.json`（过 `helpers/film.py init/verify` + 手写 seek-safe `composition/src/`）；核对要覆盖 `mediaClips` 与逐片时间，别只数 clip 个数。
+- **修正原则**：**画面轨的唯一源是 `composition/`**，而它的输入是时间轴 —— 时间轴一动就重派生并更新 `composition/` 与 `storyboard.json`（兼容旧 `visual-plan.json`，过 `helpers/film.py init/verify` + 手写 seek-safe `composition/src/`）；核对要覆盖 `mediaClips` 与逐片时间，别只数 clip 个数。
 - **证据**：旧 `__SPANS__.step-open=[0.0,14.42]` vs 新时间轴 `0–11.42`；重跑后逐屏一致。
 
 **同根并入**（合并后仍按本条处理）：

@@ -27,6 +27,11 @@ from pathlib import Path
 
 import numpy as np
 
+try:
+    from . import _debreath
+except ImportError:
+    import _debreath
+
 SR = 48000
 BANDS = [
     ("sub   60-120", 60, 120),
@@ -110,7 +115,7 @@ def ebur128(path: Path) -> dict:
     return {"lufs": lu, "true_peak": tp, "lra": lra}
 
 
-def diagnose(label: str, x: np.ndarray, loud: dict) -> dict:
+def diagnose(label: str, x: np.ndarray, loud: dict, breath_stats: dict | None = None) -> dict:
     ref = band_energy(x, 300, 1000)
     bands = {name: band_energy(x, lo, hi) - ref for name, lo, hi in BANDS}
     tilt = np.polyfit(
@@ -121,6 +126,9 @@ def diagnose(label: str, x: np.ndarray, loud: dict) -> dict:
     centroid = float(np.sum(
         np.abs(np.fft.rfft(x * np.hanning(len(x)))) * np.fft.rfftfreq(len(x), 1 / SR)
     ) / (np.sum(np.abs(np.fft.rfft(x * np.hanning(len(x))))) + 1e-12))
+
+    if breath_stats is None:
+        breath_stats = _debreath.analyze_pause_breaths(x, SR, adaptive=True)
 
     issues: list[str] = []
     if bands["low-mid 120-300"] > 2.0:
@@ -133,6 +141,11 @@ def diagnose(label: str, x: np.ndarray, loud: dict) -> dict:
         issues.append(f"sibilance: crest 4-8k {crest_harsh:.1f}dB vs 1-4k {crest_pres:.1f}dB — de-ess 5-8k transients")
     if loud.get("lufs") is not None and loud["lufs"] < -16.0:
         issues.append(f"quiet: {loud['lufs']:.1f} LUFS — social norm ~-14, normalize +{ -16.0 - loud['lufs']:.1f}dB")
+    if breath_stats["breath_valleys"] > 0:
+        issues.append(
+            f"pause_breath: {breath_stats['breath_valleys']} breathy pause(s) >=140ms "
+            f"(max {breath_stats['pause_breath_max_db']:.1f} dBFS) — use podcast-warm debreath"
+        )
     if not issues:
         issues.append("no strong issues detected")
 
@@ -146,6 +159,10 @@ def diagnose(label: str, x: np.ndarray, loud: dict) -> dict:
         "crest_1_4k_db": round(crest_pres, 1),
         "crest_4_8k_db": round(crest_harsh, 1),
         "loudness": {k: (round(v, 1) if v is not None else None) for k, v in loud.items()},
+        "pause_valleys": breath_stats["pause_valleys"],
+        "breath_valleys": breath_stats["breath_valleys"],
+        "pause_breath_max_db": breath_stats["pause_breath_max_db"],
+        "pause_breath_mean_db": breath_stats["pause_breath_mean_db"],
         "issues": issues,
     }
 
@@ -160,9 +177,11 @@ def main() -> None:
     reports = []
     for inp in args.inputs:
         wav = decode_to_wav(inp)
-        x = voice_gate(load_wav(wav))
+        raw_samples = load_wav(wav)
+        x = voice_gate(raw_samples)
         loud = ebur128(wav)
-        rep = diagnose(inp.name, x, loud)
+        breath_stats = _debreath.analyze_pause_breaths(raw_samples, SR, adaptive=True)
+        rep = diagnose(inp.name, x, loud, breath_stats=breath_stats)
         reports.append(rep)
         if args.json:
             print(json.dumps(rep, ensure_ascii=False, indent=1))
@@ -172,6 +191,10 @@ def main() -> None:
         print(f"  loudness {loud['lufs']} LUFS (LRA {loud['lra']}, TP {loud['true_peak']})")
         print("  bands (rel 300-1k): " + " | ".join(f"{k.split()[0]}:{v:+.1f}" for k, v in rep["bands_rel_300_1k"].items()))
         print(f"  tilt {rep['tilt_db_per_oct']} dB/oct | crest 1-4k {rep['crest_1_4k_db']}dB / 4-8k {rep['crest_4_8k_db']}dB")
+        print(
+            f"  pause breaths: {rep['breath_valleys']}/{rep['pause_valleys']} valleys >=140ms "
+            f"(max {rep['pause_breath_max_db']} dBFS)"
+        )
         for issue in rep["issues"]:
             print(f"  ⚠ {issue}")
 

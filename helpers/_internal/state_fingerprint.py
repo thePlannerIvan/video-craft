@@ -75,7 +75,9 @@ def source_paths(project: Path, *, include_review: bool = True) -> dict[str, Pat
     paths = {}
     for rel in ('recompose.json', 'edit/edl.json', 'edit/segment_durations.json',
                 'edit/subtitles.srt', 'edit/caption_words.json', 'edit/captions.json',
-                'timeline/timeline.json', 'timeline/choreography.json', 'edit/timeline/timeline.json'):
+                'timeline/timeline.json', 'timeline/choreography.json', 'edit/timeline/timeline.json',
+                'storyboard.json', 'edit/storyboard.json',
+                'lookdev/lookdev-manifest.json', 'edit/sfx-plan.json'):
         p = project / rel
         if p.is_file(): paths[rel] = p
     comp = project / 'composition'

@@ -1,6 +1,6 @@
 # 0002 · 四档视觉语法与构建期统一画面质量门禁
 
-**Status**: accepted
+**Status**: accepted (partially superseded by ADR-0005)
 
 我们决定废除过去强制逐元素照搬静态参考页的旧闸门，改为由视觉分拍表按口播语义驱动的四档视觉语法（`talk-only` / `logic-diagram` / `theory-board` / `demo-footage`），并把防小字、防死静、画框避让、实战踩坑拦截与实机录屏专项检查合并成一条按档分流的构建期质量门禁。
 

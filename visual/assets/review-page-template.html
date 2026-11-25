@@ -1036,7 +1036,9 @@
         <button type="button" class="tool-btn" id="btn-speed-toggle">1×</button>
         <button type="button" class="tool-btn active" id="btn-toggle-subtitles">字幕</button>
         <button type="button" class="tool-btn active" id="btn-audio-ab">播客音色</button>
+        <button type="button" class="tool-btn active" id="btn-broll-bed" hidden>画面底噪:开</button>
         <audio id="review-audio-alt" preload="auto" hidden></audio>
+        <audio id="review-soundscape-audio" preload="auto" hidden></audio>
       </div>
     </main>
 
@@ -2462,8 +2464,8 @@
           playBtn.textContent = isPlaying ? "⏸ 暂停" : "播放";
           playBtn.classList.toggle("primary", !isPlaying);
         }
-        syncAltAudioState();
       }
+      syncAltAudioState();
       syncDemoProxyAt(ms / 1000, isPlaying);
     });
 
@@ -2566,6 +2568,7 @@
     function startGlobalPlayback() {
       if (stageViewMode === "live") {
         clearPlaySequence();
+        isGlobalPlaying = true;
         liveStage.play();
         syncAltAudioState();
         syncDemoProxyAt(liveStage.currentMs / 1000, true);
@@ -2618,6 +2621,10 @@
       if (alt && !alt.paused) {
         try { alt.pause(); } catch {}
       }
+      const snd = document.getElementById("review-soundscape-audio");
+      if (snd && !snd.paused) {
+        try { snd.pause(); } catch {}
+      }
       const demoVid = document.getElementById("demo-proxy-video");
       if (demoVid && !demoVid.paused) {
         try { demoVid.pause(); } catch {}
@@ -2634,18 +2641,59 @@
     document.body.dataset.audioMode = "mix";
     let resolvedMixAudioUrl = null;
     let resolvedDryAudioUrl = null;
+    const _initTracks = window.__REVIEW_DATA__?.media?.audioTracks || {};
+    const _initSoundscape = window.__REVIEW_DATA__?.media?.soundscape || {};
+    const hasSoundscapeOn = Boolean(_initTracks.soundscape || _initSoundscape.bedOn);
+    const hasSoundscapeOff = Boolean(_initTracks.soundscapeSfxOnly || _initSoundscape.bedOff);
+    let brollBedMode = hasSoundscapeOn ? "on" : (hasSoundscapeOff ? "off" : "none");
+    document.body.dataset.brollBed = brollBedMode;
+    let resolvedSoundscapeUrl = null;
+    let resolvedSoundscapeSfxOnlyUrl = null;
     async function ensureAudioTrackUrls() {
       const tracks = window.__REVIEW_DATA__?.media?.audioTracks || {};
+      const snd = window.__REVIEW_DATA__?.media?.soundscape || {};
       if (tracks.mix && !resolvedMixAudioUrl) {
         try { resolvedMixAudioUrl = review ? await assetUrl(tracks.mix) : tracks.mix; } catch {}
       }
       if (tracks.dry && !resolvedDryAudioUrl) {
         try { resolvedDryAudioUrl = review ? await assetUrl(tracks.dry) : tracks.dry; } catch {}
       }
-      return { mixUrl: resolvedMixAudioUrl, dryUrl: resolvedDryAudioUrl };
+      const sndOnRel = tracks.soundscape || snd.bedOn;
+      if (sndOnRel && !resolvedSoundscapeUrl) {
+        try { resolvedSoundscapeUrl = review ? await assetUrl(sndOnRel) : sndOnRel; } catch {}
+      }
+      const sndOffRel = tracks.soundscapeSfxOnly || snd.bedOff;
+      if (sndOffRel && !resolvedSoundscapeSfxOnlyUrl) {
+        try { resolvedSoundscapeSfxOnlyUrl = review ? await assetUrl(sndOffRel) : sndOffRel; } catch {}
+      }
+      return {
+        mixUrl: resolvedMixAudioUrl,
+        dryUrl: resolvedDryAudioUrl,
+        soundscapeUrl: resolvedSoundscapeUrl,
+        soundscapeSfxOnlyUrl: resolvedSoundscapeSfxOnlyUrl,
+      };
+    }
+    function syncAudioElementToClock(el, url, clock, muted) {
+      if (!el) return;
+      if (!url) {
+        el.muted = !!muted;
+        if (!el.paused) el.pause();
+        return;
+      }
+      if (el.getAttribute("src") !== url) el.src = url;
+      el.muted = !!muted;
+      if (clock) {
+        el.playbackRate = clock.rate || 1;
+        if (Math.abs((el.currentTime || 0) - clock.time) > 0.12) {
+          try { el.currentTime = clock.time; } catch {}
+        }
+        if (!clock.paused && el.paused) el.play().catch(() => {});
+        else if (clock.paused && !el.paused) el.pause();
+      }
     }
     function syncAltAudioState() {
       const alt = document.getElementById("review-audio-alt");
+      const sndEl = document.getElementById("review-soundscape-audio");
       const compVid = document.getElementById("composite-video-player");
       const spkVid = document.getElementById("stage-speaker-video");
       const hasComp = stageViewMode === "composite" && compVid && compVid.getAttribute("src");
@@ -2661,23 +2709,28 @@
         if (compVid) compVid.muted = true;
         if (spkVid) spkVid.muted = true;
         liveStage.mute(true);
-        if (alt) {
-          if (alt.getAttribute("src") !== targetUrl) alt.src = targetUrl;
-          if (clock) {
-            alt.playbackRate = clock.rate || 1;
-            if (Math.abs((alt.currentTime || 0) - clock.time) > 0.12) {
-              try { alt.currentTime = clock.time; } catch {}
-            }
-            if (!clock.paused && alt.paused) alt.play().catch(() => {});
-            else if (clock.paused && !alt.paused) alt.pause();
-          }
-        }
+        syncAudioElementToClock(alt, targetUrl, clock, false);
       } else {
         if (compVid) compVid.muted = false;
         if (spkVid) spkVid.muted = false;
         liveStage.mute(false);
         if (alt && !alt.paused) alt.pause();
       }
+      let sndUrl = null;
+      let sndMuted = true;
+      if (brollBedMode === "on" && resolvedSoundscapeUrl) {
+        sndUrl = resolvedSoundscapeUrl;
+        sndMuted = false;
+      } else if (brollBedMode === "off") {
+        if (resolvedSoundscapeSfxOnlyUrl) {
+          sndUrl = resolvedSoundscapeSfxOnlyUrl;
+          sndMuted = false;
+        } else if (resolvedSoundscapeUrl) {
+          sndUrl = resolvedSoundscapeUrl;
+          sndMuted = true;
+        }
+      }
+      syncAudioElementToClock(sndEl, sndUrl, clock, sndMuted);
     }
     const demoProxyUrls = new Map();
     async function syncDemoProxyAt(curSec, playing) {
@@ -2764,6 +2817,39 @@
         audioAbBtn.addEventListener("click", () => {
           setAudioMode(audioMode === "mix" ? "dry" : "mix");
         });
+      }
+    }
+    async function setBrollBedMode(mode) {
+      brollBedMode = mode === "off" ? "off" : "on";
+      document.body.dataset.brollBed = brollBedMode;
+      const btn = document.getElementById("btn-broll-bed");
+      if (btn) {
+        btn.textContent = brollBedMode === "off" ? "画面底噪:关" : "画面底噪:开";
+        btn.classList.toggle("active", brollBedMode === "on");
+      }
+      await ensureAudioTrackUrls();
+      syncAltAudioState();
+    }
+    const brollBedBtn = document.getElementById("btn-broll-bed");
+    if (brollBedBtn) {
+      if (!hasSoundscapeOn && !hasSoundscapeOff) {
+        brollBedBtn.hidden = true;
+        brollBedBtn.disabled = true;
+      } else {
+        brollBedBtn.hidden = false;
+        brollBedBtn.textContent = brollBedMode === "off" ? "画面底噪:关" : "画面底噪:开";
+        brollBedBtn.classList.toggle("active", brollBedMode === "on");
+        if (!hasSoundscapeOn) {
+          brollBedBtn.disabled = true;
+          brollBedBtn.title = "当前仅提供动效音效轨";
+        } else {
+          brollBedBtn.title = hasSoundscapeOff
+            ? "切换保留或关闭画面原声底噪（保留动效音效）"
+            : "切换开启或静音画面声景";
+          brollBedBtn.addEventListener("click", () => {
+            setBrollBedMode(brollBedMode === "on" ? "off" : "on");
+          });
+        }
       }
     }
 

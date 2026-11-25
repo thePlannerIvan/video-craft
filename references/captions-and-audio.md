@@ -61,9 +61,17 @@ python3 "<craft>/helpers/_internal/check_caption_breaks.py" "<edit>/subtitles.sr
 - **流水线严格对齐 vs. 交付导入空隙（#73）**：流水线 `subtitles.srt` 允许末条与尾部合理静音存在余量（`tolerance` 见 [GOTCHAS.md](../GOTCHAS.md) #7）；剪映/PR 导入要求相邻无重叠或微小间隙时，**只在交付副本包装**阶段由 `export_deliverables.py` 处理，禁止反向篡改源 `captions.json` 与流水线校验准则。
 - 若从预演升级实测时长，用 `srt_export.py <edit> --prepare --force-prepare --time-source measured`，再重新 `--lock` / `--build` / 派生 `timeline` / `--check`（保留已审 `semantic_lines.txt`）。
 
-## 4. 音频诊断、C 档人声预设与克制音效混音标准
+## 4. 双轨音频分离：Voice Polish（人声润色）与 Visual Soundscape（画面声景）
 
-- **先诊断与单轨边界**：用 `helpers/_internal/audio_diag.py <媒体> --json` 检出电平、削波、底噪问题；`helpers/audio_fix.py` **仅用于单轨人声前期声学试听或短片段盲听对照（`--ab`）**，输出新 `.wav` 副本并保持原母版只读。**终混勿先跑 `audio_fix.py` 再送入 `audio_mix.py`**，避免同一段人声被重复压缩两次。
-- **默认 C 档「播客浑厚」预设（`podcast-warm`）**：`65Hz` 高通、`115Hz +3.0dB` 胸腔厚度、`245Hz -3.5dB` 去箱音、`3.2kHz +2.5dB` 清晰度、`9.5kHz highshelf +1.8dB` 空气感、`5.2–8.2kHz` 侧链去齿音、轻压缩 + **双遍线性响度归一**，输出至 `-14.0 LUFS / -1.5 dBTP`（48kHz 立体声）。`audio_fix.py` 单轨试听传 `--raw` 或 `--preset raw` 可绕过处理导出纯干声。
-- **全片唯一混音出口与防重复压缩（#19）**：成片最终混音由 **`helpers/audio_mix.py`** 唯一产出，**默认启用 `--voice-preset podcast-warm`**，直接接收未处理的粗剪干声并完成 `-14.0 LUFS / -1.5 dBTP` 交付响度对齐（带 `--bgm` 时附加单遍 `loudnorm` 闪避混音；整体校验以交付件立体声整片 `ebur128` 为准）。仅当输入人声已被 `audio_fix.py` 预处理过时，才显式传 `--voice-preset none` 绕过人声 EQ 与压缩以防重复压缩；需一键退回纯干声时传 `--dry`（绕过 EQ/压缩、BGM 与 SFX），或传 `--raw-voice` / `--voice-preset raw` 仅绕过人声处理。`--sfx <sfx.json>` 仅使用内置 `assets/sfx/` 下的 8 个 CC0 本地柔和音效（不默认联网搜音效），强制三条硬护栏：① 只响应 `chapter` / `reveal` / `turn`；② 全片平均每 15–25s 至多 1 次（超密退 1 拒绝）；③ `--sfx-under-db` 限定在人声下 `18–22 dB`，支持 `--no-sfx` 一键剥离。
+- **声音彻底分轨**：人声母带（**Voice Polish**，`audio_mix.py`）专注纯净人声，只随 `人物成片.mp4` 交付；画面动效起伏音效与素材原声底噪（**Visual Soundscape**，`sound_design.py`）归画面层，交付时无损封装进 `画面成片.mp4` 并同出独立 `画面音效轨.wav`。**禁止把动效音效混入人声润色默认链路**。
+- **Voice Polish 唯一入口（`helpers/audio_mix.py`）**：
+  - 先用 `helpers/_internal/audio_diag.py <媒体> --json` 检出电平、削波、底噪与停顿重吸气声；
+  - 默认 `podcast-warm` 预设（`65Hz` 高通、`115Hz +3.0dB`、`245Hz -3.5dB`、`3.2kHz +2.5dB`、`9.5kHz +1.8dB`、侧链去齿音、轻压缩 + 双遍线性响度归一至 `-14.0 LUFS / -1.5 dBTP`，48kHz 立体声）**默认启用 `--debreath`**：采用双频段语音与清辅音保护（前 `100ms` / 后 `70ms` 膨胀保护字头与气音辅音），仅把 `≥140ms` 停顿谷底柔和衰减至 `-62 dBFS` 自然底噪，保证 `0.000s` 漂移与语音段 RMS 变化 `≤0.1 dB`（显式 `--no-debreath` 可关闭）；
+  - 支持 `--ab "起始,时长"` 做单轨与停顿除吸气 A/B 盲听对照，以及 `--dry` / `--raw-voice` 导出纯干声；
+  - **兼容入口 `helpers/audio_fix.py`**：仅用于独立单轨声学诊断与历史兼容，终混勿先跑 `audio_fix.py` 再送 `audio_mix.py` 以防二次压限（确需接入时传 `--voice-preset none`）。
+- **Visual Soundscape 独立管线（`helpers/sound_design.py`）**：
+  - `build --storyboard <storyboard.json> --voice <人声WAV> --out <soundscape.wav> [--broll-bed on|off] [--preview-variants]`：
+    - **动效起伏音效层**：直接消费 `storyboard.json` 中的 `model` / `card-deck` 卡点，从内置 `assets/sfx/` 取经验证 CC0 音效完成「推起（`swell`/`riser`）→ 落点（`whoosh`/`sub-drop`/`crisp-tick`/`chime`）」配音并施加高频柔化搁架；
+    - **素材原声底噪自动筛分与闪避**：提取 `footage` 片段原声，自动三档分流（纯配乐/干净环境音挖空人声频段 `1400 Hz -9dB` 与 `2400 Hz` 滚降；疑带轻对白的低频音乐仅留 `≤450 Hz` 暖底垫；清晰对白或高杂噪自动静音），再以人声母带作侧链键控 `-5 dB` 动态闪避；通过 `--broll-bed on|off` 切换开关，审阅期可通过 `--preview-variants` 生成开关对照轨；
+  - **内置确定性响度门禁（`sound_design.py verify`）**：独立声景母带落在 `-37.0..-30.0 LUFS`（`TP ≤ -13.5 dBTP`），模拟「人声母带 + 声景母带」合播落在 `-14.2..-13.4 LUFS`（`TP ≤ -1.0 dBTP`），越界直接退 1 拒绝。
 - 使用已预混音频进 `render.py` 时传 `--no-loudnorm`（且 `-o` 禁止使用 `base*.mp4` 内部保留名，#84）；交付验证须读立体声整片 `ebur128`。HyperFrames composition 旁白进 `composition/assets/` 前优先直接用 `audio_mix.py` 处理。

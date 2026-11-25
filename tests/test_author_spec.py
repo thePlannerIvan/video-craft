@@ -75,6 +75,66 @@ class RealSpecs(unittest.TestCase):
             for mark in ("「", "」", "“", "”"):
                 self.assertNotIn(mark, text, f"{name} 含引文标记 {mark}")
 
+    def test_v3_aesthetic_benchmarks_present(self):
+        """author-spec.md 纳入 v3 三条全局审美基准且不突破行数/条目上限。"""
+        text = (ROOT / "references" / "author-spec.md").read_text(encoding="utf-8")
+        lines = text.splitlines()
+        self.assertLessEqual(len(lines), spec_lint.MAX_AUTHOR_LINES)
+        entries = spec_lint._iter_entries(lines, spec_lint.AUTHOR_ENTRY_RE)
+        self.assertLessEqual(len(entries), spec_lint.MAX_AUTHOR_ENTRIES)
+        # 1. 无静态参考时采用随口播持续演化的单一空间思维模型，禁止 PPT 文字框拼接
+        self.assertIn("思维模型", text)
+        self.assertIn("文字框", text)
+        # 2. 图片、海报与卡片组件采用极细骨白边框，禁止红色高亮框
+        self.assertIn("骨白", text)
+        self.assertIn("红", text)
+        # 3. 顶部辅助角区仅留极简几何装饰，禁止段落编号与内部排产标签
+        self.assertIn("几何装饰", text)
+        self.assertIn("编号", text)
+
+    def test_author_spec_retires_production_mode_wording(self):
+        text = (ROOT / "references" / "author-spec.md").read_text(encoding="utf-8")
+        for retired in ("生产模式", "keyframe-svg", "footage-montage", "pure-talking"):
+            self.assertNotIn(retired, text, f"author-spec.md 不应再绑定退役词 {retired}")
+
+
+class DomainModelV3(unittest.TestCase):
+    def test_glossary_defines_six_canonical_terms_and_retires_production_mode(self):
+        glossary = (ROOT / "GLOSSARY.md").read_text(encoding="utf-8")
+        self.assertIn("## Language", glossary)
+        self.assertIn("## Retired Terms", glossary)
+        language_part, retired_part = glossary.split("## Retired Terms", 1)
+        for term in (
+            "能力组合",
+            "人声润色",
+            "画面声景",
+            "思维模型动效",
+            "轻量样镜定调",
+            "执行分镜",
+        ):
+            self.assertIn(f"**{term}", language_part, f"GLOSSARY.md Language 缺少规范术语：{term}")
+        self.assertNotIn("**生产模式", language_part)
+        self.assertIn("生产模式", retired_part)
+        active_defs = "\n".join(
+            ln for ln in language_part.splitlines() if not ln.strip().startswith("_Avoid_:")
+        )
+        self.assertNotIn("无声纯画面", active_defs)
+        self.assertNotIn("画面成片必须 0 音轨", active_defs)
+
+    def test_adr_0005_exists_and_updates_0002_0004_status(self):
+        adr_dir = ROOT / "docs" / "adr"
+        adr5 = adr_dir / "0005-composable-capabilities-segment-splicing-and-visual-soundscape.md"
+        self.assertTrue(adr5.is_file(), "缺少 ADR-0005")
+        adr5_text = adr5.read_text(encoding="utf-8")
+        self.assertIn("**Status**: accepted", adr5_text)
+        for keyword in ("能力组合", "按段分流", "人声润色", "画面声景", "ADR-0002", "ADR-0004"):
+            self.assertIn(keyword, adr5_text)
+
+        adr2_text = (adr_dir / "0002-four-tier-visual-grammar-and-builtin-quality-gate.md").read_text(encoding="utf-8")
+        adr4_text = (adr_dir / "0004-split-delivery-default-and-chat-approval-gate.md").read_text(encoding="utf-8")
+        self.assertIn("partially superseded by ADR-0005", adr2_text)
+        self.assertIn("partially superseded by ADR-0005", adr4_text)
+
 
 class MechanicalDefects(unittest.TestCase):
     def setUp(self):

@@ -362,6 +362,26 @@ def s10_minimal_ui_no_legacy_controls_or_jargon(html: str) -> list[str]:
     return out
 
 
+def s11_soundscape_controls_wired(html: str) -> list[str]:
+    """Ensure soundscape audition toggle (#btn-broll-bed) and audio element (#review-soundscape-audio) stay wired."""
+    out: list[str] = []
+    if 'id="btn-broll-bed"' not in html:
+        out.append("缺少画面底噪切换按钮 #btn-broll-bed")
+    if 'id="review-soundscape-audio"' not in html:
+        out.append("缺少画面声景试听音频元素 #review-soundscape-audio")
+    if "review-soundscape-audio" not in _strip_comments(html) or "brollBedMode" not in _strip_comments(html):
+        out.append("画面声景试听脚本接线缺失（需在 syncAltAudioState 中绑定 review-soundscape-audio 与 brollBedMode）")
+    else:
+        m = re.search(r"function\s+syncAltAudioState\s*\(\s*\)\s*\{", html)
+        if not m:
+            out.append("缺少 syncAltAudioState() 音频同步函数")
+        else:
+            body = _balanced_body(html, m.end() - 1)
+            if "review-soundscape-audio" not in body or "brollBedMode" not in body:
+                out.append("syncAltAudioState() 未同步 #review-soundscape-audio 与 brollBedMode")
+    return out
+
+
 CHECKS = [
     ("S1", "舞台选择函数保住参数", s1_stage_function_keeps_its_argument),
     ("S2", "可交互 id 都挂了事件", s2_buttons_are_wired),
@@ -373,6 +393,7 @@ CHECKS = [
     ("S8", "舞台提升不依赖初始化成败", s8_stage_promotion_survives_init_failure),
     ("S9", "调整项归属键只有一个出处", s9_adjustment_key_has_one_source),
     ("S10", "无已下线控件与用户可见工程术语", s10_minimal_ui_no_legacy_controls_or_jargon),
+    ("S11", "画面声景按钮与试听音轨接线完整", s11_soundscape_controls_wired),
 ]
 
 # 把历史缺陷原样打回去，证明每条检查真的会响（对着 GOTCHA #30「一个永远不会失败的判据」）。
@@ -444,9 +465,13 @@ def _proof_s10(h):
     )
 
 
+def _proof_s11(h):
+    return h.replace('id="review-soundscape-audio"', 'id="review-soundscape-removed"', 1)
+
+
 PROOFS = {"S1": _proof_s1, "S2": _proof_s2, "S3": _proof_s3, "S4": _proof_s4,
           "S5": _proof_s5, "S6": _proof_s6, "S7": _proof_s7, "S8": _proof_s8, "S9": _proof_s9,
-          "S10": _proof_s10}
+          "S10": _proof_s10, "S11": _proof_s11}
 
 
 def check_template(path: Path) -> dict:

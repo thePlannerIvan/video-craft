@@ -123,16 +123,21 @@ def resolve_review_mode(project: Path, final_cut: bool = False) -> str:
     """这个工程该按哪种形态审：`recompose`（工程态）还是 `final-cut`（成片态）。
 
     page 十步页已退休，但「没有 composition 的工程」不等于「没东西可审」：蒙太奇项目
-    （`edit/montage-plan.json`）和只渲好了成片的项目，审的就是那份成片。这类项目逼它去
-    `recompose_plan.py init` 一个假 recompose，只会让人绕回 `--allow-page` 的临时开法。
+    （`edit/montage-plan.json`）、仅含预渲染/直切视频的 `storyboard.json` 和只渲好了成片的
+    项目，审的就是那份成片；含 `composition/index.html` 的 `storyboard.json` 走活舞台工程态。
     """
     if (project / "recompose.json").is_file():
         return "recompose"
-    if final_cut or (project / "edit" / "montage-plan.json").is_file():
+    if final_cut:
         return "final-cut"
-    print("✗ 这个工程既没有 recompose.json 也没有 edit/montage-plan.json —— "
-          "审阅页只支持 recompose 布局或成片态（final-cut）。", file=sys.stderr)
+    if (project / "storyboard.json").is_file() or (project / "edit" / "storyboard.json").is_file():
+        return "recompose" if (project / "composition" / "index.html").is_file() else "final-cut"
+    if (project / "edit" / "montage-plan.json").is_file():
+        return "final-cut"
+    print("✗ 这个工程既没有 recompose.json / storyboard.json 也没有 edit/montage-plan.json —— "
+          "审阅页只支持活舞台工程态或成片态（final-cut）。", file=sys.stderr)
     print(f"  · 有 recompose 工程：先跑 python3 helpers/_internal/recompose_plan.py init {project}", file=sys.stderr)
+    print("  · 有统一执行分镜：先跑 python3 helpers/film.py init " + str(project), file=sys.stderr)
     print("  · 只有渲好的成片：加 --final-cut 再跑（成片态审阅不要求工程态）", file=sys.stderr)
     raise SystemExit(2)
 
@@ -203,7 +208,15 @@ def review(project: Path, open_surface: bool = True, live: bool = True,
         build_args.append("--final-cut")
     code, out = _run(build_args)
     built = (project / "review" / "index.html").is_file()
-    if not step("审阅页构建", code == 0 and built, "review/index.html",
+    soundscape_meta = None
+    data_path = project / "review" / "review_data.json"
+    if code == 0 and built and data_path.is_file():
+        try:
+            soundscape_meta = (json.loads(data_path.read_text(encoding="utf-8")).get("media") or {}).get("soundscape")
+        except (OSError, ValueError):
+            soundscape_meta = None
+    build_detail = "review/index.html" + ("（含画面声景试听）" if soundscape_meta else "")
+    if not step("审阅页构建", code == 0 and built, build_detail,
                 "build_review.py（看它报的 mediaNotes / 缺的输入）"):
         if not as_json:
             print("\n".join(out.strip().splitlines()[-10:]))
@@ -274,6 +287,7 @@ def review(project: Path, open_surface: bool = True, live: bool = True,
         "surface": str(surface),
         "host": host,
         "channel": (verdict or {}).get("channel"),
+        "soundscape": soundscape_meta,
         "steps": steps,
         "next": "把 surface 交给 review_open（有插件）或打开 host；作者提交后跑 review_inbox.py 收件",
     }

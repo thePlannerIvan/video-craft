@@ -26,6 +26,11 @@ import wave
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+INTERNAL_DIR = HERE / "_internal"
+for _p in (str(HERE), str(INTERNAL_DIR)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
 SKILL_ROOT = HERE.parent
 SFX_DIR = SKILL_ROOT / "assets" / "sfx"
 SFX_MANIFEST = SFX_DIR / "manifest.json"
@@ -195,13 +200,22 @@ def main() -> int:
     )
     ap.add_argument("--raw-voice", "--raw", dest="raw_voice", action="store_true",
                     help="Force pure raw voice without EQ/compression")
+    db_group = ap.add_mutually_exclusive_group()
+    db_group.add_argument("--debreath", dest="debreath", action="store_const", const=True, default=None,
+                          help="Attenuate >=140ms pause breaths to -62 dBFS (default ON for podcast-warm)")
+    db_group.add_argument("--no-debreath", dest="debreath", action="store_const", const=False,
+                          help="Disable pause de-breathing (useful for A/B comparison)")
+    ap.add_argument("--ab", type=str, default=None,
+                    help="A/B audition excerpt 'START,DUR' in seconds (writes 原始 & 处理 WAVs without BGM/SFX)")
+    ap.add_argument("--ab-out", type=Path, default=None, help="A/B output directory (default: voice parent)")
     ap.add_argument("--allow-reprocess", action="store_true",
                     help="Explicitly allow re-applying a voice preset on input tagged by audio_fix.py (not recommended)")
     ap.add_argument(
         "--dry", action="store_true",
         help="One-flag pure dry voice export: bypass EQ/compression, BGM, and SFX (ignores preset/BGM/SFX)",
     )
-    ap.add_argument("--sfx", type=Path, default=None, help="JSON SFX plan [{t, kind, sound}]")
+    ap.add_argument("--sfx", type=Path, default=None,
+                    help="[Legacy compat] JSON SFX plan [{t, kind, sound}]; retired by default (motion SFX live in sound_design)")
     ap.add_argument("--sfx-under-db", type=float, default=20.0,
                     help="Level delta below voice target LUFS (must stay in [18, 22], default: 20)")
     ap.add_argument("--no-sfx", action="store_true", help="Strip SFX cleanly even if --sfx plan is supplied")
@@ -218,18 +232,44 @@ def main() -> int:
                 print(f"{item['id']}\t{item['kind']}\t{item['duration_s']}s\t{item['file']}")
         return 0
 
-    if not a.voice or not a.output:
-        sys.exit("必须提供 voice 输入与 -o/--output 输出路径（或使用 --list-sfx）")
+    if not a.voice:
+        sys.exit("必须提供 voice 输入与 -o/--output 输出路径（或使用 --ab / --list-sfx）")
     if not a.voice.is_file():
         sys.exit(f"找不到人声：{a.voice}")
+
+    voice_mode = "raw" if (a.dry or a.raw_voice) else a.voice_preset
+    effective_debreath = (
+        False if a.dry
+        else ((voice_mode == "podcast-warm") if a.debreath is None else bool(a.debreath))
+    )
+
+    if a.ab:
+        try:
+            parts = [float(v.strip()) for v in a.ab.split(",")]
+            if len(parts) != 2 or parts[1] <= 0:
+                raise ValueError
+            start_s, dur_s = parts
+        except ValueError:
+            sys.exit(f"--ab 格式无效（应为 'START,DUR'，如 '5,12'）：{a.ab}")
+        import audio_fix
+        fallback_dir = a.output if (a.output and not a.output.suffix) else a.voice.parent
+        ab_out = (a.ab_out or fallback_dir).resolve()
+        ab_info = audio_fix.make_ab(
+            a.voice.resolve(), ab_out, start_s, dur_s, a.target_lufs, False,
+            preset=voice_mode, debreath=effective_debreath, quiet=a.json,
+        )
+        if a.json:
+            print(json.dumps(ab_info, ensure_ascii=False))
+        return 0
+
+    if not a.output:
+        sys.exit("必须提供 voice 输入与 -o/--output 输出路径（或使用 --ab / --list-sfx）")
 
     a.output.parent.mkdir(parents=True, exist_ok=True)
     dur = probe_duration(a.voice)
 
     use_bgm = None if a.dry else a.bgm
     use_sfx = [] if (a.dry or a.no_sfx or a.sfx is None) else validate_sfx_plan(a.sfx, dur, a.sfx_under_db)
-
-    voice_mode = "raw" if (a.dry or a.raw_voice) else a.voice_preset
 
     if voice_mode == "podcast-warm" and not a.allow_reprocess:
         probe = subprocess.run(
@@ -251,10 +291,17 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)
         voice_wav = a.voice
+        voice_stats: dict = {}
         if voice_mode in ("podcast-warm", "raw"):
             import audio_fix
             voice_wav = tmp / "voice_prepped.wav"
-            audio_fix.apply_voice_preset(a.voice, voice_wav, preset=voice_mode, target_lufs=a.target_lufs)
+            voice_stats = audio_fix.apply_voice_preset(
+                a.voice, voice_wav, preset=voice_mode, target_lufs=a.target_lufs, debreath=effective_debreath,
+            )
+        elif effective_debreath:
+            import _debreath
+            voice_wav = tmp / "voice_debreathed.wav"
+            voice_stats = _debreath.debreath_wav(a.voice, voice_wav)
 
         if a.dry:
             # Pure dry voice: keep exact clean signal without EQ/comp/loudnorm/SFX/BGM
@@ -266,15 +313,18 @@ def main() -> int:
                      "-vn", "-ar", "48000", "-ac", "2", str(a.output)])
             out_lu = lufs(a.output)
             if a.json:
-                print(json.dumps({"mode": "dry", "voice_preset": "raw", "sfx_count": 0,
-                                  "output_lufs": round(out_lu, 2), "output": str(a.output)}, ensure_ascii=False))
+                print(json.dumps({
+                    "mode": "dry", "voice_preset": "raw", "debreath": False, "sfx_count": 0,
+                    "output_lufs": round(out_lu, 2), "output": str(a.output),
+                }, ensure_ascii=False))
             else:
                 print(f"dry voice · {out_lu:.1f} LUFS -> {a.output}")
             return 0
 
         # Pre-level voice to exact target_lufs unless simple single-voice mode
         if not use_bgm and not use_sfx:
-            if voice_mode == "raw":
+            if voice_mode in ("raw", "podcast-warm"):
+                # podcast-warm already ran two-pass loudnorm + true-peak limiter (-1.5 dBTP)
                 run(["ffmpeg", "-v", "error", "-y", "-i", str(voice_wav),
                      "-ar", "48000", "-ac", "2", str(a.output)])
             else:
@@ -284,8 +334,17 @@ def main() -> int:
                      "-ar", "48000", "-ac", "2", str(a.output)])
             out_lu = lufs(a.output)
             if a.json:
-                print(json.dumps({"mode": "voice-only", "voice_preset": voice_mode, "sfx_count": 0,
-                                  "output_lufs": round(out_lu, 2), "output": str(a.output)}, ensure_ascii=False))
+                payload = {
+                    "mode": "voice-only",
+                    "voice_preset": voice_mode,
+                    "debreath": effective_debreath,
+                    "sfx_count": 0,
+                    "output_lufs": round(out_lu, 2),
+                    "output": str(a.output),
+                }
+                if "debreath_valleys" in voice_stats:
+                    payload["debreath_valleys"] = voice_stats["debreath_valleys"]
+                print(json.dumps(payload, ensure_ascii=False))
             else:
                 print(f"voice only · {out_lu:.1f} LUFS → {a.output}")
             return 0
@@ -361,6 +420,7 @@ def main() -> int:
             print(json.dumps({
                 "mode": "mix",
                 "voice_preset": voice_mode,
+                "debreath": effective_debreath,
                 "bgm": bool(use_bgm),
                 "sfx_count": len(use_sfx),
                 "sfx_under_db": a.sfx_under_db if use_sfx else None,

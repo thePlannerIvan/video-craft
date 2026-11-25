@@ -66,5 +66,39 @@
       "license": "CC0-1.0 (original procedural synthesis)",
       "description": "干脆克制机械轻叩（转折切换）"
     }
+  ],
+  "soundscape_items": [
+    {
+      "id": "motion-riser-warm",
+      "file": "motion-riser-warm.wav",
+      "kind": "riser",
+      "duration_s": 1.8,
+      "license": "CC0-1.0 (original procedural synthesis)",
+      "description": "温暖低通推起气声（思维模型与视角跃迁前铺垫）"
+    },
+    {
+      "id": "motion-whoosh-cinematic",
+      "file": "motion-whoosh-cinematic.wav",
+      "kind": "whoosh",
+      "duration_s": 0.9,
+      "license": "CC0-1.0 (original procedural synthesis)",
+      "description": "电影感柔和空气甩尾（视角切换与转场）"
+    },
+    {
+      "id": "motion-impact-sub",
+      "file": "motion-impact-sub.wav",
+      "kind": "impact",
+      "duration_s": 1.1,
+      "license": "CC0-1.0 (original procedural synthesis)",
+      "description": "克制低频下潜落点（核心概念锁定位）"
+    },
+    {
+      "id": "card-snap-crisp",
+      "file": "card-snap-crisp.wav",
+      "kind": "card",
+      "duration_s": 0.14,
+      "license": "CC0-1.0 (original procedural synthesis)",
+      "description": "清脆纸卡切换声（卡片组翻折/弹入）"
+    }
   ]
 }

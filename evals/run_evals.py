@@ -25,23 +25,37 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 EVALS = HERE / "evals.json"
 
-ROUTES = ("recompose", "montage", "frame", "shared")
+ROUTES = ("recompose", "montage", "frame", "capabilities", "audio", "shared")
 # 每条路线至少要有几条用例。shared 是横切片型/路线都成立的用例（工程态、返修、交付）。
-ROUTE_MINIMUM = {"recompose": 1, "montage": 1, "frame": 1, "shared": 1}
+ROUTE_MINIMUM = {
+    "recompose": 1,
+    "montage": 1,
+    "frame": 1,
+    "capabilities": 1,
+    "audio": 1,
+    "shared": 1,
+}
 
-# 新增路线（montage / frame）的用例必须在 must_do 里落到真实入口上，否则 route 只是标签。
+# 新增路线（montage / frame / capabilities / audio）的用例必须在 must_do 里落到真实入口上，否则 route 只是标签。
 ROUTE_ANCHORS = {
     "recompose": (),
     "montage": ("montage.py", "scan_materials", "素材清单", "镜头表"),
     "frame": ("frame.py", "画框", "token"),
+    "capabilities": ("storyboard.json", "film.py", "deliver.py", "frame.py"),
+    "audio": ("audio_mix.py", "sound_design.py", "--debreath", "podcast-warm"),
     "shared": (),
 }
 
-# 话题覆盖：这些是 2026-11 升级要防的"死文档"缺口，每条至少命中一条用例。
+RETIRED_MODE_TOKENS = ("pure-talking", "footage-montage", "keyframe-svg", "生产模式", "三选一")
+
+# 话题覆盖：这些是升级要防的"死文档"缺口，每条至少命中一条用例。
 TOPICS = (
     ("素材清单", ("scan_materials", "material-inventory", "素材清单")),
     ("镜头表/plan", ("montage.py", "montage-plan", "镜头表")),
     ("画框/预览落位", ("frame.py", "frame-spec", "画框", "preview", "contain")),
+    ("能力组合与分镜", ("storyboard.json", "Look-Dev", "film.py")),
+    ("人声润色除吸气声", ("podcast-warm", "--debreath", "audio_mix.py")),
+    ("画面声景与响度门禁", ("sound_design.py", "-14.2..-13.4 LUFS", "画面音效轨.wav")),
     ("返修闭环", ("review_inbox", "收件", "返修", "重建审阅", "重建快照")),
     ("终态分级", ("_engineering", "成品/", "审阅素材", "交付件")),
 )
@@ -151,6 +165,11 @@ def check_case(index, case, seen_ids):
         if not any(anchor in blob for anchor in ROUTE_ANCHORS[route]):
             errors.append("%s 标了 route=%s，但 must_do 没落到该路线入口（%s）"
                           % (label, route, " / ".join(ROUTE_ANCHORS[route])))
+
+    active_blob = "\n".join([prompt or "", *do]) if isinstance(prompt, str) else "\n".join(do)
+    for retired in RETIRED_MODE_TOKENS:
+        if retired in active_blob:
+            errors.append("%s 的 prompt/must_do 不得再使用退役互斥术语 %r" % (label, retired))
     return errors, warnings, route
 
 

@@ -172,6 +172,37 @@ _AUDIO_DRY_CANDIDATES = (
     "edit/voice_dry.m4a", "edit/voice_dry.wav",
     "edit/raw_voice.wav", "composition/assets/audio_dry.m4a",
 )
+_SOUNDSCAPE_CANDIDATES = (
+    "review/proxies/soundscape.m4a", "review/proxies/soundscape.wav",
+    "edit/_engineering/soundscape.wav", "edit/_engineering/soundscape.m4a",
+    "edit/soundscape.wav", "edit/soundscape.m4a",
+    "deliverable/画面音效轨.wav",
+)
+_SOUNDSCAPE_SFX_ONLY_CANDIDATES = (
+    "review/proxies/soundscape_sfx_only.m4a", "review/proxies/soundscape_sfx_only.wav",
+    "edit/_engineering/soundscape_sfx_only.wav", "edit/_engineering/soundscape_sfx_only.m4a",
+    "edit/soundscape_sfx_only.wav", "edit/soundscape_sfx_only.m4a",
+)
+
+
+def _resolve_audio_slot(
+    declared: dict,
+    keys: tuple[str, ...],
+    candidates: tuple[str, ...],
+    project_root: Path,
+    edit_dir: Path,
+) -> str | None:
+    """Resolve an audio sidecar from explicit media.json keys or known candidate paths."""
+    if declared:
+        for key in keys:
+            if key in declared:
+                rel = _resolve_media_entry(declared.get(key), project_root, edit_dir)
+                return rel.replace(os.sep, "/") if rel else None
+    for rel in candidates:
+        cand = project_root / rel
+        if cand.is_file():
+            return os.path.relpath(cand.resolve(), project_root).replace(os.sep, "/")
+    return None
 
 
 def _resolve_media_entry(entry, project_root: Path, edit_dir: Path) -> str | None:
@@ -326,28 +357,16 @@ def resolve_review_media(project_root: Path, edit_dir: Path, *,
             media["transcriptSurface"] = os.path.relpath(cand.resolve(), project_root)
             break
 
-    # Resolve A/B audio tracks (podcast-warm mix + SFX vs dry voice)
-    mix_rel = None
-    dry_rel = None
-    if declared_at is not None and declared:
-        if "audioMix" in declared:
-            mix_rel = _resolve_media_entry(declared.get("audioMix"), project_root, edit_dir)
-        if "dryAudio" in declared:
-            dry_rel = _resolve_media_entry(declared.get("dryAudio"), project_root, edit_dir)
-    if mix_rel is None:
-        for rel in _AUDIO_MIX_CANDIDATES:
-            cand = project_root / rel
-            if cand.is_file():
-                mix_rel = os.path.relpath(cand.resolve(), project_root).replace(os.sep, "/")
-                break
-    if dry_rel is None:
-        for rel in _AUDIO_DRY_CANDIDATES:
-            cand = project_root / rel
-            if cand.is_file():
-                dry_rel = os.path.relpath(cand.resolve(), project_root).replace(os.sep, "/")
-                break
-    media["audioMix"] = mix_rel
-    media["dryAudio"] = dry_rel
+    # Resolve A/B audio tracks (podcast-warm mix vs dry voice) & Visual Soundscape tracks
+    active_declared = declared if (declared_at is not None and declared) else {}
+    media["audioMix"] = _resolve_audio_slot(
+        active_declared, ("audioMix",), _AUDIO_MIX_CANDIDATES, project_root, edit_dir)
+    media["dryAudio"] = _resolve_audio_slot(
+        active_declared, ("dryAudio",), _AUDIO_DRY_CANDIDATES, project_root, edit_dir)
+    media["soundscape"] = _resolve_audio_slot(
+        active_declared, ("soundscape", "soundscapeBedOn"), _SOUNDSCAPE_CANDIDATES, project_root, edit_dir)
+    media["soundscapeSfxOnly"] = _resolve_audio_slot(
+        active_declared, ("soundscapeSfxOnly", "soundscapeBedOff"), _SOUNDSCAPE_SFX_ONLY_CANDIDATES, project_root, edit_dir)
 
     # ---- 审阅副本 ----
     composite = media.get("compositeVideo")
@@ -389,6 +408,8 @@ def review_build_id(project_root: Path, edit_dir: Path) -> str:
         edit_dir / "timeline" / "timeline.json",
         edit_dir / "review" / "media.json",
         project_root / "review" / "media.json",
+        edit_dir / "_engineering" / "soundscape.wav",
+        edit_dir / "_engineering" / "soundscape_sfx_only.wav",
     ]
     try:
         edl = json.loads((edit_dir / "edl.json").read_text(encoding="utf-8"))
@@ -556,6 +577,8 @@ def resolve_build_mode(project_root: Path, *, final_cut: bool = False) -> str:
     """
     if recompose_plan.enabled(project_root):
         return "recompose"
+    if (project_root / "storyboard.json").is_file() or (project_root / "edit" / "storyboard.json").is_file():
+        return "recompose" if (project_root / "composition" / "index.html").is_file() else "final-cut"
     if (project_root / "edit" / "montage-plan.json").is_file():
         return "final-cut"
     if final_cut:
@@ -690,11 +713,60 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
     guide_audio_rel = media.get("guideAudio")
     audio_mix_rel = media.get("audioMix")
     audio_dry_rel = media.get("dryAudio")
+    soundscape_rel = media.get("soundscape")
+    soundscape_sfx_only_rel = media.get("soundscapeSfxOnly")
+    if soundscape_rel or soundscape_sfx_only_rel:
+        media_notes.append(
+            f"已挂载画面声景预览轨（bedOn={soundscape_rel or '无'}，bedOff={soundscape_sfx_only_rel or '无'}）"
+        )
 
     visual_plan_summary = None
     demo_proxies: list[dict] = []
+    storyboard_rel: str | None = None
+    sb_file = next(
+        (p for p in (project_root / "storyboard.json", project_root / "edit" / "storyboard.json") if p.is_file()),
+        None,
+    )
+    if sb_file is not None:
+        storyboard_rel = os.path.relpath(sb_file.resolve(), project_root.resolve()).replace(os.sep, "/")
+        try:
+            sb_doc = json.loads(sb_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            sb_doc = {}
+        shots = sb_doc.get("shots") or []
+        kind_counts: dict[str, int] = {}
+        for shot in shots:
+            if not isinstance(shot, dict):
+                continue
+            kind = str(shot.get("kind") or "talk-only")
+            kind_counts[kind] = kind_counts.get(kind, 0) + 1
+            if kind in ("screen-demo", "demo-footage"):
+                demo = shot.get("demo") if isinstance(shot.get("demo"), dict) else {}
+                proxy_raw = demo.get("proxy") or shot.get("proxy")
+                if proxy_raw:
+                    p_cand = Path(str(proxy_raw))
+                    p_abs = (p_cand if p_cand.is_absolute() else (project_root / p_cand)).resolve()
+                    if p_abs.is_file():
+                        rel_proxy = os.path.relpath(p_abs, project_root.resolve()).replace(os.sep, "/")
+                        demo_proxies.append({
+                            "id": shot.get("id"),
+                            "beatId": shot.get("beatId") or shot.get("chapter"),
+                            "startMs": int(round(float(shot.get("startSec", 0.0)) * 1000)),
+                            "endMs": int(round(float(shot.get("endSec", 0.0)) * 1000)),
+                            "proxy": rel_proxy,
+                            "url": rel_proxy,
+                            "box": demo.get("box") or shot.get("box"),
+                            "speed": demo.get("speed", shot.get("speed", 1.0)),
+                        })
+        visual_plan_summary = {
+            "version": sb_doc.get("version", "storyboard/3"),
+            "tiers": kind_counts,
+            "segments": shots,
+        }
+        media_notes.append(f"已加载统一执行分镜 {storyboard_rel}（{len(shots)} 镜，{len(demo_proxies)} 个演示代理）")
+
     plan_file = project_root / "visual-plan.json"
-    if plan_file.is_file():
+    if sb_file is None and plan_file.is_file():
         try:
             plan_doc = json.loads(plan_file.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
@@ -866,9 +938,10 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
             scene_assets[key][href] = rel
             watched.append(asset)
     for rel in [speaker_video_rel, preview_video_rel, composite_video_rel, guide_audio_rel,
-                audio_mix_rel, audio_dry_rel,
+                audio_mix_rel, audio_dry_rel, soundscape_rel, soundscape_sfx_only_rel,
                 *(dp["proxy"] for dp in demo_proxies),
-                ("visual-plan.json" if visual_plan_summary is not None else None)]:
+                storyboard_rel,
+                ("visual-plan.json" if storyboard_rel is None and visual_plan_summary is not None else None)]:
         if rel:
             watched.append(project_root / rel)
     watched = sorted(set(watched))
@@ -959,7 +1032,19 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
                 "mix": audio_mix_rel,
                 "dry": audio_dry_rel,
                 "preset": "podcast-warm" if audio_mix_rel else None,
+                "soundscape": soundscape_rel,
+                "soundscapeSfxOnly": soundscape_sfx_only_rel,
+                "brollBedDefault": "on" if soundscape_rel else ("off" if soundscape_sfx_only_rel else None),
             },
+            "soundscape": (
+                {
+                    "bedOn": soundscape_rel,
+                    "bedOff": soundscape_sfx_only_rel,
+                    "brollBedDefault": "on" if soundscape_rel else "off",
+                }
+                if (soundscape_rel or soundscape_sfx_only_rel)
+                else None
+            ),
             "sizes": media_sizes,
         },
         "visualPlan": visual_plan_summary,
@@ -1038,7 +1123,7 @@ def audit_media_sizes(project_root: Path, media: dict, scene_assets: dict) -> di
     them one at a time is how one of them ends up uncovered.
     """
     rels = [media.get(key) for key in
-            ("speakerVideo", "previewVideo", "compositeVideo", "guideAudio")]
+            ("speakerVideo", "previewVideo", "compositeVideo", "guideAudio", "soundscape", "soundscapeSfxOnly")]
     # `svgAssets` is {page_key: {href: rel}} — two levels, so flatten one.
     for hrefs in (scene_assets or {}).values():
         if isinstance(hrefs, dict):

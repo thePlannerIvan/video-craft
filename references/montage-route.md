@@ -1,16 +1,13 @@
-# 蒙太奇路线：现成素材 + 口播
+# 实景素材剪辑规范（`footage` 能力）
 
-> 什么时候读：**生产模式 = `footage-montage`**（画面是现成的档案影像 / 实拍 / 照片，不是画出来的页）。
-> 画面是生成出来的（PPT 页、图形、字卡、动效）走 [visual-grammar.md](visual-grammar.md)，不读本页。
-> 版式/画框（竖屏上下留白、字幕安全区、人物位）见 [intake-and-frames.md](intake-and-frames.md)。
+> 什么时候读：能力组合包含 `footage`（画面来自现成档案影像 / 实拍 / 照片）时读本页，可与 `motion` / `screen-demo` 自由叠加。能力组合总表见 [SKILL.md](../SKILL.md)，画框几何真源见 [intake-and-frames.md](intake-and-frames.md)（`frame.py resolve`）。
 
-## 这条路线解决什么
+## 这条能力解决什么
 
-口播已经录完、没有参考页、画面来自一批真实素材。它和 recompose 的区别是**画面不是造出来的，
-是选出来的**：难点不在"这一屏怎么演"，而在"哪段素材、从第几秒开始、和这句话对不对得上"。
-2026-11 的哈雷片（67 镜 / 4:28 / 1080×1920）是这条路线的第一个实例。
+口播已经录完、画面来自一批真实素材。难点不在「这一屏怎么演」，而在**「哪段素材、从第几秒开始、和这句话对不对得上」**。
+2026-11 的哈雷片（67 镜 / 4:28 竖屏混剪）是第一条完整实证案例。
 
-三个动作，顺序不能换：**素材清单 → 镜头表 → 渲染 + 体检**。
+三个动作，顺序不能换：**素材清单 → 镜头表 / 分镜 → 渲染或直切拼合 + 体检**。
 跳过清单直接排镜头，等于凭文件名猜素材：那次 54 个镜头里 18 个渲成了空画面。
 
 ## 1. 素材清单
@@ -50,9 +47,7 @@ python3 "<craft>/helpers/_internal/scan_materials.py" "<project>/material/clips"
  "grade": "vintage", "note": "1969 飞车党车队在荒漠公路"}
 ```
 
-**画框数值只有一个家**：镜头表顶层的 `frame` 块（`width/height/fps/band/labelX/labelY/base/overlay/bg`）
-是 `frame.py build` 的 token 落到渲染侧的那一份。它必须和 `material/frame/spec.md`（以及 token 原文件）
-一致——改了 token 就同步这里；省略 `frame` 块时用默认值，默认值只为竖屏 1080×1920 准备，别的画幅别省。
+**画框数值只有一个家**：镜头表顶层的 `frame` 块（`width/height/fps/band/labelX/labelY/base/overlay/bg`）由 `helpers/frame.py resolve` 与 `frame.py build` 统一派生并落到 `material/frame/spec.md`。画框改了就同步更新这里，不手写硬编码像素值。
 
 | 字段 | 含义 | 容易搞错的地方 |
 |---|---|---|
@@ -162,7 +157,7 @@ python3 "<craft>/helpers/_internal/check_montage.py" "<project>" --video "<成�
 
    默认落 `edit/_engineering/voice_cut.mp4`（无声时也要先出画面轨核对人物位）。
    母版默认取 `edit/edl.json` 的 `sources`；那份常是 proxy，**交付用母版不用 proxy**，
-   要显式 `--master` 指母版。画框尺寸取 `montage-plan.json` 的 `frame`，没有则 1080×1920/30。
+   要显式 `--master` 指母版。画框尺寸统一从 `helpers/frame.py resolve` 或 `montage-plan.json` 的 `frame` 读取。
 3. `helpers/_internal/check_montage.py` 退 0（逐镜 + 成片都过）。
 
 审阅：成片态审阅面看画面与声音，`helpers/_internal/check_review_playable.py` 通过才算能看；见 [review-and-delivery.md](review-and-delivery.md)。

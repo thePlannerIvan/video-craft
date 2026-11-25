@@ -14,24 +14,26 @@
 
 ---
 
-## 一、12 个顶层公开入口（`helpers/`）
+## 一、12 个核心顶层公开入口（另留兼容入口 `audio_fix.py`）
 
-Agent 日常只围绕这 12 个顶层入口组织工作；每个文件对应一个清晰阶段职责。
+Agent 日常只围绕这 12 个核心公开入口组织工作；每个文件对应一个清晰阶段职责。
 
 | 分类 | 命令 | 职责 |
 |---|---|---|
 | **剪辑与转写协同** | `python3 "<craft>/helpers/stage_cut.py" {status\|prepare\|review\|apply} --project "<project>" [--source "<原片>" --backend auto\|seedasr\|scribe\|mlx] [--surface-only]` | `prepare` 首选 SeedASR 2.0 词级转写（禁自动 `ark`）；`review` 支持 DSH `--surface-only` 或无插件自动起本地浏览器宿主 |
-| **人声诊断试听** | `python3 "<craft>/helpers/audio_fix.py" "<媒体>" -o "<处理.wav>" [--preset podcast-warm\|raw] [--ab "起始,时长"]` | 单轨声学试听与短片段 A/B 盲听对比；终混请直接传原始干声给 `audio_mix.py`，勿二次压限 |
-| **全片混音** | `python3 "<craft>/helpers/audio_mix.py" "<原始干声>" -o "<mix.m4a>" [--bgm ...] [--sfx ...] [--voice-preset podcast-warm\|none\|raw] [--no-sfx\|--dry]` | 唯一混音出口：默认启用 `podcast-warm` 与 `-14.0 LUFS / -1.5 dBTP`，支持稀疏 CC0 SFX 护栏与 `--dry` 纯干声 |
+| **Voice Polish（人声润色）** | `python3 "<craft>/helpers/audio_mix.py" "<原始干声>" -o "<mix.m4a>" [--bgm ...] [--voice-preset podcast-warm\|none\|raw] [--debreath\|--no-debreath] [--ab "起始,时长"] [--dry]` | 唯一人声润色与混音入口：默认 `podcast-warm` 内置 `--debreath`（`≥140ms` 停顿重吸气声衰减）至 `-14.0 LUFS / -1.5 dBTP`，支持 `--ab` 盲听对照与 `--dry` 纯干声；默认不混入动效音效 |
+| **Visual Soundscape（画面声景）** | `python3 "<craft>/helpers/sound_design.py" {build\|verify\|make-sfx} -s "<storyboard.json>" -v "<人声WAV>" -o "<soundscape.wav>" [--broll-bed on\|off] [--preview-variants] [--list-sfx]` | 消费 `storyboard.json` 生成动效起伏音效与经自动筛分闪避的 B-roll 原声底噪，输出 48kHz 立体声 `soundscape.wav` / `画面音效轨.wav` 并过独立与合播响度门禁 |
 | **语义字幕** | `python3 "<craft>/helpers/srt_export.py" "<edit>" {--prepare\|--lock\|--build\|--check} [--force-prepare --time-source measured]` | Article-First 字幕准备、锁定全文、对齐词契约生成 `captions.json` / `subtitles.srt` 与校验 |
 | **唯一时间脊柱** | `python3 "<craft>/helpers/timeline_derive.py" "<edit>" [--stats \| --entries-only \| --grouping <g> --output-timeline <t> --output-durations <d>]` | 由 EDL + 锁定字幕（+ 可选 `--alignment`）派生项目根 `timeline/timeline.json` |
-| **四档分拍与演示代理** | `python3 "<craft>/helpers/film.py" {init\|proxy\|verify} "<project>" ...` | 初始化 `visual-plan.json` 四档视觉语法、生成 `demo-footage` 审阅轻代理与构建校验 |
-| **版式画框** | `python3 "<craft>/helpers/frame.py" {build\|preview\|resolve} "<project>" ...` | 生成 `base.png / overlay.png / spec.md`、`contain` 真实预览与画框几何单一真源解析 |
-| **蒙太奇路线** | `python3 "<craft>/helpers/montage.py" {plan\|render\|voice-cut} "<project>" ...` | 展开镜头表并校验素材清单/唯一性/花字、分块幂等渲染、从母版切出同 EDL 人物轨 |
-| **统一画面体检** | `python3 "<craft>/helpers/check_visual.py" ...` | 统一画面环境、静态规范、运动与像素检查入口（子动作详 `check_visual.py --help`） |
-| **工程审阅构建** | `python3 "<craft>/helpers/review.py" "<project>" [--final-cut]` | 按形态构建工程活舞台或成片态审阅页、校验 Playable 四判据并准备 surface |
-| **反馈收件** | `python3 "<craft>/helpers/review_inbox.py" "<project>" [--dry-run]` | 收取提交进 `feedback/*.jsonl`、去重验绑定、回写 `recompose/lines.json` |
-| **严格交付合成** | `python3 "<craft>/helpers/deliver.py" "<project>" {--render \| --visuals <mp4>} [--mode split\|composite] [--composite] [--approve-in-chat] [--no-person --burn-subtitles]` | 过 `render_gate`（支持网页提交或 `--approve-in-chat`）；有真人口播默认分轨输出人物成片+无声画面成片+空隙字幕，加 `--composite` 合流单视频 |
+| **统一执行分镜与 Look-Dev** | `python3 "<craft>/helpers/film.py" {init\|verify\|summary\|lookdev\|proxy} "<project>" ...` | 校验唯一执行分镜 `storyboard.json`（v3）、派生人读概览（`summary`）、过轻量样镜定调（`lookdev --verify\|--approve`）与生成实机审阅代理（`proxy`）；保留 `outline`/`pages` 兼容老工程 |
+| **版式画框** | `python3 "<craft>/helpers/frame.py" {build\|preview\|resolve} "<project>" ...` | 生成 `base.png / overlay.png / spec.md`、`contain` 真实预览与画框几何单一真源解析（`resolve`） |
+| **素材剪辑路线** | `python3 "<craft>/helpers/montage.py" {plan\|render\|voice-cut} "<project>" ...` | 展开镜头表并校验素材清单/防重/花字、分块幂等渲染、从母版切出同 EDL 人物轨 |
+| **统一画面体检** | `python3 "<craft>/helpers/check_visual.py" ...` | 统一画面环境、静态活舞台（含 `<video>` 黑屏陷阱）、Canvas/SVG 安全区边界、运动与像素检查入口（详 `check_visual.py --help`） |
+| **工程审阅构建** | `python3 "<craft>/helpers/review.py" "<project>" [--final-cut]` | 构建工程活舞台或成片态审阅页（含 Voice Polish A/B 与 Visual Soundscape 底噪开关）、校验 Playable 四判据并准备 surface |
+| **反馈收件** | `python3 "<craft>/helpers/review_inbox.py" "<project>" [--dry-run]` | 收取提交进 `feedback/*.jsonl` 并核验绑定回执（`imported/skipped/rejected`） |
+| **按段分流交付合成** | `python3 "<craft>/helpers/deliver.py" "<project>" {--render \| --visuals <mp4>} [--visual-audio <soundscape.wav>] [--mode split\|composite] [--composite] [--approve-in-chat] [--no-person --burn-subtitles]` | 过 `render_gate`；按 `storyboard.json` 分段拼合（HyperFrames 仅渲动效段、FFmpeg 直切视频/录屏段）；分轨输出 `人物成片.mp4` + `画面成片.mp4`（无损封装声景并同出 `画面音效轨.wav`，无声景时保持 0 音轨）+ 空隙字幕 |
+
+> **兼容入口 `helpers/audio_fix.py`**：保留用于独立单轨声学诊断、老测试与 `--debreath` / `--ab` 底层复用；日常制作请直接向 `audio_mix.py` 传入原始干声，避免重复压限。
 
 退出码通用约定（适用于 `stage_cut.py` 与各检查/交付命令）：`0` 成功 · `1` 失败或闸门拦截 · `2` 前置条件不满足或用法错误；加 `--json` 返回机器可读字段。
 
@@ -44,8 +46,7 @@ Agent 日常只围绕这 12 个顶层入口组织工作；每个文件对应一�
 ### 1. 接上游、转写与 EDL 局部操作
 
 ```bash
-# 上游交接与脚本哈希核对
-node "<idea>/scripts/check-handoff-artifacts.mjs" --project "<上游项目>"
+# 上游交接包（video-manager）与脚本哈希/风格库核对
 python3 "<craft>/helpers/_internal/check_script_hash.py" "<project>" --script "<script.md>" --plan "<visual-plan.json>"
 python3 "<craft>/helpers/_internal/resolve_vault.py" --style "<style_id>"
 
@@ -63,7 +64,7 @@ python3 "<craft>/helpers/_internal/edl_edit.py" "<edit>" --restore "<起,止>=<�
 python3 "<craft>/helpers/_internal/check_edl.py" "<edit>" --max-pause 0.8
 python3 "<craft>/helpers/_internal/apply_selection.py" "<edit>"
 
-# 音质诊断、调色与多机位
+# 音质诊断（含停顿重吸气统计）、调色与多机位
 python3 "<craft>/helpers/_internal/audio_diag.py" "<媒体>" --json
 python3 "<craft>/helpers/_internal/measure_offset.py" "<主机位>" "<副机位>" --anchors 10 40
 python3 "<craft>/helpers/_internal/mirror_edl.py" "<edl>" -o "<副EDL>" --source CAM2 --path "<副机位>" --offset "<秒>"
@@ -79,10 +80,9 @@ python3 "<craft>/helpers/_internal/import_srt_timeline.py" "<project>" --srt "<S
 python3 "<craft>/helpers/_internal/check_caption_breaks.py" "<edit>/subtitles.srt" --json
 ```
 
-### 3. Recompose 密度、蒙太奇素材、活舞台与审阅单步诊断
+### 3. 蒙太奇素材、活舞台与审阅单步诊断
 
 ```bash
-python3 "<craft>/helpers/_internal/recompose_plan.py" {init|check|lines} "<project>" ...
 python3 "<craft>/helpers/_internal/scan_materials.py" "<project>/material/clips"
 python3 "<craft>/helpers/_internal/check_montage.py" "<project>" [--shots-dir <work> --base <base.png> | --video <成片>]
 
@@ -112,10 +112,10 @@ python3 "<craft>/helpers/_internal/render_gate.py" "<project>" --out "<实际成
 python3 "<craft>/helpers/_internal/probe_env.py" "<project>"
 python3 "<craft>/helpers/_internal/check_render_env.py" "<project>/composition" --json
 
-# 在 <project>/composition 内执行渲染前设缓存与推荐 workers
+# 在 <project>/composition 内执行渲染前设缓存与推荐 workers；宽高由 frame.py resolve 决定
 export HYPERFRAMES_FONT_CACHE_DIR="$PWD/.hyperframes-cache"
 W=$(python3 "<craft>/helpers/_internal/check_render_env.py" . --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["workers"])')
-npx hyperframes render --workers "$W" -o /tmp/<name>.mp4 --resolution landscape -f 30 -q delivery
+npx hyperframes render --workers "$W" -o /tmp/<name>.mp4 --width <frame_w> --height <frame_h> -f 30 -q delivery
 
 # 视觉/透明层/文字/运动校验
 python3 "<craft>/helpers/_internal/render_layer.py" "<composition>" -o "<层主干名>"

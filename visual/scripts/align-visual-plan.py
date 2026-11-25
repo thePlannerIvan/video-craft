@@ -11,7 +11,9 @@ import re
 from difflib import SequenceMatcher
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "helpers"))
+_HELPERS = Path(__file__).resolve().parents[2] / "helpers"
+sys.path.insert(0, str(_HELPERS))
+sys.path.insert(0, str(_HELPERS / "_internal"))
 from _timecode import flatten as _flatten, parse_srt_file as _parse_srt_file, parse_time as _parse_time  # noqa: E402
 
 

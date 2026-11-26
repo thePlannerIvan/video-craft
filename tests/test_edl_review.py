@@ -221,10 +221,28 @@ class EdlRealProjectCase(unittest.TestCase):
 
     def test_a_single_range_sends_exactly_that_many_bytes_not_the_whole_file(self):
         """**"看着像支持"不算** —— 这条断言的是**实收字节数**，用的是真素材的真实大小。"""
-        asset = next((self.real / "edit").parent.glob("*.mp4"))
+        proj_copy = (self.tmp / self.real.name).resolve()
+        serve_root = edl_review_surface.common_root(self.edit).resolve()
+        edl_doc = json.loads((self.edit / "edl.json").read_text(encoding="utf-8"))
+        candidates: list[Path] = []
+        for value in (edl_doc.get("sources") or {}).values():
+            p = Path(value)
+            p = (p if p.is_absolute() else (self.edit / p)).resolve()
+            if p.is_file() and p.suffix.lower() == ".mp4":
+                candidates.append(p)
+        if not candidates:
+            for p in proj_copy.rglob("*.mp4"):
+                rel_parts = p.relative_to(proj_copy).parts
+                if "成品" in rel_parts or "_render" in rel_parts:
+                    continue
+                if p.is_file():
+                    candidates.append(p.resolve())
+        self.assertTrue(candidates, f"在 {proj_copy} 下找不到真素材 .mp4")
+        asset = max(candidates, key=lambda p: p.stat().st_size)
         size = asset.stat().st_size
         self.assertGreater(size, 100 * 1024 * 1024, "该用素材最大的那个真项目来验 Range")
-        url = f"{self.base}/{urllib.parse.quote(asset.name)}"
+        rel_url = asset.relative_to(serve_root).as_posix()
+        url = f"{self.base}/{urllib.parse.quote(rel_url, safe='/')}"
 
         status, headers, body = http(url, {"Range": "bytes=0-1023"})
         self.assertEqual(status, 206)

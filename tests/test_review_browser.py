@@ -443,6 +443,16 @@ class ReviewBrowserTests(unittest.TestCase):
                                 f"{vw}x{vh} 下舞台与 {other_name} 重叠: player={p} other={other}",
                             )
                         if vw == 1440:
+                            orient = page.evaluate("() => document.body.dataset.orientation")
+                            self.assertEqual(orient, "landscape")
+                            # Landscape: feedback form sits below transport bar, empty history side-right collapsed by default
+                            fb_box = metrics["feedback"]
+                            tr_box = metrics["transport"]
+                            self.assertGreaterEqual(fb_box["y"], tr_box["y"] + tr_box["height"] - 2, (fb_box, tr_box))
+                            self.assertTrue(page.evaluate("() => document.body.classList.contains('history-collapsed')"))
+                            # Click history toggle to expand right panel, then verify splitter drag
+                            page.click("#btn-toggle-history")
+                            page.wait_for_function("() => !document.body.classList.contains('history-collapsed')")
                             handle = page.locator("#main-split-handle")
                             self.assertTrue(handle.is_visible())
                             hbox = handle.bounding_box()
@@ -586,6 +596,78 @@ class ReviewBrowserTests(unittest.TestCase):
                     records = json.loads(submissions.read_text(encoding="utf-8"))["records"]
                     self.assertEqual(len(records), 1)
                     self.assertEqual(records[0]["text"], "口播段落衔接再紧凑一点")
+                    # Landscape auto-expands history panel immediately upon submission
+                    page.wait_for_function("() => !document.body.classList.contains('history-collapsed')")
+                    self.assertTrue(page.locator("#fb-history-list").is_visible())
+                finally:
+                    browser.close()
+
+    def test_portrait_9_16_layout_and_manual_orientation_toggle(self):
+        import build_review
+        from playwright.sync_api import sync_playwright
+
+        with tempfile.TemporaryDirectory() as td:
+            proj = Path(td)
+            (proj / "edit").mkdir()
+            (proj / "timeline").mkdir()
+            (proj / "timeline" / "timeline.json").write_text(
+                json.dumps(TIMELINE, ensure_ascii=False), encoding="utf-8"
+            )
+            (proj / "frame.json").write_text(json.dumps({
+                "framePreset": "vertical-zine-head",
+                "canvas": {"w": 1080, "h": 1920, "fps": 30},
+            }), encoding="utf-8")
+
+            data = build_review.build_review_data(proj, proj / "edit")
+            self.assertEqual(data["orientation"], "portrait")
+            self.assertEqual(data["aspectRatio"], "9:16")
+            build_review.write_review_files(proj, data)
+            host = review_surface.open_review(proj, open_browser=False)
+            self.addCleanup(review_host.stop_host, host)
+
+            with sync_playwright() as pw:
+                browser = pw.chromium.launch()
+                try:
+                    page = browser.new_page(viewport={"width": 1440, "height": 900})
+                    page.route("**/localhost:5176/**", lambda route: route.abort())
+                    page.route("**/cdn.jsdelivr.net/**", lambda route: route.abort())
+                    page.goto(host["url"], wait_until="domcontentloaded")
+                    page.wait_for_selector(".step", timeout=15000)
+                    page.wait_for_function("() => !document.getElementById('fb-save').disabled", timeout=15000)
+
+                    metrics = page.evaluate("""() => {
+                        const rect = sel => {
+                            const el = document.querySelector(sel);
+                            if (!el) return null;
+                            const r = el.getBoundingClientRect();
+                            return { x: r.x, y: r.y, width: r.width, height: r.height };
+                        };
+                        return {
+                            orientation: document.body.dataset.orientation,
+                            scrollW: document.documentElement.scrollWidth,
+                            innerW: window.innerWidth,
+                            innerH: window.innerHeight,
+                            player: rect(".player-box"),
+                            feedback: rect(".feedback"),
+                            rightSlotHasFb: !!document.querySelector("#right-feedback-slot .feedback"),
+                            history: rect("#fb-history-list"),
+                        };
+                    }""")
+                    self.assertEqual(metrics["orientation"], "portrait")
+                    self.assertTrue(metrics["rightSlotHasFb"])
+                    self.assertLessEqual(metrics["scrollW"], metrics["innerW"] + 1)
+                    p = metrics["player"]
+                    self.assertLess(abs((p["width"] / p["height"]) - (9.0 / 16.0)), 0.05, p)
+                    self.assertGreaterEqual(p["height"], metrics["innerH"] * 0.72, p)
+                    self.assertLess(metrics["feedback"]["y"], metrics["history"]["y"] + 2)
+
+                    # Manual orientation toggle switches cleanly between portrait and landscape
+                    page.click("#btn-orientation-toggle")
+                    page.wait_for_function("() => document.body.dataset.orientation === 'landscape'")
+                    self.assertTrue(page.evaluate("() => !!document.querySelector('#center-feedback-slot .feedback')"))
+                    page.click("#btn-orientation-toggle")
+                    page.wait_for_function("() => document.body.dataset.orientation === 'portrait'")
+                    self.assertTrue(page.evaluate("() => !!document.querySelector('#right-feedback-slot .feedback')"))
                 finally:
                     browser.close()
 

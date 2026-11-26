@@ -5,14 +5,16 @@
 渲出了一版 43 秒的成片——因为渲染命令本身不检查任何东西。这个工具把那条规则变成
 一道可执行的闸门：**至少一条人工提交覆盖当前审阅快照**，才打印放行。
 
-判据（双轨二选一，且均须当前快照无漂移）
-------------------------------------------
+判据（双轨二选一）
+------------------
 1. `review/review_data.json` 存在，且带 `snapshot`（构建时算的工程指纹）；
 2. `review/review-submissions.json`（surface 声明的那份）或 `feedback/*.jsonl` 里
    至少有一条覆盖当前快照的记录——可以是浏览器人工提交，也可以是作者在对话中
    明确指示导出后通过 `--approve-in-chat` 写入的 `chat-approval` 审计记录；
-3. `sourceManifest` 里的文件与快照记录一致 —— 有人看过之后源又改过、却没重建审阅，
-   那条提交或授权就不覆盖"现在这一版"（`--approve-in-chat` 也会直接拒批）。
+3. 浏览器人工提交要求 `sourceManifest` 里的文件与快照记录一致（防止旧审阅
+   覆盖未看过的改动）；而显式 `--approve-in-chat` 允许在审阅后有对话指令微调
+   时务实放行，把当前实时源码指纹（`liveSourceHash`）与漂移标识
+   （`driftedFromReview`）写入审计条目；授权后若源码再次修改，裸跑门禁仍会拦截。
 
 工程态预览不拦：`--engineering --out <project>/edit/_engineering/xxx.mp4` 放行，
 但输出必须真的落在 `edit/_engineering/` 里，不能拿它渲 `final.mp4`。
@@ -118,7 +120,8 @@ def manifest_drift(project: Path, manifest) -> list[str]:
         except (OSError, ValueError, KeyError, TypeError, Fail):
             drift.append('蒙太奇计划或已用素材缺失，无法核对审阅版本')
     known = {str(x.get('path')) for x in manifest if isinstance(x, dict)}
-    critical = [key for key in source_paths(project, include_review=False) if key.startswith('composition/')]
+    critical = [key for key in source_paths(project, include_review=False)
+                if key.startswith('composition/') or key.startswith('remotion/src/')]
     critical += [key for key in ('edit/edl.json', 'edit/subtitles.srt', 'timeline/timeline.json',
                                   'edit/timeline/timeline.json') if (project / key).is_file()]
     for key in critical:
@@ -196,18 +199,30 @@ def evaluate(project: Path, out: Path | None, engineering: bool) -> dict:
     report["snapshot"] = snapshot
 
     drift = manifest_drift(project, data.get("sourceManifest"))
-    if drift:
-        report["reasons"].append(
-            "审阅快照之后源又改过，这一版还没重建："
-            + "、".join(drift[:6]) + ("…" if len(drift) > 6 else ""))
-        report["notes"].append(
-            "重新 build_review.py，让人看过新一版再渲；旧提交不覆盖新源码")
-
     records, sources = load_records(project)
     report["submissions"] = len(records)
     report["sources"] = sources
     covering = [r for r in records if str(r.get("snapshot") or "") == snapshot]
     report["covering"] = len(covering)
+
+    from state_fingerprint import source_digest
+    live_hash = source_digest(project)
+    report["liveSourceHash"] = live_hash
+    chat_covering = [
+        r for r in covering
+        if r.get("kind") == "chat-approval" or r.get("source") == "chat"
+    ]
+    chat_covers_live = any(
+        r.get("liveSourceHash") == live_hash for r in chat_covering
+    ) or (not drift and any(not r.get("liveSourceHash") for r in chat_covering))
+
+    if drift and not chat_covers_live:
+        report["reasons"].append(
+            "审阅快照之后源又改过，这一版还没重建："
+            + "、".join(drift[:6]) + ("…" if len(drift) > 6 else ""))
+        report["notes"].append(
+            "重新 build_review.py 让人看过新一版，或按当前对话作者明确授权加 --approve-in-chat 导出")
+
     if not records:
         report["reasons"].append(
             "没有任何人工提交：先把这一版交给人审（review_open），"
@@ -221,13 +236,14 @@ def evaluate(project: Path, out: Path | None, engineering: bool) -> dict:
         report["notes"].append(
             "提交只证明人看过它自己那一版；改过源之后必须重建审阅并重新提交")
     else:
-        chat_count = sum(
-            1 for r in covering
-            if r.get("kind") == "chat-approval" or r.get("source") == "chat"
-        )
+        chat_count = len(chat_covering)
         if chat_count:
-            report["notes"].append(
-                f"{len(covering)} 条提交/会话授权覆盖当前快照（含 {chat_count} 条会话授权，最近 {_latest(covering)}）")
+            if drift and chat_covers_live:
+                report["notes"].append(
+                    f"会话出片授权已覆盖最新源码指纹 {live_hash[:12]}（审阅快照后有对话指令修改，共 {chat_count} 条授权，最近 {_latest(covering)}）")
+            else:
+                report["notes"].append(
+                    f"{len(covering)} 条提交/会话授权覆盖当前快照（含 {chat_count} 条会话授权，最近 {_latest(covering)}）")
         else:
             report["notes"].append(
                 f"{len(covering)} 条人工提交覆盖当前快照（最近 {_latest(covering)}）")
@@ -252,7 +268,7 @@ def _write_json_atomic(path: Path, doc: dict) -> None:
 
 
 def record_chat_approval(project: Path, note: str = DEFAULT_APPROVAL_NOTE) -> dict:
-    """Record an explicit in-chat export approval after strict snapshot + drift verification."""
+    """Record an explicit in-chat export approval with live source fingerprint audit."""
     project = Path(project)
     data = read_json(project / REVIEW_DATA_REL)
     if not isinstance(data, dict) or not str(data.get("snapshot") or "").strip():
@@ -260,10 +276,8 @@ def record_chat_approval(project: Path, note: str = DEFAULT_APPROVAL_NOTE) -> di
 
     snapshot = str(data.get("snapshot") or "").strip()
     drift = manifest_drift(project, data.get("sourceManifest"))
-    if drift:
-        report = evaluate(project, None, False)
-        report["notes"].append("未写入会话授权记录：当前源码或素材存在漂移，请先重建审阅快照")
-        return report
+    from state_fingerprint import source_digest
+    live_hash = source_digest(project)
 
     target = submissions_path(project)
     existing = read_json(target)
@@ -286,14 +300,19 @@ def record_chat_approval(project: Path, note: str = DEFAULT_APPROVAL_NOTE) -> di
     records = list(doc.get("records")) if isinstance(doc.get("records"), list) else []
 
     now = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
-    records.append({
+    entry = {
         "phase": "approval",
         "kind": "chat-approval",
         "source": "chat",
         "createdAt": now,
         "snapshot": snapshot,
+        "liveSourceHash": live_hash,
+        "driftedFromReview": bool(drift),
         "note": str(note or "").strip() or DEFAULT_APPROVAL_NOTE,
-    })
+    }
+    if drift:
+        entry["driftSummary"] = drift[:8]
+    records.append(entry)
     doc["records"] = records
     doc["updated_at"] = now
     _write_json_atomic(target, doc)
@@ -332,14 +351,14 @@ def print_report(report: dict) -> None:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(
-        description="渲染前闸门：覆盖当前审阅快照的人工提交或明确对话授权（且源码零漂移）才放行",
+        description="渲染前闸门：覆盖当前审阅快照的人工提交或明确对话授权才放行（未建审阅严防死守）",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "退出码：0 放行；1 拒绝；2 无法判断（缺审阅数据）。\n\n"
             "WARNING: --approve-in-chat may ONLY be used when the user has explicitly "
             "instructed exporting in the active conversation.\n"
             "红线警告：--approve-in-chat 仅允许在作者当轮对话已明确指示导出成片时传入，"
-            "严禁未获授权时自动注入；且仍强制核验当前审阅快照存在与源码/素材零漂移。"
+            "严禁未获授权时自动注入；允许记录审阅后微调的实时源码指纹并放行导出。"
         ))
     ap.add_argument("project", help="项目根（也可以是 edit/）")
     ap.add_argument("--out", type=Path, default=None,
@@ -347,7 +366,7 @@ def main(argv=None) -> int:
     ap.add_argument("--engineering", action="store_true",
                     help="工程态预览放行开关；必须配 --out 且落在 edit/_engineering/")
     ap.add_argument("--approve-in-chat", action="store_true",
-                    help="仅在用户于当前对话明确指示导出时使用：核验当前快照与零漂移后写入会话授权审计记录并放行")
+                    help="仅在用户于当前对话明确指示导出时使用：核验审阅快照存在后写入含实时源码指纹的会话授权审计记录并放行")
     ap.add_argument("--approval-note", default=None,
                     help="可选：配合 --approve-in-chat 记录到审计条目的授权原因说明")
     ap.add_argument("--json", action="store_true", help="输出机器可读结果")

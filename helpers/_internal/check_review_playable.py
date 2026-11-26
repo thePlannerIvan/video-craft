@@ -202,22 +202,37 @@ def _mean_luma(png: Path) -> float | None:
 def _page_probe(page, point: float, channel: str, shot: Path) -> dict:
     """把页面 seek 到 point，截图，读回时长/时间/静音状态。"""
     if channel == "live":
-        sel = "#live-stage-frame"
         page.evaluate(
-            """([sel,t])=>{
-                 const p=document.querySelector(sel); if(!p) return;
-                 if(typeof p.seek==='function') p.seek(t); else p.currentTime=t;
+            """(t)=>{
+                 const ls = window.__vcLiveStage;
+                 const rem = document.querySelector('#remotion-stage-frame');
+                 const hf = document.querySelector('#live-stage-frame');
+                 const p = (rem && !rem.hidden && rem.ready) ? rem : hf;
+                 if (ls && typeof ls.seek === 'function') ls.seek(t);
+                 else if (p && typeof p.seek === 'function') p.seek(t);
+                 else if (p) p.currentTime = t;
                }""",
-            [sel, point],
+            point,
         )
         page.wait_for_timeout(450)
         info = page.evaluate(
-            """sel=>{
-                 const p=document.querySelector(sel);
-                 return p?{duration:p.duration||0,currentTime:p.currentTime||0,
-                           ready:!!p.ready,muted:!!p.muted}:null;
+            """()=>{
+                 const ls = window.__vcLiveStage;
+                 const rem = document.querySelector('#remotion-stage-frame');
+                 const hf = document.querySelector('#live-stage-frame');
+                 const p = (rem && !rem.hidden && rem.ready) ? rem : hf;
+                 if (ls && rem && !rem.hidden) {
+                   return {
+                     duration: (ls.durationMs || 0) / 1000,
+                     currentTime: (ls.currentMs || 0) / 1000,
+                     ready: !!ls.ready,
+                     muted: !!(p && p.muted),
+                     engine: 'remotion'
+                   };
+                 }
+                 return p ? {duration:p.duration||0,currentTime:p.currentTime||0,
+                             ready:!!p.ready,muted:!!p.muted,engine:'hyperframes'} : null;
                }""",
-            sel,
         )
     else:
         sel = "#composite-video-player" if channel == "composite" else "#stage-speaker-video"
@@ -336,8 +351,10 @@ def run(project: Path, points: list[float], keep_host: bool, verbose: bool) -> i
             try:
                 page.wait_for_function(
                     """()=>{
+                         const rem=document.querySelector('#remotion-stage-frame');
+                         if(rem && !rem.hidden && rem.ready) return true;
                          const live=document.querySelector('#live-stage-frame');
-                         if(live && live.ready) return true;
+                         if(live && !live.hidden && live.ready) return true;
                          const comp=document.querySelector('#composite-video-player');
                          if(comp && comp.getAttribute('src') && comp.duration>0) return true;
                          const spk=document.querySelector('#stage-speaker-video');
@@ -351,8 +368,10 @@ def run(project: Path, points: list[float], keep_host: bool, verbose: bool) -> i
                 ready = False
             channel = page.evaluate(
                 """()=>{
+                     const rem=document.querySelector('#remotion-stage-frame');
+                     if(rem && !rem.hidden && rem.ready) return 'live';
                      const live=document.querySelector('#live-stage-frame');
-                     if(live && live.ready) return 'live';
+                     if(live && !live.hidden && live.ready) return 'live';
                      const comp=document.querySelector('#composite-video-player');
                      if(comp && comp.getAttribute('src')) return 'composite';
                      const spk=document.querySelector('#stage-speaker-video');
@@ -377,6 +396,9 @@ def run(project: Path, points: list[float], keep_host: bool, verbose: bool) -> i
                     try:
                         comp_dur = frame.evaluate(
                             """()=>{
+                                 if (window.__vcRemotionStage && typeof window.__vcRemotionStage.duration === 'number') {
+                                   return window.__vcRemotionStage.duration;
+                                 }
                                  const root=document.querySelector('[data-composition-id]');
                                  const id=root && root.getAttribute('data-composition-id');
                                  const t=id && window.__timelines && window.__timelines[id];
@@ -385,11 +407,10 @@ def run(project: Path, points: list[float], keep_host: bool, verbose: bool) -> i
                                }"""
                         )
                         if comp_dur is not None:
-                            # 不认某一种页面结构（旧实现只数 `.scene-root *`，
-                            # 别的 composition 明明建出了 DOM 也被判 0）。
+                            # 不认某一种页面结构
                             rendered = frame.evaluate(
                                 """()=>{
-                                  const root=document.querySelector('[data-composition-id]');
+                                  const root=document.querySelector('[data-composition-id]') || document.querySelector('#remotion-stage-root');
                                   if(!root) return 0;
                                   return [...root.querySelectorAll('*')]
                                     .filter(el=>!['SCRIPT','STYLE'].includes(el.tagName)).length;
@@ -400,9 +421,9 @@ def run(project: Path, points: list[float], keep_host: bool, verbose: bool) -> i
                         continue
                 report.add(
                     "活舞台的时间轴真的构建了（不是只回显 data-duration）",
-                    isinstance(comp_dur, (int, float)) and float(comp_dur) > 0,
+                    isinstance(comp_dur, (int, float)) and float(comp_dur) > 0 and rendered > 0,
                     f"timeline.duration={comp_dur} 已渲染元素={rendered}",
-                    "composition/src：把 __CFG__ / HF.build() 挪出内联 <script>（预览编译器会改写成 text/hf-after-fonts，srcdoc 里不执行）",
+                    "remotion/src 或 composition/src：活舞台未成功挂载或未渲染可见元素",
                 )
 
             if expected is not None:

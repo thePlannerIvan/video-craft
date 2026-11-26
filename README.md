@@ -21,8 +21,8 @@
   → 1. 接入风格配置（读私有 ~/.config/planners/video-vault 或自动退回开源内置规范）与 frame.py 画框几何真源
   → 2. 词级转录 + 网页逐字剪辑审阅 + Voice Polish（podcast-warm 默认含停顿除重吸气声，-14.0 LUFS 归人物成片）
   → 3. 统一执行分镜 storyboard.json + Look-Dev 轻量样镜定调（无静态参考且做动效时先定调）+ Visual Soundscape 画面声景
-  → 4. 出工程审阅态（edit/_engineering/）：活舞台/实拍代理同屏可播，支持人声干声 A/B 与画面底噪开关试听
-  → 5. 作者下明确出片指令 → render_gate + 按段分流拼合（动效走 HyperFrames、实拍与录屏 FFmpeg 直切）+ 双轨无损封装 → 写入 成品/
+  → 4. 出工程审阅态（edit/_engineering/）：Remotion 活舞台零渲染实时预演与代理同屏可播，横竖屏自适应模板，支持人声干声 A/B 与画面底噪开关试听
+  → 5. 作者下明确出片指令 → render_gate + 按段分流拼合（动效走 Remotion 4 外部运行壳、实拍与录屏 FFmpeg 直切）+ 双轨无损封装 → 写入 成品/
 ```
 
 **重要原则——不要把“渲染预览”和“正式交付”混为一谈**：
@@ -82,6 +82,12 @@ npx skills add https://github.com/thePlannerIvan/video-craft --skill video-craft
 ### 运行时依赖与公共模组
 
 - **本机必填**：`ffmpeg` / `ffprobe`、Python 3.9+（依赖见 `pyproject.toml`）、Node.js 22+（使用豆包流式 ASR 2.0 需在本 Skill 目录运行 `npm install ws`）、`.env` 填写你自己的转录凭据（模板见 `.env.example`）。
+- **Remotion 外部运行壳（做动效一键初始化）**：首次执行 `motion` 项目前跑一次初始化即可把所有前端依赖统一安装至云盘与项目仓之外的标准缓存目录（默认 `~/.cache/video-craft/remotion-runtime/`，可用 `$VIDEO_CRAFT_REMOTION_HOME` 覆写）；动效命令会先核查本机 Node 22+ 与 `ffmpeg` 就绪状态，并在首次跑 Remotion 舞台或门禁发现缺少运行壳时通过 `remotion_runtime.py` 懒加载安装（默认自动复用本机已装 Chrome/Chromium 或 `$REMOTION_BROWSER_EXECUTABLE`，避免受限网络重复下载；如需按需拉取 Remotion 内置 Chrome Headless Shell，可传 `--download-browser`），也可手动执行：
+  ```bash
+  python3 helpers/remotion_runtime.py setup
+  python3 helpers/remotion_runtime.py doctor
+  ```
+  中国大陆网络如需加速，可按需临时加 `NPM_CONFIG_REGISTRY=https://registry.npmmirror.com`（脚本默认尊重你本机 npm 配置，不硬编码镜像源）。
 - **自动按需加载的公共模组**：仅依赖 [`planners-review-core`](https://github.com/thePlannerIvan/planners-review-core)（剪辑面与动效审阅页契约及本地宿主，缺失时自动拉取至 `~/.planners-modules/`）。*(同族另外三个模组 `planners-source-index`、`planners-fact-check`、`planners-report-kit` 本 Skill 不消费。)*
 
 ---
@@ -120,8 +126,8 @@ video-craft/
 ├── SKILL.md                 接手入口路由、主路线与完成判据
 ├── GLOSSARY.md              领域术语词汇表
 ├── install.md               首次安装 FFmpeg / Python / Node / 凭据清单
-├── helpers/                 12 个核心公开入口（另留兼容入口 audio_fix.py）+ _internal/
-├── references/              14 份阶段契约与工程手册
+├── helpers/                 13 个核心公开入口（另留兼容入口 audio_fix.py）+ _internal/
+├── references/              15 份阶段契约与工程手册（含 remotion-engine.md）
 ├── tests/                   unittest 回归（含 FFmpeg 真建文件检查）
 └── evals/                   路线覆盖矩阵校验 run_evals.py
 ```

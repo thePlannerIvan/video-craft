@@ -4,7 +4,7 @@
 > **本文件只管怎么动**：强调手段、运动方式、禁止项。静态画面语法归上游画面工作台或私有库 `styles/<style_id>/page.md`。
 > 跨风格规则见 [author-spec.md](author-spec.md)。**本文件仅约束对应风格的视觉与动效语言**，与能力组合（`footage` / `motion` / `screen-demo`）及画框（[intake-and-frames.md](intake-and-frames.md)）完全正交；实拍混剪规则亦参见 [montage-route.md](montage-route.md) 及私有库 `styles/lifestyle-cult/craft.md`。
 > 上限：每种风格 ≤ 5 条，由 `helpers/_internal/spec_lint.py` 强制。元素级的特殊处理不进本文件（见文末）。
-> 与外部通用动效原则（`hyperframes-creative` 等）冲突时，本节优先：那是通用建议，这里记的是作者判准。
+> 与外部通用动效原则（如 Remotion 官方规范或其它通用建议）冲突时，本节优先：那是通用建议，这里记的是作者判准。
 
 ## 风格清单
 

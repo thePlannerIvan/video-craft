@@ -382,6 +382,24 @@ def s11_soundscape_controls_wired(html: str) -> list[str]:
     return out
 
 
+def s12_orientation_and_collapsible_history_wired(html: str) -> list[str]:
+    """Ensure adaptive orientation layout slots and auto-collapsing history drawer are wired."""
+    code = _strip_comments(html)
+    out: list[str] = []
+    for token in (
+        'id="btn-orientation-toggle"',
+        'id="btn-toggle-history"',
+        'id="center-feedback-slot"',
+        'id="right-feedback-slot"',
+    ):
+        if token not in html:
+            out.append(f"模板缺少自适应布局关键控件 {token}")
+    for sym in ("applyOrientation", "syncHistoryDrawerState", "data-orientation", "history-collapsed"):
+        if sym not in code:
+            out.append(f"模板脚本缺少横竖屏自适应或历史折叠状态机 `{sym}`")
+    return out
+
+
 CHECKS = [
     ("S1", "舞台选择函数保住参数", s1_stage_function_keeps_its_argument),
     ("S2", "可交互 id 都挂了事件", s2_buttons_are_wired),
@@ -394,6 +412,7 @@ CHECKS = [
     ("S9", "调整项归属键只有一个出处", s9_adjustment_key_has_one_source),
     ("S10", "无已下线控件与用户可见工程术语", s10_minimal_ui_no_legacy_controls_or_jargon),
     ("S11", "画面声景按钮与试听音轨接线完整", s11_soundscape_controls_wired),
+    ("S12", "横竖屏自适应槽位与历史栏折叠接线完整", s12_orientation_and_collapsible_history_wired),
 ]
 
 # 把历史缺陷原样打回去，证明每条检查真的会响（对着 GOTCHA #30「一个永远不会失败的判据」）。
@@ -469,9 +488,13 @@ def _proof_s11(h):
     return h.replace('id="review-soundscape-audio"', 'id="review-soundscape-removed"', 1)
 
 
+def _proof_s12(h):
+    return h.replace('id="btn-orientation-toggle"', 'id="btn-orientation-removed"', 1)
+
+
 PROOFS = {"S1": _proof_s1, "S2": _proof_s2, "S3": _proof_s3, "S4": _proof_s4,
           "S5": _proof_s5, "S6": _proof_s6, "S7": _proof_s7, "S8": _proof_s8, "S9": _proof_s9,
-          "S10": _proof_s10, "S11": _proof_s11}
+          "S10": _proof_s10, "S11": _proof_s11, "S12": _proof_s12}
 
 
 def check_template(path: Path) -> dict:

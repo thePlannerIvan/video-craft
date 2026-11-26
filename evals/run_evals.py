@@ -58,6 +58,9 @@ TOPICS = (
     ("画面声景与响度门禁", ("sound_design.py", "-14.2..-13.4 LUFS", "画面音效轨.wav")),
     ("返修闭环", ("review_inbox", "收件", "返修", "重建审阅", "重建快照")),
     ("终态分级", ("_engineering", "成品/", "审阅素材", "交付件")),
+    ("Remotion与运行壳", ("remotion_runtime.py", "Remotion", "import-svg")),
+    ("活舞台与自适应审阅", ("{kw: 1}", "横竖屏", "自适应")),
+    ("Remotion门禁与会话授权", ("typecheck", "静帧", "--approve-in-chat")),
 )
 
 ID_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")

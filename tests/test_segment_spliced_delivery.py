@@ -507,7 +507,7 @@ class ReviewFixesIntegrationTests(unittest.TestCase):
             from state_fingerprint import capture, compare
             snap1 = capture(proj)
             self.assertIn("storyboard.json", snap1["sources"])
-            self.assertIn("lookdev/lookdev-manifest.json", snap1["sources"])
+            self.assertNotIn("lookdev/lookdev-manifest.json", snap1["sources"])
             sb_path.write_text(sb_path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
             diffs = compare(snap1, capture(proj))
             self.assertTrue(any("storyboard.json" in d for d in diffs), diffs)

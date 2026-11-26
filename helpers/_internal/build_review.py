@@ -260,12 +260,42 @@ def _resolve_live_stage(project_root: Path, notes: list, *,
         notes.append(f"{LIVE_STAGE_STATE} 内容不完整（缺 ok/stageUrl/serverUrl）—— "
                      "这一次不进活舞台，重跑 helpers/_internal/live_stage.py <project> 可重建")
         return None
+    if doc.get("engine") == "remotion":
+        meta_ok = False
+        import urllib.error
+        import urllib.request
+        try:
+            with urllib.request.urlopen(server.rstrip("/") + "/api/stage-meta", timeout=1.5) as resp:
+                meta_doc = json.loads(resp.read().decode("utf-8"))
+                meta_ok = bool(meta_doc.get("ok"))
+        except (urllib.error.URLError, OSError, ValueError):
+            meta_ok = False
+        if not meta_ok:
+            notes.append(f"Remotion 活舞台服务 {server} 现在没有响应（{LIVE_STAGE_STATE} 是上一次会话留下的）"
+                         "—— 页面会退回静态舞台或合成成片。要看活舞台，"
+                         "先跑 helpers/_internal/live_stage.py <project>")
+            return None
+        return {
+            "url": url,
+            "serverUrl": server,
+            "projectId": doc.get("projectId"),
+            "engine": "remotion",
+            "remotionDir": doc.get("remotionDir") or doc.get("composition") or "remotion",
+            "compositionDir": doc.get("composition") or "remotion",
+            "duration": doc.get("duration"),
+            "durationInFrames": doc.get("durationInFrames"),
+            "fps": doc.get("fps"),
+            "width": doc.get("width"),
+            "height": doc.get("height"),
+            "sourceHash": doc.get("sourceHash"),
+        }
     if not _server_alive(server):
         notes.append(f"活舞台服务 {server} 现在没有响应（{LIVE_STAGE_STATE} 是上一次会话留下的）"
                      "—— 页面会退回静态舞台或合成成片。要看活的 composition，"
                      "先跑 helpers/_internal/live_stage.py <project>")
         return None
     return {"url": url, "serverUrl": server, "projectId": doc.get("projectId"),
+            "engine": doc.get("engine") or "hyperframes",
             "compositionDir": doc.get("composition") or "composition"}
 
 
@@ -309,17 +339,17 @@ def resolve_review_media(project_root: Path, edit_dir: Path, *,
     # helpers/_internal/live_stage.py 起服务时写进 edit/_engineering/live-stage.json；
     # 这里只验证它**现在还活着**——状态文件很容易是上一条会话留下的，
     # 指过去只会让页面挂一个连不上的 iframe。
+    import remotion_stage
+    engine, _engine_dir = remotion_stage.detect_motion_engine(project_root)
     has_composition = (project_root / "composition" / "index.html").is_file()
-    media["liveStage"] = _resolve_live_stage(project_root, notes, expected=has_composition)
+    has_motion_stage = engine in ("remotion", "hyperframes") or has_composition
+    media["liveStage"] = _resolve_live_stage(project_root, notes, expected=has_motion_stage)
 
-    # 有 composition 却没有活舞台：降级本身可以接受，**无声**降级不行。
-    # 实测踩到：预览服务没起时跑 build_review，界面照样生成、watch 清单从 19 条缩到 10 条，
-    # 而且 review_data 里那一整段（含 player_bundle() 的内联）被跳过 —— 官方播放器根本没进页面，
-    # 只有一条 mediaNote 记着。作者对着一个「看起来正常、审的不是当前合成」的页面提意见。
-    if media["liveStage"] is None and has_composition:
-        notes.append("**这一版审阅没有活舞台**：页面会退回静态舞台/成片，审的不是当前 "
-                     "composition。要看工程态：先跑 helpers/_internal/live_stage.py <project>，再重建审阅。")
-        print("  ! 这个工程有 composition，但没有活舞台 —— 这一版审的不是当前合成，"
+    # 有动效工程却没有活舞台：降级本身可以接受，**无声**降级不行。
+    if media["liveStage"] is None and has_motion_stage:
+        notes.append("**这一版审阅没有活舞台**：页面会退回静态舞台/成片，审的不是当前动效源。"
+                     "要看活舞台：先跑 helpers/_internal/live_stage.py <project>，再重建审阅。")
+        print("  ! 这个工程有动效定义，但没有活舞台 —— 这一版审的不是当前合成，"
               "先跑 helpers/_internal/live_stage.py 再重建（详见 review_data.json 的 mediaNotes）")
 
     if declared_at is not None and declared:
@@ -575,10 +605,14 @@ def resolve_build_mode(project_root: Path, *, final_cut: bool = False) -> str:
          项目勾不出来，只能由调用者声明；
       4. 其余 → page（旧十步页已退休，仍由 `--allow-page` 显式放行）。
     """
+    import remotion_stage
+    engine, _engine_dir = remotion_stage.detect_motion_engine(project_root)
     if recompose_plan.enabled(project_root):
         return "recompose"
     if (project_root / "storyboard.json").is_file() or (project_root / "edit" / "storyboard.json").is_file():
-        return "recompose" if (project_root / "composition" / "index.html").is_file() else "final-cut"
+        return "recompose" if engine in ("remotion", "hyperframes") else "final-cut"
+    if engine == "remotion":
+        return "recompose"
     if (project_root / "edit" / "montage-plan.json").is_file():
         return "final-cut"
     if final_cut:
@@ -1001,17 +1035,24 @@ def build_review_data(project_root: Path, edit_dir: Path, requested_mode: str = 
         project_geo = resolve_project_frame(project_root)
     except Exception:
         project_geo = None
+    geo_w = int((project_geo or {}).get("width") or 1920)
+    geo_h = int((project_geo or {}).get("height") or 1080)
+    import math as _math
+    _g = max(1, _math.gcd(geo_w, geo_h))
+    aspect_ratio = f"{geo_w // _g}:{geo_h // _g}"
+    orientation = "portrait" if geo_h > geo_w else "landscape"
     review_data = {
         "version": "2.0.0",
         "project": project_root.name,
         "snapshot": snapshot,
         "geometry": project_geo,
+        "orientation": orientation,
         "binding": {"version": "video-craft-binding/1.0.0", "source": "timeline/timeline.json", "units": binding_units},
         "sourceManifest": manifest,
         "timelinePath": timeline_path.relative_to(project_root).as_posix() if timeline_path else None,
         "svgAssets": scene_assets,
         "mode": final_mode,
-        "aspectRatio": "16:9",
+        "aspectRatio": aspect_ratio,
         "totalDurationMs": total_duration_ms,
         "media": {
             "speakerVideo": speaker_video_rel,
@@ -1360,7 +1401,12 @@ def write_review_files(project_root: Path, review_data: dict) -> tuple[Path, Pat
     review_data['snapshot'] = hashlib.sha256(json.dumps(review_data['sourceManifest'], sort_keys=True).encode()).hexdigest()
 
     player_script = ""
-    if review_data.get("media", {}).get("liveStage"):
+    live = review_data.get("media", {}).get("liveStage")
+    if live and live.get("engine") == "remotion":
+        src_hash = str(live.get("sourceHash") or "")
+        if src_hash:
+            review_data["snapshot"] = hashlib.sha256((review_data["snapshot"] + src_hash).encode()).hexdigest()[:20]
+    elif live:
         # Report capabilities where the compile actually happens; a font dump or a
         # missing libass shows up here first, and only this call site can see it.
         try:
@@ -1370,7 +1416,6 @@ def write_review_files(project_root: Path, review_data: dict) -> tuple[Path, Pat
         except Exception:  # noqa: BLE001 - probe must never block review
             pass
         from live_preview import compile_preview
-        live = review_data["media"]["liveStage"]
         live["composition"] = compile_preview(
             project_root, live["url"],
             composition_dir=project_root / live.get("compositionDir", "composition"))
@@ -1471,9 +1516,11 @@ def main():
 
     # 有 composition 却没有活舞台 = 审的不是当前合成。静默退回成片态是流程错误：
     # 作者会对着一个“看起来正常”的页面提意见。默认拒绝，只留显式降级。
-    has_composition = (project_root / "composition" / "index.html").is_file()
+    import remotion_stage
+    engine, _engine_dir = remotion_stage.detect_motion_engine(project_root)
+    has_composition = engine in ("remotion", "hyperframes") or (project_root / "composition" / "index.html").is_file()
     if has_composition and not data["media"].get("liveStage") and not args.allow_static:
-        print("✗ 这个工程有 composition，但活舞台没有就绪——这一版审的不是工程态。", file=sys.stderr)
+        print("✗ 这个工程有动效源，但活舞台没有就绪——这一版审的不是工程态。", file=sys.stderr)
         print("  先跑：python3 helpers/review.py <项目>（或先 helpers/_internal/live_stage.py <项目> 再重建）", file=sys.stderr)
         print("  确实只要静态页/成片态时，显式加 --allow-static。", file=sys.stderr)
         sys.exit(2)

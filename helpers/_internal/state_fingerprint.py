@@ -71,15 +71,23 @@ def head_revisions(project: Path) -> dict[str, str]:
 
 
 def source_paths(project: Path, *, include_review: bool = True) -> dict[str, Path]:
-    """Track authored files and used media, excluding render caches and unused footage."""
+    """Track authored files and used media, excluding render caches, lookdev approvals, and unused footage."""
     paths = {}
     for rel in ('recompose.json', 'edit/edl.json', 'edit/segment_durations.json',
                 'edit/subtitles.srt', 'edit/caption_words.json', 'edit/captions.json',
                 'timeline/timeline.json', 'timeline/choreography.json', 'edit/timeline/timeline.json',
-                'storyboard.json', 'edit/storyboard.json',
-                'lookdev/lookdev-manifest.json', 'edit/sfx-plan.json'):
+                'storyboard.json', 'edit/storyboard.json', 'edit/sfx-plan.json'):
         p = project / rel
         if p.is_file(): paths[rel] = p
+    rem = project / 'remotion'
+    if rem.is_dir():
+        rem_excluded = {'_render', 'renders', 'node_modules', 'out', 'build', '.git', '.cache'}
+        for p in sorted(rem.rglob('*')):
+            if not p.is_file() or p.name.endswith('.sources.json') or rem_excluded.intersection(p.relative_to(rem).parts):
+                continue
+            rel_rem = p.relative_to(rem)
+            if rel_rem.parts[0] in ('src', 'public') or p.name in ('package.json', 'tsconfig.json', 'remotion.config.ts'):
+                paths[p.relative_to(project).as_posix()] = p
     comp = project / 'composition'
     excluded = {'_render', 'renders', 'node_modules', '.hyperframes', '.git'}
     for p in sorted(comp.rglob('*')):
@@ -117,6 +125,11 @@ def source_paths(project: Path, *, include_review: bool = True) -> dict[str, Pat
 
 def source_entries(project: Path) -> dict:
     return {key: entry(path) for key, path in sorted(source_paths(project).items())}
+
+
+def source_digest(project: Path) -> str:
+    """Return deterministic SHA-256 hex digest of all live tracked source entries."""
+    return hashlib.sha256(json.dumps(source_entries(project), sort_keys=True).encode("utf-8")).hexdigest()
 
 
 def capture(project: Path) -> dict:

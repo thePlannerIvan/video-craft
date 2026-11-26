@@ -34,7 +34,7 @@
 
 **每轮的默认终点是侧边栏审阅页可播 + 本轮待办，不是出成片。** 渲染产物严格分两级：
 - `edit/_engineering/**` = **审阅素材**（工程态，可随时重渲，**不算交付**）；
-- `成品/**` = **交付件**（只有「作者明确出片指令」+「当前审阅快照零漂移且存在网页提交或对话授权 `--approve-in-chat`（`render_gate.py` 放行）」同时成立才允许写入）。
+- `成品/**` = **交付件**（只有「作者明确出片指令」+「当前审阅快照已存在且有网页零漂移提交，或当轮对话明确指令导出传入 `--approve-in-chat` 写入含实时源码指纹 `liveSourceHash` 的审计记录（`render_gate.py` 放行）」同时成立才允许写入）。
 
 仅在开启 `footage` / `motion` / `screen-demo` 任一画面能力时进入第 7 步；仅底座剪口播项目直接完成第 3–6 步与剪辑/口播成片交付。
 
@@ -87,25 +87,25 @@
 
 所有附加画面能力共享唯一机器真源 `storyboard.json`（用 `helpers/film.py verify` 校验与 `film.py summary` 派生人读概览），坐标统一从 `helpers/frame.py resolve` 读取：
 - **开启 `footage`（剪视频）**：按 [montage-route.md](montage-route.md) 完成 `_internal/scan_materials.py` 素材清单与 `5s` 入点防重校验；混入 `storyboard.json` 时审阅期挂轻代理，交付期由 `deliver.py` 直切高清母版（纯混剪独立成片可走 `helpers/montage.py plan/render` + `_internal/check_montage.py`）。
-- **开启 `motion` / `screen-demo`（做动效 / 实机录屏）**：按 [visual-grammar.md](visual-grammar.md) 先过 `helpers/film.py init` + `verify`（开启 `motion` 且无静态参考页时，全片编码前必先过 `helpers/film.py lookdev --verify` **Look-Dev Gate**，并采用随口播演化的思维模型动效）；从 `frame.py resolve` 与 `timeline.json` 写 Seek 安全 `composition/src/scenes/*.js`（`screen-demo` 审阅挂 `film.py proxy`），再用 `helpers/check_visual.py --only quality` 与 `_internal/check_live_stage.py` 自检（自动拦截 `<video>` 黑屏样式与 Canvas/SVG 出画越界）。
+- **开启 `motion` / `screen-demo`（做动效 / 实机录屏）**：按 [remotion-engine.md](remotion-engine.md) 与 [visual-grammar.md](visual-grammar.md) 先过 `helpers/remotion_runtime.py doctor`（确保外部运行壳就绪，项目内零 `node_modules`）及 `helpers/film.py init` + `verify`（开启 `motion` 且无静态参考页时，全片编码前必先过 `helpers/film.py lookdev --verify` **Look-Dev Gate**，并采用随口播演化的思维模型动效；有静态 SVG 参考页则走 `film.py import-svg`）；从 `frame.py resolve` 与 `timeline.json` 写无状态纯帧 Remotion 场景 `remotion/src/**`（`screen-demo` 审阅挂 `film.py proxy`），再用 `helpers/check_visual.py --only typecheck|sync|quality` 与 `_internal/check_live_stage.py` 自检（历史只读 `composition/` 老工程保持兼容）。
 - **Visual Soundscape（开启 `motion` 或 `footage` 时）**：调用 `helpers/sound_design.py build --storyboard <storyboard.json> --voice <人声WAV> --out <edit/_engineering/soundscape.wav> [--preview-variants]` 同步生成动效起伏音效与经自动筛分闪避的可选原声底噪，并通过内置响度门禁（`sound_design.py verify`）。
 
 ## 8. 工程态动效与成片审阅（默认终点）
 
-**唯一构建入口**：`python3 "<craft>/helpers/review.py" "<project>"`（有活舞台走活舞台检查 + `live_stage` + `build_review` + `check_review_playable`；纯成片或 `--final-cut` 走成片态审阅；详规见 [review-and-delivery.md](review-and-delivery.md)）。
+**唯一构建入口**：`python3 "<craft>/helpers/review.py" "<project>"`（Remotion 工程前置过 `remotion_gates.py --only typecheck,sync` + `@remotion/player` `{kw: 1}` 零渲染活舞台桥；历史只读工程走旧活舞台检查 + `live_stage`；纯成片或 `--final-cut` 走成片态审阅；详规见 [review-and-delivery.md](review-and-delivery.md)）。
 
-审阅页支持同步试听 `Visual Soundscape` 并一键切换 `画面底噪:开/关` 与 `播客音色 vs 纯干声`。通过 DSH `review_open`（传 `review-surface.json`）或 `_internal/review_surface.py <project>` 本地宿主交给人审。官方 HyperFrames player 拥有唯一播放头；超大资产由 `build_review.py` 自动在 `review/proxies/` 生成审阅副本并记录 `mediaNotes`。
+审阅页根据 `frame.py resolve` 自动适配横竖屏布局（并支持手动切屏）：横屏将反馈表单紧贴视频下方、零历史时右侧历史栏默认折叠；竖屏让 9:16 画布撑满可用视口高度并将表单与历史收拢右侧。页面支持同步试听 `Visual Soundscape` 并一键切换 `画面底噪:开/关` 与 `播客音色 vs 纯干声`。通过 DSH `review_open`（传 `review-surface.json`）或 `_internal/review_surface.py <project>` 本地宿主交给人审。活舞台播放器拥有唯一播放头；超大资产由 `build_review.py` 自动在 `review/proxies/` 生成审阅副本并记录 `mediaNotes`。
 
 ## 9. 收件、返修与重建
 
 先跑 `python3 "<craft>/helpers/review_inbox.py" "<project>"` 核查回执（`imported/skipped/rejected`，有拒绝先修绑定）。
 - 逐字意见 → 更新 `selections.json` → `stage_cut.py apply` → 重建预览与字幕时间轴；
-- 画面、素材或声景反馈 → 读 `feedback/*.jsonl` → 只改受影响的 `storyboard.json`、`src/scenes/*.js`、镜头表或 `sound_design.py`（`--broll-bed on|off`）→ 重跑 **`review.py`** 使旧快照失效并重交审阅。
+- 画面、素材或声景反馈 → 读 `feedback/*.jsonl` → 只改受影响的 `storyboard.json`、`remotion/src/**`（或旧工程 `src/scenes/*.js`）、镜头表或 `sound_design.py`（`--broll-bed on|off`）→ 重跑 **`review.py`** 使旧快照失效并重交审阅（若作者在对话中明确指示微调后立即导出，则按第 10 步传入 `--approve-in-chat`）。
 
 ## 10. 核验与严格交付
 
-仅当**作者明确要求出片**且**当前审阅快照零漂移并已有网页提交或对话授权 `--approve-in-chat`**时执行：
-- 渲染前置按 [visual-timeline.md](visual-timeline.md)「渲染前置」与 [visual-checks.md](visual-checks.md) 执行（先过 `_internal/render_gate.py`；先 `probe_env.py` + `check_render_env.py`；停预览服务；`--workers 1`）；
-- **按段分流与双轨交付**：`python3 "<craft>/helpers/deliver.py" "<project>" --render [--approve-in-chat]`（HyperFrames 仅渲 `motion` / `card-deck` / 叠层段，FFmpeg 直切 `footage` 与 `screen-demo` 并按时间轴拼合；默认分轨输出 `人物成片.mp4`（仅 Voice Polish 人声）+ `画面成片.mp4`（存在声景时 `-c:v copy` 无损封装并同出独立 `画面音效轨.wav`，无声景需求时保持 `0` 音轨）+ 空隙字幕；单视频合流加 `--composite`；已有画面用 `--visuals <已渲染画面>`；无人物加 `--no-person`；渲染后必过 `check_render_fidelity.py` + `verify_delivery.py`）；
+仅当**作者明确要求出片**且**当前审阅快照已存在并有网页零漂移提交，或当轮对话明确指令导出传入 `--approve-in-chat` 写入含 `liveSourceHash` 的审计记录**时执行：
+- 渲染前置按 [visual-timeline.md](visual-timeline.md)「渲染前置」与 [visual-checks.md](visual-checks.md) 执行（先过 `_internal/render_gate.py`；Remotion 工程先过 `remotion_gates.py` 四道门禁：`typecheck`、`sync`、`stills` 中段静帧抽取核验及交付核验；历史兼容工程按 `probe_env.py` + `check_render_env.py`、停预览、`--workers 1` 执行）；
+- **按段分流与双轨交付**：`python3 "<craft>/helpers/deliver.py" "<project>" --render [--approve-in-chat]`（Remotion 4 经外部运行壳渲染 `motion` / `card-deck` / 叠层段，FFmpeg 直切 `footage` 与 `screen-demo` 并按时间轴拼合，历史 `composition/` 走只读兼容；默认分轨输出 `人物成片.mp4`（仅 Voice Polish 人声）+ `画面成片.mp4`（存在声景时 `-c:v copy` 无损封装并同出独立 `画面音效轨.wav`，无声景需求时保持 `0` 音轨）+ 空隙字幕；单视频合流加 `--composite`；已有画面用 `--visuals <已渲染画面>`；无人物加 `--no-person`；渲染后必过 `verify_delivery.py`，历史旧工程同时过 `check_render_fidelity.py`）；
 - **纯混剪独立三件套**（无 `storyboard.json` 分段拼合时）：`montage.py render --concat --out <成品/...> --deliver` + `montage.py voice-cut --master <母版> --audio <口播音>` + `srt_export.py --build --check` + `check_montage.py --video`（细节与包装指纹见 [review-and-delivery.md](review-and-delivery.md)）；
 - **发送前指纹**：`state_fingerprint.py capture` → 发送前 `verify`；核验真实文件首中尾帧、响度（人声 `-14.0 LUFS / -1.5 dBTP`、声景与合播门禁）、音轨、字幕与交付说明。

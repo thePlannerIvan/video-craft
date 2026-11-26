@@ -98,10 +98,22 @@ def _same_project(expected: float | None, served: float | None,
     return abs(served - expected) <= tolerance
 
 
-def _served_timeline_duration(stage_url: str) -> float | None:
-    """从编译服务端出来的 composition 里读 data-duration（根元素声明值）。"""
+def _served_timeline_duration(stage_url: str, *, info: dict | None = None) -> float | None:
+    """从服务端元数据（Remotion）或编译服务端出来的 composition HTML 读时长。"""
     import re
     import urllib.request
+    if info and info.get("engine") == "remotion":
+        if isinstance(info.get("duration"), (int, float)) and info["duration"] > 0:
+            return float(info["duration"])
+        srv = info.get("serverUrl")
+        if srv:
+            try:
+                with urllib.request.urlopen(srv.rstrip("/") + "/api/stage-meta", timeout=4) as resp:
+                    meta = json.loads(resp.read().decode("utf-8"))
+                    if isinstance(meta.get("duration"), (int, float)) and meta["duration"] > 0:
+                        return float(meta["duration"])
+            except Exception:
+                pass
     if not stage_url:
         return None
     try:
@@ -122,16 +134,20 @@ def _served_timeline_duration(stage_url: str) -> float | None:
 def resolve_review_mode(project: Path, final_cut: bool = False) -> str:
     """这个工程该按哪种形态审：`recompose`（工程态）还是 `final-cut`（成片态）。
 
-    page 十步页已退休，但「没有 composition 的工程」不等于「没东西可审」：蒙太奇项目
+    page 十步页已退休，但「没有动效源的工程」不等于「没东西可审」：蒙太奇项目
     （`edit/montage-plan.json`）、仅含预渲染/直切视频的 `storyboard.json` 和只渲好了成片的
-    项目，审的就是那份成片；含 `composition/index.html` 的 `storyboard.json` 走活舞台工程态。
+    项目，审的就是那份成片；含 Remotion (`remotion/src/Root.tsx`) 或旧 `composition/index.html` 的走活舞台工程态。
     """
+    import remotion_stage
+    engine, _ = remotion_stage.detect_motion_engine(project)
+    if engine == "remotion":
+        return "recompose"
     if (project / "recompose.json").is_file():
         return "recompose"
     if final_cut:
         return "final-cut"
     if (project / "storyboard.json").is_file() or (project / "edit" / "storyboard.json").is_file():
-        return "recompose" if (project / "composition" / "index.html").is_file() else "final-cut"
+        return "recompose" if engine in ("remotion", "hyperframes") else "final-cut"
     if (project / "edit" / "montage-plan.json").is_file():
         return "final-cut"
     print("✗ 这个工程既没有 recompose.json / storyboard.json 也没有 edit/montage-plan.json —— "
@@ -159,31 +175,44 @@ def review(project: Path, open_surface: bool = True, live: bool = True,
         return 1
 
     info = {}
-    # 成片态没有 composition，活舞台那三步只会报「没有 composition」：直接跳过，不假装在审工程态。
+    import remotion_stage
+    detected_engine, detected_dir = remotion_stage.detect_motion_engine(project)
+    # 成片态没有动效工程，活舞台步骤直接跳过，不假装在审工程态。
     live = bool(live) and build_mode == "recompose"
-    # 1) 静态契约 + 统一画面质量体检：这份 composition/分拍能不能进活舞台
+    # 1) 静态契约 + 统一画面质量体检
     if live:
         code, out = _run([str(INTERNAL / "check_live_stage.py"), str(project)])
         if not step("活舞台契约（静态）", code == 0, out.strip().splitlines()[-1] if out.strip() else "",
-                    "composition/src：会执行逻辑的脚本必须在外部文件；注册名 = data-composition-id"):
+                    "remotion/src 或 composition/src：入口定义与外部运行壳需就绪"):
             if not as_json:
                 print("\n".join(out.strip().splitlines()[-8:]))
             return stop()
-        qcode, qout = _run([str(INTERNAL / "check_visual_quality.py"), str(project), "--json"])
-        qinfo = _json_tail(qout)
-        qerrs = qinfo.get("errors") or []
-        qwarns = qinfo.get("warnings") or []
-        qdetail = ("；".join(str(e.get("detail") or e.get("rule") or "") for e in qerrs[:3])
-                   or (qout.strip().splitlines()[-1] if qout.strip() else ""))
-        qok = qcode == 0 and (qinfo.get("ok") is not False)
-        qsummary = qdetail if not qok else f"ok (warnings={len(qwarns)})"
-        if not step("构建期画面体检", qok, qsummary,
-                    "helpers/check_visual.py --only quality：修复字号/超长静止/安全区越界/滤镜坐标系/字体或 demo 异常"):
-            if not as_json and qout.strip():
-                print("\n".join(qout.strip().splitlines()[-8:]))
-            return stop()
-        # 端口是这轮最大的静默陷阱：三条片同 id `composition`，谁占住默认端口谁被端出来。
-        # 所以默认自动挑空闲端口；并且起服务后**核对端出来的确实是本工程**。
+        if detected_engine == "remotion":
+            if (INTERNAL / "remotion_gates.py").is_file():
+                qcode, qout = _run([str(INTERNAL / "remotion_gates.py"), str(project), "--only", "typecheck,sync", "--json"])
+                qinfo = _json_tail(qout)
+                qerrs = qinfo.get("errors") or []
+                qdetail = "；".join(str(e) for e in qerrs[:3]) or (qout.strip().splitlines()[-1] if qout.strip() else "ok")
+                qok = qcode == 0 and (qinfo.get("ok") is not False)
+                if not step("构建期静态与分镜门禁", qok, "ok" if qok else qdetail,
+                            "helpers/_internal/remotion_gates.py --only typecheck,sync"):
+                    if not as_json and qout.strip():
+                        print("\n".join(qout.strip().splitlines()[-8:]))
+                    return stop()
+        else:
+            qcode, qout = _run([str(INTERNAL / "check_visual_quality.py"), str(project), "--json"])
+            qinfo = _json_tail(qout)
+            qerrs = qinfo.get("errors") or []
+            qwarns = qinfo.get("warnings") or []
+            qdetail = ("；".join(str(e.get("detail") or e.get("rule") or "") for e in qerrs[:3])
+                       or (qout.strip().splitlines()[-1] if qout.strip() else ""))
+            qok = qcode == 0 and (qinfo.get("ok") is not False)
+            qsummary = qdetail if not qok else f"ok (warnings={len(qwarns)})"
+            if not step("构建期画面体检", qok, qsummary,
+                        "helpers/check_visual.py --only quality：修复字号/超长静止/安全区越界/滤镜坐标系/字体或 demo 异常"):
+                if not as_json and qout.strip():
+                    print("\n".join(qout.strip().splitlines()[-8:]))
+                return stop()
         use_port = port or _free_port()
         stage_args = [str(INTERNAL / "live_stage.py"), str(project), "--json", "--port", str(use_port)]
         code, out = _run(stage_args)
@@ -195,9 +224,11 @@ def review(project: Path, open_surface: bool = True, live: bool = True,
             return stop()
 
         identity = info.get("identity") or {}
+        expected_root = str((detected_dir or (project / "composition")).resolve())
         ours = (identity.get("verified") is True
                 and identity.get("projectRoot") == str(project.resolve())
-                and identity.get("compositionRoot") == str((project / "composition").resolve()))
+                and (identity.get("compositionRoot") == expected_root
+                     or identity.get("remotionRoot") == expected_root))
         if not step("工程路由身份", ours, json.dumps(identity, ensure_ascii=False),
                     "live_stage.py：重新证明当前工程的编译路由；时长相同不证明身份"):
             return stop()
@@ -229,14 +260,14 @@ def review(project: Path, open_surface: bool = True, live: bool = True,
         step("当前时间依据", False, str(exc), "_paths / timeline：统一采用版后重建")
         return stop()
     if live:
-        served = _served_timeline_duration(info.get("stageUrl", ""))
+        served = _served_timeline_duration(info.get("stageUrl", ""), info=info)
         compatible = _same_project(expect, served)
         if not step("当前工程时长", compatible is True,
                     f"当前={expect}s，编译路由={served}s", "当前 timeline / composition data-duration；缺证据不能放行"):
             return stop()
         drift = abs(served - expect)
-        if not step("composition 与时间轴一致", drift <= DRIFT_WARN,
-                    f"差 {drift:.3f}s", "更新 composition 时间绑定后重建，不改字幕时间掩盖漂移"):
+        if not step("画面源码与时间轴一致", drift <= DRIFT_WARN,
+                    f"差 {drift:.3f}s", "更新源码时间绑定后重建，不改字幕时间掩盖漂移"):
             return stop()
 
     # 3) surface：有插件交给 review_open，没有就起本地宿主

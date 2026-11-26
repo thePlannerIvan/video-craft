@@ -19,7 +19,7 @@ after a human submission covers the current review snapshot.
 Three things must exist on this machine:
 
 1. The `video-craft` skill directory, at a stable path.
-2. `ffmpeg` on `$PATH` (plus optional `yt-dlp` for online sources).
+2. `ffmpeg` / `ffprobe` on `$PATH` and Node.js 22+ (for SeedASR + the Remotion External Runtime Shell in `$VIDEO_CRAFT_REMOTION_HOME` or `~/.cache/video-craft/remotion-runtime/`).
 3. A transcription service of the user's own: online preferred — `DOUBAO_APP_ID` + `DOUBAO_ACCESS_TOKEN` for 豆包流式语音识别 2.0 (SeedASR) in `.env`. Optional alternatives: `ELEVENLABS_API_KEY` (Scribe, cross-check) or the local mlx-whisper extra. **The repo ships no credentials**; without any, transcription cannot run — see step 5.
 
 And one thing must be true about the current agent:
@@ -95,14 +95,23 @@ and it already carries `pptx` / `lxml` / `PIL` / `playwright` / `numpy`. Run hel
 and tests with it: `"$CATEGORY_PY" helpers/_internal/render.py ...`. Install this Skill's deps
 into it the same way: `"$CATEGORY_PY" -m pip install -e .`.
 
-### 3. Install ffmpeg (+ optional yt-dlp)
+### 3. Install ffmpeg + initialize External Runtime Shell (Remotion 4)
 
-`ffmpeg` and `ffprobe` are hard requirements. `yt-dlp` is only needed if the user wants to pull sources from URLs. Animation engines such as HyperFrames, Remotion, and Manim are installed lazily the first time a project actually needs them.
+`ffmpeg`, `ffprobe`, and Node.js 22+ are hard requirements (`yt-dlp` is optional). Motion projects use Remotion 4, installed into a single portable External Runtime Shell (`$VIDEO_CRAFT_REMOTION_HOME` or `~/.cache/video-craft/remotion-runtime/`) outside your video folders and cloud sync drives — **never install `node_modules` inside a video project**.
 
 ```bash
 # macOS
 command -v ffmpeg >/dev/null || brew install ffmpeg
 command -v yt-dlp >/dev/null || brew install yt-dlp     # optional
+
+# Initialize the shared Remotion External Runtime Shell (idempotent; reuses installed Chrome/Chromium or $REMOTION_BROWSER_EXECUTABLE if present, avoiding unnecessary headless-shell downloads on restricted networks)
+"$CATEGORY_PY" "$CRAFT_SRC"/helpers/remotion_runtime.py setup
+# Optional: explicitly fetch Remotion's bundled Chrome Headless Shell on demand
+# "$CATEGORY_PY" "$CRAFT_SRC"/helpers/remotion_runtime.py setup --download-browser
+"$CATEGORY_PY" "$CRAFT_SRC"/helpers/remotion_runtime.py doctor
+
+# Optional China mainland mirror tip (respects user npm config; never hardcoded in scripts):
+# NPM_CONFIG_REGISTRY=https://registry.npmmirror.com "$CATEGORY_PY" "$CRAFT_SRC"/helpers/remotion_runtime.py setup
 
 # Debian / Ubuntu
 # sudo apt-get update && sudo apt-get install -y ffmpeg
@@ -112,7 +121,7 @@ command -v yt-dlp >/dev/null || brew install yt-dlp     # optional
 # sudo pacman -S ffmpeg yt-dlp
 ```
 
-If `brew` / `apt` / `pacman` requires a sudo prompt, tell the user the exact command and wait. Do not invent a password.
+If `brew` / `apt` / `pacman` requires a sudo prompt, tell the user the exact command and wait. Do not invent a password. If you skip `setup` now, ensure Node.js 22+ and `ffmpeg` are on `$PATH` first — Remotion stage and gate commands will validate prerequisites and lazily install missing runtime packages/browser via `remotion_runtime.py` (or run `helpers/remotion_runtime.py setup` directly upfront).
 
 ### 4. Register the skill with the current agent
 
@@ -235,6 +244,7 @@ Run one real thing. Prefer the lightest verification that still proves the pipel
 
 ```bash
 "$CATEGORY_PY" "$CRAFT_SRC"/helpers/deliver.py --help >/dev/null && echo "helpers OK"
+"$CATEGORY_PY" "$CRAFT_SRC"/helpers/remotion_runtime.py doctor
 ffprobe -version | head -1
 ```
 
@@ -271,14 +281,8 @@ Tell the user, in one short message:
   the run had to borrow it via `NODE_PATH`. Install it in whatever copy you
   actually run from.
 - The preferred SeedASR backend needs a speech-console `DOUBAO_APP_ID` + `DOUBAO_ACCESS_TOKEN` pair in `.env` (an Ark LLM key is a different account and will not work; the full check list is step 5).
-- HyperFrames (`npx --yes hyperframes ...`) is the default animation engine for compositions; run it **from inside the composition directory** — it reads `index.html` from the current directory, and `hyperframes init` would replace the generated skeleton rather than fix anything.
-- **HyperFrames needs a writable font cache.** It downloads fonts under the home directory; in a sandbox or on a read-only home the render dies partway with `EPERM: operation not permitted, mkdir '~/.cache/hyperframes/fonts/...'` and only suggests `--docker`. Point it somewhere writable:
-
-  ```bash
-  export HYPERFRAMES_FONT_CACHE_DIR="$PWD/.hyperframes-cache"
-  ```
-
-  `HYPERFRAMES_FONT_CACHE_DIR` is not in `--help` and **`hyperframes doctor` does not check it**. Run `python3 helpers/_internal/check_render_env.py <project>/composition` **before every render** — it fails early on this and on a Node older than 22. It cannot be an npm `prerender` hook: `package.json` is written by `npx hyperframes init`, not by this Skill.
+- Remotion 4 (via the shared External Runtime Shell managed by `helpers/remotion_runtime.py`) is the default animation engine for new `motion` projects; all dependencies live under `$VIDEO_CRAFT_REMOTION_HOME` or `~/.cache/video-craft/remotion-runtime/` and are injected automatically when running live-stage preview, `remotion still`, or `remotion render`.
+- Older legacy projects containing `composition/index.html` remain readable/renderable in read-only compatibility mode via the frozen HyperFrames path (do not mix `HYPERFRAMES_FONT_CACHE_DIR` caches or personal paths into project folders).
 - Never run transcription as part of install verification unless the user explicitly asks — SeedASR and Scribe both bill per call.
 - If the user is on Linux without a package manager Claude recognizes, print the manual `ffmpeg` install URL and wait rather than guessing.
 

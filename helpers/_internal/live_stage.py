@@ -218,19 +218,71 @@ def stop(root: Path) -> int:
     return 0
 
 
+def _raw_root(arg: str) -> Path:
+    from _paths import resolve
+    root, _edit = resolve(arg)
+    return root
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("project")
-    ap.add_argument("--composition", default="composition",
-                    help="composition directory inside the project (default: composition)")
+    ap.add_argument("--composition", default=None,
+                    help="legacy composition directory inside the project")
+    ap.add_argument("--remotion-dir", default=None,
+                    help="Remotion source directory inside the project (default: remotion)")
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
     ap.add_argument("--status", action="store_true")
     ap.add_argument("--stop", action="store_true")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
-    root = project_root(args.project)
-    comp = (root / args.composition).resolve()
+    internal_dir = str(Path(__file__).resolve().parent)
+    if internal_dir not in sys.path:
+        sys.path.insert(0, internal_dir)
+    import remotion_stage  # noqa: E402
+
+    root = _raw_root(args.project)
+    engine, target_dir = remotion_stage.detect_motion_engine(
+        root,
+        explicit_composition=args.composition,
+        explicit_remotion=args.remotion_dir,
+    )
+    if engine == "remotion" and target_dir is not None:
+        if args.stop:
+            remotion_stage.stop_stage(root)
+            print("stopped")
+            return 0
+        if args.status:
+            state_path = root / STATE_FILE
+            if not state_path.is_file():
+                print(json.dumps({"ok": False, "engine": "remotion", "running": False}, ensure_ascii=False))
+                return 3
+            doc = json.loads(state_path.read_text(encoding="utf-8"))
+            meta = remotion_stage.fetch_stage_meta(doc.get("serverUrl", ""))
+            doc["ok"] = bool(meta and meta.get("ok"))
+            print(json.dumps(doc, ensure_ascii=False, indent=2))
+            return 0 if doc["ok"] else 3
+        try:
+            use_port = 0 if "--port" not in sys.argv else args.port
+            payload = remotion_stage.start_or_reuse_stage(root, target_dir, port=use_port)
+        except Exception as exc:
+            print(f"✗ Remotion 活舞台启动失败：{exc}", file=sys.stderr)
+            return 3
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            print(f"Remotion 活舞台 {'已启动' if payload.get('started') else '已在运行'} · {payload.get('compositionId')}")
+            print(f"  嵌入地址  {payload.get('stageUrl')}")
+            print(f"  时长      {payload.get('duration')}s ({payload.get('fps')}fps)")
+            print("  停掉：helpers/_internal/live_stage.py <project> --stop")
+        return 0
+
+    if target_dir is None or engine != "hyperframes":
+        print(f"✗ no remotion/src/Root.tsx or composition/ under {root} — nothing to stage", file=sys.stderr)
+        return 2
+
+    comp = target_dir.resolve()
     if root not in comp.parents and comp != root:
         print(f"✗ --composition 必须在项目内：{comp}", file=sys.stderr)
         return 2
@@ -288,7 +340,7 @@ def main() -> int:
     except (urllib.error.URLError, OSError, ValueError):
         pass
 
-    payload = {"ok": True, "started": started, "serverUrl": server,
+    payload = {"ok": True, "started": started, "engine": "hyperframes", "serverUrl": server,
                "stageUrl": stage, "projectId": pid,
                "composition": str(comp.relative_to(root)),
                "identity": {"verified": True, "projectRoot": str(root.resolve()),

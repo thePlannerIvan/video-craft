@@ -37,7 +37,7 @@ def _write_json(path: Path, doc) -> None:
 class RenderGateTests(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
-        self.project = Path(self._tmp.name)
+        self.project = Path(self._tmp.name).resolve()
         self.edit = self.project / "edit"
         self.edit.mkdir()
         self.source = self.project / "composition" / "index.html"
@@ -197,34 +197,62 @@ class RenderGateTests(unittest.TestCase):
         self.assertFalse(payload["evaluable"])
         self.assertFalse((self.project / "review" / "review-submissions.json").exists())
 
-    def test_approve_in_chat_with_drifted_source_refuses_and_writes_nothing(self):
+    def test_approve_in_chat_with_drifted_source_records_live_hash_and_passes(self):
+        from state_fingerprint import source_digest
+
         self._review()
         self.source.write_text("<html><body>modified after review</body></html>", encoding="utf-8")
+        expected_hash = source_digest(self.project)
 
-        report = render_gate.record_chat_approval(self.project, "尝试授权")
-        self.assertFalse(report["ok"])
+        report = render_gate.record_chat_approval(self.project, "微调后直接导出")
+        self.assertTrue(report["ok"], report)
         self.assertTrue(report["evaluable"])
-        self.assertTrue(any("源又改过" in r for r in report["reasons"]), report)
+        self.assertEqual(report["covering"], 1)
+        self.assertEqual(report["liveSourceHash"], expected_hash)
+
         submissions_file = self.project / "review" / "review-submissions.json"
-        self.assertFalse(submissions_file.exists())
+        self.assertTrue(submissions_file.is_file())
+        doc = json.loads(submissions_file.read_text(encoding="utf-8"))
+        entry = doc["records"][-1]
+        self.assertEqual(entry["kind"], "chat-approval")
+        self.assertEqual(entry["liveSourceHash"], expected_hash)
+        self.assertTrue(entry["driftedFromReview"])
+        self.assertTrue(entry.get("driftSummary"))
 
-        # Pre-existing submissions file must also remain untouched on drift.
-        self._submissions("old000")
-        before_text = submissions_file.read_text(encoding="utf-8")
-        proc = self._run_cli(str(self.project), "--approve-in-chat", "--approval-note", "继续", "--json")
-        self.assertEqual(proc.returncode, 1, proc.stderr)
+        # CLI --approve-in-chat appends audit record preserving older records and passes.
+        proc = self._run_cli(str(self.project), "--approve-in-chat", "--approval-note", "继续导出", "--json")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
         payload = json.loads(proc.stdout)
-        self.assertFalse(payload["ok"])
-        self.assertTrue(any("源又改过" in r for r in payload["reasons"]), payload)
-        self.assertEqual(submissions_file.read_text(encoding="utf-8"), before_text)
+        self.assertTrue(payload["ok"], payload)
+        self.assertEqual(payload["liveSourceHash"], expected_hash)
+        self.assertEqual(payload["covering"], 2)
 
-    def test_approve_in_chat_with_missing_manifest_refuses_and_writes_nothing(self):
+        # Bare gate passes immediately after approval, but any post-approval edit still blocks.
+        self.assertEqual(self._run_cli(str(self.project)).returncode, 0)
+        self.source.write_text("<html><body>edited after chat approval</body></html>", encoding="utf-8")
+        self.assertEqual(self._run_cli(str(self.project)).returncode, 1)
+
+    def test_approve_in_chat_with_empty_manifest_succeeds_with_live_hash(self):
+        from state_fingerprint import source_digest
+
         self.manifest = []
         self._review()
+        expected_hash = source_digest(self.project)
+
         proc = self._run_cli(str(self.project), "--approve-in-chat", "--json")
-        self.assertEqual(proc.returncode, 1, proc.stderr)
-        self.assertFalse(json.loads(proc.stdout)["ok"])
-        self.assertFalse((self.project / "review" / "review-submissions.json").exists())
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        payload = json.loads(proc.stdout)
+        self.assertTrue(payload["ok"], payload)
+        self.assertEqual(payload["liveSourceHash"], expected_hash)
+
+        doc = json.loads((self.project / "review" / "review-submissions.json").read_text(encoding="utf-8"))
+        entry = doc["records"][-1]
+        self.assertEqual(entry["liveSourceHash"], expected_hash)
+        self.assertTrue(entry["driftedFromReview"])
+
+        # Post-approval edit still blocks bare render_gate.py.
+        self.source.write_text("<html><body>post approval drift</body></html>", encoding="utf-8")
+        self.assertEqual(self._run_cli(str(self.project)).returncode, 1)
 
     def test_approve_in_chat_records_audit_entry_and_bare_gate_subsequently_passes(self):
         self._review()

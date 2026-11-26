@@ -5,8 +5,8 @@
 ----------------------------------------------------------
 - `talk-only`              只看人留白
 - `footage` / `video`      实拍/商业视频切片（媒体直切 `ffmpeg-cut`）
-- `motion` / `model`       思维模型动效（随口播演化的单一空间模型，`hyperframes`）
-- `card-deck` / `xhs`      3D 卡片组/海报展卷（`hyperframes`）
+- `motion` / `model`       思维模型动效（随口播演化的单一空间模型，`remotion`）
+- `card-deck` / `xhs`      3D 卡片组/海报展卷（`remotion`）
 - `screen-demo`            实机演示录屏（审阅挂 `proxy`，交付直切高清原录屏）
 
 旧 `visual-plan.json` 与 `pages/` 逐元素拆解仅作历史项目只读兼容。
@@ -59,7 +59,7 @@ FOOTAGE_KINDS = ("footage", "video")
 MOTION_KINDS = ("motion", "model", "card-deck", "xhs")
 DEMO_KINDS = ("screen-demo", "demo-footage")
 SHOT_KINDS = ("talk-only", *FOOTAGE_KINDS, *MOTION_KINDS, *DEMO_KINDS)
-ENGINES = ("ffmpeg-cut", "hyperframes")
+ENGINES = ("ffmpeg-cut", "remotion", "hyperframes")
 SOUND_BEDS = ("auto", "on", "off", "mute", "duck")
 IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp")
 STATIC_REF_SUFFIXES = (".svg", ".png", ".jpg", ".jpeg", ".webp", ".md", ".html")
@@ -507,7 +507,7 @@ def _seed_storyboard_shots(project: Path, capabilities: list[str]) -> list[dict]
                     st1 = max(st0 + 200, st1)
                     cursor = st1
                     kind = _map_grouping_kind(st, default_kind)
-                    engine = st.get("engine") if st.get("engine") in ENGINES else _resolve_shot_engine({"kind": kind})
+                    engine = st.get("engine") if st.get("engine") in ENGINES else _resolve_shot_engine({"kind": kind}, project=project)
                     shot: dict = {
                         "id": sid,
                         "kind": kind,
@@ -530,7 +530,7 @@ def _seed_storyboard_shots(project: Path, capabilities: list[str]) -> list[dict]
         shot = {
             "id": str(seg.get("id") or "S01"),
             "kind": kind,
-            "engine": _resolve_shot_engine({"kind": kind}),
+            "engine": _resolve_shot_engine({"kind": kind}, project=project),
             "startSec": round(float(seg.get("startMs", 0)) / 1000.0, 3),
             "endSec": round(float(seg.get("endMs", 5000)) / 1000.0, 3),
         }
@@ -895,11 +895,22 @@ def _resolve_storyboard_asset(project: Path, sb_dir: Path, raw: str) -> Path:
     return (root / p).resolve()
 
 
-def _resolve_shot_engine(shot: dict) -> str:
+def _has_remotion_dir(project: Path | None) -> bool:
+    if project is None:
+        return False
+    root = _project_root(project)
+    return any((root / "remotion" / "src" / name).is_file() for name in ("Root.tsx", "Root.ts", "Root.jsx", "Root.js"))
+
+
+def _resolve_shot_engine(shot: dict, project: Path | None = None) -> str:
     raw = shot.get("engine")
     if raw is not None:
         return str(raw)
-    return "hyperframes" if shot.get("kind") in MOTION_KINDS else "ffmpeg-cut"
+    if shot.get("kind") in MOTION_KINDS:
+        if project is not None and not _has_remotion_dir(project) and (_project_root(project) / "composition" / "index.html").is_file():
+            return "hyperframes"
+        return "remotion"
+    return "ffmpeg-cut"
 
 
 def _capability_bucket(kind: str) -> str:
@@ -1160,13 +1171,13 @@ def _verify_storyboard(project: Path, sb_path: Path, as_json: bool) -> int:
         if engine_raw is not None:
             if engine_raw not in ENGINES:
                 problems.append(f"{sid}: 非法渲染引擎 engine={engine_raw!r}（仅允许 {ENGINES}）")
-                engine = _resolve_shot_engine(dict(shot, engine=None))
+                engine = _resolve_shot_engine(dict(shot, engine=None), project=project)
             else:
                 engine = str(engine_raw)
                 if kind in MOTION_KINDS and engine == "ffmpeg-cut":
                     problems.append(f"{sid} ({kind}): 动效/模型/卡片镜头不得走 ffmpeg-cut")
         else:
-            engine = _resolve_shot_engine(shot)
+            engine = _resolve_shot_engine(shot, project=project)
         if engine in engine_counts:
             engine_counts[engine] += 1
 
@@ -1241,7 +1252,7 @@ def _verify_storyboard(project: Path, sb_path: Path, as_json: bool) -> int:
     return 0 if result["ok"] else 1
 
 
-def _compute_storyboard_stats(doc: dict) -> dict:
+def _compute_storyboard_stats(doc: dict, project: Path | None = None) -> dict:
     shots = doc.get("shots") or []
     buckets = {b: {"count": 0, "sec": 0.0, "pct": 0.0} for b in ("footage", "motion", "screen-demo", "talk-only")}
     engines = {e: {"count": 0, "sec": 0.0, "pct": 0.0} for e in ENGINES}
@@ -1254,7 +1265,7 @@ def _compute_storyboard_stats(doc: dict) -> dict:
         b = _capability_bucket(str(s.get("kind") or "talk-only"))
         buckets[b]["count"] += 1
         buckets[b]["sec"] += dur
-        eng = _resolve_shot_engine(s)
+        eng = _resolve_shot_engine(s, project=project)
         if eng in engines:
             engines[eng]["count"] += 1
             engines[eng]["sec"] += dur
@@ -1295,7 +1306,7 @@ def cmd_summary(project: Path, out: Path | None, as_json: bool) -> int:
         print(json.dumps({"ok": False, "error": f"{STORYBOARD_NAME} 解析失败：{exc}"}, ensure_ascii=False, indent=1))
         return 2
 
-    stats = _compute_storyboard_stats(doc)
+    stats = _compute_storyboard_stats(doc, project=project)
     canvas = doc.get("canvas") or {}
     canvas_str = (
         f"{canvas.get('width', '?')}×{canvas.get('height', '?')} @ {canvas.get('fps', '?')}fps"
@@ -1345,7 +1356,7 @@ def cmd_summary(project: Path, out: Path | None, as_json: bool) -> int:
         st0 = float(s.get("startSec", 0.0))
         st1 = float(s.get("endSec", 0.0))
         dur = max(0.0, st1 - st0)
-        eng = _resolve_shot_engine(s)
+        eng = _resolve_shot_engine(s, project=project)
         sound_bits: list[str] = []
         if s.get("soundBed") is not None:
             sound_bits.append(f"bed:{s['soundBed']}")
@@ -1406,7 +1417,7 @@ def _motion_shots_in(sb_doc: dict | None, project: Path) -> tuple[bool, list[dic
     if isinstance(sb_doc, dict):
         shots = [s for s in (sb_doc.get("shots") or []) if isinstance(s, dict)]
         motion_shots = [
-            s for s in shots if s.get("kind") in MOTION_KINDS or _resolve_shot_engine(s) == "hyperframes"
+            s for s in shots if s.get("kind") in MOTION_KINDS or _resolve_shot_engine(s, project) in ("remotion", "hyperframes")
         ]
         caps = sb_doc.get("capabilities") or []
         if motion_shots or "motion" in caps:
@@ -1551,7 +1562,7 @@ def cmd_lookdev(
         print(json.dumps({"ok": False, "error": msg}, ensure_ascii=False, indent=1))
         return 2
 
-    stats = _compute_storyboard_stats(sb_doc)
+    stats = _compute_storyboard_stats(sb_doc, project=project)
     existing_approved = False
     if manifest_path.is_file() and not approve:
         try:
@@ -1798,8 +1809,27 @@ def main(argv=None) -> int:
     p_lookdev.add_argument("--sample-shot", default=None, help="指定作为代表样镜的镜号 id")
     p_lookdev.add_argument("--json", action="store_true")
 
+    p_import_svg = sub.add_parser("import-svg", help="将静态 SVG 参考页导入为 Remotion 运镜场景")
+    p_import_svg.add_argument("project", type=Path)
+    p_import_svg.add_argument("--source", type=Path, required=True, action="append", help="SVG 文件或目录（可多次传）")
+    p_import_svg.add_argument("--seconds-per-slide", type=float, default=4.0)
+    p_import_svg.add_argument("--json", action="store_true")
+
     args = parser.parse_args(argv)
     project = args.project.expanduser().resolve()
+    if args.cmd == "import-svg":
+        sys.path.insert(0, str(Path(__file__).resolve().parent / "_internal"))
+        from remotion_svg_scene import import_svg_pages_to_remotion  # noqa: E402
+        res = import_svg_pages_to_remotion(
+            project,
+            [p.expanduser().resolve() for p in args.source],
+            seconds_per_slide=args.seconds_per_slide,
+        )
+        if args.json:
+            print(json.dumps(res, ensure_ascii=False, indent=2))
+        else:
+            print(f"✓ 已包装 {len(res['slides'])} 页静态 SVG 为 Remotion 场景 → {res['sceneFile']}")
+        return 0
     if args.cmd == "init":
         return cmd_init(
             project,

@@ -506,7 +506,109 @@ def _check_video_visibility_autoalpha(comp: Path, html: str, report: Report) -> 
         report.add("video-visibility-autoalpha", True, "<video class=\"clip\"> 未使用 visibility: hidden + autoAlpha 冲突样式")
 
 
+def _inspect_remotion(root: Path, remotion_dir: Path) -> Report:
+    helpers_dir = str(Path(__file__).resolve().parents[1])
+    if helpers_dir not in sys.path:
+        sys.path.insert(0, helpers_dir)
+    import remotion_runtime  # noqa: E402
+    import remotion_stage    # noqa: E402
+
+    report = Report(root, remotion_dir)
+    root_file = remotion_stage.find_root_file(remotion_dir)
+    if root_file is None:
+        report.add(
+            "remotion-root",
+            False,
+            f"找不到 {remotion_dir / 'src' / 'Root.tsx'}：缺少 Remotion 根合成定义",
+            hint="新建 remotion/src/Root.tsx 并导出 RemotionRoot（包含 <Composition>）",
+        )
+        return report
+    root_text = root_file.read_text(encoding="utf-8", errors="replace")
+    report.add("remotion-root", True, f"入口 {root_file.relative_to(root).as_posix() if root_file.is_relative_to(root) else root_file}")
+
+    entry_file = remotion_stage.find_entry_file(remotion_dir)
+    if entry_file is None:
+        report.add(
+            "remotion-entry",
+            False,
+            f"找不到 {remotion_dir / 'src' / 'index.ts'}：缺少 registerRoot 入口",
+            hint="创建 remotion/src/index.ts 并调用 registerRoot(RemotionRoot)",
+            level="warning",
+        )
+    else:
+        report.add("remotion-entry", True, f"注册入口 {entry_file.relative_to(root).as_posix() if entry_file.is_relative_to(root) else entry_file}")
+
+    has_composition = "<Composition" in root_text
+    report.add(
+        "composition-declaration",
+        has_composition,
+        "Root 包含 <Composition> 声明" if has_composition else f"{root_file.name} 未声明 <Composition>",
+        hint="在 RemotionRoot 中用 <Composition id=... component=... durationInFrames=... fps=... width=... height=... /> 注册主合成",
+    )
+
+    nm_inside = remotion_dir / "node_modules"
+    report.add(
+        "no-local-node-modules",
+        not nm_inside.exists(),
+        "工程目录保持纯净，无内嵌 node_modules" if not nm_inside.exists()
+        else f"禁止在视频项目目录内生成 node_modules：{nm_inside}（请删除并统一使用外部运行壳）",
+        hint="移除项目内 node_modules，依赖由 helpers/remotion_runtime.py setup 统一安装在外部缓存目录",
+    )
+
+    rt = remotion_runtime.inspect_runtime()
+    checks_map = {c["name"]: c["ok"] for c in (rt.get("checks") or [])}
+    if checks_map.get("node") and checks_map.get("ffmpeg") and not checks_map.get("runtime_packages"):
+        try:
+            remotion_runtime.ensure_runtime(auto_setup=True, skip_browser=True)
+            rt = remotion_runtime.inspect_runtime()
+            checks_map = {c["name"]: c["ok"] for c in (rt.get("checks") or [])}
+        except RuntimeError as exc:
+            report.add(
+                "external-runtime",
+                False,
+                f"外部运行壳自动初始化失败：{exc}",
+                hint=str(rt.get("fixCommand") or remotion_runtime.FIX_COMMAND),
+            )
+            return report
+
+    stage_ready = bool(checks_map.get("node") and checks_map.get("ffmpeg") and checks_map.get("runtime_packages"))
+    if stage_ready and not checks_map.get("headless_browser"):
+        report.add(
+            "external-runtime",
+            True,
+            f"外部运行壳活舞台包就绪：{rt['runtimeHome']}",
+        )
+        report.add(
+            "headless-browser",
+            False,
+            f"无头浏览器尚未确保（出片与抽静帧前请运行 {remotion_runtime.FIX_COMMAND}）",
+            hint=str(rt.get("fixCommand") or remotion_runtime.FIX_COMMAND),
+            level="warning",
+        )
+    else:
+        report.add(
+            "external-runtime",
+            rt["ok"],
+            f"外部运行壳就绪：{rt['runtimeHome']}" if rt["ok"]
+            else f"外部运行壳未就绪：{rt.get('fixCommand') or '检查 node / ffmpeg'}",
+            hint=str(rt.get("fixCommand") or ""),
+        )
+    return report
+
+
 def inspect(project: Path, explicit: str | None = None) -> Report:
+    internal_dir = str(Path(__file__).resolve().parent)
+    if internal_dir not in sys.path:
+        sys.path.insert(0, internal_dir)
+    import remotion_stage  # noqa: E402
+
+    p = Path(project).expanduser().resolve()
+    root = p.parent if (p.name in {"composition", "remotion", "edit"} and p.parent.is_dir()) else p
+    if explicit is None:
+        engine, target_dir = remotion_stage.detect_motion_engine(root)
+        if engine == "remotion" and target_dir is not None:
+            return _inspect_remotion(root, target_dir)
+
     root, comp = resolve_composition(Path(project), explicit)
     report = Report(root, comp)
 
@@ -734,9 +836,22 @@ def main(argv=None) -> int:
         print(f"✗ 项目不存在：{project}", file=sys.stderr)
         return 2
     _root, comp = resolve_composition(project, args.composition)
+    if args.composition is None:
+        internal_dir = str(Path(__file__).resolve().parent)
+        if internal_dir not in sys.path:
+            sys.path.insert(0, internal_dir)
+        import remotion_stage  # noqa: E402
+        eng, rem_dir = remotion_stage.detect_motion_engine(project)
+        if eng == "remotion" and rem_dir is not None:
+            report = inspect(project, None)
+            if args.json:
+                print(json.dumps(report.as_dict(), ensure_ascii=False, indent=2))
+            else:
+                print_report(report)
+            return 0 if not report.errors else 1
     if not (comp / "index.html").is_file():
-        print(f"✗ 找不到 composition：{comp / 'index.html'}", file=sys.stderr)
-        print("  用 --composition 指定目录，或在项目里建 composition/", file=sys.stderr)
+        print(f"✗ 找不到 Remotion 入口 (remotion/src/Root.tsx) 或 composition：{comp / 'index.html'}", file=sys.stderr)
+        print("  新建动效项目请创建 remotion/src/Root.tsx，旧工程可用 --composition 指定目录", file=sys.stderr)
         return 2
     report = inspect(project, args.composition)
     if args.json:

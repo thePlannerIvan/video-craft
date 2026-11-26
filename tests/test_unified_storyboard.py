@@ -557,7 +557,7 @@ class StoryboardInitAndProxyTests(unittest.TestCase):
             self.assertAlmostEqual(sb["shots"][0]["endSec"], 3.2)
             self.assertEqual(sb["shots"][1]["id"], "M01")
             self.assertEqual(sb["shots"][1]["kind"], "model")
-            self.assertEqual(sb["shots"][1]["engine"], "hyperframes")
+            self.assertEqual(sb["shots"][1]["engine"], "remotion")
 
             # Verify generated storyboard passes film.py verify
             v_res = _run_film("verify", str(proj), "--json")

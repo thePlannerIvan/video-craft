@@ -51,12 +51,24 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--composition", default=None, help="Optional composition subdirectory name")
     ap.add_argument(
         "--only",
-        choices=("all", "live-stage", "motion-targets", "screen-text", "quality", "render-env", "fidelity"),
+        choices=(
+            "all",
+            "live-stage",
+            "motion-targets",
+            "screen-text",
+            "quality",
+            "render-env",
+            "fidelity",
+            "typecheck",
+            "sync",
+            "stills",
+        ),
         default="all",
         help="Run a single check instead of the full preflight bundle",
     )
     ap.add_argument("--strict-transform", action="store_true", help="Treat static transform conflicts as errors")
     ap.add_argument("--max-static-s", type=float, default=8.0, help="Static segment error threshold (seconds)")
+    ap.add_argument("--max-stills", type=int, default=None, help="Max stills to extract (used with --only stills)")
     ap.add_argument("--video", default=None, help="Rendered video path (used with --only fidelity)")
     ap.add_argument("--samples", type=int, default=12, help="Sample frame count for fidelity check")
     ap.add_argument("--json", action="store_true", help="Emit machine-readable JSON report")
@@ -66,6 +78,17 @@ def main(argv: list[str] | None = None) -> int:
     if not target.exists():
         print(f"not found: {target}", file=sys.stderr)
         return 2
+
+    if args.only in ("typecheck", "sync", "stills"):
+        cmd_args = [str(target), "--only", args.only]
+        if args.only == "stills" and args.max_stills is not None:
+            cmd_args.extend(["--max-stills", str(args.max_stills)])
+        if args.json:
+            cmd_args.append("--json")
+        code, out, err = _run_tool("remotion_gates.py", cmd_args)
+        sys.stdout.write(out)
+        sys.stderr.write(err)
+        return code
 
     if args.only == "render-env":
         comp = target / (args.composition or "composition") if (target / (args.composition or "composition")).is_dir() else target
@@ -120,35 +143,55 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(err)
         return code
 
-    # Full bundle (`--only all`): run applicable static/build checks cleanly
-    comp_dir = target / (args.composition or "composition")
+    # Full bundle (`--only all`): route by motion engine
+    import remotion_stage  # noqa: E402
+
+    engine, _ = remotion_stage.detect_motion_engine(target, explicit_composition=args.composition)
     checks: list[dict] = []
     worst = 0
 
-    ls_args = [str(target)] + (["--composition", args.composition] if args.composition else []) + ["--json"]
-    if comp_dir.is_dir():
-        code, out, err = _run_tool("check_live_stage.py", ls_args)
+    if engine == "remotion":
+        code, out, err = _run_tool("check_live_stage.py", [str(target), "--json"])
         checks.append({"check": "live-stage", "ok": code == 0, "code": code, "report": _parse_json_tail(out) or out.strip()})
         worst = max(worst, code)
 
-        mt_args = [str(target)] + (["--strict-transform"] if args.strict_transform else []) + ["--json"]
-        code, out, err = _run_tool("check_motion_targets.py", mt_args)
-        checks.append({"check": "motion-targets", "ok": code == 0, "code": code, "report": _parse_json_tail(out) or out.strip()})
+        code, out, err = _run_tool("remotion_gates.py", [str(target), "--only", "typecheck", "--json"])
+        checks.append({"check": "typecheck", "ok": code == 0, "code": code, "report": _parse_json_tail(out) or out.strip()})
         worst = max(worst, code)
 
-    if comp_dir.is_dir() or (target / "visual-plan.json").is_file():
-        vq_args = (
-            [str(target)]
-            + (["--composition", args.composition] if args.composition else [])
-            + ["--max-static-s", str(args.max_static_s), "--json"]
-        )
-        code, out, err = _run_tool("check_visual_quality.py", vq_args)
-        checks.append({"check": "quality", "ok": code == 0, "code": code, "report": _parse_json_tail(out) or out.strip()})
+        code, out, err = _run_tool("remotion_gates.py", [str(target), "--only", "sync", "--json"])
+        checks.append({"check": "sync", "ok": code == 0, "code": code, "report": _parse_json_tail(out) or out.strip()})
         worst = max(worst, code)
 
-    code, out, err = _run_tool("check_screen_text.py", [str(target), "--json"])
-    checks.append({"check": "screen-text", "ok": code == 0, "code": code, "report": _parse_json_tail(out) or out.strip()})
-    worst = max(worst, code)
+        code, out, err = _run_tool("check_screen_text.py", [str(target), "--json"])
+        checks.append({"check": "screen-text", "ok": code == 0, "code": code, "report": _parse_json_tail(out) or out.strip()})
+        worst = max(worst, code)
+    else:
+        comp_dir = target / (args.composition or "composition")
+        ls_args = [str(target)] + (["--composition", args.composition] if args.composition else []) + ["--json"]
+        if comp_dir.is_dir():
+            code, out, err = _run_tool("check_live_stage.py", ls_args)
+            checks.append({"check": "live-stage", "ok": code == 0, "code": code, "report": _parse_json_tail(out) or out.strip()})
+            worst = max(worst, code)
+
+            mt_args = [str(target)] + (["--strict-transform"] if args.strict_transform else []) + ["--json"]
+            code, out, err = _run_tool("check_motion_targets.py", mt_args)
+            checks.append({"check": "motion-targets", "ok": code == 0, "code": code, "report": _parse_json_tail(out) or out.strip()})
+            worst = max(worst, code)
+
+        if comp_dir.is_dir() or (target / "visual-plan.json").is_file():
+            vq_args = (
+                [str(target)]
+                + (["--composition", args.composition] if args.composition else [])
+                + ["--max-static-s", str(args.max_static_s), "--json"]
+            )
+            code, out, err = _run_tool("check_visual_quality.py", vq_args)
+            checks.append({"check": "quality", "ok": code == 0, "code": code, "report": _parse_json_tail(out) or out.strip()})
+            worst = max(worst, code)
+
+        code, out, err = _run_tool("check_screen_text.py", [str(target), "--json"])
+        checks.append({"check": "screen-text", "ok": code == 0, "code": code, "report": _parse_json_tail(out) or out.strip()})
+        worst = max(worst, code)
 
     overall_ok = worst == 0
     if args.json:

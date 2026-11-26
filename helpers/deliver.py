@@ -4,10 +4,10 @@
 默认分轨三件套（包含真人口播与画面层时）
 ------------------------------------------
 1. `<片名>_人物成片.mp4`：无损流式复制高码率人物视频（优先 `edit/cut.mp4`）+ 立体声 AAC 音轨；
-2. `<片名>_画面成片.mp4`：剥离音轨（0 音轨）的纯画面成片（含实机演示清晰文字拼合）；
+2. `<片名>_画面成片.mp4`：纯画面成片（无声景则 0 音轨，有声景附单独音效轨；含实机演示清晰文字拼合）；
 3. `<片名>_字幕.srt`：经过剪映/PR 导入空隙保护（句间间隙 ≥30ms）的外挂字幕（源 `edit/subtitles.srt` 保持不动）。
 
-纯口播（`pure-talking`）仅输出人物成片 + 字幕；无人物轨（`--no-person`）输出全幅成片 + 字幕；
+无视觉层时仅输出人物成片 + 字幕；无人物轨（`--no-person`）输出全幅成片 + 字幕；
 显式合流（`--composite` / `--mode composite` / `--burn-subtitles`）输出单轨视听成片 + 字幕。
 
 接口
@@ -19,7 +19,7 @@
     python3 helpers/deliver.py <project> --no-person           # 纯画面 + 旁白：画面层全幅交付
     python3 helpers/deliver.py <project> --json
 
-前置：`render_gate.py` 必须放行（浏览器人工提交或明确 `--approve-in-chat` 留档，且源码零漂移）。
+前置：`render_gate.py` 必须放行（浏览器人工提交，或作者在对话中明确指示导出后 via `--approve-in-chat` 记录实时源码指纹放行）。
 默认**不渲染**：缺画面层或画面层比 composition 旧时直接拒绝，要渲染必须显式 `--render`
 （那是交付动作，不是审阅动作）。`--skip-gate` 只对测试进程（`DSH_TEST=1`）开放。
 """
@@ -194,7 +194,7 @@ def _preflight(project: Path, check, note) -> tuple[bool, int]:
         has_motion_shot = "motion" in caps or any(
             isinstance(s, dict) and (
                 s.get("kind") in ("motion", "model", "card-deck", "xhs")
-                or s.get("engine") == "hyperframes"
+                or s.get("engine") in ("remotion", "hyperframes")
             )
             for s in shots
         )
@@ -202,6 +202,45 @@ def _preflight(project: Path, check, note) -> tuple[bool, int]:
             ld_proc = _run([sys.executable, str(HELPERS / "film.py"), "lookdev", str(project), "--verify", "--json"])
             if not check("Look-Dev 样镜定调", ld_proc.returncode == 0, (ld_proc.stdout + ld_proc.stderr)[-2000:]):
                 return False, 1
+
+    import remotion_stage
+    motion_engine, rem_dir = remotion_stage.detect_motion_engine(project)
+    if motion_engine == "remotion" and rem_dir is not None:
+        import remotion_runtime
+        rt = remotion_runtime.inspect_runtime()
+        browser_bin, browser_source = remotion_runtime.resolve_browser_executable()
+        rt_ok = bool(rt.get("ok")) or (
+            browser_bin is not None
+            and all(c.get("ok") for c in (rt.get("checks") or []) if c.get("name") != "headless_browser")
+        )
+        detail = (
+            f"ready ({rt.get('runtimeHome')}, browser={browser_source})"
+            if rt_ok
+            else (rt.get("fixCommand") or f"not ready ({rt.get('runtimeHome')})")
+        )
+        if not check("Remotion 运行壳", rt_ok, detail):
+            return False, 1
+        for gate_only, label in (
+            ("typecheck", "Remotion 类型检查"),
+            ("sync", "Remotion 分镜对账"),
+            ("stills", "Remotion 分镜静帧"),
+        ):
+            gproc = _run([sys.executable, str(INTERNAL / "remotion_gates.py"), str(project), "--only", gate_only, "--json"])
+            gdetail = (gproc.stdout + gproc.stderr)[-2000:]
+            try:
+                gdoc = json.loads(gproc.stdout or "{}")
+                if gdoc.get("errors"):
+                    gdetail = "；".join(str(e) for e in gdoc["errors"][:3])
+            except ValueError:
+                pass
+            if not check(label, gproc.returncode == 0, "ok" if gproc.returncode == 0 else gdetail):
+                return False, 1
+        if has_visual_plan or has_storyboard:
+            qproc = _run([sys.executable, str(INTERNAL / "check_visual_quality.py"), str(project), "--json"])
+            if not check("构建期画面体检", qproc.returncode == 0, (qproc.stdout + qproc.stderr)[-2000:]):
+                return False, 1
+        return True, 1
+
     composition = project / "composition"
     has_comp = (composition / "index.html").is_file()
     if not has_comp:
@@ -428,13 +467,22 @@ def _load_storyboard(project: Path) -> tuple[Path | None, dict | None]:
         return sb_path, None
 
 
-def _shot_engine(shot: dict) -> str:
+def _default_motion_engine(project: Path | None) -> str:
+    if project is None:
+        return "remotion"
+    import remotion_stage
+    eng, _ = remotion_stage.detect_motion_engine(project)
+    return eng or "remotion"
+
+
+def _shot_engine(shot: dict, default_motion_engine: str | None = None) -> str:
     raw = shot.get("engine")
-    if raw in ("ffmpeg-cut", "hyperframes"):
+    if raw in ("ffmpeg-cut", "remotion", "hyperframes"):
         return str(raw)
+    motion_eng = default_motion_engine or "remotion"
     if shot.get("overlay") is True:
-        return "hyperframes"
-    return "hyperframes" if shot.get("kind") in _MOTION_KINDS else "ffmpeg-cut"
+        return motion_eng
+    return motion_eng if shot.get("kind") in _MOTION_KINDS else "ffmpeg-cut"
 
 
 def _resolve_storyboard_asset(project: Path, sb_dir: Path, raw: str) -> Path:
@@ -468,18 +516,20 @@ def _find_shot_rendered_clip(project: Path, sb_dir: Path, shot: dict) -> Path | 
                 return cand
     sid = str(shot.get("id") or "").strip()
     if sid:
-        cand = project / "composition" / "_render" / f"{sid}.mp4"
-        if cand.is_file():
-            return cand
+        for base_dir in (project / "remotion" / "_render", project / "composition" / "_render"):
+            cand = base_dir / f"{sid}.mp4"
+            if cand.is_file():
+                return cand
     return None
 
 
 def _storyboard_needs_visual_base(project: Path, sb_path: Path, sb_doc: dict) -> bool:
     sb_dir = sb_path.parent
+    default_motion = _default_motion_engine(project)
     for shot in sb_doc.get("shots") or []:
         if not isinstance(shot, dict):
             continue
-        if _shot_engine(shot) == "hyperframes" and _find_shot_rendered_clip(project, sb_dir, shot) is None:
+        if _shot_engine(shot, default_motion) in ("remotion", "hyperframes") and _find_shot_rendered_clip(project, sb_dir, shot) is None:
             return True
     return False
 
@@ -501,7 +551,12 @@ def _parse_box(raw_box: object, fallback: dict[str, int]) -> dict[str, int]:
     return {"x": sx, "y": sy, "w": sw, "h": sh}
 
 
-def _storyboard_timeline_spans(sb_doc: dict, visual_dur: float) -> list[dict]:
+def _storyboard_timeline_spans(
+    sb_doc: dict,
+    visual_dur: float,
+    *,
+    default_motion_engine: str | None = None,
+) -> list[dict]:
     """Normalize storyboard shots into contiguous non-overlapping timeline spans."""
     shots = sorted(
         (s for s in (sb_doc.get("shots") or []) if isinstance(s, dict)),
@@ -526,7 +581,7 @@ def _storyboard_timeline_spans(sb_doc: dict, visual_dur: float) -> list[dict]:
                           "t0": cursor, "t1": t0, "shot": {}})
         spans.append({"id": str(shot.get("id") or f"seg-{len(spans) + 1:02d}"),
                       "kind": str(shot.get("kind") or "talk-only"),
-                      "engine": _shot_engine(shot), "t0": t0, "t1": t1, "shot": shot})
+                      "engine": _shot_engine(shot, default_motion_engine), "t0": t0, "t1": t1, "shot": shot})
         cursor = t1
     if total_dur - cursor > 0.002:
         gap_idx += 1
@@ -561,7 +616,7 @@ def _encode_storyboard_segment(project: Path, sb_dir: Path, span: dict, n_frames
     inputs: list[str] = []
     filters: list[str] = []
 
-    if engine == "hyperframes":
+    if engine in ("remotion", "hyperframes"):
         per_shot = _find_shot_rendered_clip(project, sb_dir, shot)
         if per_shot is not None:
             src_in = float(shot.get("clipIn") or shot.get("inSec") or 0.0)
@@ -569,7 +624,7 @@ def _encode_storyboard_segment(project: Path, sb_dir: Path, span: dict, n_frames
         elif visual_path is not None and visual_path.is_file():
             inputs.extend(["-ss", f"{t0:.3f}", "-i", str(visual_path)])
         else:
-            raise RuntimeError(f"{span['id']} ({kind}) 缺少 HyperFrames 渲染画面")
+            raise RuntimeError(f"{span['id']} ({kind}) 缺少 {engine} 渲染画面")
         filters.append(
             f"[0:v]fps={fps},scale={cw}:{ch}:force_original_aspect_ratio=decrease:flags=lanczos,"
             f"pad={cw}:{ch}:(ow-iw)/2:(oh-ih)/2:color=#11131a,"
@@ -704,7 +759,11 @@ def _splice_storyboard_segments(project: Path, sb_path: Path, sb_doc: dict,
     overlay_img = overlay_img if overlay_img.is_file() else None
 
     visual_dur = _duration(visual_path) if (visual_path is not None and visual_path.is_file()) else 0.0
-    spans = _storyboard_timeline_spans(sb_doc, visual_dur)
+    spans = _storyboard_timeline_spans(
+        sb_doc,
+        visual_dur,
+        default_motion_engine=_default_motion_engine(project),
+    )
     if not spans:
         raise RuntimeError("storyboard.json 没有可用片段")
 
@@ -845,8 +904,11 @@ def _has_empty_capabilities(text: str) -> bool:
 def _is_pure_talking_project(project: Path) -> bool:
     """Detect base-only (no visual capabilities) or legacy pure-talking projects."""
     import re
+    import remotion_stage
     has_visual_infra = (
-        (project / "composition").is_dir()
+        (project / "remotion").is_dir()
+        or remotion_stage.detect_motion_engine(project)[0] == "remotion"
+        or (project / "composition").is_dir()
         or (project / "recompose.json").is_file()
         or (project / "visual-plan.json").is_file()
         or _find_storyboard(project) is not None
@@ -1000,6 +1062,10 @@ def _finalize_report(project: Path, edit_dir: Path, out: Path, name: str, report
     report["ok"] = report["composition_ok"] and report["delivery_ok"]
     (out / f"{name}_核验报告.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if report["ok"]:
+        from state_fingerprint import capture
+        (out / "delivery.json").write_text(
+            json.dumps(capture(project), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     if not as_json:
         print(f"\n{'✓' if report['ok'] else '✗'} {headline}")
         print(f"  核验报告：{out / f'{name}_核验报告.json'}")
@@ -1293,7 +1359,7 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
     srt_out = out / f"{name}_字幕.srt"
 
     if effective_mode == "pure-talking":
-        note("纯口播模式（pure-talking）：无画面视觉层，不拆分空画面轨，仅交付人物成片与字幕")
+        note("无视觉层交付：不拆分空画面轨，仅交付人物成片与字幕")
         person_out = out / f"{name}_人物成片.mp4"
         expected_dur = (_ms / 1000.0) if (_ms and _ms > 0) else _duration(audio_path)
         if not _mux_person_track(person_path, audio_path, person_out, expected_dur, check,
@@ -1321,14 +1387,22 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
             as_json=as_json, note=note, headline=f"人物成片：{person_out}",
         )
 
-    # 2) 画面层：已有就用，没有就渲（storyboard.json 若无待渲 HyperFrames 段且无底片时可直拼）
+    # 2) 画面层：已有就用，没有就渲（storyboard.json 若无待渲动效段且无底片时可直拼）
+    import remotion_stage
+    motion_engine, remotion_dir = remotion_stage.detect_motion_engine(project)
     sb_path, sb_doc = _load_storyboard(project)
     needs_visual_base = (
         sb_doc is None
         or sb_path is None
         or _storyboard_needs_visual_base(project, sb_path, sb_doc)
     )
-    visual_path = _pick(project, visuals, [project / "composition/_render/visuals.mp4"])
+    visual_candidates: list[Path] = []
+    if motion_engine == "remotion" and remotion_dir is not None:
+        visual_candidates.append(remotion_dir / "_render" / "visuals.mp4")
+    else:
+        visual_candidates.append(project / "remotion/_render/visuals.mp4")
+    visual_candidates.append(project / "composition/_render/visuals.mp4")
+    visual_path = _pick(project, visuals, visual_candidates)
     if visual_path is not None and visuals_confirm_current:
         _record_visual_source(project, visual_path, 'manual-confirmation')
         note('执行者明确确认现有画面层属于当前来源；已记录人工确认及文件内容身份')
@@ -1339,7 +1413,7 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
             check("画面层", False, detail)
             report["ok"] = False
             return stop()
-        note(f"画面层比 composition 源旧（{visual_path.name}），按 --render 重新渲染")
+        note(f"画面层比工程源旧（{visual_path.name}），按 --render 重新渲染")
         visual_path = None
     if visual_path is None and needs_visual_base:
         if not render:
@@ -1347,19 +1421,29 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
             check("画面层", False, detail)
             report["ok"] = False
             return stop()
-        (project / "composition/_render").mkdir(parents=True, exist_ok=True)
         from state_fingerprint import source_entries
         rendering_sources = source_entries(project)
-        # --workers 1：多 worker 截图通道会在长片的后半段静默丢内容
-        # （2026-11-04 品牌屋：4 worker 渲染 78s 之后整栋画面不画，退出码仍为 0；见 GOTCHAS #79）。
-        # 单 worker 慢一倍，但交付只渲这一次；一致性由下面的 check_render_fidelity 核。
-        render_proc = _run(["hyperframes", "render", str(project / "composition"),
-                            "-o", str(project / "composition/_render/visuals.mp4"),
-                            "--workers", "1", "-q", "looks"])
-        visual_path = project / "composition/_render/visuals.mp4"
-        if render_proc.returncode != 0 or not visual_path.is_file():
-            check("画面层渲染", False, (render_proc.stderr or render_proc.stdout or "")[-400:])
-            return stop()
+        if motion_engine == "remotion" and remotion_dir is not None:
+            import remotion_gates
+            render_target = remotion_dir / "_render" / "visuals.mp4"
+            render_target.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                visual_path = remotion_gates.render_remotion(project, remotion_dir, render_target)
+            except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
+                check("画面层渲染", False, str(exc)[-600:])
+                return stop()
+        else:
+            (project / "composition/_render").mkdir(parents=True, exist_ok=True)
+            # --workers 1：多 worker 截图通道会在长片的后半段静默丢内容
+            # （2026-11-04 品牌屋：4 worker 渲染 78s 之后整栋画面不画，退出码仍为 0；见 GOTCHAS #79）。
+            # 单 worker 慢一倍，但交付只渲这一次；一致性由下面的 check_render_fidelity 核。
+            render_proc = _run(["hyperframes", "render", str(project / "composition"),
+                                "-o", str(project / "composition/_render/visuals.mp4"),
+                                "--workers", "1", "-q", "looks"])
+            visual_path = project / "composition/_render/visuals.mp4"
+            if render_proc.returncode != 0 or not visual_path.is_file():
+                check("画面层渲染", False, (render_proc.stderr or render_proc.stdout or "")[-400:])
+                return stop()
         if rendering_sources != source_entries(project):
             check('画面层来源', False, '渲染期间来源改变；核对当前版本后重新渲染')
             return stop()
@@ -1371,7 +1455,7 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
 
         # 画面层真的等于 composition 吗？渲染通道会静默丢内容（GOTCHAS #79），
         # 运动/黑帧/分辨率都量不出来：抽 12 个时间点和 composition 的快照逐帧比结构。
-        if (project / "composition" / "hyperframes.json").is_file():
+        if motion_engine != "remotion" and (project / "composition" / "hyperframes.json").is_file():
             fid = _run([sys.executable, str(INTERNAL / "check_render_fidelity.py"), str(project),
                         "--video", str(visual_path), "--samples", "12", "--json"])
             fid_report: dict = {}
@@ -1391,10 +1475,12 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
             else:
                 # 检查跑不起来（没有可用的 snapshot 通道）与「跑通了但内容不一致」不是一件事
                 note(f"画面一致性检查未能执行：{(fid.stderr or '')[-200:].strip() or '未知原因'}")
+        elif motion_engine == "remotion":
+            note("Remotion 工程：跳过 HyperFrames 逐帧快照对比，由 Remotion 门禁与静帧抽检覆盖")
         else:
             note("composition 不是 HyperFrames 工程（无 hyperframes.json）：跳过画面一致性检查")
     else:
-        note("storyboard.json 按段直拼模式：无需整片 HyperFrames visuals.mp4 底片")
+        note("storyboard.json 按段直拼模式：无需整片动效 visuals.mp4 底片")
 
     raw_visual_path = visual_path
     demo_tmp_dir = None
@@ -1417,9 +1503,8 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
                 return stop()
             visual_path = spliced_visual
             report["segment_splice"] = splice_info
-            check("分镜分段拼合", True,
-                  f"{splice_info['count']} 段按引擎分流拼合（ffmpeg-cut={splice_info['engine_counts']['ffmpeg-cut']}, "
-                  f"hyperframes={splice_info['engine_counts']['hyperframes']}）")
+            eng_summary = ", ".join(f"{k}={v}" for k, v in splice_info["engine_counts"].items())
+            check("分镜分段拼合", True, f"{splice_info['count']} 段按引擎分流拼合（{eng_summary}）")
         else:
             demo_segs = _load_demo_segments(project)
             if demo_segs:
@@ -1644,7 +1729,7 @@ def main(argv=None) -> int:
     parser.add_argument("--render", action="store_true",
                         help="显式渲染画面层（交付动作；默认不渲染，缺画面层时拒绝）")
     parser.add_argument("--approve-in-chat", action="store_true",
-                        help="仅在作者于当前对话明确指示导出时使用：核验当前快照与零漂移后写入会话授权审计记录并放行")
+                        help="仅在作者于当前对话明确指示导出时使用：核验审阅快照存在后写入含实时源码指纹的会话授权审计记录并放行（允许审阅后微调按授权导出）")
     parser.add_argument("--approval-note", default=None,
                         help="可选：配合 --approve-in-chat 记录到审计条目的授权原因说明（默认：作者在对话中明确授权导出）")
     parser.add_argument("--skip-gate", action="store_true", help="测试夹具用：跳过 render_gate")

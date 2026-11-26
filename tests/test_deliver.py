@@ -78,9 +78,11 @@ class DeliverChatApprovalAndCliTests(unittest.TestCase):
             self.assertNotEqual(p2.returncode, 0)
             self.assertIn("--skip-gate", p2.stderr)
 
-    def test_approve_in_chat_blocks_without_review_or_on_source_drift(self):
+    def test_approve_in_chat_blocks_without_review_and_allows_post_review_drift(self):
+        from state_fingerprint import source_digest
+
         with tempfile.TemporaryDirectory() as td:
-            root = Path(td)
+            root = Path(td).resolve()
             no_rev = root / "no_rev"
             (no_rev / "edit").mkdir(parents=True)
             with patch.object(deliver, "_preflight", return_value=(True, 1)), \
@@ -98,19 +100,21 @@ class DeliverChatApprovalAndCliTests(unittest.TestCase):
             self.assertFalse((no_rev / "review/review-submissions.json").exists())
 
             drifted = self._seed_review_project(root, drift=True)
+            expected_hash = source_digest(drifted)
             with patch.object(deliver, "_preflight", return_value=(True, 1)), \
-                 patch.object(deliver, "_run") as enc2, redirect_stdout(io.StringIO()):
-                code2 = deliver.deliver(
+                 patch.object(deliver, "_run"), redirect_stdout(io.StringIO()):
+                deliver.deliver(
                     drifted, None, None, None, None, drifted / "成品",
-                    False, False, True, approve_in_chat=True, approval_note="未建快照尝试导出",
+                    False, False, True, approve_in_chat=True, approval_note="微调后按对话授权导出",
                 )
-            self.assertNotEqual(code2, 0)
-            enc2.assert_not_called()
             rep2 = json.loads((drifted / "成品" / f"{drifted.name}_核验报告.json").read_text(encoding="utf-8"))
             gate2 = next(c for c in rep2["checks"] if c["name"] == "渲染闸门")
-            self.assertFalse(gate2["ok"])
-            self.assertIn("源又改过", gate2["detail"])
-            self.assertFalse((drifted / "review/review-submissions.json").exists())
+            self.assertTrue(gate2["ok"], gate2)
+            subs = json.loads((drifted / "review/review-submissions.json").read_text(encoding="utf-8"))
+            entry = subs["records"][-1]
+            self.assertEqual(entry["kind"], "chat-approval")
+            self.assertTrue(entry["driftedFromReview"])
+            self.assertEqual(entry["liveSourceHash"], expected_hash)
 
     @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "需要 ffmpeg/ffprobe")
     def test_cli_approve_in_chat_records_audit_entry_and_delivers(self):

@@ -392,8 +392,8 @@ def _num_attr(attrs: str, name: str) -> float | None:
         return None
 
 
-def _svg_offsets(raw: str) -> list[tuple[int, int, int, int]]:
-    """Return [(span_start, span_end, ox, oy), ...] for positioned <svg> elements."""
+def _style_id_offsets(raw: str) -> dict[str, tuple[int, int]]:
+    """Extract `#id { left: ..px; top: ..px }` pixel offsets from <style> blocks."""
     id_offsets: dict[str, tuple[int, int]] = {}
     for sm in re.finditer(r"<style\b[^>]*>(.*?)</style>", raw, re.S | re.I):
         for rm in re.finditer(r"#([A-Za-z_][\w-]*)\s*\{([^}]*)\}", sm.group(1)):
@@ -404,22 +404,82 @@ def _svg_offsets(raw: str) -> list[tuple[int, int, int, int]]:
                     int(round(float(lm.group(1)))) if lm else 0,
                     int(round(float(tm.group(1)))) if tm else 0,
                 )
+    return id_offsets
+
+
+def _attrs_offset(attrs: str, id_offsets: dict[str, tuple[int, int]]) -> tuple[int, int]:
+    """Resolve explicit CSS `left/top` and SVG `transform="translate(x, y)"` on one tag."""
+    ox, oy = 0, 0
+    idm = re.search(r'\bid\s*=\s*["\']([^"\']+)["\']', attrs)
+    if idm and idm.group(1) in id_offsets:
+        ox, oy = id_offsets[idm.group(1)]
+    st_m = re.search(r'\bstyle\s*=\s*(?:"([^"]*)"|\'([^\']*)\')', attrs, re.I)
+    if st_m:
+        st = st_m.group(1) if st_m.group(1) is not None else st_m.group(2)
+        lm = re.search(r"\bleft\s*:\s*(-?[\d.]+)px", st)
+        tm = re.search(r"\btop\s*:\s*(-?[\d.]+)px", st)
+        if lm:
+            ox = int(round(float(lm.group(1))))
+        if tm:
+            oy = int(round(float(tm.group(1))))
+    tr_m = re.search(
+        r'\btransform\s*=\s*(?:"[^"]*translate\(\s*(-?[\d.]+)(?:px)?\s*(?:,\s*(-?[\d.]+)(?:px)?)?\s*\)[^"]*"'
+        r'|\'[^\']*translate\(\s*(-?[\d.]+)(?:px)?\s*(?:,\s*(-?[\d.]+)(?:px)?)?\s*\)[^\']*\')',
+        attrs,
+        re.I,
+    )
+    if tr_m:
+        tx = tr_m.group(1) if tr_m.group(1) is not None else tr_m.group(3)
+        ty = tr_m.group(2) if tr_m.group(2) is not None else tr_m.group(4)
+        if tx is not None:
+            ox += int(round(float(tx)))
+        if ty is not None:
+            oy += int(round(float(ty)))
+    return ox, oy
+
+
+def _ancestor_offset_spans(raw: str) -> list[tuple[int, int, int, int]]:
+    """Return [(start, end, dx, dy), ...] for ALL positioned ancestor containers (<div|section|g|svg|...>)."""
+    id_offsets = _style_id_offsets(raw)
+    spans: list[tuple[int, int, int, int]] = []
+    stack: list[tuple[str, int, int, int]] = []
+    container_tags = {"div", "section", "main", "article", "aside", "g", "svg"}
+    for m in re.finditer(r"<(/?)([a-zA-Z][\w:-]*)\b([^>]*)>", raw, re.S):
+        closing, tag, attrs = m.group(1), m.group(2).lower(), m.group(3)
+        if not closing:
+            if tag in container_tags and not (attrs.rstrip().endswith("/") or tag in _VOID_HTML_TAGS):
+                dx, dy = _attrs_offset(attrs, id_offsets)
+                stack.append((tag, m.start(), dx, dy))
+        else:
+            for idx in range(len(stack) - 1, -1, -1):
+                if stack[idx][0] == tag:
+                    for _t, s_pos, dx, dy in stack[idx:]:
+                        if dx or dy:
+                            spans.append((s_pos, m.end(), dx, dy))
+                    del stack[idx:]
+                    break
+    for _t, s_pos, dx, dy in stack:
+        if dx or dy:
+            spans.append((s_pos, len(raw), dx, dy))
+    return spans
+
+
+def _cumulative_offset_at(pos: int, spans: list[tuple[int, int, int, int]]) -> tuple[int, int]:
+    """Sum offsets of all enclosing ancestor containers at byte offset `pos` (strictly enclosing)."""
+    tx, ty = 0, 0
+    for s0, s1, dx, dy in spans:
+        if s0 < pos < s1:
+            tx += dx
+            ty += dy
+    return tx, ty
+
+
+def _svg_offsets(raw: str) -> list[tuple[int, int, int, int]]:
+    """Backward-compatible wrapper returning positioned <svg> spans."""
+    id_offsets = _style_id_offsets(raw)
     ranges: list[tuple[int, int, int, int]] = []
     for sm in re.finditer(r"<svg\b([^>]*)>(.*?)</svg>", raw, re.S | re.I):
-        attrs = sm.group(1)
-        ox, oy = 0, 0
-        idm = re.search(r'\bid\s*=\s*["\']([^"\']+)["\']', attrs)
-        if idm and idm.group(1) in id_offsets:
-            ox, oy = id_offsets[idm.group(1)]
-        st_m = re.search(r'\bstyle\s*=\s*(?:"([^"]*)"|\'([^\']*)\')', attrs, re.I)
-        if st_m:
-            st = st_m.group(1) if st_m.group(1) is not None else st_m.group(2)
-            lm = re.search(r"\bleft\s*:\s*(-?[\d.]+)px", st)
-            tm = re.search(r"\btop\s*:\s*(-?[\d.]+)px", st)
-            if lm:
-                ox = int(round(float(lm.group(1))))
-            if tm:
-                oy = int(round(float(tm.group(1))))
+        ox, oy = _attrs_offset(sm.group(1), id_offsets)
         if ox or oy:
             ranges.append((sm.start(), sm.end(), ox, oy))
     return ranges
@@ -437,7 +497,7 @@ def _check_safe_zones(files: list[Path], geo: dict, errors: list[dict]) -> None:
             continue
         raw = _strip_comments(path.read_text(encoding="utf-8", errors="ignore"), path.suffix.lower())
         exempt_spans = _role_spans(raw)
-        svg_spans = _svg_offsets(raw)
+        ancestor_spans = _ancestor_offset_spans(raw)
         for m in re.finditer(r"<(rect|circle|image|text|div|section|g)\b([^>]*)>", raw, re.I):
             tag = m.group(1).lower()
             attrs = m.group(2)
@@ -458,12 +518,7 @@ def _check_safe_zones(files: list[Path], geo: dict, errors: list[dict]) -> None:
                 )
             ):
                 continue
-            ox, oy = 0, 0
-            if tag in ("rect", "circle", "image", "text"):
-                for s0, s1, sx, sy in svg_spans:
-                    if s0 <= m.start() < s1:
-                        ox, oy = sx, sy
-                        break
+            ox, oy = _cumulative_offset_at(m.start(), ancestor_spans)
             box: dict[str, int] | None = None
             if tag in ("rect", "image"):
                 x = _num_attr(attrs, "x")
@@ -504,7 +559,7 @@ def _check_safe_zones(files: list[Path], geo: dict, errors: list[dict]) -> None:
                         w, h = float(wm.group(1)), float(hm.group(1))
                         if w >= cw * 0.95 and h >= ch * 0.95:
                             continue
-                        box = {"x": int(round(float(lm.group(1)))), "y": int(round(float(tm.group(1)))),
+                        box = {"x": int(round(float(lm.group(1)))) + ox, "y": int(round(float(tm.group(1)))) + oy,
                                "w": int(round(w)), "h": int(round(h))}
             if box is None:
                 continue
@@ -664,7 +719,7 @@ def _check_anchor_label_bounds(files: list[Path], geo: dict, errors: list[dict])
             continue
         raw = _strip_comments(path.read_text(encoding="utf-8", errors="ignore"), suf)
         exempt_spans = _role_spans(raw)
-        svg_spans = _svg_offsets(raw)
+        ancestor_spans = _ancestor_offset_spans(raw)
         svg_scales = _svg_scales(raw)
         for m in re.finditer(r"<text\b([^>]*)>(.*?)</text>|<text\b([^>]*)/>", raw, re.S | re.I):
             attrs = m.group(1) if m.group(1) is not None else (m.group(3) or "")
@@ -675,11 +730,8 @@ def _check_anchor_label_bounds(files: list[Path], geo: dict, errors: list[dict])
             y = _num_attr(attrs, "y")
             if x is None or y is None:
                 continue
-            ox, oy = 0.0, 0.0
-            for s0, s1, dx, dy in svg_spans:
-                if s0 <= m.start() < s1:
-                    ox, oy = float(dx), float(dy)
-                    break
+            ax, ay = _cumulative_offset_at(m.start(), ancestor_spans)
+            ox, oy = float(ax), float(ay)
             sx, sy = 1.0, 1.0
             for s0, s1, rx, ry in svg_scales:
                 if s0 <= m.start() < s1:
@@ -1054,7 +1106,7 @@ def _load_plan_or_storyboard(project: Path) -> dict | None:
                 kind = str(shot.get("kind") or "talk-only")
                 if kind in DEMO_SHOT_KINDS:
                     tier = "demo-footage"
-                elif kind in MOTION_SHOT_KINDS or shot.get("engine") == "hyperframes":
+                elif kind in MOTION_SHOT_KINDS or shot.get("engine") in ("remotion", "hyperframes"):
                     tier = "logic-diagram"
                 else:
                     tier = "talk-only"

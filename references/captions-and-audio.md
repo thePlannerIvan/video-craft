@@ -74,4 +74,4 @@ python3 "<craft>/helpers/_internal/check_caption_breaks.py" "<edit>/subtitles.sr
     - **动效起伏音效层**：直接消费 `storyboard.json` 中的 `model` / `card-deck` 卡点，从内置 `assets/sfx/` 取经验证 CC0 音效完成「推起（`swell`/`riser`）→ 落点（`whoosh`/`sub-drop`/`crisp-tick`/`chime`）」配音并施加高频柔化搁架；
     - **素材原声底噪自动筛分与闪避**：提取 `footage` 片段原声，自动三档分流（纯配乐/干净环境音挖空人声频段 `1400 Hz -9dB` 与 `2400 Hz` 滚降；疑带轻对白的低频音乐仅留 `≤450 Hz` 暖底垫；清晰对白或高杂噪自动静音），再以人声母带作侧链键控 `-5 dB` 动态闪避；通过 `--broll-bed on|off` 切换开关，审阅期可通过 `--preview-variants` 生成开关对照轨；
   - **内置确定性响度门禁（`sound_design.py verify`）**：独立声景母带落在 `-37.0..-30.0 LUFS`（`TP ≤ -13.5 dBTP`），模拟「人声母带 + 声景母带」合播落在 `-14.2..-13.4 LUFS`（`TP ≤ -1.0 dBTP`），越界直接退 1 拒绝。
-- 使用已预混音频进 `render.py` 时传 `--no-loudnorm`（且 `-o` 禁止使用 `base*.mp4` 内部保留名，#84）；交付验证须读立体声整片 `ebur128`。HyperFrames composition 旁白进 `composition/assets/` 前优先直接用 `audio_mix.py` 处理。
+- 使用已预混音频进 `render.py` 时传 `--no-loudnorm`（且 `-o` 禁止使用 `base*.mp4` 内部保留名，#84）；交付验证须读立体声整片 `ebur128`。Remotion 场景（`remotion/public/assets/`）或历史兼容 `composition/assets/` 旁白在导入前优先直接用 `audio_mix.py` 处理。

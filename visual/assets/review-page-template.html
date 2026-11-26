@@ -327,7 +327,8 @@
       z-index: 5;
     }
     #live-stage-wrap[hidden], #composite-player-wrap[hidden] { display: none; }
-    #live-stage-frame { width: 100%; height: 100%; border: 0; display: block; background: #000; }
+    #live-stage-frame, #remotion-stage-frame { width: 100%; height: 100%; border: 0; display: block; background: #000; }
+    #remotion-stage-frame[hidden], #live-stage-frame[hidden] { display: none; }
     #live-stage-note {
       position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
       font-size: 14px; font-weight: 700; color: var(--text); text-align: center; padding: 24px;
@@ -916,6 +917,51 @@
     #save-state.ok { color: var(--dsw-static-green-600); }
     #save-state.error { color: var(--dsw-static-red-600); }
     .mode-note { font-size: 11px; line-height: 1.5; }
+    .center-feedback-slot { flex: 0 0 auto; width: 100%; }
+    .right-feedback-slot { flex: 0 0 auto; }
+    .center-feedback-slot .feedback {
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg-panel);
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 250px;
+      grid-template-areas:
+        "meta actions"
+        "input actions"
+        "stale actions";
+      gap: 6px 10px;
+      align-items: stretch;
+    }
+    .center-feedback-slot .feedback::before { display: none; }
+    .center-feedback-slot .feedback .mode { grid-area: meta; }
+    .center-feedback-slot .feedback #mode-note { grid-area: meta; }
+    .center-feedback-slot .feedback #fb-text {
+      grid-area: input;
+      min-height: 54px;
+      height: 62px;
+      resize: vertical;
+    }
+    .center-feedback-slot .feedback #stale-note { grid-area: stale; }
+    .feedback-side-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+    .center-feedback-slot .feedback-side-controls {
+      grid-area: actions;
+      justify-content: space-between;
+    }
+    @media (max-width: 900px) {
+      .center-feedback-slot .feedback {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-areas:
+          "meta"
+          "input"
+          "stale"
+          "actions";
+      }
+    }
     @media (min-width: 1180px) {
       body { height: 100vh; overflow: hidden; display: flex; flex-direction: column; --panel-w: clamp(260px, 22vw, 340px); }
       .layout {
@@ -925,9 +971,59 @@
         grid-template-columns: clamp(190px, 15vw, 230px) minmax(0, 1fr) 8px var(--panel-w);
         overflow: hidden;
       }
+      body[data-orientation="landscape"] .player-box,
+      body[data-orientation="landscape"].workspace-composite .player-box {
+        aspect-ratio: 16 / 9;
+        width: min(100%, calc((100vh - 285px) * 16 / 9));
+        height: auto;
+        margin: 2px auto;
+      }
+      body[data-orientation="landscape"] .history-box {
+        flex: 1 1 auto;
+        max-height: none;
+      }
+      body[data-orientation="landscape"].history-collapsed .layout {
+        grid-template-columns: clamp(190px, 15vw, 230px) minmax(0, 1fr) 0px 0px;
+      }
+      body[data-orientation="landscape"].history-collapsed .side-right,
+      body[data-orientation="landscape"].history-collapsed #main-split-handle {
+        display: none;
+      }
+      body[data-orientation="portrait"] .center-stage {
+        align-items: center;
+        padding: 8px 14px;
+        gap: 6px;
+      }
+      body[data-orientation="portrait"] .player-box,
+      body[data-orientation="portrait"].workspace-composite .player-box {
+        aspect-ratio: 9 / 16;
+        height: min(calc(100vh - 130px), calc((100vw - 560px) * 16 / 9));
+        width: auto;
+        max-width: 100%;
+        margin: 0 auto;
+      }
+      body[data-orientation="portrait"] .global-transport-bar {
+        width: 100%;
+      }
       .main-split-handle { display: block; }
       .side-left, .center-stage, .side-right { min-width: 0; min-height: 0; overflow: hidden; }
       .center-stage { overflow-y: auto; }
+    }
+    @media (min-width: 760px) and (max-width: 1179px) {
+      body[data-orientation="portrait"] .player-box,
+      body[data-orientation="portrait"].workspace-composite .player-box {
+        aspect-ratio: 9 / 16;
+        width: min(100%, 400px);
+        height: auto;
+      }
+    }
+    @media (max-width: 759px) {
+      body[data-orientation="portrait"] .player-box,
+      body[data-orientation="portrait"].workspace-composite .player-box {
+        aspect-ratio: 9 / 16;
+        width: min(100%, 340px);
+        height: auto;
+      }
     }
     @media (min-width: 760px) and (max-width: 1179px) {
       body { height: auto; min-height: 100vh; overflow-x: hidden; overflow-y: auto; display: flex; flex-direction: column; }
@@ -969,6 +1065,8 @@
       <h1>逐画面审阅 · <span id="project-name">project</span></h1>
     </div>
     <div class="top-right">
+      <button type="button" class="tool-btn" id="btn-orientation-toggle" title="切换横屏或竖屏审阅布局">横屏视图</button>
+      <button type="button" class="tool-btn" id="btn-toggle-history" title="展开或收起历史意见">历史意见 <span id="history-toggle-count">0</span></button>
       <select id="theme-mode" aria-label="主题"><option value="auto">自动</option><option value="light">浅色</option><option value="dark">深色</option></select>
       <a class="reload" id="page-reload" href="">⟳</a>
     </div>
@@ -1009,6 +1107,7 @@
         <!-- 实时预览舞台 -->
         <div id="live-stage-wrap" hidden>
           <hyperframes-player id="live-stage-frame" aria-label="视频预览"></hyperframes-player>
+          <iframe id="remotion-stage-frame" title="实时画面预览" allow="autoplay" hidden></iframe>
           <div id="live-stage-note" hidden></div>
         </div>
 
@@ -1040,6 +1139,7 @@
         <audio id="review-audio-alt" preload="auto" hidden></audio>
         <audio id="review-soundscape-audio" preload="auto" hidden></audio>
       </div>
+      <div id="center-feedback-slot" class="center-feedback-slot"></div>
     </main>
 
     <div id="main-split-handle" class="main-split-handle" role="separator" aria-orientation="vertical" aria-label="调整布局比例"></div>
@@ -1050,29 +1150,32 @@
         <span>意见</span>
         <span id="records-count-badge">0 条</span>
       </div>
+      <div id="right-feedback-slot" class="right-feedback-slot">
+        <div class="feedback">
+          <div class="mode" id="fb-mode">
+            <button type="button" class="mode-tab active" data-mode="overall" id="mode-overall">整片意见</button>
+            <button type="button" class="mode-tab" data-mode="step" id="mode-step">当前屏 · <span id="fb-step">未选中</span></button>
+          </div>
+          <p class="mode-note" id="mode-note" hidden></p>
+          <textarea id="fb-text" placeholder="写下修改意见"></textarea>
+          <div id="stale-note" hidden></div>
+          <div class="feedback-side-controls">
+            <select id="fb-type">
+              <option value="visual">画面与版式</option>
+              <option value="animation">动画与镜头</option>
+              <option value="timing">节奏与卡点</option>
+              <option value="copy">文字</option>
+              <option value="asset">素材</option>
+            </select>
+            <div class="save-bar">
+              <button id="fb-save" disabled>保存反馈</button>
+              <div id="save-state">连接中</div>
+            </div>
+          </div>
+        </div>
+      </div>
       <div class="history-box" id="fb-history-list">
         <div class="history-empty">暂无意见</div>
-      </div>
-
-      <div class="feedback">
-        <div class="mode" id="fb-mode">
-          <button type="button" class="mode-tab active" data-mode="overall" id="mode-overall">整片意见</button>
-          <button type="button" class="mode-tab" data-mode="step" id="mode-step">当前屏 · <span id="fb-step">未选中</span></button>
-        </div>
-        <p class="mode-note" id="mode-note" hidden></p>
-        <select id="fb-type">
-          <option value="visual">画面与版式</option>
-          <option value="animation">动画与镜头</option>
-          <option value="timing">节奏与卡点</option>
-          <option value="copy">文字</option>
-          <option value="asset">素材</option>
-        </select>
-        <textarea id="fb-text" placeholder="写下修改意见"></textarea>
-        <div id="stale-note" hidden></div>
-        <div class="save-bar">
-          <button id="fb-save" disabled>保存反馈</button>
-          <div id="save-state">连接中</div>
-        </div>
       </div>
     </aside>
   </div>
@@ -2078,10 +2181,67 @@
       return (r && r.length >= 2) ? r : null;
     }
 
+    /* ---- 横竖屏自适应与历史意见自动折叠 ---- */
+    let currentOrientation = (() => {
+      const rev = window.__REVIEW_DATA__ || {};
+      if (rev.orientation === "portrait" || rev.orientation === "landscape") return rev.orientation;
+      const g = rev.geometry || rev.frameGeometry;
+      if (g && Number(g.height) > Number(g.width)) return "portrait";
+      return "landscape";
+    })();
+    let historyDrawerManual = null; // null = auto, true = force open, false = force collapsed
+
+    function syncHistoryDrawerState() {
+      const hasRecords = cachedRecords.length > 0;
+      const countBadge = document.getElementById("history-toggle-count");
+      if (countBadge) countBadge.textContent = String(cachedRecords.length);
+      const toggleBtn = document.getElementById("btn-toggle-history");
+      if (toggleBtn) toggleBtn.hidden = (currentOrientation !== "landscape");
+      const shouldCollapse = currentOrientation === "landscape"
+        && (historyDrawerManual === false || (historyDrawerManual === null && !hasRecords));
+      document.body.classList.toggle("history-collapsed", shouldCollapse);
+      if (toggleBtn) toggleBtn.classList.toggle("active", !shouldCollapse);
+    }
+
+    function applyOrientation(orient) {
+      currentOrientation = orient === "portrait" ? "portrait" : "landscape";
+      document.body.dataset.orientation = currentOrientation;
+      const fbEl = document.querySelector(".feedback");
+      const centerSlot = document.getElementById("center-feedback-slot");
+      const rightSlot = document.getElementById("right-feedback-slot");
+      if (fbEl && centerSlot && rightSlot) {
+        if (currentOrientation === "landscape") {
+          centerSlot.appendChild(fbEl);
+        } else {
+          rightSlot.appendChild(fbEl);
+        }
+      }
+      const orientBtn = document.getElementById("btn-orientation-toggle");
+      if (orientBtn) {
+        orientBtn.textContent = currentOrientation === "portrait" ? "竖屏视图" : "横屏视图";
+        orientBtn.classList.toggle("active", currentOrientation === "portrait");
+      }
+      syncHistoryDrawerState();
+    }
+
+    document.getElementById("btn-orientation-toggle").addEventListener("click", () => {
+      applyOrientation(currentOrientation === "portrait" ? "landscape" : "portrait");
+    });
+    document.getElementById("btn-toggle-history").addEventListener("click", () => {
+      const collapsed = document.body.classList.contains("history-collapsed");
+      historyDrawerManual = collapsed ? true : false;
+      syncHistoryDrawerState();
+    });
+    applyOrientation(currentOrientation);
+
     /* ---- 右侧批注历史列表渲染 ---- */
     function renderHistoryList() {
       const box = document.getElementById("fb-history-list");
       const badge = document.getElementById("records-count-badge");
+      if (cachedRecords.length > 0 && historyDrawerManual === false) {
+        historyDrawerManual = null;
+      }
+      syncHistoryDrawerState();
       // 「待处理」= 冲着当前这一版写的；其余归历史（折叠），不再一直挂在最上面。
       const currentBuild = window.__REVIEW_DATA__?.buildId || null;
       // 只有明确冲着当前这一版写的才算待处理。早期记录没有 buildId（那时还没这个字段），
@@ -2192,48 +2352,131 @@
       });
     }
 
-    /* Official player owns the clock, media, visibility and scaling. */
+    /* Live stage controller: supports Remotion (@remotion/player {kw:1} bridge) and legacy HyperFrames player. */
     const liveStage = (() => {
       const player = document.getElementById("live-stage-frame");
+      const remFrame = document.getElementById("remotion-stage-frame");
       const note = document.getElementById("live-stage-note");
       let clock = null, attachedUrl = null, pendingSeek = null, pendingPlay = false;
       let watchdog = null, stopAt = null, loading = false;
+      let activeEngine = window.__REVIEW_DATA__?.media?.liveStage?.engine || "hyperframes";
+      let remReady = false, remDuration = 0, remCurrent = 0, remPaused = true;
+
+      function isRemotion() {
+        return (window.__REVIEW_DATA__?.media?.liveStage?.engine || activeEngine) === "remotion";
+      }
+      function isReady() {
+        return isRemotion() ? remReady : !!player.ready;
+      }
+      function getDuration() {
+        return isRemotion() ? remDuration : (player.duration || 0);
+      }
+      function getCurrentTime() {
+        return isRemotion() ? remCurrent : (player.currentTime || 0);
+      }
+      function getPaused() {
+        return isRemotion() ? remPaused : !!player.paused;
+      }
+      function sendToRemotion(msg) {
+        if (!remFrame || !remFrame.contentWindow) return;
+        try {
+          remFrame.contentWindow.postMessage({ kw: 1, ...msg }, "*");
+        } catch {}
+      }
       function explain(text) { note.textContent = text; note.hidden = false; }
       function report() {
-        if (!player.ready) return;
-        if (stopAt !== null && player.currentTime >= stopAt) {
-          const end = stopAt; stopAt = null; player.seek(end); player.pause();
+        if (!isReady()) return;
+        const cur = getCurrentTime();
+        const paused = getPaused();
+        if (stopAt !== null && cur >= stopAt) {
+          const end = stopAt; stopAt = null;
+          api.seek(end); api.pause();
+          return;
         }
-        if (clock) clock(player.currentTime * 1000, player.paused);
+        if (clock) clock(cur * 1000, paused);
       }
       player.addEventListener("ready", () => {
+        if (isRemotion()) return;
         clearTimeout(watchdog); note.hidden = true; loading = false;
         if (pendingSeek !== null) { player.seek(pendingSeek); pendingSeek = null; }
         if (pendingPlay) { pendingPlay = false; player.play(); }
         report();
       });
-      ["timeupdate", "play", "pause", "ended"].forEach(name => player.addEventListener(name, report));
-      ["playbackerror", "runtimeprotocolerror"].forEach(name => player.addEventListener(name, () => {
-        explain("播放未能继续，请刷新预览后重试。你的反馈草稿会保留。");
+      ["timeupdate", "play", "pause", "ended"].forEach(name => player.addEventListener(name, () => {
+        if (!isRemotion()) report();
       }));
-      return {
-        get ready() { return !!player.ready; },
-        get durationMs() { return (player.duration || 0) * 1000; },
-        get currentMs() { return (player.currentTime || 0) * 1000; },
+      ["playbackerror", "runtimeprotocolerror"].forEach(name => player.addEventListener(name, () => {
+        if (!isRemotion()) explain("播放未能继续，请刷新预览后重试。你的反馈草稿会保留。");
+      }));
+
+      window.addEventListener("message", (event) => {
+        if (!remFrame || event.source !== remFrame.contentWindow) return;
+        const data = event.data;
+        if (!data || data.kw !== 1) return;
+        if (data.type === "ready") {
+          remReady = true;
+          remDuration = Number(data.duration) || Number(window.__REVIEW_DATA__?.media?.liveStage?.duration) || 0;
+          remCurrent = Number(data.t) || 0;
+          remPaused = data.paused !== false;
+          remFrame.ready = true;
+          remFrame.duration = remDuration;
+          remFrame.currentTime = remCurrent;
+          remFrame.seek = (sec) => api.seek(sec);
+          remFrame.play = () => api.play();
+          remFrame.pause = () => api.pause();
+          clearTimeout(watchdog); note.hidden = true; loading = false;
+          if (pendingSeek !== null) { const s = pendingSeek; pendingSeek = null; api.seek(s); }
+          if (pendingPlay) { pendingPlay = false; api.play(); }
+          report();
+        } else if (data.type === "time") {
+          remReady = true;
+          remDuration = Number(data.duration) || remDuration;
+          remCurrent = Number(data.t) || 0;
+          remPaused = data.paused !== false;
+          remFrame.ready = true;
+          remFrame.duration = remDuration;
+          remFrame.currentTime = remCurrent;
+          report();
+        }
+      });
+
+      const api = {
+        get ready() { return isReady(); },
+        get durationMs() { return getDuration() * 1000; },
+        get currentMs() { return getCurrentTime() * 1000; },
         setClock(fn) { clock = fn; },
         async attach(url) {
-          if (!url || attachedUrl === url || !review) return;
+          if (!url || attachedUrl === url) return;
+          const liveMeta = window.__REVIEW_DATA__?.media?.liveStage || {};
+          activeEngine = liveMeta.engine || "hyperframes";
+          if (activeEngine === "remotion") {
+            attachedUrl = url;
+            remReady = false;
+            remDuration = Number(liveMeta.duration) || 0;
+            if (player) player.hidden = true;
+            if (remFrame) {
+              remFrame.hidden = false;
+              remFrame.ready = false;
+              remFrame.duration = remDuration;
+              remFrame.currentTime = 0;
+              loading = true;
+              explain("正在加载实时画面舞台…");
+              remFrame.addEventListener("load", () => sendToRemotion({ type: "hello" }), { once: true });
+              remFrame.src = url;
+            }
+            return;
+          }
+          if (!review) return;
           attachedUrl = url;
+          if (remFrame) remFrame.hidden = true;
+          if (player) player.hidden = false;
           try {
             if (!customElements.get("hyperframes-player")) throw new Error("播放器未加载");
-            const compStage = window.__REVIEW_DATA__?.media?.liveStage?.composition;
+            const compStage = liveMeta.composition;
             if (!compStage?.html) throw new Error("画面暂未就绪，请重新构建后重试");
             const entries = Object.entries(compStage.assets || {});
             const totalMb = entries.reduce(
               (sum, [, rel]) => sum + ((compStage.assetSizes || {})[rel] || 0), 0) / 1e6;
-            // The conversion below is serial and there was no progress otherwise,
-            // so a big asset map looked exactly like a hung page for as long as
-            // the watchdog took to fire.
             loading = true;
             explain(totalMb > 1
               ? `正在解码素材 0/${entries.length}…（共约 ${totalMb.toFixed(1)} MB，首次较久）`
@@ -2241,8 +2484,6 @@
             let source = compStage.html;
             let done = 0;
             for (const [token, rel] of entries) {
-              // Each sandboxed child has its own opaque origin; a parent's
-              // blob:null URL cannot be used by the player's iframe.
               const assetUrl = await review.asset(rel);
               const blob = await (await fetch(assetUrl)).blob();
               const dataUrl = await new Promise((resolve, reject) => {
@@ -2268,33 +2509,65 @@
         },
         seek(sec) {
           stopAt = null; pendingPlay = false;
+          if (isRemotion()) {
+            if (remReady) {
+              remCurrent = Number(sec) || 0;
+              remPaused = true;
+              sendToRemotion({ type: "seek", t: remCurrent });
+              report();
+            } else pendingSeek = sec;
+            return;
+          }
           if (player.ready) { player.seek(sec); report(); } else pendingSeek = sec;
         },
-        play() { if (player.ready) player.play(); else pendingPlay = true; },
-        pause() { pendingPlay = false; if (player.ready) player.pause(); },
-        rate(value) { player.playbackRate = value; },
+        play() {
+          if (isRemotion()) {
+            if (remReady) {
+              remPaused = false;
+              sendToRemotion({ type: "play" });
+            } else pendingPlay = true;
+            return;
+          }
+          if (player.ready) player.play(); else pendingPlay = true;
+        },
+        pause() {
+          pendingPlay = false;
+          if (isRemotion()) {
+            remPaused = true;
+            if (remReady) sendToRemotion({ type: "pause" });
+            return;
+          }
+          if (player.ready) player.pause();
+        },
+        rate(value) {
+          if (isRemotion()) { sendToRemotion({ type: "rate", rate: value }); return; }
+          player.playbackRate = value;
+        },
         mute(flag) {
+          if (isRemotion()) {
+            if (remFrame) remFrame.muted = !!flag;
+            sendToRemotion({ type: "mute", muted: !!flag });
+            return;
+          }
           try {
             if ("muted" in player) player.muted = !!flag;
             if ("volume" in player) player.volume = flag ? 0 : 1;
           } catch {}
         },
         range(start, end) { this.seek(start); stopAt = end; this.play(); },
-        hello() {},
+        hello() {
+          if (isRemotion()) sendToRemotion({ type: "hello" });
+        },
         explain,
         watchdog(budgetMs) {
           clearTimeout(watchdog);
-          if (player.ready) return;
-          // The budget scales with what there is to decode. A fixed 8s was only
-          // ever right for a small asset map: a 25 MB srcdoc blew it, and the one
-          // sentence it printed ("确认预览服务正在运行") named the single thing
-          // that was in fact fine.
+          if (isReady()) return;
           const declared = window.__REVIEW_DATA__?.media?.liveStage?.budgetMs;
           const budget = Number.isFinite(budgetMs) && budgetMs > 0
             ? budgetMs : (Number(declared) > 0 ? Number(declared) : 8000);
           watchdog = setTimeout(() => {
-            if (player.ready) return;
-            if (!review) {
+            if (isReady()) return;
+            if (!review && !isRemotion()) {
               explain("离线，刷新重试。");
             } else if (loading) {
               explain("素材解码中，请稍候。");
@@ -2304,6 +2577,8 @@
           }, budget);
         }
       };
+      window.__vcLiveStage = api;
+      return api;
     })();
 
     /* ---- 舞台视图切换（静态画面 / 实时预览 / 合成成片） ---- */
@@ -3142,7 +3417,7 @@
       document.getElementById("project-name").textContent = data.totalChapters + " 章 · " + data.totalSteps + " 步 · " + fmt(data.totalDurationMs);
       document.getElementById("step-counter-badge").textContent = `${data.totalSteps} 屏`;
 
-      // 尝试加载增强审阅契约 review/review_data.json 并同步生产模式
+      // 尝试加载增强审阅契约 review/review_data.json 并同步交互状态
       if (review && typeof review.readText === "function" && !window.__REVIEW_DATA__) {
         try {
           const revText = await review.readText("review/review_data.json", { optional: true });
@@ -3154,6 +3429,9 @@
         loadedReviewSnapshot = rev.snapshot || null;
         if (rev.mode) {
           document.body.classList.add(`mode-${rev.mode}`);
+        }
+        if (rev.orientation === "portrait" || rev.orientation === "landscape") {
+          applyOrientation(rev.orientation);
         }
         if (rev.svgs) {
           window.__INLINE_SVGS__ = Object.assign(window.__INLINE_SVGS__ || {}, rev.svgs);
@@ -3620,7 +3898,6 @@
       if (live) {
         await liveStage.attach(live.url);
         liveStage.watchdog();
-        setTimeout(() => { try { liveStage.seek(4); } catch (e) {} }, 500);
       }
       submissionsRel = await resolveSubmissionsRel();
       setMode("overall");

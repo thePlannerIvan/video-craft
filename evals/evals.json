@@ -24,25 +24,25 @@
     "prompt": "素材和录音都齐了，先把片子做出来给我看。",
     "must_do": [
       "先确认剪点（EDL），把取舍写进 edl.json 而不是手改底片",
-      "先出工程态：duration_plan 的 projected 时间与活 composition；必要素材准备单独缓存，不先渲最终整片",
+      "先出工程态：duration_plan 的 projected 时间与 Remotion 4 活舞台（外部运行壳在位、项目内零 node_modules）；必要素材准备单独缓存，不先渲最终整片",
       "明确 projected 只支持工程审阅，未完成真实文件核验不能称交付完成",
-      "剪点与动效确认后，才走渲染路径；渲染前先跑 check_render_env.py 拿 --workers"
+      "剪点与动效确认后，才走渲染路径；渲染前先过 remotion_runtime.py doctor 与 remotion_gates.py（typecheck / sync / stills）"
     ],
     "must_not_do": [
       "把渲染当成「能开始干活」的前提，一上来就整片渲",
       "把 projected 预演当成交付证据",
       "拿预览渲染冒充正式底片（正式底片只在确认后输出一次）",
-      "用 --workers auto（按核数开满 Chrome，小内存机器会被拖垮）"
+      "在项目目录内安装 node_modules 或绕过 remotion_gates 门禁"
     ]
   },
   {
     "id": "raw-recording-existing-svg-deck",
     "route": "recompose",
-    "prompt": "这是 75 分钟的直播课录屏，还有我 PPT 的 27 页 SVG 原图。帮我剪成 4 条 1920x1080 的横版短视频，画面就用这些 SVG 页，右下角放我的人像小窗，字幕单独给我 SRT，配一点轻 BGM。",
+    "prompt": "这是 75 分钟的直播课录屏，还有我 PPT 的 27 页 SVG 原图。帮我剪成 4 条竖版短视频，画面就用这些 SVG 页，右下角放我的人像小窗，字幕单独给我 SRT，配一点轻 BGM。",
     "must_do": [
       "先清点输入事实：录屏、SVG 目录（含是否存在 PPT 快照/id）、是否要保真、画幅、字幕内烧还是外挂、是否需要 BGM",
       "先跑 probe_env.py 报告能力（libass 缺失时如实说烧录不可用），再决定字幕形态",
-      "现成 SVG 作为 film 原页拆解参考，核版本后写 recompose composition；新项目不走旧 page 导入器",
+      "现成 SVG 通过 film.py import-svg 包装为带平滑运镜的 Remotion 场景（remotion/src/scenes/StaticSvgReference.tsx）；仅历史旧工程才保留只读兼容通道，新项目不走旧 page 导入器",
       "剪点走 EDL：keep-list 经实测静音吸附后写入 edl.json，字幕时间轴与交付核验引用同一渲染记录",
       "人像小窗在渲染后用 FFmpeg 合成（不把正在播放的 <video> 放进浏览器抓帧）"
     ],
@@ -236,6 +236,24 @@
       "绕过响度与削波门禁或强行压低 画面成片.mp4 为强制零音轨",
       "跨项目目录临时借用未入库音效替代内置 assets/sfx/ 资产",
       "把未筛分的广告原声人声对白直接叠进主口播"
+    ]
+  },
+  {
+    "id": "v3-remotion-motion-engine-and-pragmatic-approval",
+    "route": "capabilities",
+    "prompt": "新建一个 9:16 竖屏 Remotion 4 动效工程（含 2 页上游静态 SVG 参考图），先确保开源便携外部运行壳就绪并在自适应审阅页零渲染预览；之后我在对话里要求把某段动画调快并直接导出成品，怎么走完整门禁与出片？",
+    "must_do": [
+      "首次做动效通过 helpers/remotion_runtime.py setup/doctor 在外部运行壳（$VIDEO_CRAFT_REMOTION_HOME 或 ~/.cache/video-craft/remotion-runtime/）备齐 Remotion 4 与无头浏览器，不在项目内生成 node_modules",
+      "新建动效默认使用 Remotion 4（remotion/src/Root.tsx），静态 SVG 参考页通过 film.py import-svg 包装为运镜场景并与 frame.py resolve 和 storyboard.json 对齐",
+      "review.py 启动基于 @remotion/player 的 {kw: 1} 零渲染活舞台桥并渲染横竖屏自适应审阅页（竖屏画布撑满视口高度且表单/历史收拢右侧，横屏表单落于视频下方且零历史默认折叠）",
+      "按顺序过 Remotion 四道门禁：TypeScript 编译 typecheck、storyboard.json 帧数切点硬对账 sync、每镜中段静帧自动抽取与非黑核验 stills，以及 deliver.py 成片严格核验",
+      "审阅快照已存在且作者在对话中明确指示调快后直接导出时，通过 deliver.py --render --approve-in-chat 写入含最新实时源码指纹 liveSourceHash 的审计记录放行，并在交付收尾固化最终源码指纹"
+    ],
+    "must_not_do": [
+      "在视频项目目录内执行 npm install 污染云盘与代码仓，或硬编码个人本机路径",
+      "新建动效项目还回退旧引擎双目录或绕过 typecheck / 分镜帧数切点 / 中段静帧门禁",
+      "在没有任何审阅快照或未获作者明确对话授权时私自传入 --approve-in-chat",
+      "把源码较旧审阅快照微调后仍机械阻断作者当轮明确指示的 --approve-in-chat 导出"
     ]
   }
 ]

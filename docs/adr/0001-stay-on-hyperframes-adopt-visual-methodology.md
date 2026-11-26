@@ -1,6 +1,6 @@
 # 0001 · 保留 HyperFrames 底座，吸收结构化视觉隐喻与音画卡点方法论
 
-**Status**: accepted
+**Status**: superseded by ADR-0006
 
 我们决定继续留在 HyperFrames 无头浏览器渲染与审阅工作台底座上，不在 v2 迁移至 Remotion 或维护双引擎；但全面吸收优秀代码动画工作流中的高聚焦视觉隐喻（极简主角与大字留白）和帧级音画卡点方法论。
 

@@ -1,37 +1,34 @@
 # 工具调用手册（`tools.md`）
 
-> 制作顺序与完成条件见 [stages.md](stages.md)；本页只回答“跑哪条命令”。<br>
+> 制作顺序与完成条件见 [stages.md](stages.md)；本页只回答“跑哪条命令”。Remotion 4 主动效引擎与四道门禁详规见 [remotion-engine.md](remotion-engine.md)。<br>
 > 下文 `<craft>` 替换为本 Skill 绝对根，`<project>`、`<edit>` 分别为项目与剪辑目录；扩展参数以 `<命令> --help` 为准。
 
-## 查 HyperFrames 属性契约的原则
+## 查动效属性契约的原则
 
-严禁 grep `node_modules/hyperframes` 压缩 bundle。正确排查顺序：
-1. `npx hyperframes <cmd> --help`
-2. `npx hyperframes check --json`
-3. `npx hyperframes docs`
-4. 本 Skill 的 [visual-grammar.md](visual-grammar.md) 与 [visual-checks.md](visual-checks.md)
-5. 最小 3 行 fixture composition 实测（`visual/assets/` 下本 Skill 脚本可直接读）
+- **新建 Remotion 4 项目**：先读 [remotion-engine.md](remotion-engine.md)，用 `python3 "<craft>/helpers/remotion_runtime.py" doctor` 检查外部运行壳与类型工具，再跑 `helpers/_internal/remotion_gates.py`。
+- **历史 HyperFrames 只读兼容项目**（严禁 grep `node_modules/hyperframes` 压缩 bundle）：按顺序使用 `npx hyperframes <cmd> --help` → `npx hyperframes check --json` → `npx hyperframes docs` → [visual-grammar.md](visual-grammar.md) / [visual-checks.md](visual-checks.md)。
 
 ---
 
-## 一、12 个核心顶层公开入口（另留兼容入口 `audio_fix.py`）
+## 一、13 个核心顶层公开入口（另留兼容入口 `audio_fix.py`）
 
-Agent 日常只围绕这 12 个核心公开入口组织工作；每个文件对应一个清晰阶段职责。
+Agent 日常只围绕这 13 个核心公开入口组织工作；每个文件对应一个清晰阶段职责。
 
 | 分类 | 命令 | 职责 |
 |---|---|---|
+| **Remotion 外部运行壳** | `python3 "<craft>/helpers/remotion_runtime.py" {setup\|doctor\|path} [--runtime-home <dir>] [--download-browser] [--skip-browser] [--force] [--json]` | 在项目与云盘之外的全局缓存目录（`$VIDEO_CRAFT_REMOTION_HOME` 或 `~/.cache/video-craft/remotion-runtime/`）幂等安装并体检 Remotion 4 / React / esbuild / TypeScript / 无头浏览器（自动复用本机 Chrome/Chromium 或 `$REMOTION_BROWSER_EXECUTABLE`，`--download-browser` 按需拉取内置 headless-shell），确保项目内零 `node_modules` |
 | **剪辑与转写协同** | `python3 "<craft>/helpers/stage_cut.py" {status\|prepare\|review\|apply} --project "<project>" [--source "<原片>" --backend auto\|seedasr\|scribe\|mlx] [--surface-only]` | `prepare` 首选 SeedASR 2.0 词级转写（禁自动 `ark`）；`review` 支持 DSH `--surface-only` 或无插件自动起本地浏览器宿主 |
 | **Voice Polish（人声润色）** | `python3 "<craft>/helpers/audio_mix.py" "<原始干声>" -o "<mix.m4a>" [--bgm ...] [--voice-preset podcast-warm\|none\|raw] [--debreath\|--no-debreath] [--ab "起始,时长"] [--dry]` | 唯一人声润色与混音入口：默认 `podcast-warm` 内置 `--debreath`（`≥140ms` 停顿重吸气声衰减）至 `-14.0 LUFS / -1.5 dBTP`，支持 `--ab` 盲听对照与 `--dry` 纯干声；默认不混入动效音效 |
 | **Visual Soundscape（画面声景）** | `python3 "<craft>/helpers/sound_design.py" {build\|verify\|make-sfx} -s "<storyboard.json>" -v "<人声WAV>" -o "<soundscape.wav>" [--broll-bed on\|off] [--preview-variants] [--list-sfx]` | 消费 `storyboard.json` 生成动效起伏音效与经自动筛分闪避的 B-roll 原声底噪，输出 48kHz 立体声 `soundscape.wav` / `画面音效轨.wav` 并过独立与合播响度门禁 |
 | **语义字幕** | `python3 "<craft>/helpers/srt_export.py" "<edit>" {--prepare\|--lock\|--build\|--check} [--force-prepare --time-source measured]` | Article-First 字幕准备、锁定全文、对齐词契约生成 `captions.json` / `subtitles.srt` 与校验 |
 | **唯一时间脊柱** | `python3 "<craft>/helpers/timeline_derive.py" "<edit>" [--stats \| --entries-only \| --grouping <g> --output-timeline <t> --output-durations <d>]` | 由 EDL + 锁定字幕（+ 可选 `--alignment`）派生项目根 `timeline/timeline.json` |
-| **统一执行分镜与 Look-Dev** | `python3 "<craft>/helpers/film.py" {init\|verify\|summary\|lookdev\|proxy} "<project>" ...` | 校验唯一执行分镜 `storyboard.json`（v3）、派生人读概览（`summary`）、过轻量样镜定调（`lookdev --verify\|--approve`）与生成实机审阅代理（`proxy`）；保留 `outline`/`pages` 兼容老工程 |
+| **统一执行分镜与 Look-Dev** | `python3 "<craft>/helpers/film.py" {init\|verify\|summary\|lookdev\|proxy\|import-svg} "<project>" ...` | 校验唯一执行分镜 `storyboard.json`（v3）、派生人读概览（`summary`）、过轻量样镜定调（`lookdev --verify\|--approve`）、生成实机审阅代理（`proxy`）以及将静态 SVG 参考页导入为 Remotion 运镜场景（`import-svg`）；保留 `outline`/`pages` 兼容老工程 |
 | **版式画框** | `python3 "<craft>/helpers/frame.py" {build\|preview\|resolve} "<project>" ...` | 生成 `base.png / overlay.png / spec.md`、`contain` 真实预览与画框几何单一真源解析（`resolve`） |
 | **素材剪辑路线** | `python3 "<craft>/helpers/montage.py" {plan\|render\|voice-cut} "<project>" ...` | 展开镜头表并校验素材清单/防重/花字、分块幂等渲染、从母版切出同 EDL 人物轨 |
-| **统一画面体检** | `python3 "<craft>/helpers/check_visual.py" ...` | 统一画面环境、静态活舞台（含 `<video>` 黑屏陷阱）、Canvas/SVG 安全区边界、运动与像素检查入口（详 `check_visual.py --help`） |
-| **工程审阅构建** | `python3 "<craft>/helpers/review.py" "<project>" [--final-cut]` | 构建工程活舞台或成片态审阅页（含 Voice Polish A/B 与 Visual Soundscape 底噪开关）、校验 Playable 四判据并准备 surface |
+| **统一画面体检** | `python3 "<craft>/helpers/check_visual.py" ...` | 统一画面环境、静态活舞台、Canvas/SVG 安全区边界（已含祖先偏移累加修复）、运动与像素检查入口（详 `check_visual.py --help`） |
+| **工程审阅构建** | `python3 "<craft>/helpers/review.py" "<project>" [--final-cut]` | 构建自适应横竖屏审阅页（Remotion 工程优先跑 `{kw: 1}` 零渲染活舞台桥及 `typecheck,sync` 门禁，兼含 Voice Polish A/B 与 Visual Soundscape 底噪开关）、校验 Playable 判据并准备 surface |
 | **反馈收件** | `python3 "<craft>/helpers/review_inbox.py" "<project>" [--dry-run]` | 收取提交进 `feedback/*.jsonl` 并核验绑定回执（`imported/skipped/rejected`） |
-| **按段分流交付合成** | `python3 "<craft>/helpers/deliver.py" "<project>" {--render \| --visuals <mp4>} [--visual-audio <soundscape.wav>] [--mode split\|composite] [--composite] [--approve-in-chat] [--no-person --burn-subtitles]` | 过 `render_gate`；按 `storyboard.json` 分段拼合（HyperFrames 仅渲动效段、FFmpeg 直切视频/录屏段）；分轨输出 `人物成片.mp4` + `画面成片.mp4`（无损封装声景并同出 `画面音效轨.wav`，无声景时保持 0 音轨）+ 空隙字幕 |
+| **按段分流交付合成** | `python3 "<craft>/helpers/deliver.py" "<project>" {--render \| --visuals <mp4>} [--visual-audio <soundscape.wav>] [--mode split\|composite] [--composite] [--approve-in-chat [--approval-note "..."]] [--no-person --burn-subtitles]` | 过 `render_gate`（含务实 `--approve-in-chat` 记录实时源码指纹）；按 `storyboard.json` 分段拼合（Remotion 4 外部运行壳渲染动效段、FFmpeg 直切视频/录屏段，历史旧工程走只读兼容）；分轨输出 `人物成片.mp4` + `画面成片.mp4`（无损封装声景并同出 `画面音效轨.wav`）+ 空隙字幕 |
 
 > **兼容入口 `helpers/audio_fix.py`**：保留用于独立单轨声学诊断、老测试与 `--debreath` / `--ab` 底层复用；日常制作请直接向 `audio_mix.py` 传入原始干声，避免重复压限。
 
@@ -80,12 +77,20 @@ python3 "<craft>/helpers/_internal/import_srt_timeline.py" "<project>" --srt "<S
 python3 "<craft>/helpers/_internal/check_caption_breaks.py" "<edit>/subtitles.srt" --json
 ```
 
-### 3. 蒙太奇素材、活舞台与审阅单步诊断
+### 3. Remotion 活舞台、门禁、蒙太奇与审阅单步诊断
 
 ```bash
 python3 "<craft>/helpers/_internal/scan_materials.py" "<project>/material/clips"
 python3 "<craft>/helpers/_internal/check_montage.py" "<project>" [--shots-dir <work> --base <base.png> | --video <成片>]
 
+# Remotion 引擎检测、{kw: 1} 零渲染活舞台服务、SVG 导入与确定性门禁
+python3 "<craft>/helpers/_internal/live_stage.py" "<project>" [--port N] [--status] [--stop] [--json]
+python3 "<craft>/helpers/_internal/remotion_stage.py" serve --stage-dir "<stage_dir>" --remotion-dir "<remotion_dir>" --port <N>
+python3 "<craft>/helpers/_internal/remotion_gates.py" "<project>" [--only typecheck|sync|stills|all] [--max-stills N] [--json]
+# 静态 SVG 导入：由 film.py import-svg 调用内部模块 helpers/_internal/remotion_svg_scene.py
+python3 "<craft>/helpers/film.py" import-svg "<project>" --source "<svg或目录>" [--seconds-per-slide 4.0] [--json]
+
+# 通用活舞台自检、审阅构建与静态/运行态检查
 python3 "<craft>/helpers/_internal/check_live_stage.py" "<project>"
 python3 "<craft>/helpers/_internal/live_stage.py" "<project>" [--stop]
 python3 "<craft>/helpers/_internal/build_review.py" "<project>" [--final-cut]
@@ -108,11 +113,11 @@ python3 "<craft>/helpers/_internal/studio_notes.py" "<project>" [--tail 20]
 > 命令末尾**严禁**接管道 `| tail`（否则 `$?` 变成 `tail` 退出码，[GOTCHAS.md](../GOTCHAS.md) #82）；需要看日志尾部请重定向文件后再读。
 
 ```bash
-python3 "<craft>/helpers/_internal/render_gate.py" "<project>" --out "<实际成片路径>"
+python3 "<craft>/helpers/_internal/render_gate.py" "<project>" [--out "<实际成片路径>"] [--approve-in-chat [--approval-note "..."]]
 python3 "<craft>/helpers/_internal/probe_env.py" "<project>"
 python3 "<craft>/helpers/_internal/check_render_env.py" "<project>/composition" --json
 
-# 在 <project>/composition 内执行渲染前设缓存与推荐 workers；宽高由 frame.py resolve 决定
+# 历史 HyperFrames 只读工程渲染（新建 Remotion 工程统一走 deliver.py --render + 外部运行壳）
 export HYPERFRAMES_FONT_CACHE_DIR="$PWD/.hyperframes-cache"
 W=$(python3 "<craft>/helpers/_internal/check_render_env.py" . --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["workers"])')
 npx hyperframes render --workers "$W" -o /tmp/<name>.mp4 --width <frame_w> --height <frame_h> -f 30 -q delivery

@@ -1,6 +1,6 @@
 # 0004 · 默认分轨三件套交付与会话出片授权双轨闸门
 
-**Status**: accepted (partially superseded by ADR-0005)
+**Status**: accepted (partially superseded by ADR-0005; chat-approval drift rule amended by ADR-0006)
 
 我们决定将同时包含真人口播轨与画面层的项目（典型如 `keyframe-svg`）默认交付形态确定为「高码率人物成片（含润色人声与音效）+ 无声纯画面成片 + 导入空隙保护字幕」三件套，仅在显式要求单视频时合流；同时保留审阅快照生成与源码零漂移硬门禁，但放行条件扩展为「审阅页人工提交」或「作者在对话中明确授权出片并写入可审计会话授权记录」二选一，并将剪辑单身份指纹升级为路径无关的规范区间结构哈希。
 

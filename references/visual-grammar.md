@@ -23,7 +23,7 @@ python3 "<craft>/helpers/film.py" proxy   "<project>" [--json]
 - **分镜段类型与引擎分流**（同一条实测时间轴自由混排，人物继续保持独立一轨）：
   1. `talk-only`（只看人留白）：故事引入、观点铺垫、金句与过渡；保留干净人物景别。
   2. `footage` / `video`（实拍/广告切片）：`engine: "ffmpeg-cut"`；审阅挂轻代理进活舞台，交付由 `deliver.py` 直切高清母版（素材清单与 `5s` 防重规则见 [montage-route.md](montage-route.md)）。
-  3. `motion` / `model`（思维模型动效）：`engine: "remotion"`（历史只读兼容老工程允许 `hyperframes`）；无现成静态参考页时，构建随口播推进持续演化的单一空间概念模型与结构关系动画，严禁退回逐页 PPT 文字框拼接（卡片强调采用极细骨白边框，顶部仅留极简几何装饰）。
+  3. `motion` / `model`（思维模型动效）：`engine: "remotion"`（历史只读兼容老工程允许 `hyperframes`）；无现成静态参考页时，构建随口播推进持续演化的单一空间概念模型与结构关系动画，严禁退回逐页 PPT 文字框拼接（卡片边框颜色与材质由当前风格卡自定，顶部仅留极简几何装饰）。
   4. `card-deck` / `xhs`（3D 卡片组）：`engine: "remotion"`（历史只读兼容老工程允许 `hyperframes`）；同步声明 `soundCues` 驱动 [captions-and-audio.md](captions-and-audio.md) 中的 `sound_design.py` Visual Soundscape 起伏配音。
   5. `screen-demo`（实机演示录屏）：`engine: "ffmpeg-cut"`；审阅期跑 `film.py proxy` 在 `review/demo_proxies/` 生成低码率代理进活舞台（原录屏仅放在项目素材区，严禁塞入 `remotion/public/assets/` 或历史兼容 `composition/assets/`），交付期 `deliver.py` 按 `demo.source` + `inSec/outSec/speed` 直切高清原录屏。
 - **轻量样镜定调（Look-Dev Gate）**：仅当开启 `motion` 且上游未提供静态参考页时触发；在全片编码前先跑 `film.py lookdev` 输出极简配比意图清单与 1 个匹配口播节奏的代表性思维模型样镜交创作者拍板（`--approve`），`--verify` 通过后才展开全片；已有静态参考页（可走 `film.py import-svg` 包装为 Remotion 运镜场景）或成熟风格时自动跳过。

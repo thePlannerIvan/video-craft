@@ -25,7 +25,7 @@ description: 触发分支：剪口播、做词级粗剪与加语义字幕（从�
 
 ## 能力组合、正交画框与阶段总览
 
-第 1–2 步先运行 `python3 "<craft>/helpers/_internal/resolve_vault.py" --style <style_id>` 解析风格（未挂载时自动回退 [author-spec.md](references/author-spec.md)、[style-spec.md](references/style-spec.md) 与 [preferences.md](references/preferences.md)）。**`style` 只定审美，不锁能力组合**。
+第 1–2 步先运行 `python3 "<craft>/helpers/_internal/resolve_vault.py" --style <style_id>` 解析 Style Card v3（读取 `style.md`、`palette`、`anchors`、`patterns`、可选 `preferred_frame` 与全局底线 `G01–G05`/`V01–V05`；未挂载时自动回退开源六套风格与底线 [author-spec.md](references/author-spec.md)、[style-spec.md](references/style-spec.md) 及 [preferences.md](references/preferences.md)）。**`style` 只定审美与风格领词（Style Leading Words），与能力组合及画框 `frame` 完全正交**。
 
 工程采用 **固定底座 `剪口播` × 可选叠加 `footage` / `motion` / `screen-demo`（0–3 项） × 正交画框 `frame.py`**，共 13 个公开入口（[tools.md](references/tools.md)）与 10 步阶段契约（[stages.md](references/stages.md)）：
 

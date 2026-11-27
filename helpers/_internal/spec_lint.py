@@ -1,23 +1,16 @@
 #!/usr/bin/env python3
-"""两层规范的结构护栏。
+"""Style Card v3 与全局底线规范的结构护栏。
 
 规范分两层、两个文件：
-- author-spec.md：跨风格都成立的全局判准（G 条目）
-- style-spec.md：某一种风格的动效规则（S 条目，按风格 slug 分节）
-
-规范是判准与准入层，不按互斥路线分维：以剪口播底座叠加正交能力组合（footage / motion / screen-demo），
-画框（frame）与能力组合正交；只对特定能力成立的条目在正文里标注适用范围。
-
-这条命令只挡机械项，不判断规则对不对——语义冲突仍然要人裁决。
+- author-spec.md：跨风格都成立的全局视觉底线（G01–G05）与口播底线（V01–V05）
+- style-spec.md：六套风格的开源单卡基准（风格领词（Style Leading Words）、镜头与声画语法、高频防线 0–4 条）
 
 检查项：
-1. 条目数：全局 ≤ 8；每种风格 ≤ 5；两个文件合计 ≤ 25
-2. 篇幅：author-spec ≤ 110 行
-3. 字段齐全：每条必须有 做法 / 证据 / 执行
-4. 执行点解析：`check:` 指向的路径必须存在；`judgment:` 必须写具体看什么
-5. 编号唯一：G / S 条目编号不重复
-6. slug 枚举：风格节名必须是已知 slug（新增是一次架构决定）
-7. 措辞：author-spec / style-spec / preferences 不得出现单路线口径
+1. 全局底线：G01–G05 ≤ 5 条、V01–V05 ≤ 5 条，author-spec ≤ 90 行
+2. 全局字段与指针：每条须含 做法 / 执行；`check:` 路径必须存在，`judgment:` 不能为空
+3. 编号唯一：G / V 条目编号不重复且属于 G01..G05 / V01..V05
+4. 六套风格节校验：slug 必须属于六套标准风格，每套 ≤ 45 行，必含 风格领词（Style Leading Words）（3–5 条）、镜头与声画语法（≥1 条）、高频防线（0–4 条）
+5. 卫生禁令：author-spec / style-spec / preferences 不得出现单路线口径、裸写 Leading Words 或硬编码 1920x1080 版式规则
 
 用法：
     python3 helpers/_internal/spec_lint.py [--json] [--spec-dir <目录>]
@@ -39,28 +32,43 @@ AUTHOR_SPEC = "author-spec.md"
 STYLE_SPEC = "style-spec.md"
 SPEC_FILES = (AUTHOR_SPEC, STYLE_SPEC)
 
-MAX_AUTHOR_ENTRIES = 8
-MAX_AUTHOR_LINES = 110
-MAX_PER_STYLE = 5
-MAX_TOTAL_ENTRIES = 25
+MAX_AUTHOR_G_ENTRIES = 5
+MAX_AUTHOR_V_ENTRIES = 5
+MAX_AUTHOR_LINES = 90
+MAX_STYLE_LINES = 45
+MIN_LEADING_WORDS = 3
+MAX_LEADING_WORDS = 5
+MAX_STYLE_GUARDRAILS = 4
 MAX_ENTRY_BODY_LINES = 9
 
-STYLE_SLUGS = ("line-art", "business-report", "collage", "concept-film")
+STYLE_SLUGS = (
+    "line-art",
+    "business-report",
+    "collage",
+    "concept-film",
+    "lifestyle-cult",
+    "studio-motion-ui",
+)
 
-# 单路线口径已作废：采用正交能力组合与画框（frame），不再按互斥路线分维。
-# 这里只挡措辞，不让它重新长回来；文件范围是规范三件套（含准入契约 preferences.md）。
 ROUTE_TEXT_FILES = (AUTHOR_SPEC, STYLE_SPEC, "preferences.md")
 SINGLE_ROUTE_RES = (
     re.compile(r"路线只有\s*(?:一[条个]|recompose)"),
     re.compile(r"只有\s*recompose\s*一[条个]"),
     re.compile(r"只有\s*一[条个]\s*路线"),
 )
+BARE_LEADING_WORDS_RE = re.compile(r"(?<!Style\s)Leading\s+Words", re.IGNORECASE)
+HARDCODED_1080P_RE = re.compile(r"1920\s*[x×]\s*1080")
 
-AUTHOR_ENTRY_RE = re.compile(r"^##\s+(G\d{2})\s+(.+?)\s*$")
+AUTHOR_G_RE = re.compile(r"^#{2,3}\s+(G\d{2})\s+(.+?)\s*$")
+AUTHOR_V_RE = re.compile(r"^#{2,3}\s+(V\d{2})\s+(.+?)\s*$")
+AUTHOR_ANY_RE = re.compile(r"^#{2,3}\s+([GV]\d{2})\s+(.+?)\s*$")
 SECTION_RE = re.compile(r"^##\s+([a-z][a-z0-9-]+)\s*(?:·\s*(.+?))?\s*$")
-STYLE_ENTRY_RE = re.compile(r"^###\s+(S\d{2})\s+(.+?)\s*$")
+SUBSECTION_RE = re.compile(r"^###\s+(.+?)\s*$")
 FIELD_RE = re.compile(r"^-\s*(做法|证据|执行)\s*[：:]\s*(.+?)\s*$")
 CHECK_PREFIXES = ("check:", "judgment:")
+
+VALID_G_IDS = {f"G{i:02d}" for i in range(1, 6)}
+VALID_V_IDS = {f"V{i:02d}" for i in range(1, 6)}
 
 
 def _split_enforcement(value: str) -> list[str]:
@@ -108,7 +116,7 @@ def _entry_problems(entry_id: str, body: list[str], skill_root: Path) -> list[st
         m = FIELD_RE.match(line.strip())
         if m:
             fields[m.group(1)] = m.group(2)
-    problems = [f"{entry_id} 缺字段：{name}" for name in ("做法", "证据", "执行") if name not in fields]
+    problems = [f"{entry_id} 缺字段：{name}" for name in ("做法", "执行") if name not in fields]
     if "执行" in fields:
         problems += [f"{entry_id} {p}" for p in _check_enforcement(fields["执行"], skill_root)]
     body_lines = [ln for ln in body if ln.strip()]
@@ -117,8 +125,70 @@ def _entry_problems(entry_id: str, body: list[str], skill_root: Path) -> list[st
     return problems
 
 
-def _route_wording_problems(spec_dir: Path) -> list[str]:
-    """挡掉「路线只有一条」类措辞：应写成正交能力组合 + 画框（frame）。"""
+def _lint_style_section(slug: str, section_lines: list[str]) -> list[str]:
+    problems: list[str] = []
+    trimmed = list(section_lines)
+    while trimmed and not trimmed[-1].strip():
+        trimmed.pop()
+    if len(trimmed) > MAX_STYLE_LINES:
+        problems.append(f"{STYLE_SPEC} 风格 {slug} 共 {len(trimmed)} 行，超过 {MAX_STYLE_LINES} 行上限")
+
+    subs: list[tuple[str, list[str]]] = []
+    current_title: str | None = None
+    current_body: list[str] = []
+    for line in trimmed[1:]:
+        m = SUBSECTION_RE.match(line)
+        if m:
+            if current_title is not None:
+                subs.append((current_title, current_body))
+            current_title = m.group(1).strip()
+            current_body = []
+        elif current_title is not None:
+            current_body.append(line)
+    if current_title is not None:
+        subs.append((current_title, current_body))
+
+    def find_sub(predicate) -> list[str] | None:
+        for title, body in subs:
+            if predicate(title):
+                return body
+        return None
+
+    leading_body = find_sub(lambda t: "Style Leading Words" in t)
+    grammar_body = find_sub(lambda t: t == "镜头与声画语法")
+    guard_body = find_sub(lambda t: t == "高频防线")
+
+    if leading_body is None:
+        problems.append(f"{STYLE_SPEC} 风格 {slug} 缺少「风格领词（Style Leading Words）」小节")
+    else:
+        bullets = [ln for ln in leading_body if ln.strip().startswith("- ")]
+        if len(bullets) < MIN_LEADING_WORDS or len(bullets) > MAX_LEADING_WORDS:
+            problems.append(
+                f"{STYLE_SPEC} 风格 {slug} 的风格领词（Style Leading Words）有 {len(bullets)} 条，"
+                f"须在 {MIN_LEADING_WORDS}–{MAX_LEADING_WORDS} 条之间"
+            )
+
+    if grammar_body is None:
+        problems.append(f"{STYLE_SPEC} 风格 {slug} 缺少「镜头与声画语法」小节")
+    else:
+        bullets = [ln for ln in grammar_body if ln.strip().startswith("- ")]
+        if not bullets:
+            problems.append(f"{STYLE_SPEC} 风格 {slug} 的「镜头与声画语法」没有任何条目")
+
+    if guard_body is None:
+        problems.append(f"{STYLE_SPEC} 风格 {slug} 缺少「高频防线」小节")
+    else:
+        bullets = [ln for ln in guard_body if ln.strip().startswith("- ")]
+        if len(bullets) > MAX_STYLE_GUARDRAILS:
+            problems.append(
+                f"{STYLE_SPEC} 风格 {slug} 的高频防线有 {len(bullets)} 条，超过 {MAX_STYLE_GUARDRAILS} 条上限"
+            )
+
+    return problems
+
+
+def _wording_hygiene_problems(spec_dir: Path) -> list[str]:
+    """挡掉单路线措辞、裸写 Leading Words 与硬编码 1920x1080 版式规则。"""
     problems: list[str] = []
     for name in ROUTE_TEXT_FILES:
         path = spec_dir / name
@@ -129,6 +199,14 @@ def _route_wording_problems(spec_dir: Path) -> list[str]:
                 problems.append(
                     f"{name}:{lineno} 出现单路线措辞（路线只有一条）；"
                     "应写成正交能力组合 + 画框（frame）"
+                )
+            if BARE_LEADING_WORDS_RE.search(line):
+                problems.append(
+                    f"{name}:{lineno} 出现裸写 Leading Words；请写全称 风格领词（Style Leading Words）"
+                )
+            if HARDCODED_1080P_RE.search(line):
+                problems.append(
+                    f"{name}:{lineno} 出现硬编码 1920x1080 版式规则；画幅与版式应与 frame 正交解耦"
                 )
     return problems
 
@@ -149,48 +227,59 @@ def lint(spec_dir: Path | str | None = None, skill_root: Path | str | None = Non
         problems.append(f"{AUTHOR_SPEC} 共 {len(text[AUTHOR_SPEC])} 行，超过 {MAX_AUTHOR_LINES} 行上限")
 
     ids: set[str] = set()
-    author_entries = _iter_entries(text[AUTHOR_SPEC], AUTHOR_ENTRY_RE)
-    if len(author_entries) > MAX_AUTHOR_ENTRIES:
-        problems.append(f"{AUTHOR_SPEC} 有 {len(author_entries)} 条，超过 {MAX_AUTHOR_ENTRIES} 条上限")
-    for entry_id, _title, body in author_entries:
+    g_entries = _iter_entries(text[AUTHOR_SPEC], AUTHOR_G_RE)
+    v_entries = _iter_entries(text[AUTHOR_SPEC], AUTHOR_V_RE)
+    if not g_entries:
+        problems.append(f"{AUTHOR_SPEC} 缺少视觉底线条目（G01–G05）")
+    if len(g_entries) > MAX_AUTHOR_G_ENTRIES:
+        problems.append(f"{AUTHOR_SPEC} 视觉底线有 {len(g_entries)} 条，超过 {MAX_AUTHOR_G_ENTRIES} 条上限")
+    if not v_entries:
+        problems.append(f"{AUTHOR_SPEC} 缺少口播底线条目（V01–V05）")
+    if len(v_entries) > MAX_AUTHOR_V_ENTRIES:
+        problems.append(f"{AUTHOR_SPEC} 口播底线有 {len(v_entries)} 条，超过 {MAX_AUTHOR_V_ENTRIES} 条上限")
+
+    for entry_id, _title, body in _iter_entries(text[AUTHOR_SPEC], AUTHOR_ANY_RE):
         if entry_id in ids:
             problems.append(f"重复条目编号：{entry_id}")
         ids.add(entry_id)
+        if entry_id.startswith("G") and entry_id not in VALID_G_IDS:
+            problems.append(f"视觉底线编号越界：{entry_id}（允许 G01–G05）")
+        if entry_id.startswith("V") and entry_id not in VALID_V_IDS:
+            problems.append(f"口播底线编号越界：{entry_id}（允许 V01–V05）")
         problems += _entry_problems(entry_id, body, skill_root)
 
     style_lines = text[STYLE_SPEC]
-    sections = []
+    sections: list[tuple[int, str]] = []
     for i, line in enumerate(style_lines):
         m = SECTION_RE.match(line)
         if m and not line.startswith("### "):
             sections.append((i, m.group(1)))
-    style_total = 0
+
+    seen_slugs: set[str] = set()
     for idx, (start, slug) in enumerate(sections):
         end = sections[idx + 1][0] if idx + 1 < len(sections) else len(style_lines)
+        for j in range(start + 1, end):
+            if style_lines[j].startswith("## ") and not SECTION_RE.match(style_lines[j]):
+                end = j
+                break
         if slug not in STYLE_SLUGS:
             problems.append(f"{STYLE_SPEC} 未知风格节：{slug!r}（已知：{', '.join(STYLE_SLUGS)}）")
             continue
-        entries = _iter_entries(style_lines[start:end], STYLE_ENTRY_RE)
-        style_total += len(entries)
-        if not entries:
-            problems.append(f"{STYLE_SPEC} 风格 {slug} 没有任何条目")
-        if len(entries) > MAX_PER_STYLE:
-            problems.append(f"{STYLE_SPEC} 风格 {slug} 有 {len(entries)} 条，超过 {MAX_PER_STYLE} 条上限")
-        for entry_id, _title, body in entries:
-            if entry_id in ids:
-                problems.append(f"重复条目编号：{entry_id}")
-            ids.add(entry_id)
-            problems += _entry_problems(entry_id, body, skill_root)
+        if slug in seen_slugs:
+            problems.append(f"{STYLE_SPEC} 重复风格节：{slug}")
+            continue
+        seen_slugs.add(slug)
+        problems += _lint_style_section(slug, style_lines[start:end])
 
-    total = len(author_entries) + style_total
-    if total > MAX_TOTAL_ENTRIES:
-        problems.append(f"两个文件合计 {total} 条，超过 {MAX_TOTAL_ENTRIES} 条上限")
-    problems += _route_wording_problems(spec_dir)
+    if not sections:
+        problems.append(f"{STYLE_SPEC} 未定义任何风格节")
+
+    problems += _wording_hygiene_problems(spec_dir)
     return problems
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="检查 author-spec / style-spec 的结构与上限")
+    parser = argparse.ArgumentParser(description="检查 Style Card v3 与全局底线规范（author-spec / style-spec）")
     parser.add_argument("--json", action="store_true", help="以 JSON 输出")
     parser.add_argument("--spec-dir", default=None, help="规范文件所在目录（默认 references/）")
     parser.add_argument("--skill-root", default=None, help="解析 check: 路径的根（默认 Skill 根）")

@@ -40,7 +40,7 @@
 
 ## 1. 接手与版本核对
 
-**先读**：[intake-and-frames.md](intake-and-frames.md)、[preferences.md](preferences.md)、上游 `handoff-context.md`（或 `_idea/brief.md`）、`edit/project.md`、`production-plan.md` 与 `feedback/`。调用 `_internal/resolve_vault.py --style <style_id>` 取 [author-spec.md](author-spec.md) 与风格规则（未挂载私有库自动回退开源内置）。
+**先读**：[intake-and-frames.md](intake-and-frames.md)、[preferences.md](preferences.md)、上游 `handoff-context.md`（或 `_idea/brief.md`）、`edit/project.md`、`production-plan.md` 与 `feedback/`。调用 `_internal/resolve_vault.py --style <style_id>` 取全局底线 [author-spec.md](author-spec.md)（G01–G05 / V01–V05）与 Style Card v3 风格卡（`style_card_path`、`palette`、`anchors`、`patterns`、可选 `preferred_frame`；未挂载私有库自动回退开源内置六套风格 [style-spec.md](style-spec.md)）。
 
 **核 `script_hash`**：调用 `_internal/check_script_hash.py`（规则见 [intake-and-frames.md](intake-and-frames.md)）。hash 不一致、snapshot 不完整或资产越界立即停下问作者，不静默继续。
 

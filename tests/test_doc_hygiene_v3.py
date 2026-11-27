@@ -191,6 +191,22 @@ class DocHygieneV3Tests(unittest.TestCase):
         proc = subprocess.run([sys.executable, str(run_evals)], capture_output=True, text=True)
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
 
+    def test_style_card_v3_terminology_and_no_bare_leading_words(self) -> None:
+        docs = _active_docs()
+        bare_re = re.compile(r"(?<!Style\s)Leading\s+Words", re.IGNORECASE)
+        hits: list[str] = []
+        for rel, text in docs.items():
+            if bare_re.search(text):
+                hits.append(f"{rel}: contains bare `Leading Words` without `Style Leading Words`")
+            for legacy_vault_file in ("craft.md", "page.md", "craft_rules_path", "page_rules_path"):
+                if legacy_vault_file in text:
+                    hits.append(f"{rel}: contains retired Style Vault token `{legacy_vault_file}`")
+        self.assertEqual(hits, [], "\n".join(hits))
+
+        for rel in ("SKILL.md", "references/style-spec.md", "references/preferences.md"):
+            self.assertIn("风格领词（Style Leading Words）", docs[rel], f"{rel} missing full term `风格领词（Style Leading Words）`")
+        self.assertIn("Single High-Contrast Accent", docs["references/style-spec.md"])
+
 
 if __name__ == "__main__":
     unittest.main()

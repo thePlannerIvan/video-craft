@@ -41,7 +41,9 @@ PREFIXES = ("test", "check", "env", "judgment")
 #             重排走；本轮没有再新增判准。
 # 2026-11-27: 48 → 40 — HyperFrames 冻结只读条目（#10/#48/#50/#61/#63/#70/#74/#79）
 #             迁入 references/gotchas-index.md 历史迁移索引。
-MAX_GOTCHAS = 40
+# 2026-11-27: 40 → 10 — 40→10 精准清淤（26 条迁入 references/gotchas-index.md 历史迁移索引，
+#             4 条同根合并），条数上限收紧至 15。
+MAX_GOTCHAS = 15
 
 ENTRY_RE = re.compile(r"(?m)^(##+)\s+(\d+)\.\s+([^\n]*)\n")
 ENFORCE_RE = re.compile(r"(?m)^- \*\*enforcement\*\*：(.+)$")

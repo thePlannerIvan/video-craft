@@ -31,7 +31,7 @@
 | `check_visual.py`、活舞台契约、交付态渲染、alpha 与自绘逐帧规则 | [visual-checks.md](visual-checks.md) |
 | ASR 转写、Article-First 语义字幕、Voice Polish 与 Visual Soundscape 声音标准 | [captions-and-audio.md](captions-and-audio.md) |
 | 双审阅面、DSH/本地宿主、收件返修与按段分流双轨交付核验 | [review-and-delivery.md](review-and-delivery.md) |
-| 跨风格全局判准、四风格动效准则与规则准入淘汰 | [author-spec.md](author-spec.md)、[style-spec.md](style-spec.md)、[preferences.md](preferences.md) |
+| 跨风格全局视觉/口播底线（G01–G05 / V01–V05）、六套风格单卡（风格领词（Style Leading Words）与高频防线）及准入淘汰 | [author-spec.md](author-spec.md)、[style-spec.md](style-spec.md)、[preferences.md](preferences.md) |
 | 模块边界、失效依赖、新脚本准入与调试闭环 | 本文（`architecture.md`） |
 | 当前不变式与 GOTCHAS 历史迁移索引 | [gotchas-index.md](gotchas-index.md)、根目录 [GOTCHAS.md](../GOTCHAS.md) |
 
@@ -56,7 +56,7 @@
 
 | 对接方 | 对方拥有 | Craft 接收/交回 |
 |---|---|---|
-| `video-manager` | 选题、口播定稿（`script.md`）、`visual-brief.md`、`handoff-context.md` 与 `style` 审美参考/禁忌 | 核 `script_hash` 与采用版；Craft 独立持有 `storyboard.json`、Look-Dev、声景与交付；改内容主张或文案回上游 |
+| `video-manager` | 选题、口播定稿（`script.md`）、`visual-brief.md`、`handoff-context.md` 与 Style Card v3 风格卡（`style.md` / `anchors` / `palette` / `patterns`） | 核 `script_hash` 与采用版；Craft 独立持有 `storyboard.json`、Look-Dev、声景与交付；改内容主张或文案回上游 |
 | `planners-ppt-hell` | 按需产出的长篇/复杂静态参考页与 SVG 快照 | `film.py import-svg` 包装为 Remotion 场景参考（不篡改静态构图决定）；改静态排版回上游 |
 | `planners-review-core` | surface 契约、桥、本地宿主与 DSH 唤醒 | Craft 持有审阅 UI、播放验收与 `review_inbox.py` 业务解释 |
 | Remotion 4 外部运行壳 / FFmpeg | `@remotion/player` 活舞台与动效段渲染、FFmpeg 媒体编码（兼容历史 HyperFrames 只读工程） | Craft 负责 `{kw: 1}` 活舞台桥、`remotion_gates.py`、`check_visual`、按段分流拼合与交付严格核验 |

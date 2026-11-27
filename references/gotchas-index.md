@@ -74,3 +74,53 @@ v3 起 Remotion 4 成为默认主动效引擎，以下仅作用于冻结 HyperFr
 - #70 首次渲染的 compile 是冷启动（约 25 分钟），会被误判成「这台机器渲不动」 ｜ 已归档/冻结兼容（HyperFrames 暖缓存与 `check_render_env.py` 并发预算）
 - #74 `hyperframes check` 全绿 ≠ 审阅页能播：内联脚本在 srcdoc 里永不执行 ｜ 已归档/冻结兼容（`check_live_stage.py` 与外置 `src/*.js`）
 - #79 渲染退出 0、check 全绿，画面却从第 78 秒起整段没画：多 worker 截图丢内容 ｜ 已归档/冻结兼容（`--workers 1` 与 `check_render_fidelity.py`）
+
+### GOTCHAS 迁移索引（2026-11-27 · 40→10 清淤：已淘汰旧路线与旧引擎，6 条）
+
+以下 6 条仅作用于已淘汰的旧对比/旧 SVG 动效/浏览器录屏/WebM 透明预览或跨栈坐标移植，从 `GOTCHAS.md` 正文迁出，编号不复用：
+
+- #24 Re-rendering a project rendered before 2026-09-25 changes its bytes ｜ 已淘汰历史记录（`-bitexact` 与旧字节哈希对比；交付身份改以规范 EDL 与图像核验为准）
+- #40 SVG 空间布局平移 (Layout Transform) 与 WAAPI 动效平移冲突覆盖 ｜ 已淘汰旧路线（旧 SVG+WAAPI 动效模板坑；现行主动效走 Remotion `useCurrentFrame()`）
+- #41 Headless Browser Screencast 在 `<video>` 元素上的 IPC 缓冲区死锁 ｜ 已淘汰旧路线（`export_video.py` 浏览器录屏方案已停用，实拍与动效走 Remotion 截帧 + FFmpeg 拼合）
+- #44 审阅页要能合成层，就必须有一份浏览器可合成的载体 ｜ 已淘汰旧载体路线（MOV+WebM 双透明层路径，现行默认按段分流或 Remotion 活舞台直渲）
+- #45 VP9 的 alpha 是带外的：不点明解码器就抽不出来 ｜ 已淘汰旧载体解码（随 #44 透明 WebM 叠层路线迁出；工具能力保留于 `encode_transparent.py`）
+- #49 PIL 的 rotate 是逆时针为正，CSS 的 rotate 是顺时针为正 ｜ 已淘汰旧迁移坑（逐帧 PIL 脚本改写 HTML/CSS 的历史坐标系差异）
+
+### GOTCHAS 迁移索引（2026-11-27 · 40→10 清淤：旧审阅页模板一次性修复，9 条）
+
+以下 9 条审阅页模板与测试护栏缺陷已由代码修复与静态门禁（`check_review_template.py` / `review_surface.py`）一次性锁死，从 `GOTCHAS.md` 正文迁出：
+
+- #33 一屏画不出来，把整张清单带走了（而页头还写着"23 步"） ｜ 已固化修复（`review-page-template.html` `cueRangeOf()` 与单屏 `try/catch` 隔离）
+- #34 `os.kill(pid, 0)` 对僵尸进程也返回成功 ｜ 已固化修复（`review_surface.py` `Popen.poll()` 回收 + 超时升级 `SIGKILL`，`tests/test_visual_review_feedback.py` 回归）
+- #47 页面实时叠层，不能叠在已经烘焙了层的成片上 ｜ 已固化修复（`review/media.json` `baseVideo` 与 `layersBaked` 互斥声明）
+- #53 审阅页在不透明源 iframe 里：宿主 token 不会继承，硬编码会静默胜出 ｜ 已固化修复（Core 内联 `/*__DSH_TOKENS__*/` 与清理 `!important` 组件硬编码色）
+- #55 「当前屏」只在扬声器轨可见时才被记下 → 上一屏/下一屏看着像坏的 ｜ 已固化修复（选中即无条件赋值 `state.currentScreenObj` 与同步唯一播放器）
+- #57 审阅页的护栏是两具尸体 —— 不跑的测试等于没有测试 ｜ 已固化修复（已删死测试 `test_interactive_ui.py` 与修复跨 Skill `sys.path`，#54 同根并入本条）
+- #58 舞台选择函数改写了自己的参数 → 页面永远开在错的舞台上 ｜ 已由门禁锁死（`check_review_template.py` S1/S2/S3 不变量）
+- #59 字幕退回「整屏字幕」+ 圆角药丸 = 一个圆盖住画面 ｜ 已由门禁锁死（`check_review_template.py` S5/S6 不变量）
+- #62 静态检查的两个假阳：对正确代码报红，训练出来的只是忽略 ｜ 已由门禁锁死（`check_review_template.py --prove` 缺陷注入自证，#51 同根并入本条）
+
+### GOTCHAS 迁移索引（2026-11-27 · 40→10 清淤：已由现行脚手架与门禁接管，11 条）
+
+以下 11 条约束已 100% 下沉为确定性脚本或门禁报错，从 `GOTCHAS.md` 正文迁出：
+
+- #7 A tail pad longer than the delivery tolerance reads as a caption bug ｜ 已由门禁接管（`helpers/_internal/check_edl.py` 尾部留白容差校验）
+- #13 Probe the display matrix before choosing a canvas ｜ 已由门禁接管（`helpers/_internal/render.py` 读取 `rotation` 矩阵与 `tests/test_render_orientation.py`）
+- #21 A silent visual leg makes `verify_delivery.py` fail, by design ｜ 已由门禁接管（`helpers/_internal/verify_delivery.py --no-audio` 显式无声轨声明）
+- #42 剪点必须按实测音频判，不能按转写词框判 ｜ 已由门禁接管（`helpers/_internal/check_edl.py` 10ms RMS 静音剪点门禁与 `tests/test_edl_silence_gate.py` / `tests/test_edl_word_granularity.py`；其中「ASR 对称打码防误剪」人工判断并入 #1）
+- #43 渲染器的帧格是 ceil，不是 round ｜ 已由门禁接管（`helpers/_internal/duration_plan.py` `ceil` 帧格公式与 `tests/test_duration_plan.py`）
+- #56 工程态与交付态的切分只做了一条轴 → 交付过期无人发现 ｜ 已由门禁接管（`helpers/_internal/state_fingerprint.py` 来源指纹与 `verify_delivery.py` 校验）
+- #73 交付副本与流水线产物是两份判据相反的东西（字幕空隙） ｜ 已由门禁接管（`helpers/srt_export.py` 与 `helpers/_internal/export_deliverables.py` 导入空隙转换）
+- #75 「确认前不要渲染」写在文档里，渲染命令什么都不检查 ｜ 已由门禁接管（`helpers/_internal/render_gate.py` 双轨授权与 `tests/test_render_gate.py`）
+- #78 成片后剪停顿，字幕按剪点顺移：坐标空间混用 → 最多偏 3.2 秒 ｜ 已由门禁接管（`helpers/_internal/_cutmap.py` 与 `verify_delivery.py` `cut-map.json` 校验）
+- #80 「素材入点」与「EDL 源时间」是两个坐标，混用一个就渲染出空镜 ｜ 已由门禁接管（`helpers/montage.py plan` 入点越界拦截与 `tests/test_montage.py`）
+- #81 退出 0 + 文件大小正常，68% 的镜头却是空画面：显示检查必须看像素 ｜ 已由门禁接管（`helpers/_internal/check_montage.py` 逐镜像素与底图差异校验）
+
+### GOTCHAS 合并索引（2026-11-27 · 40→10 清淤：同根合并，4 条）
+
+同根条目合并进正文宿主条目，编号不复用：
+
+- #2 Two engines disagreeing is a signal, not noise ｜ 并入 #1 Word-level timing must come from SeedASR 2.0
+- #3 Signed-in-but-unusable accounts ｜ 并入 #1 Word-level timing must come from SeedASR 2.0
+- #83 `-t` 写在两个输入之间，属于第二个输入 ｜ 并入 #82 命令末尾接管道，退出码就不是渲染器的了（含 ffmpeg 参数次序与 `-o` 命名防错）
+- #84 `--no-loudnorm` 时 `-o` 撞上内部 base 名，读和写就是同一个文件 ｜ 并入 #82 命令末尾接管道，退出码就不是渲染器的了（含 ffmpeg 参数次序与 `-o` 命名防错）

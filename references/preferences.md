@@ -4,8 +4,8 @@
 
 | 目的地 | 装什么 | 谁读 |
 |---|---|---|
-| [`author-spec.md`](author-spec.md) | 跨风格都成立的全局判准（≤8 条） | 第 1 步读全篇 |
-| [`style-spec.md`](style-spec.md) | 某一种风格的动效规则：`line-art` 线稿 / `business-report` 商业报告 / `collage` 拼贴 / `concept-film` 概念电影（每种 ≤5 条） | 第 2 步定风格后读对应节 |
+| [`author-spec.md`](author-spec.md) | 跨风格成立的全局视觉底线（G01–G05 ≤5 条）与口播底线（V01–V05 ≤5 条） | 第 1 步读全篇 |
+| [`style-spec.md`](style-spec.md) | 六套风格单卡基准：`line-art` / `business-report` / `collage` / `concept-film` / `lifestyle-cult` / `studio-motion-ui`（风格领词（Style Leading Words）+ 镜头与声画语法 + 高频防线 0–4 条） | 第 2 步定风格后读对应节 |
 | 本片 `edit/preferences.md` | 这一支片子的决定，不跨项目 | 第 1 步起读 |
 | `visual-grammar.md` 等正式文档 | 否定型硬约束 | 做对应那一步时读 |
 | `GOTCHAS.md` | 会稳定导致错误的行为 | 开工前读 |
@@ -35,10 +35,10 @@
 
 先问两个问题，再决定写哪里：
 
-1. **跨不跨风格**：所有风格都成立 → `author-spec.md`；只跟"怎么动、怎么强调"有关 → `style-spec.md` 对应节（适用于开启 `motion` 时）。规范不按路线分维：剪口播底座与 `footage` / `motion` / `screen-demo` 能力组合及画框正交，共用同一套判准，只在条目正文标明适用的能力范围。
+1. **跨不跨风格**：所有风格都成立的视觉或口播底线 → `author-spec.md`（G01–G05 / V01–V05）；仅属于某一风格的视觉气质、风格领词（Style Leading Words）、镜头与声画语法或高频防线 → `style-spec.md` 对应节（或私有库 `styles/<style_id>/style.md`）。规范与能力组合（`footage` / `motion` / `screen-demo`）及画框（`frame`）完全正交，不在风格卡内写死横竖屏、人像坐标或像素规则。
 2. **会不会导致错误**：会（做错了就是 bug）进 `GOTCHAS.md`；只是不达标才进规范。
 
-两条边界：**数值不写进判准**（颜色、字号、圆角归本片 design 文档或画面侧的模板）；**已经写在正式文档里的不重复**（只加指针）。
+两条边界：**具体尺寸坐标不写进判准**（横竖屏画框归 `frame.py`，单片参数归本片 `production-plan.md`）；**已经写在正式文档里的不重复**（只加指针）。
 
 风格规则与 `visual-grammar.md` 的拆解规则冲突时，拆解优先：那是内容保真的硬约束，风格让位。
 
@@ -48,7 +48,7 @@
 
 1. **一条只住一处**：挪走就删旧处，不留两份。
 2. **新增必须处置旧条**：写明替代谁、合并进谁、或已升级到哪份文档；第 10 步交付后与上游复盘沉淀必须写出来。
-3. **硬顶**：`author-spec.md` ≤8 条、每种风格 ≤5 条、两文件合计 ≤25 条、`author-spec.md` ≤110 行，由 `helpers/_internal/spec_lint.py` 冻结。
+3. **硬顶**：`author-spec.md` 视觉底线 ≤5 条、口播底线 ≤5 条且总篇幅 ≤90 行；`style-spec.md` 六套风格各自 ≤45 行且高频防线 ≤4 条，由 `helpers/_internal/spec_lint.py` 冻结。
 4. **淘汰**：连续两次没影响任何决定 → 降级为项目内记录；第三次 → 删除，并在 `gotchas-index.md` 迁移区或项目记录留一行。
 
 机械判准优先进入所属现有工具及其 tests，并从规范中删除重复实现说明；是否需要独立检查 CLI 按 architecture.md 的新脚本准入决定。

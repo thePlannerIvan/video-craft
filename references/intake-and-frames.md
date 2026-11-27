@@ -6,10 +6,10 @@
 
 读取上游 `handoff-context.md`（或 `_idea/brief.md`）、`deliverable/script.md`、`visual-brief.md`、可选静态参考页与真实素材。已有 Story 的同名交付可直接接收，不重跑 Idea。对比既有 `edit/project.md`，把本轮目标、来源与替代关系记在最前。
 
-接手后按 [author-spec.md](author-spec.md) 运行外挂风格手册解析器：
+接手后按 [author-spec.md](author-spec.md) 运行 Style Card v3 风格库解析器（解析 `style.md`、`palette`、`anchors`、`patterns`、可选 `preferred_frame` 与全局 `G01–G05`/`V01–V05`，未挂载时自动回退开源六套风格基准，且不锁死能力组合与正交画框）：
 
 ```bash
-python3 "<craft>/helpers/_internal/resolve_vault.py" --style "<style_id>"
+python3 "<craft>/helpers/_internal/resolve_vault.py" --style "<style_id>" [--frame "<frame_id>"]
 ```
 
 按 [SKILL.md](../SKILL.md) 的能力组合矩阵确认本项目的 **`capabilities`**（底座 `剪口播` + 可自由叠加 `footage` / `motion` / `screen-demo`）与 **`frame`**（由 `helpers/frame.py resolve` 解析），写入 `edit/project.md` 与 `production-plan.md`；历史项目 `production_mode` 与 `visual-plan.json` 仅作只读兼容。

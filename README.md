@@ -18,7 +18,7 @@
 
 ```text
 以「剪口播」为固定底座，自由叠加 0–3 项正交画面能力（footage 剪视频 · motion 做动效 · screen-demo 实机录屏）+ 正交画框（frame.py）
-  → 1. 接入风格配置（读私有 ~/.config/planners/video-vault 或自动退回开源内置规范）与 frame.py 画框几何真源
+  → 1. 接入 Style Card v3（读私有 ~/.config/planners/video-vault 的 style.md、风格领词（Style Leading Words）、palette 与视觉锚点，或自动退回开源六套风格与 G01–G05/V01–V05 底线）与 frame.py 正交画框真源
   → 2. 词级转录 + 网页逐字剪辑审阅 + Voice Polish（podcast-warm 默认含停顿除重吸气声，-14.0 LUFS 归人物成片）
   → 3. 统一执行分镜 storyboard.json + Look-Dev 轻量样镜定调（无静态参考且做动效时先定调）+ Visual Soundscape 画面声景
   → 4. 出工程审阅态（edit/_engineering/）：Remotion 活舞台零渲染实时预演与代理同屏可播，横竖屏自适应模板，支持人声干声 A/B 与画面底噪开关试听

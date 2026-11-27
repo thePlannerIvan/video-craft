@@ -52,6 +52,22 @@ _Avoid_: 原页元素逐项抄写表
 人物孔位、画面舞台安全区与字幕安全区的唯一权威像素几何定义，与能力组合及风格完全正交，供画面构建、录屏裁切、构建门禁、渲染交付与审阅页同源读取。
 _Avoid_: 独立硬编码坐标, 风格锁死画框
 
+**风格（Style）**:
+跨多条视频沉淀的视觉气质、镜头调度与声画配合规范；仅给出美学方向与轻量防线，与口播选题结构、能力组合及横竖屏画框完全正交。
+_Avoid_: 风格绑定横竖屏, 风格决定能力组合
+
+**风格卡（Style Card）**:
+单文件承载一套风格全部文本规则的轻卡契约（`style.md` + `style.json` v3.0.0），由风格领词（Style Leading Words）、镜头与声画语法及 0–4 条高频防线构成，配合可选 `preferred_frame`、参考色板 `palette`、视觉锚点与招式切片使用。
+_Avoid_: 三阶段拆表, 细参数表硬锁死
+
+**风格领词（Style Leading Words）**:
+用于精准唤起模型预训练视觉与动效先验的高密度概念短词组（每套 3–5 组，如 `Single High-Contrast Accent`），在语义表述中一律使用全称。
+_Avoid_: 裸写 Leading Words, 细碎像素与缓动参数堆砌
+
+**视觉锚点（Visual Anchor）**:
+从已获批成片直接抽取的真实帧截图与动态招式切片，与风格卡协同传达直观审美基准。
+_Avoid_: 悬空未落地缩略图路径
+
 **视觉参考（Visual Reference）**:
 上游交付的关键帧静态页或参考截图，仅作配色、比例与造型风格参考，不再作为逐像素搬运契约。
 _Avoid_: 必须逐字还原的母版
@@ -77,3 +93,4 @@ _Avoid_: 把预演时长当实测
 - `生产模式（Production Mode）` / `pure-talking` / `footage-montage` / `keyframe-svg` / `片型` / `graphic` / `montage` → 已退役互斥分流概念（见 `ADR-0005`），统一改用正交的 `能力组合`（底座「剪口播」+ `footage` / `motion` / `screen-demo`）与 `画框`
 - `画面成片必须 0 音轨` / `无声纯画面` / `音效归人物轨` → 已退役（见 `ADR-0005`），改用 `人声润色` 归 `人物成片.mp4`、`画面声景` 归 `画面成片.mp4` 与独立 `画面音效轨.wav`
 - `page 十步路线` / `video-idea-system` → 已退役历史流程，不再作为默认入口
+- `三段风格规则（idea.md / page.md / craft.md）` / `风格细参数表（params）` / `候选晋升队列（candidates.json）` → 已退役旧代风格拆表资产，统一收拢为 Style Card v3 单卡（`style.md` + `style.json`）与风格领词（Style Leading Words）

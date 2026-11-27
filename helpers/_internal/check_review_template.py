@@ -322,6 +322,7 @@ LEGACY_CONTROL_IDS = (
     "choreo-deck",
     "dens-submit",
     "density-on",
+    "fb-type",
 )
 ENGINEERING_SCRIPTS = (
     "live_stage.py",

@@ -24,6 +24,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import subprocess
 import sys
@@ -158,6 +159,42 @@ def resolve_review_mode(project: Path, final_cut: bool = False) -> str:
     raise SystemExit(2)
 
 
+def _has_review_open_bridge() -> bool:
+    """在不触发模块初始化或 notify() 的前提下探测是否存在 review_open_bridge。"""
+    if "review_open_bridge" in sys.modules:
+        return sys.modules["review_open_bridge"] is not None
+    try:
+        return importlib.util.find_spec("review_open_bridge") is not None
+    except ValueError:
+        return True
+
+
+def _import_review_host():
+    from lib.planners_modules import resolve_module
+    lib_dir = str(resolve_module("planners-review-core") / "scripts" / "lib")
+    if lib_dir not in sys.path:
+        sys.path.insert(0, lib_dir)
+    import review_host
+    return review_host
+
+
+def _probe_host_alive(surface: Path):
+    try:
+        return _import_review_host().host_alive(surface)
+    except Exception:
+        return None
+
+
+def _stop_orphan_probe_host(surface: Path) -> None:
+    try:
+        rh = _import_review_host()
+        state = rh.host_state(surface)
+        if state:
+            rh.stop_host(state)
+    except Exception:
+        pass
+
+
 def review(project: Path, open_surface: bool = True, live: bool = True,
            as_json: bool = False, port: int | None = None,
            build_mode: str = "recompose") -> int:
@@ -280,7 +317,12 @@ def review(project: Path, open_surface: bool = True, live: bool = True,
         return stop()
 
     # 4) 运行时判据：这页到底能不能给人看
-    code, out = _run([str(INTERNAL / "check_review_playable.py"), str(project), "--quiet"])
+    will_use_local_host = bool(open_surface and not _has_review_open_bridge())
+    pre_existing_host = _probe_host_alive(surface) if will_use_local_host else None
+    playable_args = [str(INTERNAL / "check_review_playable.py"), str(project), "--quiet"]
+    if will_use_local_host:
+        playable_args.append("--keep-host")
+    code, out = _run(playable_args)
     detail = ""
     verdict = _json_tail(out)
     playable = (code == 0 and verdict.get('ok') is True
@@ -295,6 +337,8 @@ def review(project: Path, open_surface: bool = True, live: bool = True,
     step("运行时判据（能播 / 有画面 / 有声音）", playable, detail,
          "看上一行的 layer 提示：composition 或审阅装配")
     if not playable:
+        if will_use_local_host and pre_existing_host is None:
+            _stop_orphan_probe_host(surface)
         if not as_json:
             print("\n".join(l for l in out.splitlines() if l.startswith(("✗", "  ")))[:2000])
         return stop()

@@ -633,15 +633,6 @@
       border-color: var(--blue);
     }
     .mode-note { font-size: 10.5px; line-height: 1.4; color: var(--text-muted); }
-    #fb-type {
-      width: 100%;
-      padding: 5px 7px;
-      background: var(--bg-input);
-      color: var(--text);
-      border: 1px solid var(--border);
-      border-radius: 5px;
-      font-size: 11.5px;
-    }
     #fb-text {
       width: 100%;
       min-height: 64px;
@@ -909,7 +900,7 @@
       margin-bottom: 5px;
     }
     .feedback textarea { min-height: 92px; }
-    .tool-btn, .transport-btn, .feedback select, .feedback textarea { font-size: 13px; }
+    .tool-btn, .transport-btn, .feedback textarea { font-size: 13px; }
     textarea, input, select { background: var(--bg-input) !important; color: var(--text) !important; border-color: var(--border-strong) !important; }
     textarea:focus, input:focus, select:focus { border-color: var(--dsw-static-deepseek-500) !important; outline: 2px solid var(--dsw-static-deepseek-100); }
     .save-bar { align-items: center; gap: 8px; }
@@ -950,7 +941,11 @@
     }
     .center-feedback-slot .feedback-side-controls {
       grid-area: actions;
-      justify-content: space-between;
+      justify-content: center;
+    }
+    .center-feedback-slot .save-bar {
+      border-top: 0;
+      padding-top: 0;
     }
     @media (max-width: 900px) {
       .center-feedback-slot .feedback {
@@ -1160,13 +1155,6 @@
           <textarea id="fb-text" placeholder="写下修改意见"></textarea>
           <div id="stale-note" hidden></div>
           <div class="feedback-side-controls">
-            <select id="fb-type">
-              <option value="visual">画面与版式</option>
-              <option value="animation">动画与镜头</option>
-              <option value="timing">节奏与卡点</option>
-              <option value="copy">文字</option>
-              <option value="asset">素材</option>
-            </select>
             <div class="save-bar">
               <button id="fb-save" disabled>保存反馈</button>
               <div id="save-state">连接中</div>
@@ -2038,7 +2026,6 @@
       try {
         await review.draft({
           text: document.getElementById("fb-text").value,
-          type: document.getElementById("fb-type").value,
           mode: fbMode, stepId: state.step,
           snapshot: window.__REVIEW_DATA__?.snapshot || loadedTimelineId,
           choreography_overrides: state.choreoOverrides,
@@ -2060,7 +2047,6 @@
         document.getElementById("fb-text").value = draft.text;
         label("草稿已恢复 · 尚未提交", "dirty");
       }
-      if (draft.type) document.getElementById("fb-type").value = draft.type;
       if (timelineFingerprint === null) {
         pendingDraftForTimeline = draft;
         return;
@@ -2274,7 +2260,7 @@
         tagBadge.textContent = isOverall ? "整片" : `当前屏 · ${rec.stepId}`;
         badgeWrap.appendChild(tagBadge);
 
-        if (rec.type) {
+        if (rec.type && rec.type !== "general") {
           const typeTag = document.createElement("span");
           typeTag.className = "fb-card-type-tag";
           const typeMap = {
@@ -2740,7 +2726,8 @@
           playBtn.classList.toggle("primary", !isPlaying);
         }
       }
-      syncAltAudioState();
+      if (paused) syncAltAudioState();
+      else applyAltAudioState(true);
       syncDemoProxyAt(ms / 1000, isPlaying);
     });
 
@@ -2784,6 +2771,7 @@
           try { compVid.currentTime = startSec; } catch {}
         }
       }
+      if (seekVideo) syncAltAudioState();
     }
 
     async function seekGlobalTime(targetSec) {
@@ -2948,27 +2936,45 @@
         soundscapeSfxOnlyUrl: resolvedSoundscapeSfxOnlyUrl,
       };
     }
-    function syncAudioElementToClock(el, url, clock, muted) {
+    const altAudioLastResyncAt = new WeakMap();
+    function syncAudioElementToClock(el, url, clock, muted, throttleHeartbeat = false) {
       if (!el) return;
       if (!url) {
         el.muted = !!muted;
         if (!el.paused) el.pause();
         return;
       }
-      if (el.getAttribute("src") !== url) el.src = url;
+      const srcChanged = el.getAttribute("src") !== url;
+      if (srcChanged) el.src = url;
       el.muted = !!muted;
       if (clock) {
         el.playbackRate = clock.rate || 1;
-        if (Math.abs((el.currentTime || 0) - clock.time) > 0.12) {
-          try { el.currentTime = clock.time; } catch {}
+        const drift = Math.abs((el.currentTime || 0) - clock.time);
+        if (throttleHeartbeat) {
+          const now = Date.now();
+          const lastResyncAt = altAudioLastResyncAt.get(el) || 0;
+          if (el.readyState >= 2 && drift > 0.35 && (now - lastResyncAt) >= 1000) {
+            try {
+              el.currentTime = clock.time;
+              altAudioLastResyncAt.set(el, now);
+            } catch {}
+          }
+        } else if (srcChanged || drift > 0.12) {
+          try {
+            el.currentTime = clock.time;
+            altAudioLastResyncAt.set(el, Date.now());
+          } catch {}
         }
         if (!clock.paused && el.paused) el.play().catch(() => {});
         else if (clock.paused && !el.paused) el.pause();
       }
     }
-    function syncAltAudioState() {
+    function applyAltAudioState(
+      throttleHeartbeat = false,
+      bedMode = brollBedMode,
+      sndEl = document.getElementById("review-soundscape-audio"),
+    ) {
       const alt = document.getElementById("review-audio-alt");
-      const sndEl = document.getElementById("review-soundscape-audio");
       const compVid = document.getElementById("composite-video-player");
       const spkVid = document.getElementById("stage-speaker-video");
       const hasComp = stageViewMode === "composite" && compVid && compVid.getAttribute("src");
@@ -2984,7 +2990,7 @@
         if (compVid) compVid.muted = true;
         if (spkVid) spkVid.muted = true;
         liveStage.mute(true);
-        syncAudioElementToClock(alt, targetUrl, clock, false);
+        syncAudioElementToClock(alt, targetUrl, clock, false, throttleHeartbeat);
       } else {
         if (compVid) compVid.muted = false;
         if (spkVid) spkVid.muted = false;
@@ -2993,10 +2999,10 @@
       }
       let sndUrl = null;
       let sndMuted = true;
-      if (brollBedMode === "on" && resolvedSoundscapeUrl) {
+      if (bedMode === "on" && resolvedSoundscapeUrl) {
         sndUrl = resolvedSoundscapeUrl;
         sndMuted = false;
-      } else if (brollBedMode === "off") {
+      } else if (bedMode === "off") {
         if (resolvedSoundscapeSfxOnlyUrl) {
           sndUrl = resolvedSoundscapeSfxOnlyUrl;
           sndMuted = false;
@@ -3005,7 +3011,14 @@
           sndMuted = true;
         }
       }
-      syncAudioElementToClock(sndEl, sndUrl, clock, sndMuted);
+      syncAudioElementToClock(sndEl, sndUrl, clock, sndMuted, throttleHeartbeat);
+    }
+    function syncAltAudioState() {
+      applyAltAudioState(
+        false,
+        brollBedMode,
+        document.getElementById("review-soundscape-audio"),
+      );
     }
     const demoProxyUrls = new Map();
     async function syncDemoProxyAt(curSec, playing) {
@@ -3732,7 +3745,7 @@
     function buildRecord(text) {
       const stale = staleNoted ? { stale: true, ...(loadedTimelineId ? { stale_timeline: loadedTimelineId } : {}) } : {};
       const common = {
-        type: document.getElementById("fb-type").value,
+        type: "general",
         text,
         status: "open",
         // 记下这一条是冲着哪一版审阅面写的：重建之后旧意见自动归入历史。
@@ -3852,7 +3865,6 @@
       clearTimeout(draftTimer);
       draftTimer = setTimeout(saveDraft, 300);
     });
-    document.getElementById("fb-type").addEventListener("change", saveDraft);
 
     document.getElementById("fb-save").addEventListener("click", save);
     document.addEventListener("keydown", (e) => {

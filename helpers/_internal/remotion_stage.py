@@ -11,6 +11,7 @@ Shell (`remotion_runtime.py`); zero `node_modules` ever enter a project director
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 import hashlib
 import html
 import http.server
@@ -23,6 +24,7 @@ import socketserver
 import subprocess
 import sys
 import time
+from typing import Literal
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -788,6 +790,13 @@ createRoot(mountEl).render(React.createElement({export_expr}));
     return stage_meta
 
 
+@dataclass(frozen=True)
+class _RouteTarget:
+    kind: Literal["meta", "file", "not_found"]
+    path: Path | None = None
+    message: str = ""
+
+
 class _StageTCPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     allow_reuse_address = True
     daemon_threads = True
@@ -807,44 +816,74 @@ def _make_handler(stage_dir: Path, remotion_dir: Path):
         def log_message(self, format: str, *args) -> None:
             pass
 
-        def do_GET(self) -> None:
+        def _resolve_get_route(self) -> _RouteTarget:
             req_path = unquote(urlparse(self.path).path)
             if req_path == "/api/stage-meta":
                 if not meta_file.is_file():
-                    self.send_error(404, "stage-meta.json not found")
-                    return
-                raw = meta_file.read_bytes()
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Content-Length", str(len(raw)))
-                self.end_headers()
-                self.wfile.write(raw)
-                return
+                    return _RouteTarget("not_found", message="stage-meta.json not found")
+                return _RouteTarget("meta", path=meta_file)
 
             if req_path.startswith("/public/"):
                 rel = req_path[len("/public/"):].lstrip("/")
                 target = (public_dir / rel).resolve()
                 if not target.is_relative_to(public_dir) or not target.is_file():
-                    self.send_error(404, f"Public asset not found: {rel}")
-                    return
-                self._serve_file_with_range(target)
-                return
+                    return _RouteTarget("not_found", message=f"Public asset not found: {rel}")
+                return _RouteTarget("file", path=target)
 
-            if req_path in ("/", "/index.html"):
-                rel = "stage.html"
-            else:
-                rel = req_path.lstrip("/")
+            rel = "stage.html" if req_path in ("/", "/index.html") else req_path.lstrip("/")
             target = (stage_root / rel).resolve()
-            if not target.is_relative_to(stage_root) or not target.is_file():
-                pub_target = (public_dir / rel).resolve()
-                if public_dir.is_dir() and pub_target.is_relative_to(public_dir) and pub_target.is_file():
-                    self._serve_file_with_range(pub_target)
-                    return
-                self.send_error(404, f"Not found: {req_path}")
-                return
-            self._serve_file_with_range(target)
+            if target.is_relative_to(stage_root) and target.is_file():
+                return _RouteTarget("file", path=target)
+            pub_target = (public_dir / rel).resolve()
+            if public_dir.is_dir() and pub_target.is_relative_to(public_dir) and pub_target.is_file():
+                return _RouteTarget("file", path=pub_target)
+            return _RouteTarget("not_found", message=f"Not found: {req_path}")
 
-        def _serve_file_with_range(self, target: Path) -> None:
+        def _handle_request(self, *, head_only: bool) -> None:
+            route = self._resolve_get_route()
+            if route.kind == "not_found":
+                self.send_error(404, route.message)
+                return
+            if route.path is None:
+                self.send_error(500, "Route missing file path")
+                return
+            if route.kind == "meta":
+                raw = route.path.read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                if not head_only:
+                    try:
+                        self.wfile.write(raw)
+                    except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                        return
+                return
+            self._serve_file_with_range(route.path, head_only=head_only)
+
+        def do_GET(self) -> None:
+            self._handle_request(head_only=False)
+
+        def do_HEAD(self) -> None:
+            self._handle_request(head_only=True)
+
+        def _stream_file_bytes(self, target: Path, *, start: int = 0, remaining: int | None = None) -> None:
+            try:
+                with target.open("rb") as fh:
+                    if start > 0:
+                        fh.seek(start)
+                    while remaining is None or remaining > 0:
+                        to_read = 65536 if remaining is None else min(65536, remaining)
+                        chunk = fh.read(to_read)
+                        if not chunk:
+                            break
+                        self.wfile.write(chunk)
+                        if remaining is not None:
+                            remaining -= len(chunk)
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                return
+
+        def _serve_file_with_range(self, target: Path, head_only: bool = False) -> None:
             ctype = self.guess_type(str(target))
             if target.suffix == ".js":
                 ctype = "application/javascript; charset=utf-8"
@@ -875,9 +914,8 @@ def _make_handler(stage_dir: Path, remotion_dir: Path):
                     self.send_header("Content-Range", f"bytes {start}-{end}/{data_size}")
                     self.send_header("Content-Length", str(length))
                     self.end_headers()
-                    with target.open("rb") as fh:
-                        fh.seek(start)
-                        self.wfile.write(fh.read(length))
+                    if not head_only:
+                        self._stream_file_bytes(target, start=start, remaining=length)
                     return
                 self.send_error(416, "Requested Range Not Satisfiable")
                 return
@@ -886,12 +924,8 @@ def _make_handler(stage_dir: Path, remotion_dir: Path):
             self.send_header("Accept-Ranges", "bytes")
             self.send_header("Content-Length", str(data_size))
             self.end_headers()
-            with target.open("rb") as fh:
-                while True:
-                    chunk = fh.read(65536)
-                    if not chunk:
-                        break
-                    self.wfile.write(chunk)
+            if not head_only:
+                self._stream_file_bytes(target, start=0, remaining=None)
 
     return Handler
 

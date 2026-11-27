@@ -321,8 +321,7 @@ def run(project: Path, points: list[float], keep_host: bool, verbose: bool) -> i
     started = None
     if surface_path.is_file():
         try:
-            surface = json.loads(surface_path.read_text(encoding="utf-8"))
-            started = review_host.open_review(surface, port=0, open_browser=False)
+            started = review_host.open_review(surface_path, port=0, open_browser=False)
         except Exception:
             started = None
     if started is None:
@@ -550,7 +549,7 @@ def run(project: Path, points: list[float], keep_host: bool, verbose: bool) -> i
     finally:
         if not keep_host and owns_host:
             try:
-                review_host.stop_host(project / "review")
+                review_host.stop_host(started)
             except Exception:
                 pass
         for item in report.checks:

@@ -78,6 +78,7 @@ class ReviewTemplateGuardrailTest(unittest.TestCase):
             '<div id="verbatim-iframe-wrap" hidden></div>',
             '<div id="density-panel" hidden></div>',
             '<div id="elem-edit-bar" hidden></div>',
+            '<select id="fb-type"><option value="visual">画面与版式</option></select>',
             '<script>const msg1 = "请先跑 helpers/live_stage.py";</script>',
             '<script>const msg2 = "运行 edl_review_surface.py";</script>',
             '<script>const msg3 = "调用 review_open 打开";</script>',

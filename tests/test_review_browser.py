@@ -149,6 +149,7 @@ class ReviewBrowserTests(unittest.TestCase):
             self.assertIn("2 章 · 3 步", page.inner_text("#project-name"))
             # 保存按钮在桥连上之后才可用 —— 不承诺一个存不进去的页面
             self.assertFalse(page.is_disabled("#fb-save"))
+            self.assertEqual(page.locator("#fb-type").count(), 0)
 
             # ③ **第一条路：不选任何屏，直接说一句整片意见。**
             #    页面默认就落在「整片意见」，所以这里**一个 step 都不点**。
@@ -165,6 +166,9 @@ class ReviewBrowserTests(unittest.TestCase):
             overall = json.loads(submissions.read_text(encoding="utf-8"))["records"]
             self.assertEqual(len(overall), 1)
             self.assertEqual(overall[0]["phase"], "overall")
+            self.assertEqual(overall[0]["type"], "general")
+            self.assertEqual(page.locator("#fb-history-list .fb-card").count(), 1)
+            self.assertEqual(page.locator("#fb-history-list .fb-card-type-tag").count(), 0)
             # **没有伪造的单位字段**
             for field in ("chapterId", "stepId", "stepIndex", "caption", "durationMs"):
                 with self.subTest(field=field):
@@ -189,6 +193,9 @@ class ReviewBrowserTests(unittest.TestCase):
             self.assertEqual(len(doc["records"]), 2)
             record = doc["records"][1]
             self.assertEqual(record["text"], "这一屏太挤了")
+            self.assertEqual(record["type"], "general")
+            self.assertEqual(page.locator("#fb-history-list .fb-card").count(), 2)
+            self.assertEqual(page.locator("#fb-history-list .fb-card-type-tag").count(), 0)
             self.assertEqual(record["chapterId"], "intro")
             self.assertEqual(record["stepId"], "intro-001")
             self.assertEqual(record["status"], "open")
@@ -297,6 +304,7 @@ class ReviewBrowserTests(unittest.TestCase):
         overall_written = [json.loads(line) for line in overall_jsonl.read_text(encoding="utf-8").splitlines() if line.strip()]
         self.assertEqual(len(overall_written), 1)
         self.assertEqual(overall_written[0]["phase"], "overall")
+        self.assertEqual(overall_written[0]["type"], "general")
         # 判据收回成「契约字段必须在、单位字段必须不在」。
         # 原先这里是整集合硬编码 —— 那是契约的一份缓存，页面合法地长了 buildId 与
         # adjustments 之后就过时了；它被 env 门跳过的那段时间里没人发现。
@@ -372,7 +380,7 @@ class ReviewBrowserTests(unittest.TestCase):
                     "#advanced-toggle", "#btn-play-screen", "#btn-show-all",
                     "#btn-focus-toggle", "#btn-toggle-cues", "#beat-switcher",
                     "#feedback-panel", "#tool-box", "#tool-select", "#tool-director",
-                    "#annotation-overlay", ".canvas-toolbar",
+                    "#annotation-overlay", ".canvas-toolbar", "#fb-type",
                 ]
                 for selector in removed_selectors:
                     with self.subTest(selector=selector):
@@ -670,6 +678,48 @@ class ReviewBrowserTests(unittest.TestCase):
                     self.assertTrue(page.evaluate("() => !!document.querySelector('#right-feedback-slot .feedback')"))
                 finally:
                     browser.close()
+
+    def test_legacy_typed_record_keeps_tag_while_new_general_hides_it(self):
+        from playwright.sync_api import sync_playwright
+
+        submissions = submissions_file(self.project)
+        submissions.write_text(json.dumps({
+            "contract_version": "video-craft-review-submissions/1.0.0",
+            "surface": "video-craft/visual",
+            "records": [
+                {"phase": "overall", "type": "visual", "text": "旧版带分类的历史意见", "status": "open"},
+            ],
+        }, ensure_ascii=False), encoding="utf-8")
+
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch()
+            try:
+                page = browser.new_page(viewport={"width": 1440, "height": 900})
+                page.route("**/localhost:5176/**", lambda route: route.abort())
+                page.route("**/cdn.jsdelivr.net/**", lambda route: route.abort())
+                page.goto(self.host["url"], wait_until="domcontentloaded")
+                page.wait_for_function("() => !document.getElementById('fb-save').disabled", timeout=15000)
+
+                self.assertEqual(page.locator("#fb-type").count(), 0)
+                self.assertEqual(page.locator("#fb-history-list .fb-card").count(), 1)
+                self.assertEqual(page.locator("#fb-history-list .fb-card-type-tag").count(), 1)
+                page.click("#fb-history-list details.fb-history summary")
+                tag = page.locator("#fb-history-list .fb-card-type-tag")
+                self.assertTrue(tag.is_visible())
+                self.assertIn("画面与版式", tag.inner_text())
+
+                page.fill("#fb-text", "直接写自然语言修改意见")
+                page.click("#fb-save")
+                page.wait_for_function(
+                    "() => /本批 2 条/.test(document.getElementById('save-state').textContent)", timeout=15000
+                )
+                records = json.loads(submissions.read_text(encoding="utf-8"))["records"]
+                self.assertEqual(len(records), 2)
+                self.assertEqual(records[1]["type"], "general")
+                self.assertEqual(page.locator("#fb-history-list .fb-card").count(), 2)
+                self.assertEqual(page.locator("#fb-history-list .fb-card-type-tag").count(), 1)
+            finally:
+                browser.close()
 
 
 if __name__ == "__main__":

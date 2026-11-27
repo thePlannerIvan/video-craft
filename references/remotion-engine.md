@@ -6,7 +6,7 @@
 
 v3 起 **Remotion 4** 为所有新建 `motion` 与静态视觉参考页导入项目的唯一默认主动效引擎；既有旧引擎项目（仅有 `composition/index.html`）冻结为静默只读兼容通道，由 `helpers/_internal/remotion_stage.py::detect_motion_engine()` 按工程目录特征确定性路由：
 
-1. 存在 `<project>/remotion/src/Root.*`（或 `storyboard.json` / `recompose.json` 的 `remotionDir`）→ **Remotion 4**；
+1. 存在 `<project>/remotion/src/Root.*`（或 `storyboard.json` / 历史兼容 `recompose.json` 的 `remotionDir`）→ **Remotion 4**；
 2. 否则存在 `<project>/composition/index.html` → **历史兼容只读通道**。
 
 新建 Remotion 源码工程只存放轻量源码与少量静态引用资产，**严禁在项目目录内生成或安装 `node_modules`**：

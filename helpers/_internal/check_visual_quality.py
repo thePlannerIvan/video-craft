@@ -36,12 +36,16 @@ from _geometry import box_intersects, resolve_project_frame  # noqa: E402
 SKIP_DIRS = {"node_modules", ".hyperframes", "_render", "renders", ".git", ".cache"}
 TEXT_SUFFIXES = {".html", ".htm", ".css", ".svg"}
 CODE_SUFFIXES = {".html", ".htm", ".js", ".mjs"}
+REMOTION_SUFFIXES = {".tsx", ".ts", ".jsx", ".js", ".css", ".svg"}
+FONT_FILE_SUFFIXES = {".woff", ".woff2", ".ttf", ".otf"}
 
 SYSTEM_AND_GENERIC_FONTS = {
     "sans-serif", "serif", "monospace", "cursive", "fantasy", "system-ui",
     "-apple-system", "blinkmacsystemfont", "pingfang sc", "pingfangsc-regular",
     "pingfangsc-medium", "pingfangsc-semibold", "hiragino sans gb",
     "microsoft yahei", "noto sans sc", "noto serif sc", "noto sans",
+    "noto sans cjk sc", "noto serif cjk sc",
+    "source han sans sc", "source han sans", "source han serif sc",
     "helvetica", "helvetica neue", "arial", "inter", "sf pro",
     "sf pro display", "sf pro text", "sf mono", "jetbrains mono",
     "menlo", "monaco", "consolas", "georgia", "times new roman",
@@ -50,18 +54,19 @@ SYSTEM_AND_GENERIC_FONTS = {
 
 
 def _strip_comments(text: str, suffix: str) -> str:
-    if suffix in {".css", ".js", ".mjs"}:
+    if suffix in {".css", ".js", ".mjs", ".ts", ".tsx", ".jsx"}:
         text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
-    if suffix in {".js", ".mjs"}:
-        text = re.sub(r"(?m)//.*$", "", text)
+    if suffix in {".js", ".mjs", ".ts", ".tsx", ".jsx"}:
+        text = re.sub(r"(?m)(?<!:)//.*$", "", text)
     if suffix in {".html", ".htm", ".svg"}:
         text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
     return text
 
 
-def _collect_files(comp_dir: Path) -> list[Path]:
+def _collect_files(comp_dir: Path, suffixes: set[str] | None = None) -> list[Path]:
     if not comp_dir.is_dir():
         return []
+    want = suffixes or (TEXT_SUFFIXES | CODE_SUFFIXES)
     out: list[Path] = []
     for p in sorted(comp_dir.rglob("*")):
         if not p.is_file():
@@ -70,9 +75,39 @@ def _collect_files(comp_dir: Path) -> list[Path]:
             continue
         if p.name.endswith((".min.js", ".min.css")):
             continue
-        if p.suffix.lower() in (TEXT_SUFFIXES | CODE_SUFFIXES):
+        if p.suffix.lower() in want:
             out.append(p)
     return out
+
+
+def _resolve_remotion_dir(project: Path, comp_name: str | None) -> Path | None:
+    """Return the Remotion project directory when Remotion is the active engine."""
+    import remotion_stage  # noqa: E402
+
+    if comp_name is not None:
+        raw = Path(comp_name).expanduser()
+        cand = (raw if raw.is_absolute() else (project / raw)).resolve()
+        if remotion_stage.find_root_file(cand) is not None or (
+            (cand / "src").is_dir() and not (cand / "index.html").is_file()
+        ):
+            return cand
+        if (cand / "index.html").is_file():
+            return None
+
+    engine, rem_dir = remotion_stage.detect_motion_engine(project, explicit_composition=comp_name)
+    if engine == "remotion" and rem_dir is not None:
+        return rem_dir
+    if comp_name is None:
+        fallback = (project / "remotion").resolve()
+        if (fallback / "src").is_dir() and not (project / "composition" / "index.html").is_file():
+            return fallback
+    return None
+
+
+def _effective_1080p_scale(geo: dict) -> float:
+    """Scale relative to 1080p short-edge so 1920x1080 and 1080x1920 share 1.0x."""
+    short_edge = min(float(geo.get("width") or 1920), float(geo.get("height") or 1080))
+    return 1080.0 / max(1.0, short_edge)
 
 
 def _ffprobe_duration(path: Path) -> float | None:
@@ -99,8 +134,23 @@ def _frame_mean_luma(path: Path, at_sec: float) -> float | None:
     return sum(proc.stdout) / len(proc.stdout)
 
 
-def _check_demo_segments(project: Path, plan: dict, geo: dict, errors: list[dict]) -> None:
-    comp_assets = (project / "composition" / "assets").resolve()
+def _check_demo_segments(
+    project: Path, plan: dict, geo: dict, errors: list[dict], *, rem_dir: Path | None = None
+) -> None:
+    proj_resolved = project.resolve()
+    blocked_assets: list[tuple[Path, str]] = [
+        ((project / "composition" / "assets").resolve(), "composition/assets"),
+        ((project / "remotion" / "public" / "assets").resolve(), "remotion/public/assets"),
+    ]
+    if rem_dir is not None:
+        rem_assets = (rem_dir / "public" / "assets").resolve()
+        if all(rem_assets != d for d, _ in blocked_assets):
+            try:
+                label = rem_assets.relative_to(proj_resolved).as_posix()
+            except ValueError:
+                label = str(rem_assets)
+            blocked_assets.append((rem_assets, label))
+
     person = geo["person"]
     caption = geo["caption"]
     for idx, seg in enumerate(plan.get("segments") or []):
@@ -113,8 +163,16 @@ def _check_demo_segments(project: Path, plan: dict, geo: dict, errors: list[dict
             continue
         raw = Path(str(demo["source"])).expanduser()
         src = (raw if raw.is_absolute() else (project / raw)).resolve()
-        if src == comp_assets or src.is_relative_to(comp_assets):
-            errors.append({"rule": "DEMO_IN_ASSETS", "id": sid, "detail": f"{sid}: 原录屏不得放入 composition/assets/: {demo['source']}"})
+        blocked_label = next(
+            (lbl for d, lbl in blocked_assets if src == d or src.is_relative_to(d)),
+            None,
+        )
+        if blocked_label is not None:
+            errors.append({
+                "rule": "DEMO_IN_ASSETS",
+                "id": sid,
+                "detail": f"{sid}: 原录屏不得放入 {blocked_label}/: {demo['source']}",
+            })
             continue
         if not src.is_file():
             errors.append({"rule": "DEMO_MISSING", "id": sid, "detail": f"{sid}: 找不到实机录屏文件 {src}"})
@@ -200,57 +258,64 @@ def _in_spans(pos: int, spans: list[tuple[int, int]]) -> bool:
     return any(s0 <= pos < s1 for s0, s1 in spans)
 
 
-def _is_exempt_text_context(ctx: str) -> bool:
+_EXEMPT_TEXT_TOKENS = (
+    "caption",
+    "subtitle",
+    'data-role="caption"',
+    "data-role='caption'",
+    'data-role="person"',
+    "data-role='person'",
+    'data-tier="talk-only"',
+    'data-tier="demo-footage"',
+)
+_HTML_EXEMPT_TEXT_TOKENS = _EXEMPT_TEXT_TOKENS + ('data-role="background"', "data-role='background'")
+_REMOTION_EXEMPT_TEXT_TOKENS = _EXEMPT_TEXT_TOKENS + ("footer",)
+
+_CSS_RULE_RE = re.compile(r"([^{};@]+)\{([^{}]*)\}", re.S)
+_CSS_FONT_SIZE_RE = re.compile(r"\bfont-size\s*:\s*([\d.]+)\s*px\b", re.I)
+_STYLE_BLOCK_RE = re.compile(r"<style\b[^>]*>(.*?)</style>", re.S | re.I)
+
+
+def _is_exempt_text_context(ctx: str, tokens: tuple[str, ...] = _HTML_EXEMPT_TEXT_TOKENS) -> bool:
     low = ctx.lower()
-    return any(
-        tok in low
-        for tok in (
-            "caption",
-            "subtitle",
-            'data-role="caption"',
-            "data-role='caption'",
-            'data-role="background"',
-            "data-role='background'",
-            'data-role="person"',
-            "data-role='person'",
-            'data-tier="talk-only"',
-            'data-tier="demo-footage"',
-        )
-    )
+    return any(tok in low for tok in tokens)
+
+
+def _check_css_font_sizes(
+    path: Path, raw: str, scale: float, exempt_fn, errors: list[dict]
+) -> None:
+    """Validate `<style>` / `.css` font-size rules against the 32px 1080p readability floor."""
+    suf = path.suffix.lower()
+    if suf == ".css":
+        css_chunks = [raw]
+    elif suf in {".html", ".htm", ".svg"}:
+        css_chunks = [m.group(1) for m in _STYLE_BLOCK_RE.finditer(raw)]
+    else:
+        return
+    for chunk in css_chunks:
+        for m in _CSS_RULE_RE.finditer(chunk):
+            sel, body = m.group(1).strip(), m.group(2)
+            if sel.lower() in (":root", "html") or exempt_fn(sel):
+                continue
+            for fm in _CSS_FONT_SIZE_RE.finditer(body):
+                eff = float(fm.group(1)) * scale
+                if eff < 32.0:
+                    errors.append({
+                        "rule": "Q1_FONT_SIZE",
+                        "file": str(path),
+                        "detail": f"{path.name} `{sel}` 字号 {eff:.1f}px < 32px（1080p 手机端可读底线）",
+                    })
 
 
 def _check_min_font_size(files: list[Path], geo: dict, errors: list[dict]) -> None:
     scale = 1080.0 / float(geo["height"] or 1080)
-    css_rule_re = re.compile(r"([^{};@]+)\{([^{}]*)\}", re.S)
-    font_size_re = re.compile(r"\bfont-size\s*:\s*([\d.]+)\s*px\b", re.I)
-    style_blocks_re = re.compile(r"<style\b[^>]*>(.*?)</style>", re.S | re.I)
 
     for path in files:
         suf = path.suffix.lower()
         if suf not in TEXT_SUFFIXES:
             continue
         raw = _strip_comments(path.read_text(encoding="utf-8", errors="ignore"), suf)
-
-        css_chunks: list[str] = []
-        if suf == ".css":
-            css_chunks.append(raw)
-        elif suf in {".html", ".htm", ".svg"}:
-            css_chunks.extend(m.group(1) for m in style_blocks_re.finditer(raw))
-
-        for chunk in css_chunks:
-            for m in css_rule_re.finditer(chunk):
-                sel = m.group(1).strip()
-                body = m.group(2)
-                if sel.lower() in (":root", "html") or _is_exempt_text_context(sel):
-                    continue
-                for fm in font_size_re.finditer(body):
-                    eff = float(fm.group(1)) * scale
-                    if eff < 32.0:
-                        errors.append({
-                            "rule": "Q1_FONT_SIZE",
-                            "file": str(path),
-                            "detail": f"{path.name} `{sel}` 字号 {eff:.1f}px < 32px（1080p 手机端可读底线）",
-                        })
+        _check_css_font_sizes(path, raw, scale, _is_exempt_text_context, errors)
 
         if suf in {".html", ".htm", ".svg"}:
             exempt_spans = _role_spans(raw)
@@ -261,7 +326,7 @@ def _check_min_font_size(files: list[Path], geo: dict, errors: list[dict]) -> No
                 style_m = re.search(r'\bstyle\s*=\s*(?:"([^"]*)"|\'([^\']*)\')', attrs, re.I)
                 if style_m:
                     st = style_m.group(1) if style_m.group(1) is not None else style_m.group(2)
-                    for fm in font_size_re.finditer(st):
+                    for fm in _CSS_FONT_SIZE_RE.finditer(st):
                         eff = float(fm.group(1)) * scale
                         if eff < 32.0:
                             errors.append({
@@ -407,6 +472,63 @@ def _style_id_offsets(raw: str) -> dict[str, tuple[int, int]]:
     return id_offsets
 
 
+_DARK_FILLS = frozenset({
+    "#000", "#000000", "#050505", "#050607", "#090b10", "#0b0d12", "#11131a", "#0b0f19", "black",
+})
+_SAFEZONE_EXEMPT_ATTR_TOKENS = (
+    'data-role="caption"',
+    "data-role='caption'",
+    'data-role="person"',
+    "data-role='person'",
+    'data-role="background"',
+    "data-role='background'",
+    "caption",
+    "subtitle",
+    "person-slot",
+    'id="root"',
+)
+_TRANSLATE_FN_RE = re.compile(
+    r"\btranslate\(\s*(-?\d+(?:\.\d+)?)(?:px)?(?:\s*(?:,|\s)\s*(-?\d+(?:\.\d+)?)(?:px)?)?\s*\)",
+    re.I,
+)
+
+
+def _is_safezone_exempt_attrs(attrs: str) -> bool:
+    low_attrs = attrs.lower()
+    return any(tok in low_attrs for tok in _SAFEZONE_EXEMPT_ATTR_TOKENS)
+
+
+def _is_full_canvas_background(
+    tag: str, attrs: str, w: float, h: float, cw: int, ch: int, stage_w: int
+) -> bool:
+    """Return True if an element covers full canvas (or stage with dark background fill)."""
+    if w >= cw * 0.95 and h >= ch * 0.95:
+        return True
+    if tag == "rect" and w >= stage_w * 0.95 and h >= ch * 0.95:
+        fill_m = re.search(r'\bfill\s*=\s*["\']([^"\']+)["\']', attrs, re.I)
+        fill_val = fill_m.group(1).strip().lower() if fill_m else ""
+        if fill_val in _DARK_FILLS:
+            return True
+    return False
+
+
+def _parse_translate_offset(attrs: str) -> tuple[int, int]:
+    """Sum static numeric `translate(x[, y])` offsets in `transform=...` or JSX style."""
+    ox, oy = 0, 0
+    for tm in re.finditer(
+        r'\btransform\s*(?:=\s*(?:"([^"]*)"|\'([^\']*)\'|\{\s*[\'"`]([^\'"`]*)[\'"`]\s*\})'
+        r'|\s*:\s*[\'"`]([^\'"`]*)[\'"`])',
+        attrs,
+        re.I,
+    ):
+        val = next((g for g in tm.groups() if g is not None), "")
+        for fm in _TRANSLATE_FN_RE.finditer(val):
+            ox += int(round(float(fm.group(1))))
+            if fm.group(2) is not None:
+                oy += int(round(float(fm.group(2))))
+    return ox, oy
+
+
 def _attrs_offset(attrs: str, id_offsets: dict[str, tuple[int, int]]) -> tuple[int, int]:
     """Resolve explicit CSS `left/top` and SVG `transform="translate(x, y)"` on one tag."""
     ox, oy = 0, 0
@@ -422,20 +544,8 @@ def _attrs_offset(attrs: str, id_offsets: dict[str, tuple[int, int]]) -> tuple[i
             ox = int(round(float(lm.group(1))))
         if tm:
             oy = int(round(float(tm.group(1))))
-    tr_m = re.search(
-        r'\btransform\s*=\s*(?:"[^"]*translate\(\s*(-?[\d.]+)(?:px)?\s*(?:,\s*(-?[\d.]+)(?:px)?)?\s*\)[^"]*"'
-        r'|\'[^\']*translate\(\s*(-?[\d.]+)(?:px)?\s*(?:,\s*(-?[\d.]+)(?:px)?)?\s*\)[^\']*\')',
-        attrs,
-        re.I,
-    )
-    if tr_m:
-        tx = tr_m.group(1) if tr_m.group(1) is not None else tr_m.group(3)
-        ty = tr_m.group(2) if tr_m.group(2) is not None else tr_m.group(4)
-        if tx is not None:
-            ox += int(round(float(tx)))
-        if ty is not None:
-            oy += int(round(float(ty)))
-    return ox, oy
+    tx, ty = _parse_translate_offset(attrs)
+    return ox + tx, oy + ty
 
 
 def _ancestor_offset_spans(raw: str) -> list[tuple[int, int, int, int]]:
@@ -485,13 +595,102 @@ def _svg_offsets(raw: str) -> list[tuple[int, int, int, int]]:
     return ranges
 
 
-def _check_safe_zones(files: list[Path], geo: dict, errors: list[dict]) -> None:
+def _report_safezone_collisions(
+    path: Path, ident: str, box: dict[str, int], person: dict, caption: dict, errors: list[dict]
+) -> None:
+    if person["w"] > 0 and box_intersects(box, person):
+        errors.append({"rule": "Q3_SAFEZONE", "file": str(path),
+                       "detail": f"{path.name} {ident} ({box}) 侵入人物区 personSlot {person}"})
+    if caption["h"] > 0 and box_intersects(box, caption):
+        errors.append({"rule": "Q3_SAFEZONE", "file": str(path),
+                       "detail": f"{path.name} {ident} ({box}) 侵入字幕区 captionSafe {caption}"})
+
+
+def _html_style_rect(attrs: str) -> tuple[float | None, float | None, float | None, float | None]:
+    st_m = re.search(r'\bstyle\s*=\s*(?:"([^"]*)"|\'([^\']*)\')', attrs, re.I)
+    if not st_m:
+        return None, None, None, None
+    st = st_m.group(1) if st_m.group(1) is not None else st_m.group(2)
+    lm = re.search(r"\bleft\s*:\s*(-?[\d.]+)px", st)
+    tm = re.search(r"\btop\s*:\s*(-?[\d.]+)px", st)
+    wm = re.search(r"\bwidth\s*:\s*([\d.]+)px", st)
+    hm = re.search(r"\bheight\s*:\s*([\d.]+)px", st)
+    if not (lm and tm and wm and hm):
+        return None, None, None, None
+    return float(lm.group(1)), float(tm.group(1)), float(wm.group(1)), float(hm.group(1))
+
+
+def _check_box_safezone_overlap(
+    path: Path,
+    tag: str,
+    attrs: str,
+    ox: int,
+    oy: int,
+    geo: dict,
+    errors: list[dict],
+    *,
+    num_fn,
+    style_rect_fn,
+    check_canvas_bounds: bool = False,
+) -> None:
+    """Extract an element's box and report personSlot/captionSafe/canvas-bounds collisions."""
     cw, ch = int(geo["width"]), int(geo["height"])
+    stage_w = int((geo.get("stage") or {}).get("w") or cw)
     person = geo["person"]
     caption = geo["caption"]
-    stage_w = int((geo.get("stage") or {}).get("w") or cw)
-    dark_fills = {"#000", "#000000", "#050505", "#050607", "#090b10", "#0b0d12", "#11131a", "black"}
 
+    box: dict[str, int] | None = None
+    if tag in ("rect", "image"):
+        x = num_fn(attrs, "x")
+        y = num_fn(attrs, "y")
+        w = num_fn(attrs, "width")
+        h = num_fn(attrs, "height")
+        if None not in (x, y, w, h) and w > 0 and h > 0:
+            if _is_full_canvas_background(tag, attrs, w, h, cw, ch, stage_w):
+                return
+            box = {"x": int(round(x)) + ox, "y": int(round(y)) + oy, "w": int(round(w)), "h": int(round(h))}
+    elif tag == "circle":
+        cx = num_fn(attrs, "cx")
+        cy = num_fn(attrs, "cy")
+        r = num_fn(attrs, "r")
+        if None not in (cx, cy, r) and r > 0:
+            box = {"x": int(round(cx - r)) + ox, "y": int(round(cy - r)) + oy,
+                   "w": int(round(2 * r)), "h": int(round(2 * r))}
+    elif tag == "text":
+        x = num_fn(attrs, "x")
+        y = num_fn(attrs, "y")
+        if x is not None and y is not None:
+            fs = num_fn(attrs, "fontSize") or num_fn(attrs, "font-size") or 40.0
+            box = {"x": max(0, int(round(x - 4)) + ox), "y": max(0, int(round(y - fs)) + oy),
+                   "w": 20, "h": max(8, int(round(fs)))}
+    else:
+        lx, ty, sw, sh = style_rect_fn(attrs)
+        if None not in (lx, ty, sw, sh) and sw > 0 and sh > 0:
+            if _is_full_canvas_background(tag, attrs, sw, sh, cw, ch, stage_w):
+                return
+            box = {"x": int(round(lx)) + ox, "y": int(round(ty)) + oy,
+                   "w": int(round(sw)), "h": int(round(sh))}
+
+    if box is None:
+        return
+    ident_m = re.search(r'\bid\s*=\s*["\']([^"\']+)["\']', attrs)
+    ident = f"<{tag}" + (f"#{ident_m.group(1)}" if ident_m else "") + ">"
+    _report_safezone_collisions(path, ident, box, person, caption, errors)
+    if check_canvas_bounds and tag != "text":
+        if (
+            box["x"] < -1
+            or box["y"] < -1
+            or box["x"] + box["w"] > cw + 1
+            or box["y"] + box["h"] > ch + 1
+        ):
+            errors.append({
+                "rule": "Q3_ANCHOR_BOUNDS",
+                "file": str(path),
+                "detail": f"{path.name} {ident} ({box}) 超出画布边界 [0..{cw}, 0..{ch}]",
+            })
+
+
+def _check_safe_zones(files: list[Path], geo: dict, errors: list[dict]) -> None:
     for path in files:
         if path.suffix.lower() not in {".html", ".htm", ".svg"}:
             continue
@@ -501,76 +700,14 @@ def _check_safe_zones(files: list[Path], geo: dict, errors: list[dict]) -> None:
         for m in re.finditer(r"<(rect|circle|image|text|div|section|g)\b([^>]*)>", raw, re.I):
             tag = m.group(1).lower()
             attrs = m.group(2)
-            low_attrs = attrs.lower()
-            if _in_spans(m.start(), exempt_spans) or any(
-                k in low_attrs
-                for k in (
-                    'data-role="caption"',
-                    "data-role='caption'",
-                    'data-role="person"',
-                    "data-role='person'",
-                    'data-role="background"',
-                    "data-role='background'",
-                    "caption",
-                    "subtitle",
-                    "person-slot",
-                    'id="root"',
-                )
-            ):
+            if _in_spans(m.start(), exempt_spans) or _is_safezone_exempt_attrs(attrs):
                 continue
             ox, oy = _cumulative_offset_at(m.start(), ancestor_spans)
-            box: dict[str, int] | None = None
-            if tag in ("rect", "image"):
-                x = _num_attr(attrs, "x")
-                y = _num_attr(attrs, "y")
-                w = _num_attr(attrs, "width")
-                h = _num_attr(attrs, "height")
-                if None not in (x, y, w, h) and w > 0 and h > 0:
-                    fill_m = re.search(r'\bfill\s*=\s*["\']([^"\']+)["\']', attrs, re.I)
-                    fill_val = fill_m.group(1).strip().lower() if fill_m else ""
-                    if w >= cw * 0.95 and h >= ch * 0.95:
-                        continue
-                    if tag == "rect" and fill_val in dark_fills and w >= stage_w * 0.95 and h >= ch * 0.95:
-                        continue
-                    box = {"x": int(round(x)) + ox, "y": int(round(y)) + oy, "w": int(round(w)), "h": int(round(h))}
-            elif tag == "circle":
-                cx = _num_attr(attrs, "cx")
-                cy = _num_attr(attrs, "cy")
-                r = _num_attr(attrs, "r")
-                if None not in (cx, cy, r) and r > 0:
-                    box = {"x": int(round(cx - r)) + ox, "y": int(round(cy - r)) + oy,
-                           "w": int(round(2 * r)), "h": int(round(2 * r))}
-            elif tag == "text":
-                x = _num_attr(attrs, "x")
-                y = _num_attr(attrs, "y")
-                if x is not None and y is not None:
-                    fs = _num_attr(attrs, "font-size") or 40.0
-                    box = {"x": max(0, int(round(x - 4)) + ox), "y": max(0, int(round(y - fs)) + oy),
-                           "w": 20, "h": max(8, int(round(fs)))}
-            else:
-                st_m = re.search(r'\bstyle\s*=\s*(?:"([^"]*)"|\'([^\']*)\')', attrs, re.I)
-                if st_m:
-                    st = st_m.group(1) if st_m.group(1) is not None else st_m.group(2)
-                    lm = re.search(r"\bleft\s*:\s*(-?[\d.]+)px", st)
-                    tm = re.search(r"\btop\s*:\s*(-?[\d.]+)px", st)
-                    wm = re.search(r"\bwidth\s*:\s*([\d.]+)px", st)
-                    hm = re.search(r"\bheight\s*:\s*([\d.]+)px", st)
-                    if lm and tm and wm and hm:
-                        w, h = float(wm.group(1)), float(hm.group(1))
-                        if w >= cw * 0.95 and h >= ch * 0.95:
-                            continue
-                        box = {"x": int(round(float(lm.group(1)))) + ox, "y": int(round(float(tm.group(1)))) + oy,
-                               "w": int(round(w)), "h": int(round(h))}
-            if box is None:
-                continue
-            ident_m = re.search(r'\bid\s*=\s*["\']([^"\']+)["\']', attrs)
-            ident = f"<{tag}" + (f"#{ident_m.group(1)}" if ident_m else "") + ">"
-            if person["w"] > 0 and box_intersects(box, person):
-                errors.append({"rule": "Q3_SAFEZONE", "file": str(path),
-                               "detail": f"{path.name} {ident} ({box}) 侵入人物区 personSlot {person}"})
-            if caption["h"] > 0 and box_intersects(box, caption):
-                errors.append({"rule": "Q3_SAFEZONE", "file": str(path),
-                               "detail": f"{path.name} {ident} ({box}) 侵入字幕区 captionSafe {caption}"})
+            _check_box_safezone_overlap(
+                path, tag, attrs, ox, oy, geo, errors,
+                num_fn=_num_attr,
+                style_rect_fn=_html_style_rect,
+            )
 
 
 _SAFE_BIN_OPS = {
@@ -764,6 +901,200 @@ def _check_anchor_label_bounds(files: list[Path], geo: dict, errors: list[dict])
                         ),
                     })
 
+def _check_canvas_js_anchor_bounds(path: Path, code: str, cw: float, ch: float, errors: list[dict]) -> None:
+    """Check Canvas/JS fillText, strokeText, and drawLeader calls against canvas bounds."""
+    env: dict[str, float] = {"__CW__": cw, "__CH__": ch}
+    for cm in re.finditer(r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([^;\n]+);", code):
+        val = _eval_num_expr(cm.group(2), env)
+        if val is not None:
+            env[cm.group(1)] = val
+
+    def _preceding_canvas_state(pos: int) -> tuple[str, float]:
+        ctx_win = code[max(0, pos - 500):pos]
+        aligns = re.findall(r"\btextAlign\s*=\s*[\"'](left|right|center|start|end)[\"']", ctx_win)
+        fonts = re.findall(r"\bfont\s*=\s*[\"'][^\"']*?(\d+(?:\.\d+)?)\s*px", ctx_win)
+        return (aligns[-1].lower() if aligns else "start", float(fonts[-1]) if fonts else 32.0)
+
+    for fm in re.finditer(r"\.\s*(?:fillText|strokeText)\s*\(", code):
+        parsed = _balanced_parens(code, fm.end() - 1)
+        if not parsed:
+            continue
+        args = _split_js_args(parsed[0])
+        if len(args) < 3:
+            continue
+        x = _eval_num_expr(args[1], env)
+        y = _eval_num_expr(args[2], env)
+        if x is None or y is None:
+            continue
+        align, font_px = _preceding_canvas_state(fm.start())
+        if x < -1.0 or x > cw + 1.0 or y < -1.0 or y > ch + 1.0:
+            errors.append({
+                "rule": "Q3_ANCHOR_BOUNDS",
+                "file": str(path),
+                "detail": f"{path.name} fillText(..., {x:.0f}, {y:.0f}) 坐标超出画布 [0..{int(cw)}, 0..{int(ch)}]",
+            })
+            continue
+        label = _unquote_js_string(args[0])
+        if label:
+            lx0, lx1 = _span_for_align(x, _estimate_text_width(label, font_px), align)
+            if lx0 < -1.0 or lx1 > cw + 1.0:
+                errors.append({
+                    "rule": "Q3_ANCHOR_BOUNDS",
+                    "file": str(path),
+                    "detail": (
+                        f"{path.name} fillText(\"{label[:16]}\", {x:.0f}, {y:.0f}) "
+                        f"[{lx0:.0f}..{lx1:.0f}] 越出画布宽 [0..{int(cw)}]"
+                    ),
+                })
+
+    for dm in re.finditer(r"(?<!function\s)\bdrawLeader\s*\(", code):
+        parsed = _balanced_parens(code, dm.end() - 1)
+        if not parsed:
+            continue
+        args = _split_js_args(parsed[0])
+        align, font_px = _preceding_canvas_state(dm.start())
+        obj_arg = next((a for a in args if a.startswith("{") and a.endswith("}")), None)
+        if obj_arg is not None:
+            x_vals: list[tuple[str, float]] = []
+            y_vals: list[tuple[str, float]] = []
+            for key in ("x", "x1", "x2", "ax", "lx", "tx", "labelX", "targetX"):
+                km = re.search(rf"\b{key}\s*:\s*([^,}}]+)", obj_arg)
+                if km:
+                    v = _eval_num_expr(km.group(1), env)
+                    if v is not None:
+                        x_vals.append((key, v))
+            for key in ("y", "y1", "y2", "ay", "ly", "ty", "labelY", "targetY"):
+                km = re.search(rf"\b{key}\s*:\s*([^,}}]+)", obj_arg)
+                if km:
+                    v = _eval_num_expr(km.group(1), env)
+                    if v is not None:
+                        y_vals.append((key, v))
+            for key, xv in x_vals:
+                if xv < -1.0 or xv > cw + 1.0:
+                    errors.append({
+                        "rule": "Q3_ANCHOR_BOUNDS",
+                        "file": str(path),
+                        "detail": f"{path.name} drawLeader({key}={xv:.0f}) X 坐标超出画布 [0..{int(cw)}]",
+                    })
+            for key, yv in y_vals:
+                if yv < -1.0 or yv > ch + 1.0:
+                    errors.append({
+                        "rule": "Q3_ANCHOR_BOUNDS",
+                        "file": str(path),
+                        "detail": f"{path.name} drawLeader({key}={yv:.0f}) Y 坐标超出画布 [0..{int(ch)}]",
+                    })
+            lm = re.search(r'\b(?:label|text)\s*:\s*("(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\')', obj_arg)
+            am = re.search(r'\b(?:align|textAlign)\s*:\s*["\'](left|right|center|start|end)["\']', obj_arg)
+            if lm and x_vals:
+                lbl = _unquote_js_string(lm.group(1)) or ""
+                lbl_align = am.group(1).lower() if am else align
+                anchor_x = next(
+                    (v for k, v in x_vals if k in ("lx", "labelX", "tx", "x2")),
+                    x_vals[-1][1],
+                )
+                if 0.0 <= anchor_x <= cw and lbl:
+                    lx0, lx1 = _span_for_align(anchor_x, _estimate_text_width(lbl, font_px), lbl_align)
+                    if lx0 < -1.0 or lx1 > cw + 1.0:
+                        errors.append({
+                            "rule": "Q3_ANCHOR_BOUNDS",
+                            "file": str(path),
+                            "detail": f"{path.name} drawLeader 标签 \"{lbl[:16]}\" [{lx0:.0f}..{lx1:.0f}] 越出画布宽 [0..{int(cw)}]",
+                        })
+            continue
+
+        # Positional drawLeader(ctx?, x1, y1, x2?, y2?, label?, align?)
+        nums: list[float] = []
+        labels: list[str] = []
+        arg_align = align
+        for a in args:
+            s = _unquote_js_string(a)
+            if s is not None:
+                if s.lower() in ("left", "right", "center", "start", "end"):
+                    arg_align = s.lower()
+                elif s.strip():
+                    labels.append(s)
+            else:
+                v = _eval_num_expr(a, env)
+                if v is not None:
+                    nums.append(v)
+        pairs = [(nums[i], nums[i + 1]) for i in range(0, len(nums) - 1, 2)]
+        oob = False
+        for px, py in pairs:
+            if px < -1.0 or px > cw + 1.0 or py < -1.0 or py > ch + 1.0:
+                errors.append({
+                    "rule": "Q3_ANCHOR_BOUNDS",
+                    "file": str(path),
+                    "detail": f"{path.name} drawLeader(..., {px:.0f}, {py:.0f}) 坐标超出画布 [0..{int(cw)}, 0..{int(ch)}]",
+                })
+                oob = True
+        if not oob and pairs and labels:
+            lx = pairs[-1][0]
+            lbl = labels[0]
+            lx0, lx1 = _span_for_align(lx, _estimate_text_width(lbl, font_px), arg_align)
+            if lx0 < -1.0 or lx1 > cw + 1.0:
+                errors.append({
+                    "rule": "Q3_ANCHOR_BOUNDS",
+                    "file": str(path),
+                    "detail": f"{path.name} drawLeader 标签 \"{lbl[:16]}\" [{lx0:.0f}..{lx1:.0f}] 越出画布宽 [0..{int(cw)}]",
+                })
+
+
+def _check_anchor_label_bounds(files: list[Path], geo: dict, errors: list[dict]) -> None:
+    """Catch SVG <text> and Canvas fillText/strokeText/drawLeader coordinates outside canvas bounds."""
+    cw, ch = float(geo["width"]), float(geo["height"])
+
+    # 1) SVG <text> anchor coordinates + horizontal text extent
+    for path in files:
+        suf = path.suffix.lower()
+        if suf not in {".html", ".htm", ".svg"}:
+            continue
+        raw = _strip_comments(path.read_text(encoding="utf-8", errors="ignore"), suf)
+        exempt_spans = _role_spans(raw)
+        ancestor_spans = _ancestor_offset_spans(raw)
+        svg_scales = _svg_scales(raw)
+        for m in re.finditer(r"<text\b([^>]*)>(.*?)</text>|<text\b([^>]*)/>", raw, re.S | re.I):
+            attrs = m.group(1) if m.group(1) is not None else (m.group(3) or "")
+            inner = m.group(2) or ""
+            if _in_spans(m.start(), exempt_spans) or _is_exempt_text_context(attrs):
+                continue
+            x = _num_attr(attrs, "x")
+            y = _num_attr(attrs, "y")
+            if x is None or y is None:
+                continue
+            ax, ay = _cumulative_offset_at(m.start(), ancestor_spans)
+            ox, oy = float(ax), float(ay)
+            sx, sy = 1.0, 1.0
+            for s0, s1, rx, ry in svg_scales:
+                if s0 <= m.start() < s1:
+                    sx, sy = rx, ry
+                    break
+            gx, gy = x * sx + ox, y * sy + oy
+            label_text = re.sub(r"<[^>]+>", "", inner).strip()
+            if gx < -1.0 or gx > cw + 1.0 or gy < -1.0 or gy > ch + 1.0:
+                errors.append({
+                    "rule": "Q3_ANCHOR_BOUNDS",
+                    "file": str(path),
+                    "detail": f"{path.name} <text x={gx:.0f} y={gy:.0f}> 坐标超出画布安全边界 [0..{int(cw)}, 0..{int(ch)}]",
+                })
+                continue
+            if label_text:
+                fs = _num_attr(attrs, "font-size")
+                if fs is None:
+                    stm = re.search(r"\bfont-size\s*:\s*([\d.]+)\s*px", attrs, re.I)
+                    fs = float(stm.group(1)) if stm else 36.0
+                anchor_m = re.search(r'\btext-anchor\s*[:=]\s*["\']?(start|middle|end)\b', attrs, re.I)
+                anchor = anchor_m.group(1).lower() if anchor_m else "start"
+                left_x, right_x = _span_for_align(gx, _estimate_text_width(label_text, fs * sx), anchor)
+                if left_x < -1.0 or right_x > cw + 1.0:
+                    errors.append({
+                        "rule": "Q3_ANCHOR_BOUNDS",
+                        "file": str(path),
+                        "detail": (
+                            f"{path.name} <text x={gx:.0f} y={gy:.0f} text-anchor={anchor}> "
+                            f"标签 \"{label_text[:16]}\" 水平范围 [{left_x:.0f}..{right_x:.0f}] 越出画布宽 [0..{int(cw)}]"
+                        ),
+                    })
+
     # 2) Canvas / JS fillText, strokeText, and drawLeader calls
     for path in files:
         suf = path.suffix.lower()
@@ -785,140 +1116,7 @@ def _check_anchor_label_bounds(files: list[Path], geo: dict, errors: list[dict])
                 js_blocks.append(_strip_comments(sm.group(2), ".js"))
 
         for code in js_blocks:
-            env: dict[str, float] = {"__CW__": cw, "__CH__": ch}
-            for cm in re.finditer(r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*([^;\n]+);", code):
-                val = _eval_num_expr(cm.group(2), env)
-                if val is not None:
-                    env[cm.group(1)] = val
-
-            def _preceding_canvas_state(pos: int) -> tuple[str, float]:
-                ctx_win = code[max(0, pos - 500):pos]
-                aligns = re.findall(r"\btextAlign\s*=\s*[\"'](left|right|center|start|end)[\"']", ctx_win)
-                fonts = re.findall(r"\bfont\s*=\s*[\"'][^\"']*?(\d+(?:\.\d+)?)\s*px", ctx_win)
-                return (aligns[-1].lower() if aligns else "start", float(fonts[-1]) if fonts else 32.0)
-
-            for fm in re.finditer(r"\.\s*(?:fillText|strokeText)\s*\(", code):
-                parsed = _balanced_parens(code, fm.end() - 1)
-                if not parsed:
-                    continue
-                args = _split_js_args(parsed[0])
-                if len(args) < 3:
-                    continue
-                x = _eval_num_expr(args[1], env)
-                y = _eval_num_expr(args[2], env)
-                if x is None or y is None:
-                    continue
-                align, font_px = _preceding_canvas_state(fm.start())
-                if x < -1.0 or x > cw + 1.0 or y < -1.0 or y > ch + 1.0:
-                    errors.append({
-                        "rule": "Q3_ANCHOR_BOUNDS",
-                        "file": str(path),
-                        "detail": f"{path.name} fillText(..., {x:.0f}, {y:.0f}) 坐标超出画布 [0..{int(cw)}, 0..{int(ch)}]",
-                    })
-                    continue
-                label = _unquote_js_string(args[0])
-                if label:
-                    lx0, lx1 = _span_for_align(x, _estimate_text_width(label, font_px), align)
-                    if lx0 < -1.0 or lx1 > cw + 1.0:
-                        errors.append({
-                            "rule": "Q3_ANCHOR_BOUNDS",
-                            "file": str(path),
-                            "detail": (
-                                f"{path.name} fillText(\"{label[:16]}\", {x:.0f}, {y:.0f}) "
-                                f"[{lx0:.0f}..{lx1:.0f}] 越出画布宽 [0..{int(cw)}]"
-                            ),
-                        })
-
-            for dm in re.finditer(r"(?<!function\s)\bdrawLeader\s*\(", code):
-                parsed = _balanced_parens(code, dm.end() - 1)
-                if not parsed:
-                    continue
-                args = _split_js_args(parsed[0])
-                align, font_px = _preceding_canvas_state(dm.start())
-                obj_arg = next((a for a in args if a.startswith("{") and a.endswith("}")), None)
-                if obj_arg is not None:
-                    x_vals: list[tuple[str, float]] = []
-                    y_vals: list[tuple[str, float]] = []
-                    for key in ("x", "x1", "x2", "ax", "lx", "tx", "labelX", "targetX"):
-                        km = re.search(rf"\b{key}\s*:\s*([^,}}]+)", obj_arg)
-                        if km:
-                            v = _eval_num_expr(km.group(1), env)
-                            if v is not None:
-                                x_vals.append((key, v))
-                    for key in ("y", "y1", "y2", "ay", "ly", "ty", "labelY", "targetY"):
-                        km = re.search(rf"\b{key}\s*:\s*([^,}}]+)", obj_arg)
-                        if km:
-                            v = _eval_num_expr(km.group(1), env)
-                            if v is not None:
-                                y_vals.append((key, v))
-                    for key, xv in x_vals:
-                        if xv < -1.0 or xv > cw + 1.0:
-                            errors.append({
-                                "rule": "Q3_ANCHOR_BOUNDS",
-                                "file": str(path),
-                                "detail": f"{path.name} drawLeader({key}={xv:.0f}) X 坐标超出画布 [0..{int(cw)}]",
-                            })
-                    for key, yv in y_vals:
-                        if yv < -1.0 or yv > ch + 1.0:
-                            errors.append({
-                                "rule": "Q3_ANCHOR_BOUNDS",
-                                "file": str(path),
-                                "detail": f"{path.name} drawLeader({key}={yv:.0f}) Y 坐标超出画布 [0..{int(ch)}]",
-                            })
-                    lm = re.search(r'\b(?:label|text)\s*:\s*("(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\')', obj_arg)
-                    am = re.search(r'\b(?:align|textAlign)\s*:\s*["\'](left|right|center|start|end)["\']', obj_arg)
-                    if lm and x_vals:
-                        lbl = _unquote_js_string(lm.group(1)) or ""
-                        lbl_align = am.group(1).lower() if am else align
-                        anchor_x = next(
-                            (v for k, v in x_vals if k in ("lx", "labelX", "tx", "x2")),
-                            x_vals[-1][1],
-                        )
-                        if 0.0 <= anchor_x <= cw and lbl:
-                            lx0, lx1 = _span_for_align(anchor_x, _estimate_text_width(lbl, font_px), lbl_align)
-                            if lx0 < -1.0 or lx1 > cw + 1.0:
-                                errors.append({
-                                    "rule": "Q3_ANCHOR_BOUNDS",
-                                    "file": str(path),
-                                    "detail": f"{path.name} drawLeader 标签 \"{lbl[:16]}\" [{lx0:.0f}..{lx1:.0f}] 越出画布宽 [0..{int(cw)}]",
-                                })
-                    continue
-
-                # Positional drawLeader(ctx?, x1, y1, x2?, y2?, label?, align?)
-                nums: list[float] = []
-                labels: list[str] = []
-                arg_align = align
-                for a in args:
-                    s = _unquote_js_string(a)
-                    if s is not None:
-                        if s.lower() in ("left", "right", "center", "start", "end"):
-                            arg_align = s.lower()
-                        elif s.strip():
-                            labels.append(s)
-                    else:
-                        v = _eval_num_expr(a, env)
-                        if v is not None:
-                            nums.append(v)
-                pairs = [(nums[i], nums[i + 1]) for i in range(0, len(nums) - 1, 2)]
-                oob = False
-                for px, py in pairs:
-                    if px < -1.0 or px > cw + 1.0 or py < -1.0 or py > ch + 1.0:
-                        errors.append({
-                            "rule": "Q3_ANCHOR_BOUNDS",
-                            "file": str(path),
-                            "detail": f"{path.name} drawLeader(..., {px:.0f}, {py:.0f}) 坐标超出画布 [0..{int(cw)}, 0..{int(ch)}]",
-                        })
-                        oob = True
-                if not oob and pairs and labels:
-                    lx = pairs[-1][0]
-                    lbl = labels[0]
-                    lx0, lx1 = _span_for_align(lx, _estimate_text_width(lbl, font_px), arg_align)
-                    if lx0 < -1.0 or lx1 > cw + 1.0:
-                        errors.append({
-                            "rule": "Q3_ANCHOR_BOUNDS",
-                            "file": str(path),
-                            "detail": f"{path.name} drawLeader 标签 \"{lbl[:16]}\" [{lx0:.0f}..{lx1:.0f}] 越出画布宽 [0..{int(cw)}]",
-                        })
+            _check_canvas_js_anchor_bounds(path, code, cw, ch, errors)
 
 
 def _check_axis_filters(files: list[Path], errors: list[dict]) -> None:
@@ -971,11 +1169,28 @@ def _check_axis_filters(files: list[Path], errors: list[dict]) -> None:
                 })
 
 
-def _check_fonts(files: list[Path], errors: list[dict]) -> None:
+def _collect_registered_fonts(
+    files: list[Path],
+    suffixes: set[str],
+    errors: list[dict],
+    *,
+    public_dir: Path | None = None,
+) -> set[str]:
+    """Collect registered font families from `public/` assets, `@font-face`, and `new FontFace(...)`."""
     registered: set[str] = set()
+    if public_dir is not None:
+        for search_dir in (public_dir / "assets", public_dir):
+            if not search_dir.is_dir():
+                continue
+            for fp in search_dir.rglob("*"):
+                if fp.is_file() and fp.suffix.lower() in FONT_FILE_SUFFIXES:
+                    stem = fp.stem.lower()
+                    registered.add(stem)
+                    registered.add(re.sub(r"[-_]+", " ", stem).strip())
+
     for path in files:
         suf = path.suffix.lower()
-        if suf not in TEXT_SUFFIXES:
+        if suf not in suffixes:
             continue
         raw = _strip_comments(path.read_text(encoding="utf-8", errors="ignore"), suf)
         for m in re.finditer(r"@font-face\s*\{([^}]*)\}", raw, re.I | re.S):
@@ -987,10 +1202,59 @@ def _check_fonts(files: list[Path], errors: list[dict]) -> None:
                     registered.add(fam)
             for um in re.finditer(r"url\(\s*(['\"]?)([^)'\"]+)\1\s*\)", block, re.I):
                 u = um.group(2).strip()
-                if u and not u.startswith(("data:", "http://", "https://", "/")):
-                    if not (path.parent / u).is_file():
-                        errors.append({"rule": "Q5_FONT_MISSING_FILE", "file": str(path),
-                                       "detail": f"{path.name} @font-face 引用缺失字体文件：{u}"})
+                if not u or u.startswith(("data:", "http://", "https://")):
+                    continue
+                if public_dir is None:
+                    if u.startswith("/"):
+                        continue
+                    cand = path.parent / u
+                else:
+                    if u.startswith("/"):
+                        cand = public_dir / u.lstrip("/")
+                    else:
+                        cand = path.parent / u
+                        if not cand.is_file() and public_dir.is_dir():
+                            cand = public_dir / u.lstrip("./")
+                if not cand.is_file():
+                    errors.append({
+                        "rule": "Q5_FONT_MISSING_FILE",
+                        "file": str(path),
+                        "detail": f"{path.name} @font-face 引用缺失字体文件：{u}",
+                    })
+        for ff_m in re.finditer(r"\bnew\s+FontFace\s*\(\s*(['\"])([^'\"]+)\1", raw):
+            fam = ff_m.group(2).strip().lower()
+            if fam:
+                registered.add(fam)
+    return registered
+
+
+def _validate_font_stacks(
+    path: Path,
+    stacks: list[str],
+    registered: set[str],
+    errors: list[dict],
+    *,
+    missing_hint: str,
+) -> None:
+    """Validate comma-separated font-family stacks against system/generic and registered fonts."""
+    for raw_stack in stacks:
+        if "${" in raw_stack:
+            continue
+        for item in raw_stack.split(","):
+            name = item.strip().strip("\"'")
+            if not name or name.startswith("var("):
+                continue
+            low = name.lower()
+            if low not in SYSTEM_AND_GENERIC_FONTS and low not in registered:
+                errors.append({
+                    "rule": "Q5_UNREGISTERED_FONT",
+                    "file": str(path),
+                    "detail": f"{path.name} 引用未注册外部/本地字体 '{name}'（{missing_hint}）",
+                })
+
+
+def _check_fonts(files: list[Path], errors: list[dict]) -> None:
+    registered = _collect_registered_fonts(files, TEXT_SUFFIXES, errors)
 
     for path in files:
         suf = path.suffix.lower()
@@ -1000,19 +1264,18 @@ def _check_fonts(files: list[Path], errors: list[dict]) -> None:
         stripped_ff = re.sub(r"@font-face\s*\{[^}]*\}", "", raw, flags=re.I | re.S)
         stacks: list[str] = []
         stacks.extend(m.group(1) for m in re.finditer(r"font-family\s*:\s*([^;}{]+)", stripped_ff, re.I))
-        stacks.extend(m.group(1) for m in re.finditer(r'\bfont-family\s*=\s*(?:"([^"]*)"|\'([^\']*)\')', stripped_ff, re.I) if m.group(1) or m.group(2))
-        for raw_stack in stacks:
-            for item in raw_stack.split(","):
-                name = item.strip().strip("\"'")
-                if not name or name.startswith("var("):
-                    continue
-                low = name.lower()
-                if low not in SYSTEM_AND_GENERIC_FONTS and low not in registered:
-                    errors.append({
-                        "rule": "Q5_UNREGISTERED_FONT",
-                        "file": str(path),
-                        "detail": f"{path.name} 引用未注册外部/本地字体 '{name}'（缺 @font-face 声明，渲染期可能卡死）",
-                    })
+        stacks.extend(
+            m.group(1) or m.group(2)
+            for m in re.finditer(r'\bfont-family\s*=\s*(?:"([^"]*)"|\'([^\']*)\')', stripped_ff, re.I)
+            if m.group(1) or m.group(2)
+        )
+        _validate_font_stacks(
+            path,
+            stacks,
+            registered,
+            errors,
+            missing_hint="缺 @font-face 声明，渲染期可能卡死",
+        )
 
 
 def _check_cross_chapter_cleanup(files: list[Path], comp_dir: Path, errors: list[dict]) -> None:
@@ -1144,31 +1407,451 @@ def _load_plan_or_storyboard(project: Path) -> dict | None:
     return None
 
 
+def _is_remotion_exempt_context(ctx: str) -> bool:
+    return _is_exempt_text_context(ctx, _REMOTION_EXEMPT_TEXT_TOKENS)
+
+
+def _iter_jsx_tags(raw: str):
+    """Yield `(start, end, closing, tag_lower, attrs)` for JSX/SVG tags, skipping TS generics."""
+    i = 0
+    n = len(raw)
+    while i < n:
+        if raw[i] != "<":
+            i += 1
+            continue
+        is_close = i + 1 < n and raw[i + 1] == "/"
+        if not is_close and i > 0 and (raw[i - 1].isalnum() or raw[i - 1] in "_$])"):
+            i += 1
+            continue
+        m = re.match(r"<(/?)([A-Za-z][\w.:-]*)\b", raw[i:])
+        if not m:
+            i += 1
+            continue
+        closing = bool(m.group(1))
+        tag = m.group(2).lower()
+        j = i + m.end()
+        brace_depth = 0
+        in_quote: str | None = None
+        while j < n:
+            ch = raw[j]
+            if in_quote is not None:
+                if ch == "\\" and j + 1 < n:
+                    j += 2
+                    continue
+                if ch == in_quote:
+                    in_quote = None
+            else:
+                if ch in ('"', "'", "`"):
+                    in_quote = ch
+                elif ch == "{":
+                    brace_depth += 1
+                elif ch == "}" and brace_depth > 0:
+                    brace_depth -= 1
+                elif ch == ">" and brace_depth == 0:
+                    break
+            j += 1
+        if j >= n:
+            break
+        yield i, j + 1, closing, tag, raw[i + m.end():j]
+        i = j + 1
+
+
+def _jsx_role_spans(raw: str, roles: tuple[str, ...] = ("caption", "person")) -> list[tuple[int, int]]:
+    """Return [(start, end), ...] for JSX elements (and descendants) matching `data-role`."""
+    want = {r.lower() for r in roles}
+    spans: list[tuple[int, int]] = []
+    stack: list[tuple[str, int | None]] = []
+    for start, end, closing, tag, attrs in _iter_jsx_tags(raw):
+        if not closing:
+            rm = _DATA_ROLE_RE.search(attrs)
+            role = (rm.group(1) if rm and rm.group(1) is not None else (rm.group(2) if rm else "")).strip().lower()
+            start_pos = start if role in want else None
+            self_close = attrs.rstrip().endswith("/") or tag in _VOID_HTML_TAGS
+            if self_close:
+                if start_pos is not None:
+                    spans.append((start_pos, end))
+            else:
+                stack.append((tag, start_pos))
+        else:
+            for idx in range(len(stack) - 1, -1, -1):
+                if stack[idx][0] == tag:
+                    for _, s_pos in stack[idx:]:
+                        if s_pos is not None:
+                            spans.append((s_pos, end))
+                    del stack[idx:]
+                    break
+    for _, s_pos in stack:
+        if s_pos is not None:
+            spans.append((s_pos, len(raw)))
+    return spans
+
+
+def _jsx_num_attr(attrs: str, name: str) -> float | None:
+    m = re.search(
+        rf"\b{re.escape(name)}\s*=\s*(?:\{{\s*(-?[\d.]+)\s*\}}|\"(-?[\d.]+)(?:px)?\"|'(-?[\d.]+)(?:px)?')",
+        attrs,
+        re.I,
+    )
+    if not m:
+        return None
+    for g in m.groups():
+        if g is not None:
+            try:
+                return float(g)
+            except ValueError:
+                return None
+    return None
+
+
+def _jsx_style_num(attrs: str, prop: str) -> float | None:
+    """Extract a static numeric CSS/JSX style property (e.g. `left: 200` or `left: '200px'`)."""
+    if prop in ("left", "top", "width", "height", "fontSize"):
+        m = re.search(
+            rf"\b{re.escape(prop)}\s*:\s*(?:['\"]\s*)?(-?\d+(?:\.\d+)?)(?:\s*px)?(?:\s*['\"])?\s*(?=[,}}\n;])",
+            attrs,
+        )
+        if m:
+            try:
+                return float(m.group(1))
+            except ValueError:
+                return None
+    return None
+
+
+def _jsx_style_rect(attrs: str) -> tuple[float | None, float | None, float | None, float | None]:
+    return (
+        _jsx_style_num(attrs, "left"),
+        _jsx_style_num(attrs, "top"),
+        _jsx_style_num(attrs, "width"),
+        _jsx_style_num(attrs, "height"),
+    )
+
+
+def _jsx_container_offset(tag: str, attrs: str) -> tuple[int, int]:
+    """Compute cumulative container offset from CSS left/top, <svg x y>, and SVG translate()."""
+    dx = int(round(_jsx_style_num(attrs, "left") or 0.0))
+    dy = int(round(_jsx_style_num(attrs, "top") or 0.0))
+    if tag == "svg":
+        sx = _jsx_num_attr(attrs, "x")
+        sy = _jsx_num_attr(attrs, "y")
+        if sx is not None:
+            dx += int(round(sx))
+        if sy is not None:
+            dy += int(round(sy))
+    tx, ty = _parse_translate_offset(attrs)
+    return dx + tx, dy + ty
+
+
+def _check_remotion_safe_zones(files: list[Path], geo: dict, errors: list[dict]) -> None:
+    container_tags = {"div", "section", "main", "article", "aside", "g", "svg", "absolutefill"}
+    checked_tags = {"rect", "circle", "image", "text", "div", "section", "g", "absolutefill"}
+
+    for path in files:
+        suf = path.suffix.lower()
+        if suf not in {".tsx", ".ts", ".jsx", ".js", ".svg"}:
+            continue
+        raw = _strip_comments(path.read_text(encoding="utf-8", errors="ignore"), suf)
+        exempt_spans = _jsx_role_spans(raw, roles=("caption", "person"))
+        offset_stack: list[tuple[str, int, int]] = []
+
+        for start, _end, closing, tag, attrs in _iter_jsx_tags(raw):
+            if closing:
+                for idx in range(len(offset_stack) - 1, -1, -1):
+                    if offset_stack[idx][0] == tag:
+                        del offset_stack[idx:]
+                        break
+                continue
+
+            ox = sum(dx for _, dx, _ in offset_stack)
+            oy = sum(dy for _, _, dy in offset_stack)
+            self_close = attrs.rstrip().endswith("/") or tag in _VOID_HTML_TAGS
+            if tag in container_tags and not self_close:
+                dx, dy = _jsx_container_offset(tag, attrs)
+                offset_stack.append((tag, dx, dy))
+
+            if tag not in checked_tags:
+                continue
+            if _in_spans(start, exempt_spans) or _is_safezone_exempt_attrs(attrs):
+                continue
+
+            el_ox, el_oy = ox, oy
+            if tag not in container_tags or self_close:
+                tx, ty = _parse_translate_offset(attrs)
+                el_ox += tx
+                el_oy += ty
+            _check_box_safezone_overlap(
+                path, tag, attrs, el_ox, el_oy, geo, errors,
+                num_fn=_jsx_num_attr,
+                style_rect_fn=_jsx_style_rect,
+                check_canvas_bounds=True,
+            )
+
+
+def _jsx_svg_scale(attrs: str) -> tuple[float, float]:
+    vb_m = re.search(r'\bviewBox\s*=\s*["\']\s*[-.\d]+\s+[-.\d]+\s+([\d.]+)\s+([\d.]+)\s*["\']', attrs, re.I)
+    w = _jsx_num_attr(attrs, "width")
+    h = _jsx_num_attr(attrs, "height")
+    if vb_m and w and h:
+        vb_w, vb_h = float(vb_m.group(1)), float(vb_m.group(2))
+        if vb_w > 0 and vb_h > 0:
+            return w / vb_w, h / vb_h
+    return 1.0, 1.0
+
+
+def _extract_jsx_static_text(inner: str) -> str:
+    """Extract static visible text inside JSX/SVG `<text>...</text>` (ignoring dynamic `{expr}`)."""
+    stripped = re.sub(r"<[^>]+>", "", inner).strip()
+    if not stripped:
+        return ""
+    lit_m = re.match(r"^\{\s*([\"'])(.*)\1\s*\}$", stripped, re.S)
+    if lit_m:
+        return lit_m.group(2).strip()
+    no_expr = re.sub(r"\{[^{}]*\}", "", stripped).strip()
+    return no_expr
+
+
+def _check_remotion_anchor_label_bounds(files: list[Path], geo: dict, errors: list[dict]) -> None:
+    """Catch Remotion SVG <text> and Canvas fillText/drawLeader coordinates outside canvas bounds."""
+    cw, ch = float(geo["width"]), float(geo["height"])
+    container_tags = {"div", "section", "main", "article", "aside", "g", "svg", "absolutefill"}
+
+    for path in files:
+        suf = path.suffix.lower()
+        if suf not in {".tsx", ".ts", ".jsx", ".js", ".svg"}:
+            continue
+        raw = _strip_comments(path.read_text(encoding="utf-8", errors="ignore"), suf)
+        exempt_spans = _jsx_role_spans(raw, roles=("caption", "person"))
+        offset_stack: list[tuple[str, int, int]] = []
+        scale_stack: list[tuple[str, float, float]] = []
+        open_text: tuple[int, int, str, int, int, float, float] | None = None
+
+        def _validate_text(
+            text_start: int, attrs: str, inner: str, ox: int, oy: int, sx: float, sy: float
+        ) -> None:
+            if _in_spans(text_start, exempt_spans) or _is_remotion_exempt_context(attrs):
+                return
+            x = _jsx_num_attr(attrs, "x")
+            y = _jsx_num_attr(attrs, "y")
+            if x is None or y is None:
+                return
+            tx, ty = _parse_translate_offset(attrs)
+            gx = x * sx + float(ox + tx)
+            gy = y * sy + float(oy + ty)
+            if gx < -1.0 or gx > cw + 1.0 or gy < -1.0 or gy > ch + 1.0:
+                errors.append({
+                    "rule": "Q3_ANCHOR_BOUNDS",
+                    "file": str(path),
+                    "detail": f"{path.name} <text x={gx:.0f} y={gy:.0f}> 坐标超出画布安全边界 [0..{int(cw)}, 0..{int(ch)}]",
+                })
+                return
+            label_text = _extract_jsx_static_text(inner)
+            if label_text:
+                fs = (
+                    _jsx_num_attr(attrs, "fontSize")
+                    or _jsx_num_attr(attrs, "font-size")
+                    or _jsx_style_num(attrs, "fontSize")
+                    or 36.0
+                )
+                anchor_m = re.search(
+                    r'\b(?:textAnchor|text-anchor)\s*(?:=|:)\s*(?:\{\s*)?["\']?(start|middle|end)\b',
+                    attrs,
+                    re.I,
+                )
+                anchor = anchor_m.group(1).lower() if anchor_m else "start"
+                left_x, right_x = _span_for_align(gx, _estimate_text_width(label_text, fs * sx), anchor)
+                if left_x < -1.0 or right_x > cw + 1.0:
+                    errors.append({
+                        "rule": "Q3_ANCHOR_BOUNDS",
+                        "file": str(path),
+                        "detail": (
+                            f"{path.name} <text x={gx:.0f} y={gy:.0f} textAnchor={anchor}> "
+                            f"标签 \"{label_text[:16]}\" 水平范围 [{left_x:.0f}..{right_x:.0f}] 越出画布宽 [0..{int(cw)}]"
+                        ),
+                    })
+
+        for start, end, closing, tag, attrs in _iter_jsx_tags(raw):
+            if closing:
+                if tag == "text" and open_text is not None:
+                    t_start, t_end, t_attrs, t_ox, t_oy, t_sx, t_sy = open_text
+                    open_text = None
+                    _validate_text(t_start, t_attrs, raw[t_end:start], t_ox, t_oy, t_sx, t_sy)
+                for idx in range(len(offset_stack) - 1, -1, -1):
+                    if offset_stack[idx][0] == tag:
+                        del offset_stack[idx:]
+                        break
+                if tag == "svg" and scale_stack:
+                    scale_stack.pop()
+                continue
+
+            ox = sum(dx for _, dx, _ in offset_stack)
+            oy = sum(dy for _, _, dy in offset_stack)
+            sx, sy = scale_stack[-1][1:] if scale_stack else (1.0, 1.0)
+            self_close = attrs.rstrip().endswith("/") or tag in _VOID_HTML_TAGS
+
+            if tag == "text":
+                if self_close:
+                    _validate_text(start, attrs, "", ox, oy, sx, sy)
+                else:
+                    open_text = (start, end, attrs, ox, oy, sx, sy)
+                continue
+
+            if tag in container_tags and not self_close:
+                dx, dy = _jsx_container_offset(tag, attrs)
+                offset_stack.append((tag, dx, dy))
+                if tag == "svg":
+                    rx, ry = _jsx_svg_scale(attrs)
+                    scale_stack.append(("svg", rx, ry))
+
+        if suf in {".tsx", ".ts", ".jsx", ".js"}:
+            _check_canvas_js_anchor_bounds(path, raw, cw, ch, errors)
+
+
+def _remotion_enclosing_context(raw: str, pos: int) -> str:
+    """Extract nearby JSX tag attributes / variable declaration context around `pos`."""
+    # Walk backwards to find the opening `<Tag` that encloses `pos` (balanced `{}`), if any.
+    brace_depth = 0
+    in_quote: str | None = None
+    tag_start = -1
+    k = pos - 1
+    limit = max(0, pos - 600)
+    while k >= limit:
+        ch = raw[k]
+        if ch == "}" and in_quote is None:
+            brace_depth += 1
+        elif ch == "{" and in_quote is None:
+            brace_depth -= 1
+        elif ch == ">" and brace_depth <= 0 and in_quote is None:
+            break
+        elif ch == "<" and brace_depth <= 0 and in_quote is None:
+            if k == 0 or not (raw[k - 1].isalnum() or raw[k - 1] in "_$])"):
+                tag_start = k
+                break
+        k -= 1
+    if tag_start >= 0:
+        ctx = raw[tag_start:min(len(raw), pos + 100)]
+    else:
+        window_start = max(0, pos - 240)
+        before = raw[window_start:pos]
+        last_semi = max(before.rfind(";"), before.rfind("return "))
+        ctx = raw[window_start + max(0, last_semi + 1):min(len(raw), pos + 100)]
+    decl_m = list(re.finditer(r"\b(?:const|let|var|function)\s+([A-Za-z_$][\w$]*)", raw[max(0, pos - 300):pos]))
+    if decl_m:
+        ctx = decl_m[-1].group(1) + " " + ctx
+    return ctx
+
+
+def _check_remotion_min_font_size(files: list[Path], geo: dict, errors: list[dict]) -> None:
+    scale = _effective_1080p_scale(geo)
+    jsx_style_fs_re = re.compile(
+        r"\bfontSize\s*:\s*(?:['\"]\s*)?(\d+(?:\.\d+)?)(?:\s*px)?(?:\s*['\"])?\s*(?=[,}\n;])"
+    )
+    jsx_prop_fs_re = re.compile(
+        r"\b(?:fontSize|font-size)\s*=\s*(?:\{\s*(\d+(?:\.\d+)?)\s*\}|['\"]\s*(\d+(?:\.\d+)?)(?:\s*px)?\s*['\"])"
+    )
+
+    for path in files:
+        suf = path.suffix.lower()
+        if suf not in REMOTION_SUFFIXES:
+            continue
+        raw = _strip_comments(path.read_text(encoding="utf-8", errors="ignore"), suf)
+        _check_css_font_sizes(path, raw, scale, _is_remotion_exempt_context, errors)
+
+        if suf in {".tsx", ".ts", ".jsx", ".js", ".svg"}:
+            exempt_spans = _jsx_role_spans(raw, roles=("caption", "person"))
+            for fm in jsx_style_fs_re.finditer(raw):
+                if _in_spans(fm.start(), exempt_spans):
+                    continue
+                if _is_remotion_exempt_context(_remotion_enclosing_context(raw, fm.start())):
+                    continue
+                eff = float(fm.group(1)) * scale
+                if eff < 32.0:
+                    errors.append({
+                        "rule": "Q1_FONT_SIZE",
+                        "file": str(path),
+                        "detail": f"{path.name} `fontSize: {fm.group(1)}` 折算 {eff:.1f}px < 32px（1080p 手机端可读底线）",
+                    })
+            for pm in jsx_prop_fs_re.finditer(raw):
+                if _in_spans(pm.start(), exempt_spans):
+                    continue
+                if _is_remotion_exempt_context(_remotion_enclosing_context(raw, pm.start())):
+                    continue
+                val_str = pm.group(1) or pm.group(2)
+                eff = float(val_str) * scale
+                if eff < 32.0:
+                    errors.append({
+                        "rule": "Q1_FONT_SIZE",
+                        "file": str(path),
+                        "detail": f"{path.name} `{pm.group(0).strip()}` 折算 {eff:.1f}px < 32px（1080p 手机端可读底线）",
+                    })
+
+
+def _check_remotion_fonts(files: list[Path], rem_dir: Path, errors: list[dict]) -> None:
+    public_dir = rem_dir / "public"
+    registered = _collect_registered_fonts(files, REMOTION_SUFFIXES, errors, public_dir=public_dir)
+
+    for path in files:
+        suf = path.suffix.lower()
+        if suf not in REMOTION_SUFFIXES:
+            continue
+        raw = _strip_comments(path.read_text(encoding="utf-8", errors="ignore"), suf)
+        stripped_ff = re.sub(r"@font-face\s*\{[^}]*\}", "", raw, flags=re.I | re.S)
+        stacks: list[str] = []
+        if suf in {".css", ".svg"}:
+            stacks.extend(m.group(1) for m in re.finditer(r"font-family\s*:\s*([^;}{]+)", stripped_ff, re.I))
+        stacks.extend(
+            m.group(1) or m.group(2)
+            for m in re.finditer(r'\b(?:font-family|fontFamily)\s*=\s*(?:"([^"]*)"|\'([^\']*)\')', stripped_ff)
+            if m.group(1) or m.group(2)
+        )
+        stacks.extend(
+            m.group(2)
+            for m in re.finditer(r"\bfontFamily\s*:\s*(['\"])([^'\"]+)\1", stripped_ff)
+            if m.group(2)
+        )
+        _validate_font_stacks(
+            path,
+            stacks,
+            registered,
+            errors,
+            missing_hint="缺 @font-face 或 remotion/public/assets/ 字体文件，渲染期可能卡死",
+        )
+
+
 def run_checks(project: Path, comp_name: str | None = None, max_static_s: float = 8.0) -> dict:
     geo = resolve_project_frame(project)
     plan = _load_plan_or_storyboard(project)
-    comp_dir = project / (comp_name or "composition")
-    files = _collect_files(comp_dir)
+    rem_dir = _resolve_remotion_dir(project, comp_name)
+    comp_dir = rem_dir if rem_dir is not None else (project / (comp_name or "composition"))
 
     errors: list[dict] = []
     warnings: list[dict] = []
 
     if plan:
-        _check_demo_segments(project, plan, geo, errors)
+        _check_demo_segments(project, plan, geo, errors, rem_dir=rem_dir)
     has_motion_tier = (
         not plan
         or any((s.get("tier") or "logic-diagram") not in ("talk-only", "demo-footage")
                for s in (plan.get("segments") or []) if isinstance(s, dict))
     )
-    if files:
-        if has_motion_tier:
-            _check_min_font_size(files, geo, errors)
-        _check_static_duration(files, plan, comp_dir, max_static_s, errors, warnings)
-        _check_safe_zones(files, geo, errors)
-        _check_anchor_label_bounds(files, geo, errors)
-        _check_axis_filters(files, errors)
-        _check_fonts(files, errors)
-        _check_cross_chapter_cleanup(files, comp_dir, errors)
+    if rem_dir is not None:
+        rem_files = _collect_files(rem_dir / "src", REMOTION_SUFFIXES)
+        if rem_files:
+            if has_motion_tier:
+                _check_remotion_min_font_size(rem_files, geo, errors)
+            _check_remotion_safe_zones(rem_files, geo, errors)
+            _check_remotion_anchor_label_bounds(rem_files, geo, errors)
+            _check_remotion_fonts(rem_files, rem_dir, errors)
+    else:
+        files = _collect_files(comp_dir)
+        if files:
+            if has_motion_tier:
+                _check_min_font_size(files, geo, errors)
+            _check_static_duration(files, plan, comp_dir, max_static_s, errors, warnings)
+            _check_safe_zones(files, geo, errors)
+            _check_anchor_label_bounds(files, geo, errors)
+            _check_axis_filters(files, errors)
+            _check_fonts(files, errors)
+            _check_cross_chapter_cleanup(files, comp_dir, errors)
 
     return {
         "ok": not errors,

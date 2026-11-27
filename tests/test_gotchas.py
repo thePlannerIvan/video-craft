@@ -22,6 +22,7 @@ already left the body. So the checks below are stricter than "the file exists":
 from __future__ import annotations
 
 import re
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -38,15 +39,19 @@ PREFIXES = ("test", "check", "env", "judgment")
 # 2026-11-08: 46 → 48 — #22 拆成三条不同根因（#82 管道吞退出码 / #83 `-t` 归属 /
 #             #84 `--no-loudnorm` 撞 base 名）：46 - 1 + 3。上限只跟着净增走，不跟着
 #             重排走；本轮没有再新增判准。
-MAX_GOTCHAS = 48
+# 2026-11-27: 48 → 40 — HyperFrames 冻结只读条目（#10/#48/#50/#61/#63/#70/#74/#79）
+#             迁入 references/gotchas-index.md 历史迁移索引。
+MAX_GOTCHAS = 40
 
 ENTRY_RE = re.compile(r"(?m)^(##+)\s+(\d+)\.\s+([^\n]*)\n")
 ENFORCE_RE = re.compile(r"(?m)^- \*\*enforcement\*\*：(.+)$")
 WHAT_RE = re.compile(r"—\s*看什么：(.+)$")
+LINE_NUMBER_REF_RE = re.compile(r"\.(?:html|py|js|ts|tsx|jsx|md|json):\d+\b")
+HEADING_RE = re.compile(r"^#{1,6}\s+(.+?)\s*$")
 
 
-def entries() -> list[tuple[int, str]]:
-    text = GOTCHAS.read_text(encoding="utf-8")
+def entries(text: str | None = None) -> list[tuple[int, str]]:
+    text = GOTCHAS.read_text(encoding="utf-8") if text is None else text
     ms = list(ENTRY_RE.finditer(text))
     out = []
     for i, m in enumerate(ms):
@@ -55,8 +60,8 @@ def entries() -> list[tuple[int, str]]:
     return out
 
 
-def levels() -> list[tuple[int, str]]:
-    text = GOTCHAS.read_text(encoding="utf-8")
+def levels(text: str | None = None) -> list[tuple[int, str]]:
+    text = GOTCHAS.read_text(encoding="utf-8") if text is None else text
     return [(int(m.group(2)), m.group(1)) for m in ENTRY_RE.finditer(text)]
 
 
@@ -70,18 +75,61 @@ def parse(body: str) -> tuple[str, str, str]:
     return prefix, target.strip(), tail.strip()
 
 
-def resolve(target: str) -> Path | None:
+def resolve(target: str, root: Path = ROOT) -> Path | None:
     """Resolve `path` or `path:line` against the skill root."""
     path = target.split("#")[0].strip()
-    candidate = ROOT / path
+    candidate = root / path
     if candidate.exists():
         return candidate
     m = re.match(r"^(.*?):(\d+)$", path)
     if m:
-        candidate = ROOT / m.group(1)
+        candidate = root / m.group(1)
         if candidate.exists():
             return candidate
     return None
+
+
+def find_broken_judgment_headings(text: str, root: Path = ROOT) -> list[tuple[int, str]]:
+    """Check that `「heading」` quotes in `judgment:` locator clauses exist in target files."""
+    broken = []
+    for n, body in entries(text):
+        prefix, target, tail = parse(body)
+        if prefix != "judgment":
+            continue
+        path = resolve(target, root)
+        if path is None:
+            continue
+        m = WHAT_RE.search(f"— {tail}")
+        if m is None:
+            continue
+        locator = m.group(1).split("：", 1)[0]
+        quotes = re.findall(r"「([^」]+)」", locator)
+        if not quotes:
+            continue
+        target_text = path.read_text(encoding="utf-8")
+        if path.suffix == ".md":
+            headings = [
+                hm.group(1)
+                for ln in target_text.splitlines()
+                if (hm := HEADING_RE.match(ln))
+            ]
+            for quote in quotes:
+                if not any(quote in h for h in headings):
+                    broken.append((n, f"{target} 找不到章节「{quote}」"))
+        else:
+            for quote in quotes:
+                if quote not in target_text:
+                    broken.append((n, f"{target} 找不到「{quote}」"))
+    return broken
+
+
+def find_hardcoded_line_numbers(text: str) -> list[str]:
+    """Return any `.ext:<line>` references embedded in GOTCHAS text."""
+    hits = []
+    for idx, line in enumerate(text.splitlines(), 1):
+        for m in LINE_NUMBER_REF_RE.finditer(line):
+            hits.append(f"GOTCHAS.md:{idx}: {m.group(0)}")
+    return hits
 
 
 def indexed_numbers() -> set[int]:
@@ -146,6 +194,38 @@ class GotchaEnforcement(unittest.TestCase):
             vague, [],
             "judgment 必须写出「— 看什么：…」并说清看哪儿、看到什么算错，"
             f"不能只甩一个路径：{vague}")
+
+    def test_judgment_quoted_headings_resolve(self):
+        """judgment: 指针在「看什么：」定位段里用「…」引用的章节标题必须在目标文件存在。"""
+        broken = find_broken_judgment_headings(GOTCHAS.read_text(encoding="utf-8"), ROOT)
+        self.assertEqual(
+            broken, [],
+            f"judgment 引用的章节标题或标识在目标文件中不存在：{broken}")
+
+    def test_no_hardcoded_line_numbers_in_body(self):
+        """GOTCHAS 正文禁止硬编码源码行号引用（如 .py:123 / .html:456）。"""
+        hits = find_hardcoded_line_numbers(GOTCHAS.read_text(encoding="utf-8"))
+        self.assertEqual(
+            hits, [],
+            f"GOTCHAS.md 正文不允许硬编码源码行号：{hits}")
+
+    def test_negative_fixtures_catch_broken_judgment_heading_and_line_number(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "references").mkdir()
+            (root / "references" / "sample.md").write_text("# Title\n\n## Real Heading\n", encoding="utf-8")
+            bad_gotchas = (
+                "## 99. Synthetic broken heading\n\n"
+                "**module**：x　｜　**状态**：已复现\n"
+                "- **enforcement**：judgment:references/sample.md — 看什么：「Missing Heading」：检查正文与章节是否匹配。\n"
+            )
+            broken = find_broken_judgment_headings(bad_gotchas, root)
+            self.assertEqual(len(broken), 1)
+            self.assertIn("Missing Heading", broken[0][1])
+
+        hits = find_hardcoded_line_numbers("查看 helpers/deliver.py:123 了解细节。\n")
+        self.assertEqual(len(hits), 1)
+        self.assertIn(".py:123", hits[0])
 
     def test_entry_numbers_unique(self):
         nums = [n for n, _ in entries()]

@@ -154,8 +154,8 @@ class DocHygieneV3Tests(unittest.TestCase):
                 self.assertIn(marker, text, f"{rel} missing v3 CLI/capability marker `{marker}`")
 
         tools_md = docs["references/tools.md"]
-        for flag in ("--debreath", "--broll-bed", "lookdev", "summary", "--visual-audio"):
-            self.assertIn(flag, tools_md, f"references/tools.md missing v3 CLI subcommand/flag `{flag}`")
+        for marker in ("lookdev", "summary", "import-svg", "make-sfx", "--help"):
+            self.assertIn(marker, tools_md, f"references/tools.md missing v3 CLI subcommand/marker `{marker}`")
         self.assertRegex(
             tools_md,
             r"兼容[^\n]*audio_fix\.py",

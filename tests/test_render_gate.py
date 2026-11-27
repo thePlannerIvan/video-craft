@@ -174,11 +174,12 @@ class RenderGateTests(unittest.TestCase):
         )
 
     def test_approve_in_chat_without_review_data_refuses_and_writes_nothing(self):
-        report = render_gate.record_chat_approval(self.project)
+        quote = "把第3镜改快后直接导出成片"
+        report = render_gate.record_chat_approval(self.project, quote)
         self.assertFalse(report["ok"])
         self.assertFalse(report["evaluable"])
         self.assertFalse((self.project / "review" / "review-submissions.json").exists())
-        proc = self._run_cli(str(self.project), "--approve-in-chat", "--json")
+        proc = self._run_cli(str(self.project), "--approve-in-chat", "--approval-note", quote, "--json")
         self.assertEqual(proc.returncode, 2, proc.stderr)
         payload = json.loads(proc.stdout)
         self.assertFalse(payload["ok"])
@@ -190,7 +191,10 @@ class RenderGateTests(unittest.TestCase):
             "snapshot": "   ",
             "sourceManifest": self.manifest,
         })
-        proc = self._run_cli(str(self.project), "--approve-in-chat", "--json")
+        proc = self._run_cli(
+            str(self.project), "--approve-in-chat",
+            "--approval-note", "把第3镜改快后直接导出成片", "--json",
+        )
         self.assertEqual(proc.returncode, 2, proc.stderr)
         payload = json.loads(proc.stdout)
         self.assertFalse(payload["ok"])
@@ -239,7 +243,10 @@ class RenderGateTests(unittest.TestCase):
         self._review()
         expected_hash = source_digest(self.project)
 
-        proc = self._run_cli(str(self.project), "--approve-in-chat", "--json")
+        proc = self._run_cli(
+            str(self.project), "--approve-in-chat",
+            "--approval-note", "把第3镜改快后直接导出成片", "--json",
+        )
         self.assertEqual(proc.returncode, 0, proc.stderr)
         payload = json.loads(proc.stdout)
         self.assertTrue(payload["ok"], payload)
@@ -259,7 +266,11 @@ class RenderGateTests(unittest.TestCase):
         # Before chat approval, bare gate blocks.
         self.assertEqual(self._run_cli(str(self.project)).returncode, 1)
 
-        proc = self._run_cli(str(self.project), "--approve-in-chat", "--json")
+        quote = "把第3镜改快后直接导出成片"
+        proc = self._run_cli(
+            str(self.project), "--approve-in-chat",
+            "--approval-note", quote, "--json",
+        )
         self.assertEqual(proc.returncode, 0, proc.stderr)
         payload = json.loads(proc.stdout)
         self.assertTrue(payload["ok"], payload)
@@ -277,7 +288,8 @@ class RenderGateTests(unittest.TestCase):
         self.assertEqual(entry["kind"], "chat-approval")
         self.assertEqual(entry["source"], "chat")
         self.assertEqual(entry["snapshot"], SNAPSHOT)
-        self.assertEqual(entry["note"], "作者在对话中明确授权导出")
+        self.assertEqual(entry["note"], quote)
+        self.assertTrue(entry["liveSourceHash"])
         parsed_ts = datetime.fromisoformat(entry["createdAt"])
         self.assertIsNotNone(parsed_ts.tzinfo)
 
@@ -329,17 +341,66 @@ class RenderGateTests(unittest.TestCase):
         self.assertEqual(doc["records"][1]["kind"], "chat-approval")
         self.assertEqual(doc["records"][1]["note"], "作者在对话确认导出分轨成片")
 
-        # Blank approval note falls back to default Chinese audit note.
-        blank_proc = self._run_cli(str(self.project), "--approve-in-chat", "--approval-note", "   ")
-        self.assertEqual(blank_proc.returncode, 0, blank_proc.stderr)
-        doc_after = json.loads(custom_subs.read_text(encoding="utf-8"))
-        self.assertEqual(doc_after["records"][-1]["note"], "作者在对话中明确授权导出")
+    def test_approve_in_chat_rejects_missing_blank_or_placeholder_approval_note(self):
+        self._review()
+        submissions_file = self.project / "review" / "review-submissions.json"
+
+        # Omitted --approval-note on CLI (both JSON and human output) must fail with exit 1.
+        missing_json = self._run_cli(str(self.project), "--approve-in-chat", "--json")
+        self.assertEqual(missing_json.returncode, 1, missing_json.stdout + missing_json.stderr)
+        payload = json.loads(missing_json.stdout)
+        self.assertFalse(payload["ok"])
+        self.assertTrue(any("--approval-note" in r and "原话" in r for r in payload["reasons"]), payload)
+        self.assertFalse(submissions_file.exists())
+
+        missing_human = self._run_cli(str(self.project), "--approve-in-chat")
+        self.assertEqual(missing_human.returncode, 1)
+        self.assertIn("--approval-note", missing_human.stdout)
+        self.assertFalse(submissions_file.exists())
+
+        # Direct API call without valid quote also refuses and writes nothing.
+        for bad_direct in (None, "", "   ", render_gate.DEFAULT_APPROVAL_NOTE, "ok"):
+            with self.subTest(direct_note=bad_direct):
+                rep = render_gate.record_chat_approval(self.project, bad_direct)
+                self.assertFalse(rep["ok"], rep)
+                self.assertTrue(any("--approval-note" in r for r in rep["reasons"]), rep)
+                self.assertFalse(submissions_file.exists())
+
+        # Blank, too-short (<4 chars), and generic placeholders must all exit 1 and write nothing.
+        bad_notes = (
+            "",
+            "   ",
+            render_gate.DEFAULT_APPROVAL_NOTE,
+            "ok",
+            "approved",
+            "导出",
+            "同意",
+            "auto",
+            "default",
+            "yes",
+            "过",
+        )
+        for bad in bad_notes:
+            with self.subTest(approval_note=bad):
+                proc = self._run_cli(
+                    str(self.project), "--approve-in-chat",
+                    "--approval-note", bad, "--json",
+                )
+                self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+                bad_payload = json.loads(proc.stdout)
+                self.assertFalse(bad_payload["ok"])
+                self.assertTrue(
+                    any("--approval-note" in r and "原话" in r for r in bad_payload["reasons"]),
+                    bad_payload,
+                )
+                self.assertFalse(submissions_file.exists())
 
     def test_approve_in_chat_help_warning_and_flag_guards(self):
         help_proc = self._run_cli("--help")
         self.assertEqual(help_proc.returncode, 0)
         self.assertIn("--approve-in-chat", help_proc.stdout)
         self.assertIn("--approval-note", help_proc.stdout)
+        self.assertIn("必填", help_proc.stdout)
         self.assertIn("explicitly instructed exporting in the active conversation", help_proc.stdout)
 
         self._review()

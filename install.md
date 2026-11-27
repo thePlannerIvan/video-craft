@@ -57,10 +57,10 @@ CATEGORY_PY="${CATEGORY_PY:-python3}"
 **Track B · monorepo checkout**
 
 ```bash
-# The canonical source is your skills library; nothing here assumes a machine layout.
-CRAFT_SRC="${CRAFT_SRC:-$HOME/skills/02-skills-library/03-design-delivery/video-craft}"
-# The interpreter this whole category shares (see step 2).
-CATEGORY_PY="${CATEGORY_PY:-$HOME/skills/02-skills-library/.venv/bin/python}"
+# The canonical source is your skills library checkout; nothing here assumes a machine layout.
+CRAFT_SRC="${CRAFT_SRC:-<path-to-your-skills-library>/video-craft}"
+# The Python 3.9+ interpreter your environment uses.
+CATEGORY_PY="${CATEGORY_PY:-python3}"
 ```
 
 If the repo is already there, `git pull --ff-only` and continue.
@@ -184,7 +184,7 @@ Word-level timing is the spine of cutting, captions, and delivery, so the defaul
 | 3 | mlx-whisper (local, `mlx_transcribe.py`) | `pip install -e '.[mlx]'` | offline last resort |
 | — | Ark (`--backend ark`, doubao-seed-2.0-lite) | `ARK_API_KEY` (火山方舟 console) | **not an ASR**: a generic multimodal model that drifts 0.5–2 s, garbles fast Chinese, and hallucinates in silence. Never use it for word-level timing |
 
-`transcribe.py --backend auto` still walks Scribe → Ark → mlx; that order is a legacy implementation detail, **not** a recommendation. Word-level transcription always goes through `transcribe_seedasr.py`. The SeedASR pair and the Ark key are **different accounts** — an Ark key cannot stand in for the speech-console pair.
+`transcribe.py --backend auto` runs Scribe only when `ELEVENLABS_API_KEY` is present and fails clearly when missing or unauthorized (it never falls back to `ark` or `mlx`). Use `--backend ark` only for explicit non-ASR opt-in, or `--backend mlx` for explicit offline fallback. Word-level transcription always goes through `transcribe_seedasr.py`. The SeedASR pair and the Ark key are **different accounts** — an Ark key cannot stand in for the speech-console pair.
 
 Check what the user already has before asking for anything:
 

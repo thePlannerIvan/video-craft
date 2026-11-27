@@ -25,21 +25,21 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 EVALS = HERE / "evals.json"
 
-ROUTES = ("recompose", "montage", "frame", "capabilities", "audio", "shared")
+ROUTES = ("motion", "footage", "frame", "capabilities", "audio", "shared")
 # 每条路线至少要有几条用例。shared 是横切片型/路线都成立的用例（工程态、返修、交付）。
 ROUTE_MINIMUM = {
-    "recompose": 1,
-    "montage": 1,
+    "motion": 1,
+    "footage": 1,
     "frame": 1,
     "capabilities": 1,
     "audio": 1,
     "shared": 1,
 }
 
-# 新增路线（montage / frame / capabilities / audio）的用例必须在 must_do 里落到真实入口上，否则 route 只是标签。
+# 新增路线（motion / footage / frame / capabilities / audio）的用例必须在 must_do 里落到真实入口上，否则 route 只是标签。
 ROUTE_ANCHORS = {
-    "recompose": (),
-    "montage": ("montage.py", "scan_materials", "素材清单", "镜头表"),
+    "motion": ("remotion", "film.py", "check_visual.py", "storyboard.json"),
+    "footage": ("montage.py", "scan_materials", "素材清单", "镜头表"),
     "frame": ("frame.py", "画框", "token"),
     "capabilities": ("storyboard.json", "film.py", "deliver.py", "frame.py"),
     "audio": ("audio_mix.py", "sound_design.py", "--debreath", "podcast-warm"),
@@ -61,6 +61,8 @@ TOPICS = (
     ("Remotion与运行壳", ("remotion_runtime.py", "Remotion", "import-svg")),
     ("活舞台与自适应审阅", ("{kw: 1}", "横竖屏", "自适应")),
     ("Remotion门禁与会话授权", ("typecheck", "静帧", "--approve-in-chat")),
+    ("Remotion视觉质量与录屏门禁", ("check_visual.py", "remotion/public/assets", "Q1", "Q3", "DEMO_IN_ASSETS")),
+    ("会话授权明确原话凭证", ("--approval-note", "作者原话", "占位符")),
 )
 
 ID_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -179,9 +181,9 @@ def check_case(index, case, seen_ids):
 def guess_route(case):
     blob = text_of(case)
     hits = {
-        "montage": ("montage.py", "素材清单", "镜头表", "montage-route"),
+        "footage": ("montage.py", "素材清单", "镜头表", "montage-route"),
         "frame": ("frame.py", "画框", "frame-spec"),
-        "recompose": ("composition", "recompose", "edl"),
+        "motion": ("remotion", "film.py", "check_visual.py", "storyboard.json"),
     }
     scores = {route: sum(1 for word in words if word in blob)
               for route, words in hits.items()}

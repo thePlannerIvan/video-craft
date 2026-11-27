@@ -69,9 +69,9 @@ python3 "<craft>/helpers/_internal/check_script_hash.py" "<project>" --script "<
 - **证据与实操**：实操录屏局部聚焦、前后对比、原物↔模型往返；
 - **差异与规模**：同位对比、遮罩揭示、差值变化、数据驱动分布（严禁动效编造数据关系）；
 - **流程与关系**：状态推进、路径追踪、同一场景Shell内渐进改变关系；
-- **氛围与声音**：人声润色由 `audio_mix.py`（Voice Polish）处理，画面起伏声景与素材原声筛分由 `sound_design.py`（Visual Soundscape）处理，BGM 由外部 `media-use` 提供；
+- **氛围与声音**：声音双轨规范见 [captions-and-audio.md](captions-and-audio.md)（人声润色 `audio_mix.py`、画面声景 `sound_design.py`），BGM 按需通过外部 `media-use` 补充；
 - **静态阅读**：清晰排版与留白停留即可，静止可以是有意设计，复杂动效不自动更好；
-- 默认主动效运行时为 **Remotion 4**（外部运行壳托管于 `$VIDEO_CRAFT_REMOTION_HOME` 或 `~/.cache/video-craft/remotion-runtime/`；既有 `composition/index.html` 老工程保持只读兼容）；不引入尚未在本环境验证/集成的外部渲染栈。
+- **默认主动效运行时**：采用 **Remotion 4**（外部运行壳与兼容边界见 [remotion-engine.md](remotion-engine.md)），不引入未在本环境验证/集成的外部渲染栈。
 
 ## 4. 版式 / 画框规格（`frame.py`，正交横切层）
 

@@ -337,10 +337,11 @@ class RemotionGatesTests(unittest.TestCase):
                 capture_output=True, text=True, check=False,
             )
             cv_doc = json.loads(cv.stdout)
-            self.assertEqual([c["check"] for c in cv_doc["checks"]], ["live-stage", "typecheck", "sync", "screen-text"])
+            self.assertEqual([c["check"] for c in cv_doc["checks"]], ["live-stage", "typecheck", "sync", "quality", "screen-text"])
             by_name = {c["check"]: c for c in cv_doc["checks"]}
             self.assertTrue(by_name["typecheck"]["ok"], by_name["typecheck"])
             self.assertTrue(by_name["sync"]["ok"], by_name["sync"])
+            self.assertTrue(by_name["quality"]["ok"], by_name["quality"])
             self.assertTrue(by_name["screen-text"]["ok"], by_name["screen-text"])
             if remotion_runtime.inspect_runtime().get("ok"):
                 self.assertEqual(cv.returncode, 0, cv.stdout + cv.stderr)

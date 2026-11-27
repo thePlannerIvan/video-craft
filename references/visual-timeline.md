@@ -21,7 +21,7 @@ EDL + 同版时长记录 → 字幕 cues ── timeline_derive ──┐
                                                   ↓
                         project/timeline/timeline.json
                                   ↓
-                        手写 composition / 工程审阅
+                       Remotion 场景 / 工程审阅
 ```
 
 字幕字级插值（caption_words）不同于真实 ASR 词级时间。精确卡词调用 align，优先 transcripts，退估算时标 estimated；不手算比例。
@@ -55,7 +55,7 @@ Optional:
 
 ## Step 1 — derive the cue entries
 
-派生与统计命令见 [tools.md](tools.md)「SVG 与视觉时间」；`--stats` / `--entries-only` 用于核听。
+派生与统计命令见 [tools.md](tools.md)「13 个核心顶层公开入口」的 `timeline_derive.py`；`--stats` / `--entries-only` 用于核听。
 
 Each entry carries the SRT-compatible contract (`index`, `startMs`, `endMs`,
 `durationMs`, `text`) **plus** what only the EDL side knows: `segment`,
@@ -114,7 +114,7 @@ cross into another blueprint's beat.
 
 ## Step 3 — build the timeline
 
-完整派生命令（`--grouping` / `--alignment` / `--output-timeline` / `--output-durations`）见 [tools.md](tools.md)「SVG 与视觉时间」。
+完整派生命令（`--grouping` / `--alignment` / `--output-timeline` / `--output-durations`）见 [tools.md](tools.md)「13 个核心顶层公开入口」（对齐诊断见「2. 时间预演、上游对齐与字幕核查」）。
 
 `timeline.json` is the project-level truth for visual steps. Per step it emits
 `startMs` / `endMs` / `durationMs` / `caption` (computed from the first and last
@@ -200,10 +200,10 @@ rename and the added EDL-side fields).
 
 1. 读取当前 timeline 的来源与绑定。EDL 项目区分 `projected` 与 `measured`，交付必须完成同版实测核验；外部 SRT 保持 `srt-import` 并核真实音频；未录音 `planned` 不进入成片。
 2. 有参考页动画时 `film.py verify` 通过；拆解表与 Beat 映射完整。纯剪辑不伪造参考页来通过此检查。
-3. Remotion 工程通过 `helpers/check_visual.py --only typecheck` / `--only sync` / `--only stills`（底层调用 `helpers/_internal/remotion_gates.py`）；仅历史兼容 `composition/` 工程继续走 `hyperframes check` 与 `helpers/_internal/check_motion_targets.py`。
+3. Remotion 工程按 [remotion-engine.md](remotion-engine.md)「5. Remotion 四道确定性质量门禁」过前置门禁；仅历史兼容 `composition/` 工程继续走 `hyperframes check` 与 `helpers/_internal/check_motion_targets.py`。
 4. 读取项目实际声音路径，核音轨、时长与字幕覆盖；不强制输入必须叫 `input/audio.mp3`。明确有声/无声、人物/无人物、外挂/烧录合同。
-5. `review` 运行时检查通过；存在当前审阅快照且人工提交对应当前快照（或作者当轮在对话中明确指示导出传入 `--approve-in-chat` 记录实时源码指纹）；模型读取反馈，未决项已经处理或由作者明确接受；作者指令覆盖当前出片版本。`render_gate` 放行不能替代这三个人工判断。
+5. `review` 运行时检查通过；满足 [review-and-delivery.md](review-and-delivery.md) 的双轨授权之一（当前快照的零漂移网页提交，或作者当轮明确导出指示传入 `--approve-in-chat --approval-note "<原话>"`）；模型读取反馈，未决项已经处理或由作者明确接受；作者指令覆盖当前出片版本。`render_gate` 放行不能替代这三个人工判断。
 6. Remotion 工程先过 `helpers/remotion_runtime.py doctor` 验证外部运行壳就绪；历史兼容 `composition/` 工程跑 `probe_env.py` 与 `check_render_env.py` 取安全并发预算，不自行扩大并发。
-7. 画面层渲染照 [review-and-delivery.md](review-and-delivery.md) Step 0–1 执行：Remotion 工程由 `deliver.py --render` 串联 `remotion_gates.py` 四道门禁并通过外部运行壳输出；历史兼容 `composition/` 工程按 `--workers 1`、停预览服务并跑 `helpers/_internal/check_render_fidelity.py` 执行。
+7. 画面层渲染照 [review-and-delivery.md](review-and-delivery.md) Step 0–1 执行：Remotion 工程由 `deliver.py --render` 串联四道门禁并通过外部运行壳输出；历史兼容 `composition/` 工程按 `--workers 1`、停预览服务并跑 `helpers/_internal/check_render_fidelity.py` 执行。
 
 时间发生变化：改来源或分组 → 重派生 `timeline` → 更新场景绑定 → 重建审阅 → 新版本人审。允许模型编写消费 timeline 的场景代码；不允许手调最终数字掩盖源不一致。

@@ -146,9 +146,17 @@ def main(argv: list[str] | None = None) -> int:
     # Full bundle (`--only all`): route by motion engine
     import remotion_stage  # noqa: E402
 
-    engine, _ = remotion_stage.detect_motion_engine(target, explicit_composition=args.composition)
+    engine, rem_dir = remotion_stage.detect_motion_engine(target, explicit_composition=args.composition)
     checks: list[dict] = []
     worst = 0
+    if engine == "remotion" and rem_dir is not None:
+        vq_args = [str(target), "--composition", str(rem_dir), "--max-static-s", str(args.max_static_s), "--json"]
+    else:
+        vq_args = (
+            [str(target)]
+            + (["--composition", args.composition] if args.composition else [])
+            + ["--max-static-s", str(args.max_static_s), "--json"]
+        )
 
     if engine == "remotion":
         code, out, err = _run_tool("check_live_stage.py", [str(target), "--json"])
@@ -161,6 +169,10 @@ def main(argv: list[str] | None = None) -> int:
 
         code, out, err = _run_tool("remotion_gates.py", [str(target), "--only", "sync", "--json"])
         checks.append({"check": "sync", "ok": code == 0, "code": code, "report": _parse_json_tail(out) or out.strip()})
+        worst = max(worst, code)
+
+        code, out, err = _run_tool("check_visual_quality.py", vq_args)
+        checks.append({"check": "quality", "ok": code == 0, "code": code, "report": _parse_json_tail(out) or out.strip()})
         worst = max(worst, code)
 
         code, out, err = _run_tool("check_screen_text.py", [str(target), "--json"])
@@ -180,11 +192,6 @@ def main(argv: list[str] | None = None) -> int:
             worst = max(worst, code)
 
         if comp_dir.is_dir() or (target / "visual-plan.json").is_file():
-            vq_args = (
-                [str(target)]
-                + (["--composition", args.composition] if args.composition else [])
-                + ["--max-static-s", str(args.max_static_s), "--json"]
-            )
             code, out, err = _run_tool("check_visual_quality.py", vq_args)
             checks.append({"check": "quality", "ok": code == 0, "code": code, "report": _parse_json_tail(out) or out.strip()})
             worst = max(worst, code)

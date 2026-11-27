@@ -40,7 +40,7 @@
 | 模块层 | 唯一责任与公开入口（`helpers/`） | 内部机制（`helpers/_internal/`）与不承担项 |
 |---|---|---|
 | 接入与版本 | 上游文档与作者决定 | `check_script_hash.py`、`resolve_vault.py`、`spec_lint.py`；不改写上游主张 |
-| 声音（Voice Polish + Visual Soundscape） | `audio_mix.py`（Voice Polish 唯一混音/试听入口，`-14 LUFS / -1.5 dBTP`）、`sound_design.py`（Visual Soundscape 筛分闪避 + 动效声景与合播门禁）；兼容包装 `audio_fix.py` | `_debreath.py`、`audio_diag.py`、`transcribe_seedasr.py`、`transcribe.py`、`mlx_transcribe.py`、`refine_transcript.py`、`pack_transcripts.py` |
+| 声音（Voice Polish + Visual Soundscape） | `audio_mix.py`（Voice Polish 唯一入口）、`sound_design.py`（Visual Soundscape 唯一入口）；兼容入口 `audio_fix.py` | `_debreath.py`、`audio_diag.py`、`transcribe_seedasr.py`、`transcribe.py`、`mlx_transcribe.py`、`refine_transcript.py`、`pack_transcripts.py` |
 | 剪辑协同 | `stage_cut.py`（prepare / review / apply） | `edl_from_keep.py`、`edl_edit.py`、`apply_selection.py`、`check_edl.py`、`edl_preview_build.py`、`edl_review_surface.py`、`measure_offset.py`、`mirror_edl.py` |
 | 时间与字幕 | `srt_export.py`（Article-First 字幕）、`timeline_derive.py`（EDL 时间轴） | `_edl.py`、`duration_plan.py`、`import_srt_timeline.py`、`check_caption_breaks.py` |
 | 分镜、画面与画框 | `film.py`（`storyboard.json` 校验、`summary`、`lookdev` 样镜门禁、`proxy`、`import-svg`）、`frame.py`（画框三件套、预览与 `resolve` 几何真源）、`remotion_runtime.py`（外部运行壳管理）、`check_visual.py`（统一画面体检） | `remotion_gates.py`、`remotion_svg_scene.py`、`check_live_stage.py`、`check_visual_quality.py`、`check_motion_targets.py`、`check_motion.py`、`check_screen_text.py`、`check_alpha.py`、`check_overlay.py`、`check_render_env.py`、`check_render_fidelity.py`、`probe_env.py`、兼容 `recompose_plan.py` |

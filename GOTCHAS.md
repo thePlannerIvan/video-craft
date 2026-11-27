@@ -45,7 +45,7 @@ keeps fillers verbatim but drifts ±0.3 s and drops punctuation.
 ## 2. Two engines disagreeing is a signal, not noise
 
 **module**：helpers/_internal/transcribe.py（转写后端这条缝）　｜　**状态**：已复现
-- **enforcement**：judgment:references/captions-and-audio.md — 看什么：「Stage B · 校对全文与 --lock」：删词或采信专名前，把该窗口用第二个后端再转一遍，逐词比两版的字面与 start/end；只有两版同字才采信，不一致就回音频。
+- **enforcement**：judgment:references/captions-and-audio.md — 看什么：「Stage B · 校对全文与 `--lock`」：删词或采信专名前，把该窗口用第二个后端再转一遍，逐词比两版的字面与 start/end；只有两版同字才采信，不一致就回音频。
 
 Re-run the window you are about to cut with a second backend before deleting a
 token or trusting a proper name. That is how `关线`→`关键`, `经典`→`经验`,
@@ -57,7 +57,7 @@ slip, which is a different decision.
 ## 3. Signed-in-but-unusable accounts
 
 **module**：helpers/_internal/transcribe.py（账号与配额这条缝）　｜　**状态**：已复现
-- **enforcement**：judgment:install.md — 看什么：「Optional second engine」那节（200/401 判读）：用真实音频打一次端点，以真实上传的响应当权威（能列模型 ≠ 能调用；预检通过后上传仍可能 401）。
+- **enforcement**：judgment:install.md — 看什么：「5. Transcription: an online service is the default」里的 Optional second engine（200/401 判读）：用真实音频打一次端点，以真实上传的响应当权威（能列模型 ≠ 能调用；预检通过后上传仍可能 401）。
 
 - Volcengine's models endpoint can list models the account cannot call. Probe the
   actual endpoint with real audio before wiring a backend. Ark LLM keys are not
@@ -79,8 +79,8 @@ PIL card.
 
 ## 6. A claim must match the evidence behind it
 
-**module**：SKILL.md 的判断类规则（跨 module）　｜　**状态**：已复现
-- **enforcement**：judgment:SKILL.md — 看什么：「完成判据」表：每条结论点名命令与它实际量的属性；一个绿灯不许替另一个属性背书。
+**module**：SKILL.md 与 stages.md 的判断类规则（跨 module）　｜　**状态**：已复现
+- **enforcement**：judgment:references/stages.md — 看什么：「10. 核验与严格交付」的完成标准：每条结论点名命令与它实际量的属性；一个绿灯不许替另一个属性背书。
 
 Say what was directly verified, and by which command; never let a passing check
 stand in for a different property. The gates do not imply one another:
@@ -90,13 +90,8 @@ stand in for a different property. The gates do not imply one another:
 - `verify_av.py` — the rendered file's tracks and its tail;
 - `verify_delivery.py` — the DELIVERED artefacts, byte-identical to the working
   files;
-- `helpers/film.py verify <project>` — `visual-plan.json` (four visual tiers) or legacy `pages/` mapping is valid.
-  It says **nothing** about whether the composition renders: inlined paths, the
-  theme, the timing and the DOM belong to `helpers/check_visual.py` and to
-  `hyperframes check`. Both commands are right; they measure different
-  properties (the first real instance of this entry: static page checks reported
-  green on the very pages `hyperframes check` rejected with
-  `invalid_parent_traversal_in_asset_path`).
+- `helpers/film.py verify <project>` — `storyboard.json` (or legacy `visual-plan.json` / `pages/`) schema is valid.
+  It says **nothing** about whether the motion scene compiles or passes visual quality: Remotion typecheck, frame sync, mid-segment stills, and layout safety belong to `helpers/check_visual.py` / `helpers/_internal/remotion_gates.py` (or `hyperframes check` on frozen legacy projects).
 
 An exception is not evidence of a diagnosis: "it worked last time" proves
 nothing about an intermittent failure.
@@ -112,20 +107,10 @@ it, and the failure is reported as `subtitles.srt 末条 … 与成片 … 不�
 sounds like the captions are wrong when the real cause is a long tail pad. Keep
 the tail pad at ≤0.10 s.
 
-## 10. `onStart` callbacks do not replay under a seek-driven render
-
-**module**：references/visual-grammar.md（组成品写作顺序）　｜　**状态**：已复现
-- **enforcement**：judgment:references/visual-grammar.md — 看什么：「Composition 写作硬规（HyperFrames）」里 `gsap.set` 与 `onStart` 那几条：渲一帧看计数器／文字是不是停在旧值；preview 里动、render 里不动，就是 onStart 没在 seek 下重放。
-
-Changing DOM text from a timeline callback (`tl.to(el, {duration:.01, onStart(){…}})`)
-looks right in preview and never fires in a render, because the producer seeks the
-paused timeline instead of playing it. Counters froze at `01 / 21`. Anything that
-must change over time is a pre-built element switched by `opacity`/`zIndex` sets.
-
 ## 11. Multi-round loops must be flattened into one step sequence
 
 **module**：references/visual-grammar.md（组成品写作顺序）　｜　**状态**：已复现
-- **enforcement**：judgment:references/visual-grammar.md — 看什么：「Composition 写作硬规」与 `check_motion`：多轮动效要核第二轮与最后一轮，不只看首中尾三张图。
+- **enforcement**：judgment:references/visual-grammar.md — 看什么：「4. Remotion 4 场景写作硬规（含历史 HyperFrames 只读兼容边界）」与 `check_motion`：多轮动效要核第二轮与最后一轮，不只看首中尾三张图。
 
 A two-round page flip written as nested loops left round 1's last card on top —
 the animation looked stuck on one page (2026-09-21, found by the author). Compute
@@ -135,7 +120,7 @@ let a second round rely on the previous round having cleaned up.
 ## 12. Composition assets must be enumerated from the real files
 
 **module**：references/visual-grammar.md（资产清点）　｜　**状态**：已复现
-- **enforcement**：judgment:references/visual-grammar.md — 看什么：「Composition 写作硬规」资产路径条 + 出片前 `snapshot`：资产清单是不是从 `glob()` 的真实目录生成，并逐格看有没有内容。
+- **enforcement**：judgment:references/visual-grammar.md — 看什么：「4. Remotion 4 场景写作硬规（含历史 HyperFrames 只读兼容边界）」与出片前 `stills` / `snapshot`：资产清单是不是从真实目录枚举生成，并逐格看有没有内容。
 
 Thumbnail paths were generated as `%02d_cover.png` when only the first page was
 named `cover`; 20 of 21 tiles rendered empty and the encode still succeeded. Build
@@ -155,21 +140,23 @@ the canvas.
 ## 18. A review copy needs sound, a visible save state, and per-round archiving
 
 **module**：references/review-and-delivery.md（审阅页的硬约定）　｜　**状态**：已复现
-- **enforcement**：judgment:references/review-and-delivery.md — 看什么：「两种审阅面与构建模式」及「媒体解析与公共宿主接口」：审阅副本有声、保存时间常驻且能手存、`feedback/*.round-N.json` 里躺着上一轮。
+- **enforcement**：judgment:references/review-and-delivery.md — 看什么：「1. 两种审阅面与横竖屏自适应构建模式」及「媒体解析与公共宿主接口」：审阅副本有声（含声景与底噪开关）、保存时间常驻且能手存、`feedback/*.round-N.json` 里躺着上一轮。
 
 Three separate complaints in one session, all about the review artefact rather
 than the film: the visual slices were `<video muted>` so the author could not judge
 sync; auto-save worked but its indicator was a line in the corner, so the author
 reported the feedback as lost; and the page reloaded the previous round's notes and
 re-saved them with the new ones, making six old comments look like six new ones.
-Mux the voiceover into the review copy (the delivery copy stays silent), keep a
-sticky saved-at indicator plus a manual save, and archive the feedback file as
-`<name>.round-N.json` before opening a fresh round.
+Mux the voiceover (and Visual Soundscape when present) into the review copy; for
+delivery, the visual leg carries Visual Soundscape when present and stays silent
+only when no soundscape is needed. Keep a sticky saved-at indicator plus a manual
+save, and archive the feedback file as `<name>.round-N.json` before opening a
+fresh round.
 
 ## 19. Loudness and true peak are measured on the DELIVERED file, in stereo, whole-program
 
 **module**：helpers/_internal/verify_av.py + helpers/_internal/audio_diag.py　｜　**状态**：已复现
-- **enforcement**：judgment:references/captions-and-audio.md — 看什么：「全片统一出口响度标准」那条 + **交付件**上跑 `ffmpeg -i 交付.mp4 -filter_complex ebur128 -f null -`，读 I 与 True peak 两个数；`audio_diag` 的 mono 读数不算。
+- **enforcement**：judgment:references/captions-and-audio.md — 看什么：「4. 双轨音频分离：Voice Polish（人声润色）与 Visual Soundscape（画面声景）」 + **交付件**上跑 `ffmpeg -i 交付.mp4 -filter_complex ebur128 -f null -`，读 I 与 True peak 两个数；`audio_diag` 的 mono 读数不算。
 
 `audio_diag.py` **downmixes to mono and keeps only speech-active regions**
 (`voice_gate`). That is a diagnosis tool, not the delivery standard: the same
@@ -242,10 +229,10 @@ the picture.
 
 两件事都要修，缺一不可：
 1. **认两种字段名**：现在是 `cueRange`（`helpers/timeline_derive.py` 产出），老项目叫
-   `srtRange`（`visual/scripts/align-visual-plan.py:178` 做这个改名）。页面侧
-   `visual/assets/review-page-template.html:2433` 的 `cueRangeOf()` 与
-   `helpers/_internal/build_review.py:708` 现在都认两种。
-2. **单屏失败不许拖垮整张清单**：每屏的渲染各自 try/catch（`review-page-template.html:3823`
+   `srtRange`（`visual/scripts/align-visual-plan.py` 做这个改名）。页面侧
+   `visual/assets/review-page-template.html` 的 `cueRangeOf()` 与
+   `helpers/_internal/build_review.py` 现在都认两种。
+2. **单屏失败不许拖垮整张清单**：每屏的渲染各自 try/catch（`review-page-template.html`
    起算 `drawn/failed`），坏的那屏自己显示"画不出来 + 为什么"，状态位上说清少了几屏。
 
 第 2 条是更一般的教训：**"页头说有 23 屏、下面一屏都没有"看起来像"这个项目没问题"**。
@@ -268,7 +255,7 @@ the picture.
 ## 40. SVG 空间布局平移 (Layout Transform) 与 WAAPI 动效平移冲突覆盖
 
 - **module**：`visual/assets/review-page-template.html` / `visual/assets/svg-anim-engine.js` ｜ **状态**：已复现
-- **enforcement**：judgment:references/visual-grammar.md — 看什么：「Composition 写作硬规」与「SVG 预埋子件微动效契约」：`.anim-*` 与静态 `translate()` 是不是落在同一个元素上；抽入场首帧比 x 坐标，被拉回 0 就是冲突。
+- **enforcement**：judgment:references/visual-grammar.md — 看什么：「4. Remotion 4 场景写作硬规（含历史 HyperFrames 只读兼容边界）」与「5. SVG 预埋子件微动效契约（可选）」：`.anim-*` 与静态 `translate()` 是不是落在同一个元素上；抽入场首帧比 x 坐标，被拉回 0 就是冲突。
 - **现象**：在多元素/多卡片并排排版的 SVG 场景中，卡片外层通常带有静态坐标定位（如 `<g transform="translate(610, 0)">` 或 CSS `transform`）。若动效脚本直接在该元素上应用 WAAPI 平移动效（如 `el.animate([{ transform: 'translateY(18px)' }, ...])`），动效执行瞬间该元素的静态 `translate(610, 0)` 被完全重置为 `(0, 0)`，导致所有卡片瞬间挤压并重叠在最左侧边距。
 - **原因**：CSS/WAAPI 的 `transform` 动画属性在执行时会完全覆盖元素 SVG 属性上声明的静态 `transform`。
 - **修正原则**：**静态空间布局与动态入场动效必须物理分层**：外层 `<g transform="...">` 只负责空间栅格与定位；内层子元素（或嵌套 `<g>`）才挂载 `.anim-*` 动效类与 WAAPI 关键帧。动效类绝不可以直接打在带有空间布局位移的外层容器上。
@@ -332,14 +319,6 @@ the picture.
 - **修正原则**：`review/media.json` 声明 `baseVideo`（未烘焙的底片）时，`compositeVideo` 取这份底片并置 `layersBaked: false`，页面才实时叠层；没声明时默认 `layersBaked: true`，页面**不叠**并说明原因。宁可少画一层，也不能画出重影。
 - **证据**：2026-10-12《图拉斯创新》——13 个层 + 已烘焙成片同时在场时才暴露；改成「底片 + 实时叠层」后一致。
 
-## 48. composition 里 CSS 初始 transform 与 GSAP 补间会互相抢
-
-- **module**：`hyperframes` 的 lint（`gsap_css_transform_conflict`、`root_composition_missing_data_start`） ｜ **状态**：已复现
-- **enforcement**：judgment:references/visual-grammar.md — 看什么：「Composition 写作硬规（HyperFrames）」：`hyperframes check` 的 `gsap_css_transform_conflict` 与 `root_composition_missing_data_start` 是不是 0 error；初始态要写在补间里。
-- **现象**：给元素写 `style="transform: translateY(20px)"` 再用 GSAP 补间同一属性，lint 直接拒；根元素漏掉 `data-start="0"` 报 `root_composition_missing_data_start`。
-- **修正原则**：初始状态写在补间里（`gsap.fromTo(el, {y:20}, {y:0})`），CSS 只负责布局（`left`/`top`/尺寸）；根元素四件套 `data-composition-id` / `data-start` / `data-width` / `data-height` 一个都不能少。翻页这类「有意扫出画布」的动效要显式 `data-layout-allow-overflow`，否则每次 check 都报 info。
-- **证据**：《图拉斯创新》翻页 composition，`hyperframes check` 从 8 error + 2 info 到 **0 error / 0 issue**。
-
 ## 49. PIL 的 rotate 是逆时针为正，CSS 的 rotate 是顺时针为正
 
 - **module**：任何「逐帧渲染器改写成 HTML/CSS」的移植 ｜ **状态**：已复现
@@ -348,14 +327,6 @@ the picture.
 - **原因**：同一个角度值在两侧方向相反。`Image.rotate(θ)` 逆时针为正；CSS `rotate(θ)` 顺时针为正。旋转后的外接矩形对 ±θ 是对称的，所以**边界与覆盖率都对得上，只有内容反了**——这正是它难查的原因。
 - **判据**：拿一张卡单独试两个符号，实测 PIL `rot=-14.245°` 时 CSS 必须写 `+14.245°`（逐像素差 **0.94** vs 不取反的 **26.38**）。移植前先做这个单卡双向对照，别等整帧对比。
 - **修正原则**：移植时统一 `cssRot = deg => -deg`，位移、角度、抖动全走它。
-
-## 50. composition 缺 viewport meta 会让浏览器整体缩放页面
-
-- **module**：HyperFrames composition 骨架 ｜ **状态**：已复现
-- **enforcement**：judgment:references/tools.md — 看什么：「渲染环境、一致性检查、包装与交付指纹」与 composition 骨架：`<head>` 的 viewport meta 是不是写了与 `data-width`／`data-height` 相同的尺寸；漏了整页会按约 980px 布局再缩放。
-- **现象**：同一份 HTML，正品卡（`<img>` 未设宽高、按自然尺寸渲染）逐像素吻合，而卡片（`width:100%`）看起来被放大约 1.3 倍。
-- **原因**：`<head>` 里漏了 `<meta name="viewport" content="width=…, height=…" />`。没有它，浏览器按默认视口（约 980px）布局再把整页缩放去适配，于是「显式像素尺寸」的元素全被比例放大。正品卡因为按图片自然尺寸渲染、又恰好落在一个被缩放的容器里，容易被误判为「没问题」。
-- **修正原则**：`data-width` / `data-height` 之外，**viewport meta 必须同步写上同样的尺寸**。这是最小骨架的一部分，不是可选项。
 
 ## 52. 编码产物不要直接写进云同步目录
 
@@ -385,7 +356,7 @@ the picture.
 ## 55. 「当前屏」只在扬声器轨可见时才被记下 → 上一屏/下一屏看着像坏的
 
 - **module**：`visual/assets/review-page-template.html` ｜ **状态**：已复现
-- **enforcement**：judgment:references/review-and-delivery.md — 看什么：「两种审阅面与构建模式」里分屏切换与字幕同一时钟那条：用 CDP 真点上一屏／下一屏，断言 `state.currentScreenObj` 与 `video.currentTime` 都变了。
+- **enforcement**：judgment:references/review-and-delivery.md — 看什么：「1. 两种审阅面与横竖屏自适应构建模式」里分屏切换与字幕同一时钟那条：用 CDP 真点上一屏／下一屏，断言 `state.currentScreenObj` 与 `video.currentTime` 都变了。
 - **现象**：点「上一屏 / 下一屏」完全没反应，且**换屏不跳画面**；「播放」只把按钮文字变成「暂停」，画面纹丝不动。
 - **原因**：三处相互叠加。① `state.currentScreenObj = st` 只写在「扬声器视频可见且没有 SVG」那条分支里，而很多项目根本没有扬声器轨 → 变量恒为 null，而按钮处理开头就是 `if (!... || !state.currentScreenObj) return;`。② `startGlobalPlayback()` 只 play 扬声器轨，没 play 成片播放器。③ `switchToScreen()` 更新了选中态却没同步成片播放头。
 - **修正原则**：**「当前屏」就是选中的那一屏，无条件赋值**；舞台只有一个播放器时，播放/暂停/换屏都必须驱动它。判定这类问题不要靠肉眼看截图——用 CDP 驱动真实点击，断言 `state.currentScreenObj` 与 `video.currentTime` 的实际变化（实测：`hook-001 → hook-002(t=10.29) → hook-003(t=18.25) → 回 hook-002`，播放后 t 持续推进）。
@@ -436,20 +407,6 @@ the picture.
 - **修正原则**：**有字幕契约时不存在这条退路**：匹配不到就什么都不显示。药丸再加一条 `max-width` 封顶，防任何超长串重演。同理，**点一屏只 `seek` 不 `play`**（舞台还停在静态页上）得到的是一张静止帧 —— 用户动作驱动的换屏必须 `play()`，而切舞台、拖进度条的 `seek` 不该自己开始播放。
 - **证据**：`check_review_template.py` 的 S5／S6；S6 只查分屏点击处理函数那一段，因为前三处 seek 是正当的。
 
-## 61. composition 用旧时间轴打过补丁 → 过期 3 秒，无人发现
-
-**module**：`composition/src/`、`timeline/timeline.json` ｜ **状态**：已复现
-- **enforcement**：judgment:references/visual-grammar.md — 看什么：「Composition 写作硬规（HyperFrames）」与 timeline 来源：把 composition 里 `__SPANS__` 的区间和 `timeline/timeline.json` 同一屏的数对一遍，差 >0.1s 就是旧时间轴打的补丁。
-- **现象**：时间轴从「+3s 平移」改成「与 EDL 对齐」之后，composition 里的 `__CUES__`／`__SPANS__` 还是按旧版打的：`step-open` 的区间停在 14.42s，而时间轴已经说 11.42s。动画锚点整体偏 3 秒。**没有任何检查报错**，`build_review` 还给出一个看起来很一致的页面。
-- **原因**：这是第 56 条「工程态/交付态切分只做了一条轴」的第二条轴（**来源版本**）。时间轴一变，旧注入锚点就过期，而两者之间没有闸门。
-- **修正原则**：**画面轨的唯一源是 `composition/`**，而它的输入是时间轴 —— 时间轴一动就重派生并更新 `composition/` 与 `storyboard.json`（兼容旧 `visual-plan.json`，过 `helpers/film.py init/verify` + 手写 seek-safe `composition/src/`）；核对要覆盖 `mediaClips` 与逐片时间，别只数 clip 个数。
-- **证据**：旧 `__SPANS__.step-open=[0.0,14.42]` vs 新时间轴 `0–11.42`；重跑后逐屏一致。
-
-**同根并入**（合并后仍按本条处理）：
-- `segment_durations.json` 的键是输出文件名的 stem，渲到非权威名会静默留下旧记录：要交付就渲到
-  权威名（`person_master.mp4` / `final.mp4`）；`render.py` 现在会在检测到「还有指向别的 EDL 的
-  记录」时把冲突键打印出来。改 EDL 重渲后，顺手清掉过期键。
-
 ## 62. 静态检查的两个假阳：对正确代码报红，训练出来的只是忽略
 
 - **module**：`helpers/_internal/check_review_template.py` ｜ **状态**：已复现
@@ -464,45 +421,9 @@ the picture.
   写不写这一段（含元素本身的块），而不是留一个运行期分支。修完 `hyperframes check` 从
   「2 warning」到 **0 error / 0 warning**。
 
-## 63. studio 会缓存 composition —— 改了源，你要硬刷新它
-
-- **module**：`hyperframes preview`（studio） ｜ **状态**：已复现
-- **enforcement**：check:helpers/_internal/live_stage.py
-- **现象**：改完 composition（加音频、加钩子、改区间），studio 里还是旧的一版：画面不动、没声音、Lint 计数不变。作者会以为"动画没有"，而实际是**他在看几小时前那份**。
-- **原因**：studio 号称"改了自动重载"，但 composition 的响应带 HTTP 缓存。用 CDP 打开时必须 `Network.setCacheDisabled` 才能拿到新的一版；只用 `--status` 看服务活着，完全看不出来。
-- **修正原则**：**改了 composition 之后，让作者硬刷新（Cmd+Shift+R）**；判断"服务是不是旧实例"不能只看端口，要看响应内容（`grep` 一下新加的东西在不在）。诊断一律用 CDP 取真实 DOM，不要用截图猜。
-- **证据**：同一台服务器、同一个 URL，缓存开时 `__kwStudioHook` 不存在、关掉后 `{"installed":true}`。
-
-**同根并入**（合并后仍按本条处理）：
-- `hyperframes preview` 在沙箱下静默不起，而且它的路由只能验内容：这件事已下沉成
-  `helpers/_internal/live_stage.py`——把 `XDG_STATE_HOME` 指到项目内、pin 住裸路由并**验响应体**
-  （stage 过的 composition 带注入的 `data-hf-gsap-fallback` shim 与 `<base>`），
-  `--status/--stop/--json` 齐备。这条别在会话里手搓。
-- studio 的 player 路由剥掉所有 `src=` 脚本，并把内联脚本拼成一个大脚本：要在 studio 里执行的
-  代码**必须内联**，并且**并进那段已经证明会执行的块**（这里是动画层），不要指望它自己独立跑。
-  反过来，审阅页要用的东西（嵌入桥）走 `src=` 是对的 —— 那条路由不剥。
-- 「第几个脚本」不能当锚点，「第一个内联 script」尤其不能：锚点锚在**内容**上（这里是
-  "那个注册 `window.__timelines` 的脚本"），或者用不会被当成脚本的东西传配置（`<meta>`
-  而不是内联 `<script>`）。凡是"取第 n 个"的锚点，都要问一句：谁还能往前面插东西？
-
-## 70. 首次渲染的 compile 是冷启动（约 25 分钟），会被误判成「这台机器渲不动」
-
-- **module**：`references/visual-checks.md` 的交付态渲染规范节 ｜ **状态**：已复现
-- **enforcement**：judgment:references/visual-checks.md — 看什么：「交付态渲染规范（HyperFrames）」里冷启动 `compile` 那条：交付渲染前先渲 3–5s 片段；冷缓存 compile 约 25min、暖缓存 0.1s，一次冷等不构成渲不动的证据。
-- **现象**：`hyperframes render` 跑三分钟、零输出、没有任何进度，于是判定「整片渲染不可能」，转去手工搭 ffmpeg 分叉。
-- **原因**：渲染账单里 `compile` 与 `capture` 是两笔，**第一笔一次性且极贵**。实测冷缓存 227 帧 `compile 24m 44.8s` + `capture 18.3s`；同一台机器暖缓存 641 帧 `compile 0.1s` + `capture 38.6s`。抓帧只要 0.06 秒/帧——整片 9342 帧的 capture 是 8m 37.4s，剩下全是 compile。缓存落在外层（`XDG_CACHE_HOME`，或默认 `~/.cache/hyperframes`）；沙箱里每次重定向 cache 都会重付那二十多分钟。
-- **修正原则**：**交付渲染前先渲一个 3–5 秒短片段把缓存焐热**，再渲整片。一次冷启动的长等待不构成「渲不动」的证据；以它为理由改走手工 ffmpeg 分叉，是拿一条不可复现的路径换十几分钟。
-- **证据**：同一工程同一命令——冷 `25m 5s` vs 暖 `40.2s`；整片暖缓存 `14m 11.6s`（`compile 5m 23.1s` + `capture 8m 37.4s` + `assemble 6.2s`）。
-
-**同根并入**（合并后仍按本条处理）：
-- `hyperframes render --workers auto` 按核数开满 Chrome → 小内存机器被 swap 打崩：渲染前先跑
-  `python3 "<craft>/helpers/_internal/check_render_env.py" "<project>/composition"`——它报 RAM、可用内存与
-  swap，并直接打印这台机器能带得起的 `--workers` 值（两个上限取低：总内存 ÷ 1.5、可用内存 ÷ 1.5，
-  且不超过核数）。小内存机器一律 `--workers 1`（理由见 #79）。
-
 ## 71. 合成给「每一步」发一个媒体 clip，而各步不首尾相接 → 成片里成段黑帧
 
-- **module**：`composition/src/` + `helpers/_internal/verify_delivery.py` ｜ **状态**：已复现
+- **module**：`remotion/src/`（及历史兼容 `composition/src/`）+ `helpers/_internal/verify_delivery.py` ｜ **状态**：已复现
 - **enforcement**：check:helpers/_internal/verify_delivery.py
 - **现象**：成片在每次「切换」的位置出现黑帧。实测一份 311s 的片子里 37 处步间空隙、合计 12.51s（占 4.0%），`blackdetect` 扫出 39 段；而字幕门、静音门、时长门**全部通过**——是作者肉眼看片发现的。
 - **原因**：生成器给每一步发一个时长正好等于该步时长的媒体 clip，而步与步之间并不相接（`timeline_derive.py` 的 step 边界取自首/末 cue，它自己的注释就写着 cue 之间有 0.2–0.7s 的真空隙）。空隙里画面区没有内容，渲染出来就是黑。对**连续**素材（录屏、长镜头）尤其致命：源本来一直在，是排版把它切出了洞。
@@ -518,23 +439,14 @@ the picture.
 - **修正原则**：流水线产物忠实、可校验；交付副本可导入。规则实现在 `srt_export.py:apply_import_gaps`，由 `export_deliverables.py` 在写 `成品/*.srt` 时调用；交付命名用 `src=dst`（如 `subtitles.srt=04_字幕文件.srt`）一次说清，不再拷完手工改名。
 - **证据**：同一条 161 cue 的字幕——流水线产物 22 处 <0.03s（忠实），交付副本 0 处、min 0.040s、保底 0.300s。
 
-## 74. `hyperframes check` 全绿 ≠ 审阅页能播：内联脚本在 srcdoc 里永不执行
-
-- **module**：`helpers/_internal/live_preview.py` 的传输 + `visual/scripts/generate-composition.py` 的骨架 ｜ **状态**：已复现
-- **enforcement**：check:helpers/_internal/check_live_stage.py
-- **现象**：2026-10-21 XHS 三条片（`01-projects/mkt群课程准备/xhs-series/v3`）：工程在官方播放器里 6:08、画面正确；同一份工程进审阅页后时长 0、舞台区全黑，右侧人物照常播。`hyperframes check --json` 退 0，`runtime.duration` 为 `null`、`contrast.checked` 为 0（没有构建出 DOM，自然没有可测的对比度），没有一条 error。
-- **原因**：预览编译器把 `index.html` 里的内联 `<script>` 改写成 `type="text/hf-after-fonts"`（字体就绪后再跑）。`live_preview` 把 `src=` 的脚本取回来、内联成普通 `<script>`，所以外部脚本会执行；内联块原样留下，审阅页的 srcdoc 里没有东西替它重跑。`window.__CFG__` 与 `HF.build()` 都写在内联块里 → 时间轴从未构建。另一条同类：注册名必须等于根元素的 `data-composition-id`，否则 `hyperframes check` 报 `timeline_id_mismatch`，但更早的半成品不一定被所有路径拦住。
-- **修正原则**：会执行逻辑的脚本全部放 `src/*.js`；`index.html` 只留一行 lint 需要的容器初始化 `window.__timelines = window.__timelines || {};` —— `hyperframes check` 的 `missing_timeline_registry` 要求本文件里能看到它，而真正的 `window.__timelines["main"] = tl` 仍在外部文件。`build_review` 之前跑 `check_live_stage.py`：内联 `HF.build(` / `__CFG__` / 真正的 `__timelines[...] =`、注册名不一致、缺 bridge 全部判 error。**别把 `check` 绿灯当成「页面能播」**：绿只说明播放器路径没坏，审阅页走的是另一条路。
-- **证据**：坏版实测 `hyperframes check --json` 退 0、`runtime.duration=null`、`contrast.checked=0`；同一份内容把 config/boot 移到外部并补 bridge 后，`check_live_stage.py` 从 FAIL（2 error）转为 PASS。回归 `tests/test_live_stage_contract.py`，契约写在 `references/visual-checks.md`。审阅页能否播放仍需实测，静态检查不替代那一步。
-
 ## 75. 「确认前不要渲染」写在文档里，渲染命令什么都不检查
 
-- **module**：`helpers/_internal/render_gate.py` + `SKILL.md` 第 10 步 ｜ **状态**：已复现
+- **module**：`helpers/_internal/render_gate.py` + `references/stages.md` 第 10 步 ｜ **状态**：已复现
 - **enforcement**：check:helpers/_internal/render_gate.py
 - **现象**：2026-10-21 XHS：`SKILL.md` 已经写了「确认前不要渲染成片」，还是渲了一版 43 秒的成片，被明确批评。
-- **原因**：规则是 prose，渲染入口（`render.py` / `hyperframes render` / `npm run render`）都不读审阅状态。只要 agent 想渲，就没有东西拦。
-- **修正原则**：渲染前第一步跑 `render_gate.py`：`review/review_data.json.snapshot` 必须被 `review/review-submissions.json` 或 `feedback/*.jsonl` 里至少一条人工提交覆盖，且 `sourceManifest` 与磁盘一致 —— 源改过但没重建，旧提交不算覆盖「现在这一版」。工程态 `--engineering --out` 被限制在 `edit/_engineering/`，不能改个文件名当交付。返修后必须重新 build、重新提交，不能拿旧提交放行新源码。
-- **证据**：真实 v1 工程 0 条提交时退 1，并列出 `sourceManifest` 的漂移（源改过、未重建）；`tests/test_render_gate.py` 覆盖 0 提交 / 旧快照 / 源漂移 / 匹配放行 / 工程态越界。
+- **原因**：规则是 prose，渲染入口（`render.py` / `deliver.py` / `npm run render`）若不读审阅状态，只要 agent 想渲就没有东西拦；而在对话微调后若盲目允许 `--approve-in-chat` 用默认占位符放行，同样会把普通返修误判成出片授权。
+- **修正原则**：渲染前第一步跑 `render_gate.py`：`review/review_data.json` 快照必须存在，且满足双轨授权之一——① 浏览器人工提交（`review/review-submissions.json` 或 `feedback/*.jsonl`）覆盖当前快照且 `storyboard.json` / `remotion/src/**` `sourceManifest` 零漂移；② 作者在当前对话明确指令导出时，传入 `--approve-in-chat --approval-note "<作者原话>"`（必填非空、≥4 字且拒绝 `ok`/`导出` 等占位符），写入含最新实时源码指纹 `liveSourceHash` 的 `chat-approval` 审计记录后放行。工程态 `--engineering --out` 严格限定在 `edit/_engineering/`；裸跑或缺少有效原话凭证一律退出非 0。
+- **证据**：真实 v1 工程 0 条提交或 `sourceManifest` 漂移时退 1；`tests/test_render_gate.py` 覆盖 0 提交 / 旧快照 / 源漂移 / 浏览器匹配放行 / `--approve-in-chat` 缺或占位 `--approval-note` 拦截 / 显式原话放行 / 工程态越界。
 
 ## 78. 成片后剪停顿，字幕按剪点顺移：坐标空间混用 → 最多偏 3.2 秒
 
@@ -544,15 +456,6 @@ the picture.
 - **原因**：剪片是项目自己写的脚本，字幕顺移在循环里边改边比：`a,b` 已经被前几刀平移过，又拿去和后几刀的**原始坐标**比较；本应「整条窗口之后」的情况被误判成「跨窗口」，于是每条跨刀字幕少扣一次刀长，误差随刀数累积。Skill 没有「成片二次剪」这条交付形态的任何闸门，SRT 只核末条、成片只核与渲染记录的总长，这条路径整个绕过了核验。
 - **修正原则**：二次剪必须声明 `edit/cut-map.json`（母版时长、母版时间轴上的剪点、剪前/剪后字幕）。映射用单调分段函数 `t' = t - 已剪时长(t)`，窗口内部压到窗口起点；剪后字幕必须能被「剪前字幕 + 剪点」逐条复算（条数、文字、起止 ±20ms）。`verify_delivery.py` 见到 cut-map 才按它核片长与字幕；没有声明又比渲染记录短 >0.5s 直接拒绝。判据实现是 `helpers/_internal/_cutmap.py`。
 - **证据**：同一份字幕——错误实现偏 31 条（最大 3.2s）；`_cutmap.verify_srt_pair` 对正确重算 0 条问题、对旧文件逐条报「时间对不上 cut-map」并拒绝交付。回归 `tests/test_cut_map.py`；XHS v2/v3 用 cut-map 核验通过（v2 剪 16 刀 −19.91s，v3 剪 7 刀 −4.04s）。
-
-## 79. 渲染退出 0、check 全绿，画面却从第 78 秒起整段没画：多 worker 截图丢内容
-
-- **module**：`hyperframes render --workers N` 的截图通道 ｜ **状态**：已复现
-- **enforcement**：check:helpers/_internal/check_render_fidelity.py
-- **现象**：2026-11-04 品牌屋，`hyperframes render -w 4` 退 0，`hyperframes check` 0 error，文件 1920×1080 / 30fps / 310.333s / 有音轨；作者一看：**后半段品牌屋整栋没画出来**，只剩零星几个标签。抽帧确认：约 78s 之后（大致等于第 2 个 worker 的起始帧）画面只剩标签与装饰层。
-- **原因**：那条渲染是 4 个 worker 并行截图，每个 worker 从自己那一段的中间开始取帧；从第 2 段开始，页面只重绘了很小的脏区，`#board` 里的整棵子树留在旧合成里没被画上。等价的独立证据：同一个 composition 用浏览器逐帧看、用 `hyperframes snapshot` 抽帧、用 `check` 的 runtime 探针，三处都正常——**只有渲染产物错**。去掉 SVG 滤镜、去掉 `will-change` 都不解决；`-w 1` 一次通过。
-- **修正原则**：① 长片渲染一律 `--workers 1`（`deliver.py` 默认已改）；② 任何要交付的画面文件（包括不经过 `deliver.py` 的「画面成片」单独导出）渲染后必须跑 `check_render_fidelity.py`：它用 `hyperframes snapshot --at a,b,c --no-end` 取 composition 在同样时刻的样子，和成片逐帧比结构相关 + 墨量，内容塌掉直接红；③ `deliver.py` 已接这条检查；独立渲染（含只交画面成片）要自己跑；④ 现有三条闸门都量不出这类失败——`check_motion` 看到的是标签还在动，`verify_delivery` 看到的是没有黑帧，`check_render_env` 看到的是机器健康。
-- **证据**：同一份 composition——`-w 4` 产物在 t=90/200/240/280 的墨量只有 composition 的 1/10 且结构相关 0.0x；`-w 1` 产物 20 个采样相关系数 ≥0.99、墨量差 <15%，PASS。故意黑掉 20–40s 的对照视频（t=25/31/35）被 `check_render_fidelity.py` 判为「内容丢失」。
 
 ## 80. 「素材入点」与「EDL 源时间」是两个坐标，混用一个就渲染出空镜
 
@@ -585,14 +488,14 @@ matters** — redirect to a file and read the tail separately.
 ## 83. `-t` 写在两个输入之间，属于第二个输入
 
 **module**：helpers/_internal/render.py 的 ffmpeg 参数拼装（手搓命令同样会撞上）　｜　**状态**：已复现
-- **enforcement**：env:helpers/_internal/render.py — `extract_segment` 的「口播床」分支把 `-t` 放在 lavfi 输入之前（只截黑床），输出时长一律在所有输入之后；照它的顺序拼，`-t` 挂不到错的输入上。
+- **enforcement**：env:helpers/_internal/render.py — `extract_segment` 的 `narration bed`（无视频轨黑底）分支把 `-t` 放在 lavfi 输入之前（只截黑床），输出时长一律在所有输入之后；照它的顺序拼，`-t` 挂不到错的输入上。
 
 - **现象**：`ffmpeg -ss A -t D -i one.mp4 -i two.mp4` 里的 `-t` 不是 one 的时长，而是 two 的 ——
   ffmpeg 的输入选项作用于**它后面那个** `-i`。多输入合成本来就要每条输入各自截时长，
   写错位置时命令照样退 0，只是某条素材比预期短或长，错在一帧几帧上看不出来。
 - **修正原则**：输入选项写在它所属的 `-i` **之前**；要截的是**输出**就写在所有输入之后。
   `render.py` 是这么排的，手搓 ffmpeg 时照抄这个顺序，别凭「`-t` 就在 `-ss` 旁边」顺手写。
-- **证据**：`helpers/_internal/render.py::extract_segment` 的口播床分支 —— `["-f","lavfi","-t", tv, "-i", color=…, "-ss", …, "-i", source]`；输出的 `-t` 在 `inputs` 之后单独一项。
+- **证据**：`helpers/_internal/render.py::extract_segment` 的 `narration bed` 分支 —— `["-f","lavfi","-t", tv, "-i", color=…, "-ss", …, "-i", source]`；输出的 `-t` 在 `inputs` 之后单独一项。
 
 ## 84. `--no-loudnorm` 时 `-o` 撞上内部 base 名，读和写就是同一个文件
 
@@ -637,6 +540,7 @@ deletion from an accidental loss. 旧的「已升级」条目不在正文，编�
 | lint 把运行期 `if` 当成「补间一定存在」 | merged into #62 |
 | 删标记却没删挂事件的代码 | merged into #57 |
 | `segment_durations.json` 的键是输出文件名的 stem | merged into #61 |
+| HyperFrames 冻结只读旧引擎条目（#10 / #48 / #50 / #61 / #63 / #70 / #74 / #79） | v3 切换 Remotion 4 主引擎，已整体迁入 `references/gotchas-index.md`（2026-11-27 迁移索引） |
 
 ## 这个文件不收什么（附理由）
 

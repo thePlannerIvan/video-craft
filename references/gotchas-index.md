@@ -7,7 +7,7 @@
 
 ### 当前不变式
 
-- **GOTCHAS 有条数上限，新增必须走迁移索引**：`GOTCHAS.md` 正文只留当前仍会造成错误的条目，每条必须有 enforcement 指针；已升级/已合并的从正文移出，只在本节迁移索引留一行。上限 48（`tests/test_gotchas.py` 的 `MAX_GOTCHAS` 是唯一数字源），加新条目之前先合并或迁移，不新增正文条目。
+- **GOTCHAS 有条数上限，新增必须走迁移索引**：`GOTCHAS.md` 正文只留当前仍会造成错误的条目，每条必须有 enforcement 指针；已升级/已合并的从正文移出，只在本节迁移索引留一行。上限由 `tests/test_gotchas.py` 的 `MAX_GOTCHAS` 锁定为唯一数字源，加新条目之前先合并或迁移，不新增正文条目。
 - **仍记账的现存缺陷**（2026-10-14 记下，至今未消除，别当成已修）：无口播视觉槽在这套契约里还不成立（字幕要求 EDL 每段有词、`timeline_derive` 的 step 必须由 cue 组成）；`check_edl` 对删字这类合法编辑永远亮红；`apply_selection.py` 会留下纯标点的碎片段，与 `srt_export.py` 的一段一块硬约束冲突；时间轴的步长是 cue 派生的（比媒体窗口窄一个片头静音），要不要统一基准需要一次决定。
 - **timeline 落点仍在观察**：`edit/timeline/` 与项目根 `timeline/` 的历史兼容未收口；新项目显式写项目根，恢复旧项目先确认消费者与落点（现行规则见 [architecture.md](architecture.md) 的共享事实表）。
 - **两个审阅面不合并**：视觉审阅与剪辑审阅是两套业务页面与两份反馈形状，共享 `review-surface/2.0.0` 宿主接缝，但不互相嵌套。
@@ -61,3 +61,16 @@
 ### GOTCHAS 迁移索引（2026-11-08）
 
 - #22 三个不同根因并成一条 ｜ 已拆分为 #82–84（2026-11-08；旧编号不复用）
+
+### GOTCHAS 迁移索引（2026-11-27 · HyperFrames 冻结只读归档）
+
+v3 起 Remotion 4 成为默认主动效引擎，以下仅作用于冻结 HyperFrames 旧引擎工程的条目从 `GOTCHAS.md` 正文迁出，编号不复用（历史只读兼容项目仍可按需检索）：
+
+- #10 `onStart` callbacks do not replay under a seek-driven render ｜ 已归档/冻结兼容（HyperFrames 暂停时间轴回调在 seek 下不重放）
+- #48 composition 里 CSS 初始 transform 与 GSAP 补间会互相抢 ｜ 已归档/冻结兼容（`hyperframes check` 规则与根元素属性）
+- #50 composition 缺 viewport meta 会让浏览器整体缩放页面 ｜ 已归档/冻结兼容（HyperFrames 骨架 viewport meta）
+- #61 composition 用旧时间轴打过补丁 → 过期 3 秒，无人发现 ｜ 已归档/冻结兼容（HyperFrames `__SPANS__` 与 `composition/` 重派生）
+- #63 studio 会缓存 composition —— 改了源，你要硬刷新它 ｜ 已归档/冻结兼容（`hyperframes preview` 缓存与 `live_stage.py`）
+- #70 首次渲染的 compile 是冷启动（约 25 分钟），会被误判成「这台机器渲不动」 ｜ 已归档/冻结兼容（HyperFrames 暖缓存与 `check_render_env.py` 并发预算）
+- #74 `hyperframes check` 全绿 ≠ 审阅页能播：内联脚本在 srcdoc 里永不执行 ｜ 已归档/冻结兼容（`check_live_stage.py` 与外置 `src/*.js`）
+- #79 渲染退出 0、check 全绿，画面却从第 78 秒起整段没画：多 worker 截图丢内容 ｜ 已归档/冻结兼容（`--workers 1` 与 `check_render_fidelity.py`）

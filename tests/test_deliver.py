@@ -90,6 +90,7 @@ class DeliverChatApprovalAndCliTests(unittest.TestCase):
                 code1 = deliver.deliver(
                     no_rev, None, None, None, None, no_rev / "成品",
                     False, False, True, approve_in_chat=True,
+                    approval_note="把第3镜改快后直接导出成片",
                 )
             self.assertNotEqual(code1, 0)
             enc.assert_not_called()
@@ -183,6 +184,61 @@ class DeliverChatApprovalAndCliTests(unittest.TestCase):
             self.assertEqual(subs["records"][0]["kind"], "chat-approval")
             self.assertEqual(subs["records"][0]["snapshot"], "snap-v21-01")
             self.assertEqual(subs["records"][0]["note"], note)
+
+    def test_cli_approve_in_chat_rejects_missing_blank_or_placeholder_note(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td).resolve()
+            project = self._seed_review_project(root, drift=False)
+            submissions_file = project / "review" / "review-submissions.json"
+
+            # Direct deliver() without approval_note must fail with exit 1 and write nothing.
+            with patch.object(deliver, "_preflight", return_value=(True, 1)), \
+                 patch.object(deliver, "_run") as enc, redirect_stdout(io.StringIO()):
+                code = deliver.deliver(
+                    project, None, None, None, None, project / "成品",
+                    False, False, True, approve_in_chat=True, approval_note=None,
+                )
+            self.assertEqual(code, 1)
+            enc.assert_not_called()
+            self.assertFalse(submissions_file.exists())
+
+            # CLI without --approval-note (human and JSON) must exit 1 and emit clear diagnostic.
+            missing_human = subprocess.run(
+                [sys.executable, str(DELIVER_SCRIPT), str(project), "--approve-in-chat"],
+                capture_output=True, text=True, check=False,
+            )
+            self.assertEqual(missing_human.returncode, 1, missing_human.stdout + missing_human.stderr)
+            self.assertIn("--approval-note", missing_human.stdout)
+            self.assertIn("原话", missing_human.stdout)
+            self.assertFalse(submissions_file.exists())
+
+            bad_notes = (
+                None,
+                "",
+                "   ",
+                "作者在对话中明确授权导出",
+                "ok",
+                "approved",
+                "导出",
+                "同意",
+                "auto",
+                "default",
+                "行",
+            )
+            for bad in bad_notes:
+                with self.subTest(approval_note=bad):
+                    cmd = [sys.executable, str(DELIVER_SCRIPT), str(project), "--approve-in-chat"]
+                    if bad is not None:
+                        cmd += ["--approval-note", bad]
+                    cmd.append("--json")
+                    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+                    self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
+                    payload = json.loads(proc.stdout)
+                    gate = next(c for c in payload["checks"] if c["name"] == "渲染闸门")
+                    self.assertFalse(gate["ok"])
+                    self.assertIn("--approval-note", gate["detail"])
+                    self.assertIn("原话", gate["detail"])
+                    self.assertFalse(submissions_file.exists())
 
 
 class DeliveryVerdict(unittest.TestCase):
@@ -938,7 +994,10 @@ class SplitDeliveryContractTests(unittest.TestCase):
             deliver._record_visual_source(project, project / "composition/_render/visuals.mp4", "manual-confirmation")
 
             proc = subprocess.run(
-                [sys.executable, str(DELIVER_SCRIPT), str(project), "--approve-in-chat", "--json"],
+                [
+                    sys.executable, str(DELIVER_SCRIPT), str(project),
+                    "--approve-in-chat", "--approval-note", "把第3镜改快后直接导出成片", "--json",
+                ],
                 capture_output=True, text=True, check=False,
             )
             self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)

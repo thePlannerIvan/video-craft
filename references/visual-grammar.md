@@ -1,6 +1,6 @@
-# 统一执行分镜、Look-Dev 与 Composition 制作（`visual-grammar.md`）
+# 统一执行分镜、Look-Dev 与 Remotion 场景制作（`visual-grammar.md`）
 
-> 什么时候读：能力组合包含 `motion`（做动效）或 `screen-demo`（实机录屏），从 `storyboard.json` 分镜、Look-Dev Gate 定调到编写 `composition/` 全程读本页。能力组合总表见 [SKILL.md](../SKILL.md)，阶段要求见 [stages.md](stages.md)，命令见 [tools.md](tools.md)。
+> 什么时候读：能力组合包含 `motion`（做动效）或 `screen-demo`（实机录屏），从 `storyboard.json` 分镜、Look-Dev Gate 定调到编写 `remotion/src/` 全程读本页。能力组合总表见 [SKILL.md](../SKILL.md)，阶段要求见 [stages.md](stages.md)，Remotion 引擎细则与四道门禁见 [remotion-engine.md](remotion-engine.md)，命令见 [tools.md](tools.md)。
 
 ## 1. 创作主线与方案边界
 
@@ -25,7 +25,7 @@ python3 "<craft>/helpers/film.py" proxy   "<project>" [--json]
   2. `footage` / `video`（实拍/广告切片）：`engine: "ffmpeg-cut"`；审阅挂轻代理进活舞台，交付由 `deliver.py` 直切高清母版（素材清单与 `5s` 防重规则见 [montage-route.md](montage-route.md)）。
   3. `motion` / `model`（思维模型动效）：`engine: "remotion"`（历史只读兼容老工程允许 `hyperframes`）；无现成静态参考页时，构建随口播推进持续演化的单一空间概念模型与结构关系动画，严禁退回逐页 PPT 文字框拼接（卡片强调采用极细骨白边框，顶部仅留极简几何装饰）。
   4. `card-deck` / `xhs`（3D 卡片组）：`engine: "remotion"`（历史只读兼容老工程允许 `hyperframes`）；同步声明 `soundCues` 驱动 [captions-and-audio.md](captions-and-audio.md) 中的 `sound_design.py` Visual Soundscape 起伏配音。
-  5. `screen-demo`（实机演示录屏）：`engine: "ffmpeg-cut"`；审阅期跑 `film.py proxy` 在 `review/demo_proxies/` 生成低码率代理进活舞台（严禁大录屏塞进 `remotion/public/assets/` 或 `composition/assets/`），交付期 `deliver.py` 按 `demo.source` + `inSec/outSec/speed` 直切高清原录屏（Lanczos + `crf=16` + `deblock=-1,-1` + `aq-mode=2`）。
+  5. `screen-demo`（实机演示录屏）：`engine: "ffmpeg-cut"`；审阅期跑 `film.py proxy` 在 `review/demo_proxies/` 生成低码率代理进活舞台（原录屏仅放在项目素材区，严禁塞入 `remotion/public/assets/` 或历史兼容 `composition/assets/`），交付期 `deliver.py` 按 `demo.source` + `inSec/outSec/speed` 直切高清原录屏。
 - **轻量样镜定调（Look-Dev Gate）**：仅当开启 `motion` 且上游未提供静态参考页时触发；在全片编码前先跑 `film.py lookdev` 输出极简配比意图清单与 1 个匹配口播节奏的代表性思维模型样镜交创作者拍板（`--approve`），`--verify` 通过后才展开全片；已有静态参考页（可走 `film.py import-svg` 包装为 Remotion 运镜场景）或成熟风格时自动跳过。
 - **人读概览同源派生**：跑 `film.py summary` 从 `storyboard.json` 确定性生成 `edit/storyboard-overview.md`，消除图文两张皮。
 - **老工程兼容**：仅当不存在 `storyboard.json` 且存在旧 `visual-plan.json` 或非空 `pages/` 时，`film.py {outline|pages|verify}` 保持只读兼容；空占位 `pages/` 目录不再报错。
@@ -42,7 +42,7 @@ python3 "<craft>/helpers/frame.py" resolve "<project>" --json
 - **人物区**（`personSlot`）：画面主体与文本不得侵入该区域；
 - **字幕安全区**（`captionSafe`）：只放字幕/微字页脚，不放主体；
 - **画面安全区**（`stageArea`）：其余舞台矩形范围，供卡片、思维模型与代理视频落位；
-- **两种合法形态**：① **合成层**（composition 内嵌人物 `<video class="clip">` + 画面，避开人物区）；② **仅画面层**（只绘画面，交付阶段由 `deliver.py` 按 `frame.py` 几何与 `storyboard.json` 分段拼合并贴回人物轨）。
+- **两种合法形态**：① **合成层**（舞台内按 `personSlot` 预留人物孔位并由 `deliver.py` 合流，历史兼容工程允许内嵌 `<video class="clip">`）；② **仅画面层**（只绘画面，交付阶段由 `deliver.py` 按 `frame.py` 几何与 `storyboard.json` 分段拼合并贴回人物轨）。
 
 ### 四类画面语法与强调体系
 
@@ -54,16 +54,19 @@ python3 "<craft>/helpers/frame.py" resolve "<project>" --json
 
 ## 4. Remotion 4 场景写作硬规（含历史 HyperFrames 只读兼容边界）
 
-新建动效项目默认引擎是 **Remotion 4**（完整工程结构、外部运行壳、纯帧守则与四道门禁见 [remotion-engine.md](remotion-engine.md)）。视觉唯一真相是 `<project>/remotion/`（旧工程冻结只读兼容通道位于 `<project>/composition/`）：
+新建动效项目默认引擎是 **Remotion 4**，完整工程目录、外部运行壳、纯帧守则与四道门禁由 [remotion-engine.md](remotion-engine.md) 唯一定义。视觉唯一真相是 `<project>/remotion/`：
 
 - **Remotion 4 新工程硬规（默认）**：
-  - **纯帧无状态函数**：所有位置、缩放、透明度、弹簧物理（`spring`）、路径生长（`@remotion/paths`）与真实音频频谱驱动（`@remotion/media-utils`）必须由 `useCurrentFrame()` 与 `fps` 纯函数确定性推导，严禁 `setInterval` 或 CSS 隐式状态。
-  - **禁止篡改唯一时间脊柱**：`Root.tsx` `<Composition>` 的 `width`/`height`/`fps`/`durationInFrames` 与分段切点必须同源对齐 `frame.py resolve`、`timeline/timeline.json` 与 `storyboard.json`。
-  - **零项目内依赖与四道门禁**：严禁在项目目录内安装 `node_modules`（统一走 `helpers/remotion_runtime.py`）；构建与出片前必须过 `helpers/_internal/remotion_gates.py`（或 `check_visual.py --only typecheck|sync|stills`）执行 TypeScript 编译、分镜帧数切点硬对账与每镜中段静帧抽取检查。
+  - **纯帧无状态函数**：所有位移、缩放、透明度、弹簧物理（`spring`）、路径生长与频谱驱动全部由 `useCurrentFrame()` 与 `fps` 纯函数确定性推导，保持渲染帧与活舞台零状态漂移。
+  - **同源对齐唯一时间脊柱**：`Root.tsx` `<Composition>` 的 `width`/`height`/`fps`/`durationInFrames` 与分段切点直接读取 `frame.py resolve`、`timeline/timeline.json` 与 `storyboard.json`。
+  - **零项目内依赖与前置四道门禁**：前端依赖统一走外部运行壳（[remotion-engine.md](remotion-engine.md)），交付与审阅按要求通过 `helpers/_internal/remotion_gates.py` / `check_visual.py`。
   - **字体与文字防折行**：字体加载统一走 `delayRender` + `document.fonts.ready` + `continueRender`；混排按汉字 `1.0em`、英文/数字/空格约 `0.5–0.55em`、中点 `·` 与 `%` 约 `0.62–1.0em` 留 ≥8% 余量，再结合 `stills` 中段抽帧目视核对折行与对比度。
-- **历史 HyperFrames 工程只读兼容边界**（仅存量 `composition/index.html` 项目适用）：
-  - `data-start`、`data-duration`、`data-track-index` 与 `<audio>` 只来自 `timeline/timeline.json`；单个暂停时间轴 `window.__timelines[<id>] = HF.tl`，执行逻辑全在外部 `src/*.js`（[visual-checks.md](visual-checks.md)）；
-  - 首帧隐藏用时间轴外 `gsap.set(...)`、设 `gsap.defaults({ immediateRender: false })`、不用 `onStart` 状态回调、不把静态 CSS/SVG `transform` 与 GSAP 补间挂在同一元素上；满屏底色画在 `inset: 0` 子元素；出片前过 `hyperframes check` 与 `check_motion_targets.py`。
+
+### 历史 HyperFrames 工程只读兼容边界
+
+仅当接手存量 `composition/index.html` 老工程时适用（新建工程一律使用 Remotion 4）：
+- `data-start`、`data-duration`、`data-track-index` 与 `<audio>` 只来自 `timeline/timeline.json`；单个暂停时间轴 `window.__timelines[<id>] = HF.tl`，执行逻辑全在外部 `src/*.js`（[visual-checks.md](visual-checks.md)）；
+- 首帧隐藏用时间轴外 `gsap.set(...)`、设 `gsap.defaults({ immediateRender: false })`、不用 `onStart` 状态回调、不把静态 CSS/SVG `transform` 与 GSAP 补间挂在同一元素上；满屏底色画在 `inset: 0` 子元素；出片前过 `hyperframes check` 与 `check_motion_targets.py`。
 
 ## 5. SVG 预埋子件微动效契约（可选）
 

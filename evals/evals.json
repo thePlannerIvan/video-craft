@@ -1,12 +1,12 @@
 [
   {
     "id": "video-story-knowledge-handoff",
-    "route": "recompose",
+    "route": "motion",
     "prompt": "这是录好的音频、句子级 SRT、最终口播和上游交接包（video-manager 上下文包或旧项目的 visual-plan.json）。内容契约只写了画面必须呈现的信息，请完成动画视频。",
     "must_do": [
       "核对内容采用版和已批准参考页；缺页面决定时回 PPT Hell 或上游制片总控，不代替上游重新设计静态页",
       "外部 SRT 先对齐 Speech Beat，人工处理 low/unmatched，再用现有音频 --media 登记 srt-import 来源",
-      "film 拆原页并映射 Beat，模型按已定内容设计动作、强调与时间绑定",
+      "用 film.py init / verify 校验唯一执行分镜 storyboard.json（静态 SVG 参考页走 film.py import-svg）并映射 Beat，模型按已定内容设计动作、强调与时间绑定",
       "每个视觉 Step 保留单一 sourceBlueprintId，来源边界不跨 Beat",
       "review 构建工程态审阅并检查运行时画面/声音，不先渲整片"
     ],
@@ -37,7 +37,7 @@
   },
   {
     "id": "raw-recording-existing-svg-deck",
-    "route": "recompose",
+    "route": "motion",
     "prompt": "这是 75 分钟的直播课录屏，还有我 PPT 的 27 页 SVG 原图。帮我剪成 4 条竖版短视频，画面就用这些 SVG 页，右下角放我的人像小窗，字幕单独给我 SRT，配一点轻 BGM。",
     "must_do": [
       "先清点输入事实：录屏、SVG 目录（含是否存在 PPT 快照/id）、是否要保真、画幅、字幕内烧还是外挂、是否需要 BGM",
@@ -76,7 +76,7 @@
     "prompt": "deliver 退出 0，但 delivery_verdict.ok 是 false，可以交了吗？",
     "must_do": [
       "明确还不能称严格核验通过",
-      "按 delivery.md 复核实际产物和严格错误原因",
+      "按 review-and-delivery.md 复核实际产物和严格错误原因",
       "来源变更则重建受影响产物；验证后再记录指纹",
       "当前修复版应非零退出并拒绝总成功；若仍矛盾，核对实际运行版本和 verifier 报告，不静默放行"
     ],
@@ -119,7 +119,7 @@
   },
   {
     "id": "montage-recorded-voiceover-found-footage",
-    "route": "montage",
+    "route": "footage",
     "prompt": "口播已经录完了，画面是一批现成的历史影像和照片，没有参考页。按哈雷片那种做法把画面选出来剪进去。",
     "must_do": [
       "先跑 scan_materials.py 出帧带与素材清单，照帧带给每条素材填「可用段落 / 画面一句话 / 水印台标」，出处记 URL",
@@ -157,7 +157,7 @@
   },
   {
     "id": "material-admission",
-    "route": "montage",
+    "route": "footage",
     "prompt": "这批素材里有带台标的、有整屏水印的，还有几个我看不出拍的是什么。哪些能进片子？",
     "must_do": [
       "每个候选素材在素材清单（material-inventory.json）里有一行；usable 与 summary 必填，不可用的写清原因",
@@ -180,7 +180,7 @@
     "must_do": [
       "先跑 review_inbox.py 收件，检查收据里的 imported / skipped / rejected；有 rejected 先修记录或重建快照",
       "读 feedback/*.jsonl 与记录里的 adjustments / selections.json，按逐字、动效、整片三类分开处理",
-      "只改源（composition / SVG / EDL / 字幕），不把未应用的草稿说成已生效",
+      "只改源（remotion/src/ / 兼容 composition/ / SVG / EDL / 字幕），不把未应用的草稿说成已生效",
       "改完跑 review.py 重建审阅快照并打开，check_review_playable.py 退 0 才算能交给作者",
       "本轮终点是侧边栏审阅页可播 + 待办清单；出片要等作者明确指令，且 render_gate.py 认到人工提交覆盖当前快照"
     ],
@@ -203,7 +203,7 @@
     ],
     "must_not_do": [
       "套用已退役的互斥生产模式或把风格当成模式锁",
-      "把高清实机录屏直接塞进 composition/assets/ 进浏览器逐帧重录",
+      "把高清实机录屏直接塞进 remotion/public/assets/（或历史 composition/assets/）进浏览器逐帧重录",
       "在 Look-Dev 拍板前展开全片动效编码或回退为逐页 PPT 文字框拼接"
     ]
   },
@@ -254,6 +254,37 @@
       "新建动效项目还回退旧引擎双目录或绕过 typecheck / 分镜帧数切点 / 中段静帧门禁",
       "在没有任何审阅快照或未获作者明确对话授权时私自传入 --approve-in-chat",
       "把源码较旧审阅快照微调后仍机械阻断作者当轮明确指示的 --approve-in-chat 导出"
+    ]
+  },
+  {
+    "id": "v3-1-remotion-visual-quality-and-demo-gate",
+    "route": "motion",
+    "prompt": "新建 Remotion 4 动效叠加实机录屏工程，某个思维模型卡片用了 24px 小字并挡住底部字幕安全区，同时作者图省事把原始录屏复制进了 remotion/public/assets/。直接跑默认统一画面体检能放行吗？",
+    "must_do": [
+      "运行默认统一画面体检 helpers/check_visual.py <project>（自动串联 live-stage、typecheck、sync 与 quality 视觉质量门禁）",
+      "依据 frame.py resolve 画框唯一几何真源，在 quality 阶段拦截 Q1_FONT_SIZE（1080 短边基准下 <32px 字号）与 Q3_SAFEZONE 人物区/字幕安全区侵入",
+      "触发 DEMO_IN_ASSETS 拦截将原录屏放入 remotion/public/assets/（或历史 composition/assets/），要求将原录屏放在静态资产目录外并通过 film.py proxy 挂轻代理进审阅、deliver.py 直切高清母版",
+      "所有门禁违规全部修复并通过 check_visual.py 返回 0 后，才推进至 review.py 构建审阅页"
+    ],
+    "must_not_do": [
+      "在 Remotion 工程默认体检中跳过 check_visual.py --only quality 视觉质量与安全区检查",
+      "把 screen-demo 实机录屏放进 remotion/public/assets/ 进浏览器逐帧重录",
+      "在 Q1 或 Q3 报错未修复时继续推进审阅或交付渲染"
+    ]
+  },
+  {
+    "id": "v3-1-chat-approval-requires-explicit-quote",
+    "route": "shared",
+    "prompt": "工程已经建好审阅快照，刚刚我在对话里说「第3镜节奏有点慢，帮我改快点再发我看一下」。改完 Remotion 源码后可以直接传 --approve-in-chat 导出成品吗？如果我后来明确说「把字幕上移 20px 后直接导出最终成品」，又该怎么传参？",
+    "must_do": [
+      "收到「改快点再发我看一下」这类仅属返修意见的反馈时，改完源码后重跑 review.py 使旧快照失效并停留在重建审阅态，等待人审提交或明确出片指令",
+      "仅当作者在当前对话中明确指示改动后直接导出成片时，才调用 deliver.py --render --approve-in-chat --approval-note \"<作者原话>\" 写入含 liveSourceHash 的审计记录",
+      "保证 --approval-note 传入非空且不少于 4 字的作者明确导出原话（严禁使用 ok / 导出 / 已确认 等通用占位符），供 render_gate.py 校验放行"
+    ],
+    "must_not_do": [
+      "在作者只提修改意见、未明确指示导出时私自触发 --approve-in-chat",
+      "调用 --approve-in-chat 时省略 --approval-note 或填入默认占位符敷衍门禁",
+      "修改源码后不重建 review.py 就沿用旧快照直接交付"
     ]
   }
 ]

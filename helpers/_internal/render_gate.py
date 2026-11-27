@@ -10,7 +10,7 @@
 1. `review/review_data.json` 存在，且带 `snapshot`（构建时算的工程指纹）；
 2. `review/review-submissions.json`（surface 声明的那份）或 `feedback/*.jsonl` 里
    至少有一条覆盖当前快照的记录——可以是浏览器人工提交，也可以是作者在对话中
-   明确指示导出后通过 `--approve-in-chat` 写入的 `chat-approval` 审计记录；
+   明确指示导出后通过 `--approve-in-chat --approval-note "<原话>"` 写入的 `chat-approval` 审计记录；
 3. 浏览器人工提交要求 `sourceManifest` 里的文件与快照记录一致（防止旧审阅
    覆盖未看过的改动）；而显式 `--approve-in-chat` 允许在审阅后有对话指令微调
    时务实放行，把当前实时源码指纹（`liveSourceHash`）与漂移标识
@@ -23,7 +23,7 @@
 ------------
     python3 helpers/_internal/render_gate.py <project>
     python3 helpers/_internal/render_gate.py <project> --out <final.mp4>
-    python3 helpers/_internal/render_gate.py <project> --approve-in-chat [--approval-note "..."]
+    python3 helpers/_internal/render_gate.py <project> --approve-in-chat --approval-note "<作者明确出片原话>"
     python3 helpers/_internal/render_gate.py <project> --engineering --out <edit/_engineering/cut.mp4>
     python3 helpers/_internal/render_gate.py <project> --json
 
@@ -50,6 +50,92 @@ ENGINEERING_REL = "edit/_engineering"
 SUBMISSIONS_CONTRACT_VERSION = "video-craft-review-submissions/1.0.0"
 SUBMISSIONS_SURFACE = "video-craft/visual"
 DEFAULT_APPROVAL_NOTE = "作者在对话中明确授权导出"
+_PLACEHOLDER_APPROVAL_NOTES = frozenset({
+    DEFAULT_APPROVAL_NOTE.lower(),
+    "ok",
+    "okay",
+    "yes",
+    "yep",
+    "lgtm",
+    "approved",
+    "approve",
+    "confirm",
+    "confirmed",
+    "auto",
+    "default",
+    "placeholder",
+    "none",
+    "null",
+    "n/a",
+    "na",
+    "tbd",
+    "export",
+    "ship",
+    "pass",
+    "chat-approval",
+    "导出",
+    "同意",
+    "确认",
+    "通过",
+    "好的",
+    "可以",
+    "没问题",
+    "已确认",
+    "已授权",
+    "默认",
+    "自动授权",
+    "对话授权",
+    "授权导出",
+    "明确授权",
+})
+
+
+def validate_approval_note(note: str | None) -> tuple[bool, str]:
+    """Validate that --approval-note records an explicit user export quote, not blank/placeholder."""
+    if note is None:
+        return False, (
+            "使用 --approve-in-chat 时 --approval-note 为必填项："
+            "请传入作者在当前对话中明确指示导出成片的原话（例如 \"把第3镜改快后直接导出成片\"）"
+        )
+    cleaned = str(note).strip()
+    if not cleaned:
+        return False, (
+            "使用 --approve-in-chat 时 --approval-note 不能为空："
+            "请传入作者在当前对话中明确指示导出成片的原话（例如 \"把第3镜改快后直接导出成片\"）"
+        )
+    if not any(ch.isalnum() for ch in cleaned):
+        return False, (
+            "--approval-note 无有效文字内容："
+            "请传入作者在当前对话中明确指示导出成片的原话"
+        )
+    if len(cleaned) < 4:
+        return False, (
+            f"--approval-note 内容过短（{len(cleaned)} 字，至少 4 字）："
+            "必须传入作者在当前对话中明确指示导出成片的原话"
+        )
+    normalized = cleaned.rstrip("。.!！?？").strip().lower()
+    if normalized in _PLACEHOLDER_APPROVAL_NOTES:
+        return False, (
+            f"--approval-note 不能使用通用占位符（{cleaned!r}）："
+            "请传入作者在当前对话中明确指示导出成片的原话"
+        )
+    return True, ""
+
+
+def _invalid_approval_report(project: Path, out: Path | None, reason: str) -> dict:
+    return {
+        "ok": False,
+        "evaluable": True,
+        "project": str(project),
+        "out": str(out) if out else None,
+        "engineering": False,
+        "reasons": [reason],
+        "notes": [],
+        "snapshot": None,
+        "submissions": 0,
+        "covering": 0,
+        "sources": [],
+    }
 
 
 def project_root(arg: str) -> Path:
@@ -267,9 +353,13 @@ def _write_json_atomic(path: Path, doc: dict) -> None:
         raise
 
 
-def record_chat_approval(project: Path, note: str = DEFAULT_APPROVAL_NOTE) -> dict:
+def record_chat_approval(project: Path, note: str | None = None) -> dict:
     """Record an explicit in-chat export approval with live source fingerprint audit."""
     project = Path(project)
+    ok_note, note_err = validate_approval_note(note)
+    if not ok_note:
+        return _invalid_approval_report(project, None, note_err)
+
     data = read_json(project / REVIEW_DATA_REL)
     if not isinstance(data, dict) or not str(data.get("snapshot") or "").strip():
         return evaluate(project, None, False)
@@ -308,7 +398,7 @@ def record_chat_approval(project: Path, note: str = DEFAULT_APPROVAL_NOTE) -> di
         "snapshot": snapshot,
         "liveSourceHash": live_hash,
         "driftedFromReview": bool(drift),
-        "note": str(note or "").strip() or DEFAULT_APPROVAL_NOTE,
+        "note": str(note).strip(),
     }
     if drift:
         entry["driftSummary"] = drift[:8]
@@ -366,9 +456,9 @@ def main(argv=None) -> int:
     ap.add_argument("--engineering", action="store_true",
                     help="工程态预览放行开关；必须配 --out 且落在 edit/_engineering/")
     ap.add_argument("--approve-in-chat", action="store_true",
-                    help="仅在用户于当前对话明确指示导出时使用：核验审阅快照存在后写入含实时源码指纹的会话授权审计记录并放行")
+                    help="仅在用户于当前对话明确指示导出时使用：必须配 --approval-note 传入用户明确导出原话，核验审阅快照存在后写入含实时源码指纹的会话授权审计记录并放行")
     ap.add_argument("--approval-note", default=None,
-                    help="可选：配合 --approve-in-chat 记录到审计条目的授权原因说明")
+                    help="配合 --approve-in-chat 时必填：记录作者在当前对话中明确指示导出成片的原话依据（禁止留空或使用通用占位符）")
     ap.add_argument("--json", action="store_true", help="输出机器可读结果")
     args = ap.parse_args(argv)
 
@@ -385,8 +475,7 @@ def main(argv=None) -> int:
     if out is not None and not out.is_absolute():
         out = (project / out).resolve()
     if args.approve_in_chat:
-        note = DEFAULT_APPROVAL_NOTE if args.approval_note is None else args.approval_note
-        report = record_chat_approval(project, note)
+        report = record_chat_approval(project, args.approval_note)
         if report["ok"] and out is not None:
             report = evaluate(project, out, False)
         elif out is not None and report.get("out") is None:

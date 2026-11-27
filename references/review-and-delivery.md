@@ -2,13 +2,13 @@
 
 > 什么时候读：构建工程审阅页、挂载 DSH/本地宿主、处理提交与 `review_inbox.py` 收件、或作者明确指令出片执行 `deliver.py` 与双轨交付核验时读本页。
 
-> **每轮默认终点**：审阅页可播 + 本轮待办，**不是出成片**。`edit/_engineering/**` 是审阅素材；写 `成品/**` 必须同时满足「作者明确出片指令」+「当前已建审阅快照且已有网页提交，或当轮对话明确授权 `--approve-in-chat`（`render_gate.py` 写入实时源码指纹审计记录放行）」。
+> **每轮默认终点**：审阅页可播 + 本轮待办，**不是出成片**。`edit/_engineering/**` 是审阅素材；写 `成品/**` 必须同时满足「作者明确出片指令」+「当前已建审阅快照且已有网页提交，或当轮对话明确授权 `--approve-in-chat --approval-note "<作者原话>"`（`render_gate.py` 写入实时源码指纹审计记录放行）」。
 
 ## 1. 两种审阅面与横竖屏自适应构建模式
 
 `video-craft` 保留两套独立审阅业务页面（共享 `planners-review-core` 的 `review-surface/2.0.0` 宿主协议，互不嵌套）：
-1. **逐字剪辑面**（第 4 步）：`stage_cut.py review --project "<project>"`（内部调用 `edl_preview_build.py` 与 `edl_review_surface.py`，加 `--surface-only` 仅出契约供 DSH 侧栏，不加则自动拉起本地浏览器宿主；独立浏览器保存后给出清晰闭环提示）。用于播放原片/选词/删词/调气口/改字，写 `edit/selections.json`，再由 `stage_cut.py apply`（内部调用 `apply_selection.py`）修改 EDL 并重建预览/字幕/时间轴。若源媒体 >200MB 或可用内存 <8GB，直接走本地宿主（按 Range 供片避免侧栏传全字节爆内存）。
-2. **横竖屏自适应画面与双轨声景审阅面**（第 8 步）：唯一构建入口 **`helpers/review.py <project>`**（对 Remotion 工程自动运行 `remotion_gates.py --only typecheck,sync` 并串联 `check_live_stage`、`remotion_stage` / `live_stage`、`build_review`、`review_surface` 与 Playwright `check_review_playable`）。页面通过 `{kw: 1}` 活舞台桥驱动 `@remotion/player`（或历史工程旧播放器）控制播放、定位与倍速，**不复制第二个播放时钟**；同时提供分章/分镜导航、字幕/倍速控制、`播客音色 vs 纯干声`（Voice Polish）A/B 切换与 `画面底噪:开/关`（Visual Soundscape）实时试听开关。
+1. **逐字剪辑面**（第 4 步）：`stage_cut.py review --project "<project>"`（内部调用 `edl_preview_build.py` 与 `edl_review_surface.py`，加 `--surface-only` 仅出契约供 DSH 侧栏，不加则自动拉起本地浏览器宿主；独立浏览器保存后给出清晰闭环提示）。用于播放原片/选词/删词/调气口/改字，写 `edit/selections.json`，再由 `stage_cut.py apply` 修改 EDL 并重建预览/字幕/时间轴。若源媒体 >200MB 或可用内存 <8GB，直接走本地宿主（按 Range 供片避免侧栏传全字节爆内存）。
+2. **横竖屏自适应画面与双轨声景审阅面**（第 8 步）：唯一构建入口 **`helpers/review.py <project>`**（Remotion 工程前置过 [remotion-engine.md](remotion-engine.md)「5. Remotion 四道确定性质量门禁」的前两道及 `{kw: 1}` 零渲染活舞台桥，再串联 `build_review`、`review_surface` 与 Playwright `check_review_playable`）。页面通过单一全局播放头同步驱动舞台控制与倍速，并提供分章/分镜导航、字幕/倍速控制、`播客音色 vs 纯干声`（Voice Polish）A/B 切换与 `画面底噪:开/关`（Visual Soundscape）实时试听开关。
 
 ### 单模板横竖屏自适应与反馈布局
 
@@ -43,16 +43,16 @@ python3 "<craft>/helpers/review_inbox.py" "<project>"
 
 只有**作者明确要求出片**且**满足 `render_gate.py` 双轨授权之一**时才进交付流程（未建审阅页 `review/review_data.json` 一律严防死守）：
 - **浏览器审阅提交**：要求存在覆盖当前 `snapshot` 的提交记录且 `sourceManifest` 零漂移；
-- **务实会话出片授权（`--approve-in-chat`）**：仅当作者在当前对话中明确指令导出（如「把某句动画调快然后直接导出」）时允许传入。`render_gate.py` 校验审阅快照存在后，**不再因审阅之后的源码微调阻断导出**，而是写入一条包含最新实时源码完整指纹（`liveSourceHash`）、`driftedFromReview` 标记、变更摘要与时间戳的 `chat-approval` 审计条目并直接放行；严禁在未获作者对话指令时私自注入 `--approve-in-chat`。
+- **务实会话出片授权（`--approve-in-chat`）**：仅当作者在当前对话中明确指令导出（如「把某句动画调快然后直接导出」）时允许传入，且**必须配 `--approval-note "<作者明确导出原话>"`**（具体校验规则由 `helpers/_internal/render_gate.py --help` 强制执行）。`render_gate.py` 核验审阅快照存在且原话凭证合法后，写入含实时源码指纹（`liveSourceHash`）、`driftedFromReview` 标记、授权原话与时间戳的 `chat-approval` 审计条目并直接放行；仅提出返修意见或未获明确导出指示时，保持停留在重建后的审阅态。
 
 ### Step 0–3 严格执行顺序
 
-0. 若存在旧预览服务先停止释放资源；Remotion 工程先过 `remotion_gates.py`（`typecheck`、`sync`、`stills` 每镜中段抽帧目视核查），写 `/tmp` 临时成片再原子移入目标位置；
-1. **`helpers/deliver.py <project> --render [--visual-audio <soundscape.wav>] [--approve-in-chat [--approval-note "..."]]`**（或 `--visuals <已有画面>` 加来源证据/`--visuals-confirm-current`）：
-   - 先过 `render_gate.py`、`film.py verify`（含 `lookdev --verify`；空占位 `pages/` 目录自动跳过不误报）；Remotion 工程经外部运行壳渲染动效段并过四道门禁，历史旧工程走只读兼容；
-   - 由 `helpers/frame.py resolve` 读取权威画框尺寸与人物孔位（兼容横屏与竖屏任意预设），按 `storyboard.json` 分流拼接：纯 `footage` 与 `screen-demo` 由 FFmpeg 直接从高清母版裁切（`screen-demo` 保留清晰文字保护），与动效渲染段毫秒级拼合；
-   - 有真人口播与画面层时默认 **`--mode split` 分轨交付**：
-     1. `<片名>_人物成片.mp4`：优先无损流式复用高码率 `edit/cut.mp4` + **Voice Polish** 纯净人声（`-14.0 LUFS / -1.5 dBTP`），不再混入动效音效；
+0. 若存在旧预览服务先停止释放资源；Remotion 工程按 [remotion-engine.md](remotion-engine.md)「5. Remotion 四道确定性质量门禁」先过前置门禁并写入 `/tmp` 临时成片后再原子移入目标位置；
+1. **`helpers/deliver.py <project> --render [--visual-audio <soundscape.wav>] [--approve-in-chat --approval-note "<原话>"]`**（或 `--visuals <已有画面>` 加来源证据/`--visuals-confirm-current`）：
+   - 先过 `render_gate.py`、`film.py verify`（含 `lookdev --verify`；空占位 `pages/` 目录自动跳过）；Remotion 工程经外部运行壳渲染动效段并过四道门禁，历史旧工程走只读兼容；
+   - 由 `helpers/frame.py resolve` 读取权威画框尺寸与人物孔位，按 `storyboard.json` 分流拼接：纯 `footage` 与 `screen-demo` 由 FFmpeg 直接从高清母版裁切（`screen-demo` 保留清晰文字保护），与动效渲染段毫秒级拼合；
+   - 有真人口播与画面层时默认 **`--mode split` 分轨交付**（声音双轨归属与响度标准见 [captions-and-audio.md](captions-and-audio.md)）：
+     1. `<片名>_人物成片.mp4`：优先无损流式复用高码率 `edit/cut.mp4` + **Voice Polish** 纯净人声；
      2. `<片名>_画面成片.mp4`：存在 **Visual Soundscape**（`edit/_engineering/soundscape.wav` 或 `--visual-audio`）时通过 `-c:v copy` 无损封装进成片并同目录输出独立无损 `<片名>_画面音效轨.wav`；无声景需求时合法保持 0 音轨；
      3. `<片名>_字幕.srt`：自动调用 `export_deliverables.fix_srt_gaps` 修正导入空隙 `≥30ms`；
    - 需要单视频合流预览时加 **`--composite`**（按 `frame.py resolve` 的 `personSlot` 等比 cover 居中裁切合成）；纯画面 + 旁白加 `--no-person`；仅底座剪口播按单轨人物成片 + 字幕交付；`--burn-subtitles` 在编码前强制查 `libass`；

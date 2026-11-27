@@ -15,7 +15,7 @@
     python3 helpers/deliver.py <project> --render              # 默认分轨三件套交付
     python3 helpers/deliver.py <project> --visuals <mp4>       # 已有画面层，跳过渲染
     python3 helpers/deliver.py <project> --composite           # 显式合流输出单轨成片
-    python3 helpers/deliver.py <project> --approve-in-chat     # 作者对话明确授权导出后留档放行
+    python3 helpers/deliver.py <project> --approve-in-chat --approval-note "..." # 作者对话明确授权导出后留档放行
     python3 helpers/deliver.py <project> --no-person           # 纯画面 + 旁白：画面层全幅交付
     python3 helpers/deliver.py <project> --json
 
@@ -1263,10 +1263,7 @@ def deliver(project: Path, visuals: Path | None, person: Path | None, audio: Pat
     if not skip_gate:
         if approve_in_chat:
             import render_gate
-            effective_note = (
-                render_gate.DEFAULT_APPROVAL_NOTE if approval_note is None else approval_note
-            )
-            gate_report = render_gate.record_chat_approval(project, effective_note)
+            gate_report = render_gate.record_chat_approval(project, approval_note)
             if not gate_report.get("ok"):
                 reasons = "；".join(gate_report.get("reasons") or ["渲染闸门拒绝放行"])
                 check("渲染闸门", False, reasons)
@@ -1729,9 +1726,9 @@ def main(argv=None) -> int:
     parser.add_argument("--render", action="store_true",
                         help="显式渲染画面层（交付动作；默认不渲染，缺画面层时拒绝）")
     parser.add_argument("--approve-in-chat", action="store_true",
-                        help="仅在作者于当前对话明确指示导出时使用：核验审阅快照存在后写入含实时源码指纹的会话授权审计记录并放行（允许审阅后微调按授权导出）")
+                        help="仅在作者于当前对话明确指示导出时使用：必须配 --approval-note 传入作者明确导出原话，核验审阅快照存在后写入含实时源码指纹的会话授权审计记录并放行")
     parser.add_argument("--approval-note", default=None,
-                        help="可选：配合 --approve-in-chat 记录到审计条目的授权原因说明（默认：作者在对话中明确授权导出）")
+                        help="配合 --approve-in-chat 时必填：记录作者在当前对话中明确指示导出成片的原话依据（禁止留空或使用通用占位符）")
     parser.add_argument("--skip-gate", action="store_true", help="测试夹具用：跳过 render_gate")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)

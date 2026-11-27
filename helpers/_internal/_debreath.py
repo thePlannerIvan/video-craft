@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """Surgical inter-sentence / inter-word pause breath attenuation (0.000s drift).
 
-Protects all speech syllables and unvoiced consonants (s/f/sh/x/q/ch/p/t/k) with
-dual-band speech detection (<400Hz vocal fundamental + HF-ratio gating) and wide
-morphological dilation (100ms pre, 70ms post), then attenuates only pause valleys
->= 140ms down to a natural -62 dBFS room floor with 35ms Hann fades.
+Protects all speech syllables (including soft sentence-final vowels and unvoiced
+consonants s/f/sh/x/q/ch/p/t/k) with p50-anchored dual-band speech detection
+(<400Hz vocal fundamental + spectral-tilt & HF-ratio gating), wide morphological
+dilation (110ms pre, 120ms post), optional word-interval hard protection, and
+airflow-only valley filtering before attenuating genuine >=140ms pause breaths
+toward a natural -58 dBFS room floor with 45ms Hann fades.
 """
 from __future__ import annotations
 
+import json
 import math
 import shutil
 import subprocess
@@ -23,13 +26,51 @@ DEFAULT_MIN_GAIN = 0.015  # up to -36.5 dB attenuation so even -25 dBFS breaths 
 DEFAULT_FADE_MS = 35.0
 BREATH_DETECT_THRESHOLD_DB = -48.0
 MIN_VALLEY_MS = 140.0
-PRE_DILATE_MS = 100.0
-POST_DILATE_MS = 70.0
+PRE_DILATE_MS = 110.0
+POST_DILATE_MS = 110.0
 MAX_PROTECTED_SPEECH_DELTA_DB = 0.1
+DEFAULT_WORD_PRE_PAD_MS = 60.0
+DEFAULT_WORD_POST_PAD_MS = 100.0
 
 
 class DebreathInvariantError(RuntimeError):
     """Raised when sample-count or protected-speech energy invariants fail."""
+
+
+def load_word_intervals(path: Path) -> list[tuple[float, float]]:
+    """Load spoken (start_sec, end_sec) intervals from caption_words.json or captions.json."""
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    if isinstance(data, dict):
+        items = data.get("words") or data.get("cues") or data.get("segments") or []
+    elif isinstance(data, list):
+        items = data
+    else:
+        raise ValueError(f"Unsupported word-interval JSON shape in {path}")
+
+    intervals: list[tuple[float, float]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        t0 = item.get("out_start")
+        t1 = item.get("out_end")
+        if t0 is None or t1 is None:
+            t0 = item.get("output_start")
+            t1 = item.get("output_end")
+        if t0 is None or t1 is None:
+            t0 = item.get("start")
+            t1 = item.get("end")
+        if t0 is None or t1 is None:
+            ms0, ms1 = item.get("startMs"), item.get("endMs")
+            if ms0 is not None and ms1 is not None:
+                t0 = float(ms0) / 1000.0
+                t1 = float(ms1) / 1000.0
+        if t0 is None or t1 is None:
+            continue
+        s, e = float(t0), float(t1)
+        if math.isfinite(s) and math.isfinite(e) and e > s:
+            intervals.append((max(0.0, s), e))
+    intervals.sort()
+    return intervals
 
 
 def _compute_frame_features(
@@ -78,8 +119,11 @@ def analyze_pause_breaths(
     *,
     breath_threshold_db: float = BREATH_DETECT_THRESHOLD_DB,
     adaptive: bool = True,
+    protected_intervals: list[tuple[float, float]] | None = None,
+    word_pre_pad_ms: float = DEFAULT_WORD_PRE_PAD_MS,
+    word_post_pad_ms: float = DEFAULT_WORD_POST_PAD_MS,
 ) -> dict[str, Any]:
-    """Detect protected speech, dilated speech mask, and >=140ms pause valleys."""
+    """Detect protected speech, dilated speech mask, word protection, and genuine breathy >=140ms pause valleys."""
     rms_db, low_db, hf_ratio, hop, win = _compute_frame_features(mono_norm, sr)
     n_frames = len(rms_db)
     if n_frames == 0:
@@ -89,8 +133,11 @@ def analyze_pause_breaths(
             "win": win,
             "rms_db": rms_db,
             "speech": empty_bool,
+            "word_mask": empty_bool,
+            "protected_eval_mask": empty_bool,
             "dilated": empty_bool,
             "valleys": [],
+            "breath_valley_spans": [],
             "valley_stats": [],
             "pause_valleys": 0,
             "breath_valleys": 0,
@@ -99,19 +146,22 @@ def analyze_pause_breaths(
         }
 
     ref_shift = 0.0
+    voiced_gate = -41.0
+    low_gate = -39.0
+    loud_gate = -22.0
     if adaptive:
         active_frames = rms_db[rms_db > -55.0]
         if len(active_frames) > 0:
-            p90 = float(np.percentile(active_frames, 90))
-            if p90 < -18.0:
-                ref_shift = max(-20.0, p90 - (-16.0))
+            p50 = float(np.percentile(active_frames, 50))
+            ref_shift = min(0.0, max(-20.0, p50 - (-20.0)))
+            voiced_gate = max(-52.0, min(-36.0, p50 - 21.0))
+            low_gate = max(-52.0, min(-36.0, p50 - 19.0))
+            loud_gate = max(-38.0, min(-20.0, p50 - 2.0))
 
-    rms_gate = -29.0 + ref_shift
-    low_gate = -32.0 + ref_shift
-    loud_gate = -22.0 + ref_shift
     eff_breath_thresh = breath_threshold_db + ref_shift
-
-    speech = ((rms_db > rms_gate) & ((hf_ratio < 0.24) | (low_db > low_gate))) | (rms_db > loud_gate)
+    tilt = low_db - rms_db
+    voiced = (rms_db > voiced_gate) & (hf_ratio < 0.24) & (tilt > -10.0)
+    speech = voiced | (low_db > low_gate) | (rms_db > loud_gate)
 
     pre_frames = max(1, int(round((PRE_DILATE_MS / 1000.0) * sr / hop)))
     post_frames = max(1, int(round((POST_DILATE_MS / 1000.0) * sr / hop)))
@@ -126,6 +176,20 @@ def analyze_pause_breaths(
             if k < n_frames:
                 dilated[k:] |= speech[:-k]
 
+    word_mask = np.zeros(n_frames, dtype=bool)
+    if protected_intervals:
+        pre_pad_s = max(0.0, word_pre_pad_ms / 1000.0)
+        post_pad_s = max(0.0, word_post_pad_ms / 1000.0)
+        for t0, t1 in protected_intervals:
+            w0 = max(0, int(math.floor(t0 * sr / hop)))
+            w1 = min(n_frames, max(w0 + 1, int(math.ceil(t1 * sr / hop))))
+            if w0 < n_frames and w1 > 0:
+                word_mask[w0:w1] = True
+            p0 = max(0, int(math.floor(max(0.0, t0 - pre_pad_s) * sr / hop)))
+            p1 = min(n_frames, max(p0 + 1, int(math.ceil((t1 + post_pad_s) * sr / hop))))
+            if p0 < n_frames and p1 > 0:
+                dilated[p0:p1] = True
+
     min_gap_frames = max(1, int(round((MIN_VALLEY_MS / 1000.0) * sr / hop)))
     gap_mask = ~dilated
     padded = np.concatenate(([False], gap_mask, [False]))
@@ -133,22 +197,30 @@ def analyze_pause_breaths(
     ends = np.flatnonzero(padded[:-1] & ~padded[1:])
 
     valleys: list[tuple[int, int]] = []
-    valley_stats: list[dict[str, float]] = []
+    breath_valley_spans: list[tuple[int, int]] = []
+    valley_stats: list[dict[str, Any]] = []
     for st, en in zip(starts, ends):
         st_i, en_i = int(st), int(en)
         if (en_i - st_i) < min_gap_frames:
             dilated[st_i:en_i] = True
-        else:
-            valleys.append((st_i, en_i))
-            seg_db = rms_db[st_i:en_i]
-            valley_stats.append({
-                "start_s": round(st_i * hop / sr, 3),
-                "end_s": round(en_i * hop / sr, 3),
-                "max_db": round(float(np.max(seg_db)), 2),
-                "mean_db": round(float(np.mean(seg_db)), 2),
-            })
+            continue
+        seg_r = rms_db[st_i:en_i]
+        seg_t = tilt[st_i:en_i]
+        seg_hf = hf_ratio[st_i:en_i]
+        # Only attenuate valleys containing genuine unvoiced airflow (never room tone or soft voiced tails).
+        has_breath = bool(np.any((seg_r > eff_breath_thresh) & (seg_hf >= 0.22) & (seg_t <= -10.0)))
+        valleys.append((st_i, en_i))
+        if has_breath:
+            breath_valley_spans.append((st_i, en_i))
+        valley_stats.append({
+            "start_s": round(st_i * hop / sr, 3),
+            "end_s": round(en_i * hop / sr, 3),
+            "max_db": round(float(np.max(seg_r)), 2),
+            "mean_db": round(float(np.mean(seg_r)), 2),
+            "has_breath": has_breath,
+        })
 
-    breathy = [v for v in valley_stats if v["max_db"] > eff_breath_thresh]
+    breathy = [v for v in valley_stats if v["has_breath"]]
     max_db = max((v["max_db"] for v in valley_stats), default=None)
     mean_db = (
         round(sum(v["mean_db"] for v in breathy) / len(breathy), 2)
@@ -161,8 +233,11 @@ def analyze_pause_breaths(
         "win": win,
         "rms_db": rms_db,
         "speech": speech,
+        "word_mask": word_mask,
+        "protected_eval_mask": speech | word_mask,
         "dilated": dilated,
         "valleys": valleys,
+        "breath_valley_spans": breath_valley_spans,
         "valley_stats": valley_stats,
         "pause_valleys": len(valleys),
         "breath_valleys": len(breathy),
@@ -217,6 +292,7 @@ def debreath_samples(
     adaptive: bool = True,
     max_speech_delta_db: float = MAX_PROTECTED_SPEECH_DELTA_DB,
     mask_mono: np.ndarray | None = None,
+    protected_intervals: list[tuple[float, float]] | None = None,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """Attenuate >=140ms pause breath valleys while strictly preserving sample count and speech RMS."""
     if sr <= 0:
@@ -238,11 +314,12 @@ def debreath_samples(
     if len(detect_mono) != n_samples:
         raise ValueError(f"mask_mono length {len(detect_mono)} != audio length {n_samples}")
 
-    analysis = analyze_pause_breaths(detect_mono, sr, adaptive=adaptive)
+    analysis = analyze_pause_breaths(
+        detect_mono, sr, adaptive=adaptive, protected_intervals=protected_intervals,
+    )
     rms_db, _, _, hop, win = _compute_frame_features(mono, sr)
-    speech = analysis["speech"]
-    dilated = analysis["dilated"]
-    valleys = analysis["valleys"]
+    eval_mask = analysis["protected_eval_mask"]
+    breath_spans = analysis["breath_valley_spans"]
     n_frames = len(rms_db)
 
     if n_frames == 0:
@@ -254,14 +331,19 @@ def debreath_samples(
             "mean_speech_delta_db": 0.0,
         }
 
-    # Hold local peak RMS across +/-20ms inside valleys so Hann fade-back never lifts breath tails.
+    # Only attenuate genuine breathy airflow valleys; keep room tone & soft voiced tails at gain 1.0.
+    active_dilated = np.ones(n_frames, dtype=bool)
+    for st_i, en_i in breath_spans:
+        active_dilated[st_i:en_i] = False
+
+    # Hold local peak RMS across +/-20ms inside breath valleys so Hann fade-back never lifts breath tails.
     pad_r = max(1, int(round(0.020 * sr / hop)))
     frame_gain = np.ones(n_frames, dtype=np.float64)
     for fi in range(n_frames):
-        if not dilated[fi]:
+        if not active_dilated[fi]:
             lo = max(0, fi - pad_r)
             hi = min(n_frames, fi + pad_r + 1)
-            local_mask = ~dilated[lo:hi]
+            local_mask = ~active_dilated[lo:hi]
             local_rms = float(np.max(rms_db[lo:hi][local_mask]))
             tg = 10.0 ** ((floor_db - local_rms) / 20.0)
             frame_gain[fi] = min(1.0, max(min_gain, tg))
@@ -292,7 +374,7 @@ def debreath_samples(
     out_mono = out_norm_recheck.mean(axis=1)
 
     eps = 1e-9
-    sp_idx = np.flatnonzero(speech)
+    sp_idx = np.flatnonzero(eval_mask)
     delta_vals: list[float] = []
     for fi in sp_idx:
         s0 = int(fi) * hop
@@ -310,12 +392,14 @@ def debreath_samples(
             f"Protected speech RMS delta {max_abs_delta:.3f} dB exceeds {max_speech_delta_db:.3f} dB"
         )
 
-    after_analysis = analyze_pause_breaths(out_mono, sr, adaptive=adaptive)
+    after_analysis = analyze_pause_breaths(
+        out_mono, sr, adaptive=adaptive, protected_intervals=protected_intervals,
+    )
     return out_pcm, {
         "frames": n_samples,
         "sample_rate": sr,
         "channels": norm.shape[1],
-        "valleys_cleaned": len(valleys),
+        "valleys_cleaned": len(breath_spans),
         "breath_valleys_before": analysis["breath_valleys"],
         "breath_valleys_after": after_analysis["breath_valleys"],
         "pause_breath_max_db_before": analysis["pause_breath_max_db"],
@@ -366,7 +450,14 @@ def _read_wav_pcm(path: Path) -> tuple[np.ndarray, int, Any]:
     return pcm, sr, params
 
 
-def debreath_wav(inp: Path, out: Path, *, mask_wav: Path | None = None, **kwargs: Any) -> dict[str, Any]:
+def debreath_wav(
+    inp: Path,
+    out: Path,
+    *,
+    mask_wav: Path | None = None,
+    words_path: Path | None = None,
+    **kwargs: Any,
+) -> dict[str, Any]:
     """Read a WAV file, apply debreath_samples, and atomically write output WAV."""
     pcm, sr, params = _read_wav_pcm(inp)
     nf = len(pcm)
@@ -378,7 +469,13 @@ def debreath_wav(inp: Path, out: Path, *, mask_wav: Path | None = None, **kwargs
             m_norm, _, _ = _to_normalized_float(m_pcm)
             mask_mono = m_norm.mean(axis=1)
 
-    out_pcm, stats = debreath_samples(pcm, sr, mask_mono=mask_mono, **kwargs)
+    protected_intervals = kwargs.pop("protected_intervals", None)
+    if protected_intervals is None and words_path is not None:
+        protected_intervals = load_word_intervals(Path(words_path))
+
+    out_pcm, stats = debreath_samples(
+        pcm, sr, mask_mono=mask_mono, protected_intervals=protected_intervals, **kwargs,
+    )
     if len(out_pcm) != nf:
         raise DebreathInvariantError(f"Output WAV frames {len(out_pcm)} != input {nf}")
 

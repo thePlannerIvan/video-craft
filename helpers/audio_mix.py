@@ -205,6 +205,8 @@ def main() -> int:
                           help="Attenuate >=140ms pause breaths to -62 dBFS (default ON for podcast-warm)")
     db_group.add_argument("--no-debreath", dest="debreath", action="store_const", const=False,
                           help="Disable pause de-breathing (useful for A/B comparison)")
+    ap.add_argument("--words", type=Path, default=None,
+                    help="Optional caption_words.json / captions.json to hard-protect spoken word intervals during de-breathing")
     ap.add_argument("--ab", type=str, default=None,
                     help="A/B audition excerpt 'START,DUR' in seconds (writes 原始 & 处理 WAVs without BGM/SFX)")
     ap.add_argument("--ab-out", type=Path, default=None, help="A/B output directory (default: voice parent)")
@@ -236,6 +238,8 @@ def main() -> int:
         sys.exit("必须提供 voice 输入与 -o/--output 输出路径（或使用 --ab / --list-sfx）")
     if not a.voice.is_file():
         sys.exit(f"找不到人声：{a.voice}")
+    if a.words is not None and not a.words.is_file():
+        sys.exit(f"找不到词级时间轴文件：{a.words}")
 
     voice_mode = "raw" if (a.dry or a.raw_voice) else a.voice_preset
     effective_debreath = (
@@ -256,7 +260,7 @@ def main() -> int:
         ab_out = (a.ab_out or fallback_dir).resolve()
         ab_info = audio_fix.make_ab(
             a.voice.resolve(), ab_out, start_s, dur_s, a.target_lufs, False,
-            preset=voice_mode, debreath=effective_debreath, quiet=a.json,
+            preset=voice_mode, debreath=effective_debreath, quiet=a.json, words_path=a.words,
         )
         if a.json:
             print(json.dumps(ab_info, ensure_ascii=False))
@@ -296,12 +300,13 @@ def main() -> int:
             import audio_fix
             voice_wav = tmp / "voice_prepped.wav"
             voice_stats = audio_fix.apply_voice_preset(
-                a.voice, voice_wav, preset=voice_mode, target_lufs=a.target_lufs, debreath=effective_debreath,
+                a.voice, voice_wav, preset=voice_mode, target_lufs=a.target_lufs,
+                debreath=effective_debreath, words_path=a.words,
             )
         elif effective_debreath:
             import _debreath
             voice_wav = tmp / "voice_debreathed.wav"
-            voice_stats = _debreath.debreath_wav(a.voice, voice_wav)
+            voice_stats = _debreath.debreath_wav(a.voice, voice_wav, words_path=a.words)
 
         if a.dry:
             # Pure dry voice: keep exact clean signal without EQ/comp/loudnorm/SFX/BGM
@@ -338,6 +343,7 @@ def main() -> int:
                     "mode": "voice-only",
                     "voice_preset": voice_mode,
                     "debreath": effective_debreath,
+                    "words_protected": bool(a.words),
                     "sfx_count": 0,
                     "output_lufs": round(out_lu, 2),
                     "output": str(a.output),

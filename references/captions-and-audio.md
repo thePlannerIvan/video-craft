@@ -66,7 +66,7 @@ python3 "<craft>/helpers/_internal/check_caption_breaks.py" "<edit>/subtitles.sr
 - **声音彻底分轨**：**Voice Polish**（`helpers/audio_mix.py`）专注纯净人声，专归 `人物成片.mp4`；**Visual Soundscape**（`helpers/sound_design.py`）负责动效起伏音效与经筛分闪避的素材原声底噪，专归 `画面成片.mp4` 与独立 `画面音效轨.wav`（无声景需求时画面成片合法保持 0 音轨）。两轨物理隔离，保持默认人声链路纯净。
 - **Voice Polish 唯一权威入口（`helpers/audio_mix.py`，参数与预设细则见 `audio_mix.py --help`）**：
   - 先按需用 `helpers/_internal/audio_diag.py <媒体> --json` 检出电平、削波、底噪与停顿重吸气声；
-  - 直接向 `audio_mix.py` 传入原始干声，默认 `podcast-warm` 预设自动完成播客暖声均衡/压缩与双遍响度归一（`-14.0 LUFS / -1.5 dBTP`，48kHz 立体声），并默认开启 `--debreath`（保护字头清辅音，柔和衰减 `≥140ms` 停顿重吸气声且保证 `0.000s` 漂移与语音段 RMS 变化 `≤0.1 dB`，可用 `--no-debreath` 对照关闭）；
+  - 直接向 `audio_mix.py` 传入原始干声，默认 `podcast-warm` 预设自动完成播客暖声均衡/压缩与双遍响度归一（`-14.0 LUFS / -1.5 dBTP`，48kHz 立体声），并默认开启 `--debreath`（基于 `p50` 自适应门限与气流倾角筛选保护轻读尾音与清辅音，仅衰减 `≥140ms` 真实吸气停顿且保证 `0.000s` 漂移与语音段 RMS 变化 `≤0.1 dB`；已有词级时间轴时可加 `--words <caption_words.json>` 硬保护全部已出字区间，可用 `--no-debreath` 对照关闭）；
   - 支持 `--ab "起始,时长"` 做单轨与停顿除吸气 A/B 盲听对照，以及 `--dry` / `--raw-voice` 导出纯干声；
   - **兼容入口 `helpers/audio_fix.py`**：仅用于独立单轨声学诊断与历史兼容；处理终混时直接把原始干声交给 `audio_mix.py`（仅在输入确已由 `audio_fix.py` 预加工时加 `--voice-preset none` 防二次压限）。
 - **Visual Soundscape 唯一权威入口（`helpers/sound_design.py`，参数细则见 `sound_design.py --help`）**：

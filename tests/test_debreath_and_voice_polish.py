@@ -311,6 +311,89 @@ class DebreathAndVoicePolishTests(unittest.TestCase):
         )
         self.assertNotEqual(bad_ab.returncode, 0)
 
+    def test_soft_sentence_final_vowels_unvoiced_fricatives_and_words_guard(self) -> None:
+        """Regress 三顿半 bug: loud peaks must not lock gate over soft finals/fricatives, and --words protects ultra-weak syllables."""
+        rng = np.random.default_rng(7)
+        sr = 48000
+        dur_s = 5.40
+        total = int(round(dur_s * sr))
+        mono = rng.standard_normal(total).astype(np.float64) * (10.0 ** (-64.0 / 20.0))
+
+        def put(t0: float, t1: float, sig: np.ndarray) -> None:
+            i0 = int(round(t0 * sr))
+            i1 = min(total, i0 + len(sig))
+            mono[i0:i1] = sig[: i1 - i0]
+
+        def slen(t0: float, t1: float) -> int:
+            return int(round(t1 * sr)) - int(round(t0 * sr))
+
+        # Loud primary speech (pushes p90 above -18 dBFS, previously locking ref_shift=0)
+        put(0.05, 0.90, _voiced_burst(slen(0.05, 0.90), sr, 150.0, -14.0))
+        # Soft sentence-final voiced vowel at -35 dBFS (220ms) — must stay untouched even without --words
+        put(1.05, 1.27, _voiced_burst(slen(1.05, 1.27), sr, 145.0, -35.0))
+        # Genuine breathy pause (>=140ms) — must still be attenuated
+        put(1.48, 1.80, _band_noise(rng, slen(1.48, 1.80), sr, 600.0, 3200.0, -31.0))
+        # Strong speech + unvoiced fricative + soft vowel (mimics 「西」/「牌」 at -25/-34 dBFS)
+        put(2.00, 2.75, _voiced_burst(slen(2.00, 2.75), sr, 160.0, -14.0))
+        put(2.90, 2.98, _band_noise(rng, slen(2.90, 2.98), sr, 4000.0, 7000.0, -25.0))
+        put(2.98, 3.16, _voiced_burst(slen(2.98, 3.16), sr, 165.0, -34.0))
+        # Isolated ultra-weak unvoiced syllable (-36 dBFS, 120ms) inside a declared --words span
+        put(3.45, 3.57, _band_noise(rng, slen(3.45, 3.57), sr, 3000.0, 7000.0, -36.0))
+        # Second genuine breathy pause after it
+        put(3.85, 4.17, _band_noise(rng, slen(3.85, 4.17), sr, 600.0, 3200.0, -31.0))
+        put(4.40, 5.20, _voiced_burst(slen(4.40, 5.20), sr, 155.0, -14.0))
+
+        src = self.dir / "dynamic_speech.wav"
+        pcm = np.clip(np.rint(mono * 32767.0), -32768, 32767).astype(np.int16)
+        pcm_st = np.repeat(pcm[:, None], 2, axis=1)
+        with wave.open(str(src), "wb") as wf:
+            wf.setnchannels(2)
+            wf.setsampwidth(2)
+            wf.setframerate(sr)
+            wf.writeframes(pcm_st.tobytes())
+
+        words_json = self.dir / "caption_words.json"
+        words_json.write_text(json.dumps({
+            "words": [
+                {"text": "重", "out_start": 0.05, "out_end": 0.90},
+                {"text": "道", "out_start": 1.05, "out_end": 1.27},
+                {"text": "语", "out_start": 2.00, "out_end": 2.75},
+                {"text": "西", "out_start": 2.90, "out_end": 3.16},
+                {"text": "聚", "out_start": 3.45, "out_end": 3.57},
+                {"text": "尾", "out_start": 4.40, "out_end": 5.20},
+            ],
+        }), encoding="utf-8")
+
+        out_off = self.dir / "dyn_off.wav"
+        out_ac = self.dir / "dyn_acoustic.wav"
+        out_wd = self.dir / "dyn_words.wav"
+        subprocess.run([sys.executable, str(AUDIO_MIX), str(src), "-o", str(out_off), "--no-debreath"], check=True, capture_output=True)
+        subprocess.run([sys.executable, str(AUDIO_MIX), str(src), "-o", str(out_ac)], check=True, capture_output=True)
+        subprocess.run([sys.executable, str(AUDIO_MIX), str(src), "-o", str(out_wd), "--words", str(words_json)], check=True, capture_output=True)
+
+        m_off, sr_o, _, _ = _read_wav_mono_and_meta(out_off)
+        m_ac, _, _, _ = _read_wav_mono_and_meta(out_ac)
+        m_wd, _, _, _ = _read_wav_mono_and_meta(out_wd)
+
+        # Even WITHOUT --words, soft sentence-final vowel & fricative+vowel stay within <= 0.1 dB
+        for label, t0, t1 in (("soft_final", 1.05, 1.27), ("fricative_onset", 2.90, 2.98), ("fricative_vowel", 2.98, 3.16)):
+            d = abs(_window_rms_db(m_ac, sr_o, t0, t1) - _window_rms_db(m_off, sr_o, t0, t1))
+            self.assertLessEqual(d, 0.1, f"{label} drifted {d:.3f} dB without --words")
+
+        # Pure-acoustic still attenuates genuine breath
+        b_off = _window_rms_db(m_off, sr_o, 1.52, 1.76)
+        b_ac = _window_rms_db(m_ac, sr_o, 1.52, 1.76)
+        self.assertLess(b_ac, -52.0)
+        self.assertGreater(b_off - b_ac, 15.0)
+
+        # WITH --words, isolated ultra-weak unvoiced syllable stays within <= 0.1 dB while breaths still drop
+        d_weak = abs(_window_rms_db(m_wd, sr_o, 3.45, 3.57) - _window_rms_db(m_off, sr_o, 3.45, 3.57))
+        self.assertLessEqual(d_weak, 0.1, f"weak --words syllable drifted {d_weak:.3f} dB")
+        b2_off = _window_rms_db(m_off, sr_o, 3.89, 4.13)
+        b2_wd = _window_rms_db(m_wd, sr_o, 3.89, 4.13)
+        self.assertLess(b2_wd, -52.0)
+        self.assertGreater(b2_off - b2_wd, 15.0)
+
 
 if __name__ == "__main__":
     unittest.main()

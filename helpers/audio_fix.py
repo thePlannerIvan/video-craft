@@ -191,6 +191,7 @@ def apply_voice_preset(
     target_lufs: float = -14.0,
     deess: bool = False,
     debreath: bool | None = None,
+    words_path: Path | None = None,
 ) -> dict[str, Any]:
     """Process audio file with the chosen preset and return telemetry."""
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -206,7 +207,7 @@ def apply_voice_preset(
                     "ffmpeg", "-y", "-loglevel", "error", "-i", str(inp),
                     "-vn", "-ar", "48000", "-ac", "2", "-c:a", "pcm_s16le", "-bitexact", str(raw_wav),
                 ])
-                debreath_stats = _debreath.debreath_wav(raw_wav, out)
+                debreath_stats = _debreath.debreath_wav(raw_wav, out, words_path=words_path)
         else:
             run([
                 "ffmpeg", "-y", "-loglevel", "error", "-i", str(inp),
@@ -245,7 +246,7 @@ def apply_voice_preset(
                 normed = tmp / "normed.wav"
                 _two_pass_loudnorm(shaped, normed, target_lufs=target_lufs, tp=-1.5, lra=9.0)
                 debreathed = tmp / "debreathed.wav"
-                debreath_stats = _debreath.debreath_wav(normed, debreathed, mask_wav=raw_48k)
+                debreath_stats = _debreath.debreath_wav(normed, debreathed, mask_wav=raw_48k, words_path=words_path)
                 run([
                     "ffmpeg", "-y", "-loglevel", "error", "-i", str(debreathed),
                     "-c:a", "copy", "-metadata", "comment=video-craft:podcast-warm", "-bitexact", str(out),
@@ -268,7 +269,7 @@ def apply_voice_preset(
                 normed = tmp / "normed.wav"
                 normalize_static(proc, normed, target_lufs)
                 debreathed = tmp / "debreathed.wav"
-                debreath_stats = _debreath.debreath_wav(normed, debreathed, mask_wav=wav)
+                debreath_stats = _debreath.debreath_wav(normed, debreathed, mask_wav=wav, words_path=words_path)
                 run([
                     "ffmpeg", "-y", "-loglevel", "error", "-i", str(debreathed),
                     "-c:a", "copy", "-metadata", "comment=video-craft:gentle", "-bitexact", str(out),
@@ -304,6 +305,7 @@ def make_ab(
     preset: str = "podcast-warm",
     debreath: bool | None = None,
     quiet: bool = False,
+    words_path: Path | None = None,
 ) -> dict[str, Any]:
     effective = "podcast-warm" if preset in ("raw", "none") else preset
     use_debreath = (effective == "podcast-warm") if debreath is None else bool(debreath)
@@ -316,7 +318,8 @@ def make_ab(
         proc_full = tmp / "proc_full.wav"
         _two_pass_loudnorm(inp, orig_n, target_lufs=target_lufs)
         stats = apply_voice_preset(
-            inp, proc_full, preset=effective, target_lufs=target_lufs, deess=deess, debreath=use_debreath,
+            inp, proc_full, preset=effective, target_lufs=target_lufs, deess=deess,
+            debreath=use_debreath, words_path=words_path,
         )
         for src, dst in [(orig_n, raw_out), (proc_full, proc_out)]:
             run([
@@ -360,6 +363,8 @@ def main() -> int:
                           help="Attenuate >=140ms pause breaths to -62 dBFS (default ON for podcast-warm)")
     db_group.add_argument("--no-debreath", dest="debreath", action="store_const", const=False,
                           help="Disable pause de-breathing (useful for A/B comparison)")
+    ap.add_argument("--words", type=Path, default=None,
+                    help="Optional caption_words.json / captions.json to hard-protect spoken word intervals during de-breathing")
     ap.add_argument("--target-lufs", type=float, default=-14.0,
                     help="Integrated loudness target in LUFS (default: -14.0)")
     ap.add_argument("--deess", action="store_true", help="Enable sidechain de-ess for gentle preset")
@@ -371,6 +376,8 @@ def main() -> int:
     inp = args.input.resolve()
     if not inp.exists():
         sys.exit(f"input not found: {inp}")
+    if args.words is not None and not args.words.is_file():
+        sys.exit(f"words file not found: {args.words}")
 
     preset = "raw" if args.raw else args.preset
 
@@ -379,7 +386,7 @@ def main() -> int:
         ab_out = (args.ab_out or inp.parent).resolve()
         ab_info = make_ab(
             inp, ab_out, start, dur, args.target_lufs, args.deess,
-            preset=preset, debreath=args.debreath, quiet=args.json,
+            preset=preset, debreath=args.debreath, quiet=args.json, words_path=args.words,
         )
         if args.json:
             print(json.dumps(ab_info, ensure_ascii=False, indent=2))
@@ -389,7 +396,8 @@ def main() -> int:
         sys.exit("need -o out.wav (or --ab for an A/B sample)")
     out = args.output.resolve()
     stats = apply_voice_preset(
-        inp, out, preset=preset, target_lufs=args.target_lufs, deess=args.deess, debreath=args.debreath,
+        inp, out, preset=preset, target_lufs=args.target_lufs, deess=args.deess,
+        debreath=args.debreath, words_path=args.words,
     )
     if args.json:
         print(json.dumps(stats, ensure_ascii=False, indent=2))
